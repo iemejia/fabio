@@ -10,7 +10,7 @@
 //! - `FABIO_TEST_DEST_WORKSPACE` - Destination workspace ID
 //! - `FABIO_TEST_DEST_LAKEHOUSE` - Destination lakehouse ID
 //! - `FABIO_TEST_NOTEBOOK_ID` - Existing notebook ID in source workspace
-//! - `FABIO_TEST_CAPACITY_ID` - Active capacity ID (optional)
+//! - `FABIO_TEST_CAPACITY_ID` - Active capacity ID
 //!
 //! All integration tests are marked `#[ignore]` so they don't run during normal
 //! `cargo test`. Run them explicitly with:
@@ -47,20 +47,18 @@ impl TestConfig {
     /// Panics if required environment variables are not set.
     pub fn from_env() -> Self {
         Self {
-            source_workspace: env::var("FABIO_TEST_SOURCE_WORKSPACE")
-                .unwrap_or_else(|_| "00000000-0000-0000-0000-000000000001".to_string()),
-            source_lakehouse: env::var("FABIO_TEST_SOURCE_LAKEHOUSE")
-                .unwrap_or_else(|_| "00000000-0000-0000-0000-000000000002".to_string()),
-            dest_workspace: env::var("FABIO_TEST_DEST_WORKSPACE")
-                .unwrap_or_else(|_| "00000000-0000-0000-0000-000000000003".to_string()),
-            dest_lakehouse: env::var("FABIO_TEST_DEST_LAKEHOUSE")
-                .unwrap_or_else(|_| "00000000-0000-0000-0000-000000000004".to_string()),
-            notebook_id: env::var("FABIO_TEST_NOTEBOOK_ID")
-                .unwrap_or_else(|_| "00000000-0000-0000-0000-000000000005".to_string()),
-            capacity_id: env::var("FABIO_TEST_CAPACITY_ID")
-                .unwrap_or_else(|_| "00000000-0000-0000-0000-000000000006".to_string()),
+            source_workspace: required_env("FABIO_TEST_SOURCE_WORKSPACE"),
+            source_lakehouse: required_env("FABIO_TEST_SOURCE_LAKEHOUSE"),
+            dest_workspace: required_env("FABIO_TEST_DEST_WORKSPACE"),
+            dest_lakehouse: required_env("FABIO_TEST_DEST_LAKEHOUSE"),
+            notebook_id: required_env("FABIO_TEST_NOTEBOOK_ID"),
+            capacity_id: required_env("FABIO_TEST_CAPACITY_ID"),
         }
     }
+}
+
+fn required_env(name: &str) -> String {
+    env::var(name).unwrap_or_else(|_| panic!("{name} must be set for live E2E tests"))
 }
 
 /// Build a `fabio` command ready to execute.
