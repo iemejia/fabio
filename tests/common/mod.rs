@@ -48,17 +48,17 @@ impl TestConfig {
     pub fn from_env() -> Self {
         Self {
             source_workspace: env::var("FABIO_TEST_SOURCE_WORKSPACE")
-                .unwrap_or_else(|_| "1619af1e-c97a-43f8-8f1e-c1990b0b3914".to_string()),
+                .unwrap_or_else(|_| "00000000-0000-0000-0000-000000000001".to_string()),
             source_lakehouse: env::var("FABIO_TEST_SOURCE_LAKEHOUSE")
-                .unwrap_or_else(|_| "d4f7211c-cc03-4a86-9f16-0bb2f2af3c59".to_string()),
+                .unwrap_or_else(|_| "00000000-0000-0000-0000-000000000002".to_string()),
             dest_workspace: env::var("FABIO_TEST_DEST_WORKSPACE")
-                .unwrap_or_else(|_| "c112b455-f02d-4c18-a0af-be75a82816d0".to_string()),
+                .unwrap_or_else(|_| "00000000-0000-0000-0000-000000000003".to_string()),
             dest_lakehouse: env::var("FABIO_TEST_DEST_LAKEHOUSE")
-                .unwrap_or_else(|_| "36755b0f-b6af-4699-8945-df3aeb8717d6".to_string()),
+                .unwrap_or_else(|_| "00000000-0000-0000-0000-000000000004".to_string()),
             notebook_id: env::var("FABIO_TEST_NOTEBOOK_ID")
-                .unwrap_or_else(|_| "38177352-dc1c-440b-a860-a83ec508e806".to_string()),
+                .unwrap_or_else(|_| "00000000-0000-0000-0000-000000000005".to_string()),
             capacity_id: env::var("FABIO_TEST_CAPACITY_ID")
-                .unwrap_or_else(|_| "afdf5707-dde2-41ef-9d98-df65aa40eb7f".to_string()),
+                .unwrap_or_else(|_| "00000000-0000-0000-0000-000000000006".to_string()),
         }
     }
 }

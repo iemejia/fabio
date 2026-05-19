@@ -61,12 +61,12 @@
 - `unsafe_code = "forbid"` in lints
 
 ## Critical Context
-- User's tenant: `f32b018c-68ee-40d8-9e1a-d7ab42193a10`
-- Active capacity: `afdf5707-dde2-41ef-9d98-df65aa40eb7f` (small SKU, Spark concurrency limit ~1)
-- Inactive capacity: `64fd7fa6-4b6e-4262-85c1-b70872798927` (paused)
-- Source workspace: `1619af1e-c97a-43f8-8f1e-c1990b0b3914` (fabio-demo-source), lakehouse `d4f7211c-cc03-4a86-9f16-0bb2f2af3c59`
-- Dest workspace: `c112b455-f02d-4c18-a0af-be75a82816d0` (fabio-demo-dest), lakehouse `36755b0f-b6af-4699-8945-df3aeb8717d6`
-- Notebook in source: `38177352-dc1c-440b-a860-a83ec508e806` (SalesAnalysis)
+- User's tenant: set locally via secure environment configuration (redacted)
+- Active capacity: set locally via secure environment configuration (redacted)
+- Inactive capacity: set locally via secure environment configuration (redacted)
+- Source workspace/lakehouse: set locally via secure environment configuration (redacted)
+- Destination workspace/lakehouse: set locally via secure environment configuration (redacted)
+- Notebook ID: set locally via secure environment configuration (redacted)
 - Fabric REST base URL: `https://api.fabric.microsoft.com/v1`
 - OneLake DFS base URL: `https://onelake.dfs.fabric.microsoft.com`
 - OneLake Blob base URL: `https://onelake.blob.fabric.microsoft.com`
