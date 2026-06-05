@@ -3065,6 +3065,7 @@ mod tests {
         rt.block_on(async {
             let guard = client.arm_token.read().await;
             assert!(guard.is_none());
+            drop(guard);
         });
     }
 

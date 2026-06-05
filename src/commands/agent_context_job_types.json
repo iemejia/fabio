@@ -1,0 +1,11 @@
+{
+  "Notebook": ["RunNotebook"],
+  "DataPipeline": ["Pipeline"],
+  "SparkJobDefinition": ["sparkjob"],
+  "Lakehouse": ["tableMaintenance", "refreshMaterializedLakeViews"],
+  "SemanticModel": ["refresh"],
+  "GraphModel": ["RefreshGraph"],
+  "Eventstream": ["RunEventstream"],
+  "MirroredDatabase": ["startMirroring", "stopMirroring"],
+  "SQLDatabase": ["startMirroring", "stopMirroring"]
+}

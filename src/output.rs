@@ -375,6 +375,8 @@ pub fn decode_definition_parts(mut data: Value) -> Value {
 
 #[cfg(test)]
 mod tests {
+    use crate::cli::Command;
+
     use super::*;
 
     #[test]
@@ -507,11 +509,59 @@ mod tests {
 
     /// Helper to construct a Cli for testing (parses args after "fabio agent-context").
     fn make_test_cli(extra_args: &[&str]) -> Cli {
-        use clap::Parser;
-        let mut args = vec!["fabio"];
-        args.extend_from_slice(extra_args);
-        args.push("agent-context");
-        Cli::parse_from(args)
+        const VALID_OUTPUT_VALUES: &str = "json, table, plain, csv, tsv";
+
+        let mut cli = Cli {
+            output: OutputFormat::Json,
+            json: false,
+            query: None,
+            quiet: false,
+            force: false,
+            dry_run: false,
+            limit: None,
+            all: false,
+            continuation_token: None,
+            profile: None,
+            lro_timeout: None,
+            command: Command::AgentContext,
+        };
+
+        let mut i = 0;
+        while i < extra_args.len() {
+            match extra_args[i] {
+                "--json" => {
+                    cli.json = true;
+                    i += 1;
+                }
+                "--dry-run" => {
+                    cli.dry_run = true;
+                    i += 1;
+                }
+                "--output" => {
+                    let next = extra_args.get(i + 1).copied().expect(
+                        "missing value for --output in test helper. Valid values: json, table, plain, csv, tsv",
+                    );
+                    cli.output = match next {
+                        "json" => OutputFormat::Json,
+                        "table" => OutputFormat::Table,
+                        "plain" => OutputFormat::Plain,
+                        "csv" => OutputFormat::Csv,
+                        "tsv" => OutputFormat::Tsv,
+                        other => panic!(
+                            "unexpected --output value in test helper: {other}. Valid values: {VALID_OUTPUT_VALUES}"
+                        ),
+                    };
+                    i += 2;
+                }
+                other => {
+                    panic!(
+                        "unsupported test arg in make_test_cli: {other}. Supported: --json, --dry-run, --output"
+                    )
+                }
+            }
+        }
+
+        cli
     }
 
     #[test]

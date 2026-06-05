@@ -303,7 +303,7 @@ pub enum SqlDatabaseCommand {
     },
 }
 
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::large_futures)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlDatabaseCommand) -> Result<()> {
     match command {
         SqlDatabaseCommand::List { workspace } => list(cli, client, workspace).await,

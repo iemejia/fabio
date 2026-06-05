@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod anomaly_detector;
 pub mod apache_airflow_job;
+pub mod app_backend;
 pub mod auth;
 pub mod capacity;
 pub mod catalog;
@@ -76,7 +77,11 @@ use crate::cli::{Cli, Command};
 use crate::client::FabricClient;
 
 /// Execute the CLI command.
-#[allow(clippy::too_many_lines, clippy::large_stack_frames)]
+#[allow(
+    clippy::too_many_lines,
+    clippy::large_stack_frames,
+    clippy::large_futures
+)]
 pub async fn execute(cli: Cli) -> Result<()> {
     let mut client = FabricClient::new();
 
@@ -183,6 +188,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::AnomalyDetector { command } => {
             anomaly_detector::execute(&cli, &client, command).await
         }
+        Command::AppBackend { command } => app_backend::execute(&cli, &client, command).await,
         // Integration
         Command::Gateway { command } => gateway::execute(&cli, &client, command).await,
         Command::Git { command } => git::execute(&cli, &client, command).await,

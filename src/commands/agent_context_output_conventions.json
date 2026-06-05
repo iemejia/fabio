@@ -1,0 +1,44 @@
+{
+  "description": "How to interpret fabio command output",
+  "envelope": {
+    "success_object": {
+      "format": "{\"data\": {...}}",
+      "description": "Single item response"
+    },
+    "success_list": {
+      "format": "{\"data\": [...], \"count\": N}",
+      "description": "List response with item count"
+    },
+    "success_list_paginated": {
+      "format": "{\"data\": [...], \"count\": N, \"continuation_token\": \"...\"}",
+      "description": "Partial list; pass token via --continuation-token to get next page"
+    },
+    "error": {
+      "format": "{\"error\": {\"code\": \"...\", \"message\": \"...\"}}",
+      "description": "Error response (on stderr, non-zero exit code)"
+    }
+  },
+  "extracting_ids": {
+    "description": "After creating an item, extract its ID for use in subsequent commands",
+    "pattern": "fabio <group> create ... | jq -r '.data.id'",
+    "with_query_flag": "fabio <group> create ... --query data.id"
+  },
+  "dry_run": {
+    "description": "All mutating commands support --dry-run which returns the planned request without executing",
+    "output_format": "{\"status\": \"dry_run\", \"message\": \"Would ...\", ...}"
+  },
+  "auth_scopes": {
+    "fabric": "https://api.fabric.microsoft.com/.default (default, used by most commands)",
+    "arm": "https://management.azure.com/.default (capacity lifecycle, Azure resources)",
+    "storage": "https://storage.azure.com/.default (OneLake DFS/Blob operations)",
+    "sql": "https://database.windows.net/.default (warehouse/lakehouse/sql-database queries)",
+    "kusto": "{cluster_uri}/.default (KQL database queries — scope is per-cluster)"
+  },
+  "common_patterns": {
+    "list_then_show": "Use 'list' to find IDs, then 'show' with --id for details",
+    "create_returns_id": "All 'create' commands return the new item's 'id' in data.id",
+    "delete_returns_status": "All 'delete' commands return {\"status\": \"deleted\", \"id\": \"...\"}",
+    "stdin_support": "Commands with --sql, --kql, --prompt accept stdin when flag is omitted",
+    "file_prefix": "Many --content/--body flags accept @path/to/file.json (reads from file)"
+  }
+}

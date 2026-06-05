@@ -1,0 +1,50 @@
+{
+  "description": "Common multi-step workflows. Each step shows the command and which output field feeds into the next step.",
+  "create_lakehouse_with_data": {
+    "description": "Create a workspace, lakehouse, upload data, and load into a Delta table",
+    "steps": [
+      { "command": "workspace create --name <NAME>", "extract": "data.id", "as": "$WS_ID" },
+      { "command": "workspace assign-capacity --id $WS_ID --capacity <CAPACITY_ID>", "extract": null },
+      { "command": "lakehouse create --workspace $WS_ID --name <NAME>", "extract": "data.id", "as": "$LH_ID" },
+      { "command": "lakehouse upload --workspace $WS_ID --id $LH_ID --source-path <LOCAL> --dest-path Files/<NAME>", "extract": null },
+      { "command": "lakehouse load-table --workspace $WS_ID --id $LH_ID --source-path <NAME> --table <TABLE> --format Csv", "extract": null }
+    ]
+  },
+  "create_semantic_model_and_report": {
+    "description": "Create a Direct Lake semantic model and bind a report to it",
+    "steps": [
+      { "command": "semantic-model create --workspace $WS_ID --name <NAME> --file <TMDL_DIR>", "extract": "data.id", "as": "$SM_ID" },
+      { "command": "semantic-model refresh --workspace $WS_ID --id $SM_ID --type Full", "extract": null },
+      { "command": "semantic-model takeover --workspace $WS_ID --id $SM_ID", "extract": null },
+      { "command": "report create --workspace $WS_ID --name <NAME> --dataset $SM_ID", "extract": "data.id", "as": "$REPORT_ID" }
+    ]
+  },
+  "realtime_intelligence_pipeline": {
+    "description": "Set up an RTI pipeline: Eventhouse → KQL DB → EventStream → query",
+    "steps": [
+      { "command": "eventhouse create --workspace $WS_ID --name <NAME>", "extract": "data.id", "as": "$EH_ID" },
+      { "command": "kql-database create --workspace $WS_ID --name <NAME> --eventhouse-id $EH_ID", "extract": "data.id", "as": "$DB_ID" },
+      { "command": "kql-database query --workspace $WS_ID --id $DB_ID --kql '.create-merge table ...'", "extract": null },
+      { "command": "eventstream create --workspace $WS_ID --name <NAME>", "extract": "data.id", "as": "$ES_ID" },
+      { "command": "eventstream add-source --workspace $WS_ID --id $ES_ID --name src --source-type CustomEndpoint", "extract": null },
+      { "command": "eventstream add-destination --workspace $WS_ID --id $ES_ID --name dest --destination-type Eventhouse --input-node src-stream --properties '{...}'", "extract": null }
+    ]
+  },
+  "deploy_workspace": {
+    "description": "CI/CD: plan and apply workspace deployment from source directory",
+    "steps": [
+      { "command": "deploy plan --source <DIR> --workspace <WS_NAME_OR_ID>", "extract": "data.summary", "as": "review changes" },
+      { "command": "deploy apply --source <DIR> --workspace <WS_NAME_OR_ID>", "extract": "data.status", "as": "succeeded|partial_failure" }
+    ]
+  },
+  "git_integration": {
+    "description": "Connect workspace to git and manage version control",
+    "steps": [
+      { "command": "workspace create --name <NAME>", "extract": "data.id", "as": "$WS_ID" },
+      { "command": "workspace assign-capacity --id $WS_ID --capacity <CAPACITY_ID>", "extract": null },
+      { "command": "git connect --workspace $WS_ID --provider AzureDevOps --organization <ORG> --project <PROJ> --repository <REPO> --branch <BRANCH>", "extract": null },
+      { "command": "git initialize --workspace $WS_ID --strategy PreferWorkspace", "extract": null },
+      { "command": "git commit --workspace $WS_ID --comment 'Initial commit'", "extract": null }
+    ]
+  }
+}

@@ -1,8 +1,8 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::commands::{
-    admin, anomaly_detector, apache_airflow_job, auth, capacity, catalog, connection, copy_job,
-    cosmos_db_database, dashboard, data_pipeline, dataagent, dataflow, datamart, deploy,
+    admin, anomaly_detector, apache_airflow_job, app_backend, auth, capacity, catalog, connection,
+    copy_job, cosmos_db_database, dashboard, data_pipeline, dataagent, dataflow, datamart, deploy,
     deployment_pipeline, digital_twin_builder, digital_twin_builder_flow, domain, environment,
     event_schema_set, eventhouse, eventstream, feedback, gateway, git, graph_model,
     graph_query_set, graphql_api, item, job_scheduler, jobs, kql_dashboard, kql_database,
@@ -408,6 +408,12 @@ pub enum Command {
     ApacheAirflowJob {
         #[command(subcommand)]
         command: apache_airflow_job::ApacheAirflowJobCommand,
+    },
+    /// Manage app backends (Power Apps backend services) [preview]
+    #[command(name = "app-backend", display_order = 61)]
+    AppBackend {
+        #[command(subcommand)]
+        command: app_backend::AppBackendCommand,
     },
 
     // ── Integration ──────────────────────────────────────────────────────

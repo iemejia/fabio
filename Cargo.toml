@@ -53,7 +53,7 @@ csv = "1"
 # TDS protocol (SQL query execution for warehouse/lakehouse)
 # TODO: Switch to upstream crates.io release once https://github.com/microsoft/mssql-rust-driver
 # publishes a version with rustls support (currently only available in this fork).
-mssql-tds = { git = "https://github.com/iemejia/mssql-rs.git", rev = "0f79d6c6d8317de238c872573e2d2b9d1057a309", default-features = false, features = ["rustls-backend"] }
+mssql-tds = { git = "https://github.com/iemejia/mssql-rs.git", rev = "928a1762b8a9c2ee05016f0f887d65c53b6b7d2e", default-features = false, features = ["rustls-backend"] }
 
 # URL encoding for query parameters (security: prevent parameter injection)
 urlencoding = "2"

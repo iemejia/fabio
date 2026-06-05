@@ -736,7 +736,7 @@ pub enum LakehouseCommand {
     },
 }
 
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::large_futures)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseCommand) -> Result<()> {
     match command {
         LakehouseCommand::List { workspace } => list_lakehouses(cli, client, workspace).await,
