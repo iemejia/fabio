@@ -35,7 +35,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 
 ## Progress
 ### Done
-- **Full Rust implementation** (766 subcommands across 69 groups): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, rti, rest, profile, jobs, feedback, operation, agent-context
+- **Full Rust implementation** (broad command surface): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, app-backend, rti, rest, profile, jobs, feedback, operation, agent-context
 - Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain, CSV, TSV formats
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
 - Global options fully wired: `--output/-o`, `--query/-q` (dot-notation field extraction), `--quiet` (suppresses stdout), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`, `--lro-timeout`
@@ -113,6 +113,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Gateway**: list/show/create/update/delete, list-members/update-member/delete-member, list/add/show/update/delete-role-assignments (VNet gateways)
 - **Admin**: 49 subcommands (tenant settings, tags, workloads, workspaces, items, users, domains, labels, sharing links, external data shares, network policies)
 - **Apache Airflow Job**: list/show/create/update/delete/get-definition/update-definition, start-environment/stop-environment/get-environment, list-files/get-file/upload-file/delete-file, get-compute/get-workspace-settings/deploy-requirements
+- **App Backend**: list/show/create/update/delete (`--hard-delete` support, create uses LRO, update requires `--name` and/or `--description`)
 - **Mirrored Catalog**: list/show/create/update/delete/get-definition/update-definition, refresh-metadata/mirroring-status/tables-status (requires tenant feature flag)
 - **Mirrored Databricks Catalog**: list/show/create/update/delete/get-definition/update-definition, discover-catalogs/refresh-metadata/mirroring-status
 - **Mirrored Warehouse**: list (requires tenant feature flag for mutations)
@@ -1556,6 +1557,15 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **getDefinition is LRO**: Returns 202, requires polling.
 - **Response includes `attributes: []`**: Item responses include empty attributes array.
 - **Endpoint pattern**: `/workspaces/{ws}/apacheAirflowJobs/{id}`.
+
+## App Backend API Behaviors Discovered
+- **Preview item type**: App Backend is available as a dedicated workspace-scoped item type via `/appBackends` endpoints.
+- **Available commands**: list, show, create, update, delete.
+- **Create is LRO**: `POST /workspaces/{ws}/appBackends` returns asynchronous operation semantics and is polled by the CLI.
+- **Update input guard**: Update requires at least one of `--name` or `--description`; otherwise returns `INVALID_INPUT` with a corrective hint.
+- **Hard delete support**: Delete supports `--hard-delete`, which appends `?hardDelete=true` and bypasses recycle bin behavior.
+- **Agent-context coverage**: `fabio agent-context` now includes a full `app-backend` schema (mutability, async create, and `--hard-delete` bool flag metadata).
+- **Endpoint patterns**: `/workspaces/{ws}/appBackends` and `/workspaces/{ws}/appBackends/{id}`.
 
 ## Gateway API Behaviors Discovered
 - **Tenant-level scope**: `GET /gateways` (no workspace prefix). Individual: `GET /gateways/{id}`.

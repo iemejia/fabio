@@ -24,9 +24,12 @@ fn app_backend_list_returns_array() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
-fn app_backend_create_and_delete() {
+fn app_backend_create_show_update_and_delete() {
     let cfg = TestConfig::from_env();
     let name = common::unique_name("appbackend_test");
+    let updated_name = format!("{name}_updated");
+    let description = "created by e2e test";
+    let updated_description = "updated by e2e test";
 
     // Create
     let assert = fabio()
@@ -37,6 +40,8 @@ fn app_backend_create_and_delete() {
             &cfg.dest_workspace,
             "--name",
             &name,
+            "--description",
+            description,
         ])
         .timeout(std::time::Duration::from_secs(120))
         .assert()
@@ -45,7 +50,49 @@ fn app_backend_create_and_delete() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     assert_eq!(data["displayName"], name);
+    assert_eq!(data["description"], description);
     let id = data["id"].as_str().unwrap().to_string();
+
+    // Show
+    let assert = fabio()
+        .args([
+            "app-backend",
+            "show",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &id,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["id"], id);
+    assert_eq!(data["displayName"], name);
+
+    // Update
+    let assert = fabio()
+        .args([
+            "app-backend",
+            "update",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &id,
+            "--name",
+            &updated_name,
+            "--description",
+            updated_description,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["id"], id);
+    assert_eq!(data["displayName"], updated_name);
+    assert_eq!(data["description"], updated_description);
 
     // Delete
     let assert = fabio()

@@ -111,10 +111,57 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &AppBackendComma
     }
 }
 
+fn app_backends_path(workspace: &str) -> String {
+    format!("/workspaces/{workspace}/appBackends")
+}
+
+fn app_backend_path(workspace: &str, id: &str) -> String {
+    format!("{}/{id}", app_backends_path(workspace))
+}
+
+fn build_create_body(name: &str, description: Option<&str>) -> Value {
+    let mut body = serde_json::json!({
+        "displayName": name,
+    });
+    if let Some(desc) = description {
+        body["description"] = Value::String(desc.to_string());
+    }
+    body
+}
+
+fn build_update_body(name: Option<&str>, description: Option<&str>) -> Result<Value> {
+    if name.is_none() && description.is_none() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "At least one of --name or --description must be provided".to_string(),
+            "Example: fabio app-backend update --workspace <WS> --id <ID> --name \"New Name\""
+                .to_string(),
+        )
+        .into());
+    }
+
+    let mut body = serde_json::json!({});
+    if let Some(n) = name {
+        body["displayName"] = Value::String(n.to_string());
+    }
+    if let Some(d) = description {
+        body["description"] = Value::String(d.to_string());
+    }
+    Ok(body)
+}
+
+fn build_delete_url(workspace: &str, id: &str, hard_delete: bool) -> String {
+    if hard_delete {
+        format!("{}?hardDelete=true", app_backend_path(workspace, id))
+    } else {
+        app_backend_path(workspace, id)
+    }
+}
+
 async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
     let resp = client
         .get_list(
-            &format!("/workspaces/{workspace}/appBackends"),
+            &app_backends_path(workspace),
             "value",
             cli.all,
             cli.continuation_token.as_deref(),
@@ -134,7 +181,7 @@ async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
 
 async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
     let data = client
-        .get(&format!("/workspaces/{workspace}/appBackends/{id}"))
+        .get(&app_backend_path(workspace, id))
         .await
         .map_err(|e| enrich_forbidden(e, "app-backend show", "Viewer"))?;
     output::render_object(cli, &data, "id");
@@ -148,12 +195,7 @@ async fn create(
     name: &str,
     description: Option<&str>,
 ) -> Result<()> {
-    let mut body = serde_json::json!({
-        "displayName": name,
-    });
-    if let Some(desc) = description {
-        body["description"] = Value::String(desc.to_string());
-    }
+    let body = build_create_body(name, description);
 
     if output::dry_run_guard(
         cli,
@@ -168,7 +210,7 @@ async fn create(
     }
 
     let data = client
-        .post(&format!("/workspaces/{workspace}/appBackends"), &body, true)
+        .post(&app_backends_path(workspace), &body, true)
         .await
         .map_err(|e| enrich_forbidden(e, "app-backend create", "Contributor"))?;
     output::render_object(cli, &data, "id");
@@ -183,30 +225,14 @@ async fn update(
     name: Option<&str>,
     description: Option<&str>,
 ) -> Result<()> {
-    if name.is_none() && description.is_none() {
-        return Err(FabioError::with_hint(
-            ErrorCode::InvalidInput,
-            "At least one of --name or --description must be provided".to_string(),
-            "Example: fabio app-backend update --workspace <WS> --id <ID> --name \"New Name\""
-                .to_string(),
-        )
-        .into());
-    }
-
-    let mut body = serde_json::json!({});
-    if let Some(n) = name {
-        body["displayName"] = Value::String(n.to_string());
-    }
-    if let Some(d) = description {
-        body["description"] = Value::String(d.to_string());
-    }
+    let body = build_update_body(name, description)?;
 
     if output::dry_run_guard(cli, "app-backend update", &body) {
         return Ok(());
     }
 
     let data = client
-        .patch(&format!("/workspaces/{workspace}/appBackends/{id}"), &body)
+        .patch(&app_backend_path(workspace, id), &body)
         .await
         .map_err(|e| enrich_forbidden(e, "app-backend update", "Contributor"))?;
     output::render_object(cli, &data, "id");
@@ -232,11 +258,7 @@ async fn delete(
         return Ok(());
     }
 
-    let url = if hard_delete {
-        format!("/workspaces/{workspace}/appBackends/{id}?hardDelete=true")
-    } else {
-        format!("/workspaces/{workspace}/appBackends/{id}")
-    };
+    let url = build_delete_url(workspace, id, hard_delete);
 
     client
         .delete(&url)
@@ -253,18 +275,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn list_url_construction() {
+    fn app_backends_path_construction() {
         let ws = "cfafbeb1-8037-4d0c-896e-a46fb27ff229";
-        let url = format!("/workspaces/{ws}/appBackends");
+        let url = app_backends_path(ws);
         assert!(url.contains(ws));
         assert!(url.ends_with("/appBackends"));
     }
 
     #[test]
-    fn show_url_construction() {
+    fn app_backend_path_construction() {
         let ws = "ws-123";
         let id = "ab-456";
-        let url = format!("/workspaces/{ws}/appBackends/{id}");
+        let url = app_backend_path(ws, id);
         assert_eq!(url, "/workspaces/ws-123/appBackends/ab-456");
     }
 
@@ -272,49 +294,51 @@ mod tests {
     fn delete_url_with_hard_delete() {
         let ws = "ws-123";
         let id = "ab-456";
-        let url_soft = format!("/workspaces/{ws}/appBackends/{id}");
-        let url_hard = format!("/workspaces/{ws}/appBackends/{id}?hardDelete=true");
+        let url_soft = build_delete_url(ws, id, false);
+        let url_hard = build_delete_url(ws, id, true);
         assert!(!url_soft.contains("hardDelete"));
         assert!(url_hard.contains("hardDelete=true"));
     }
 
     #[test]
     fn create_body_with_description() {
-        let mut body = serde_json::json!({"displayName": "MyBackend"});
-        body["description"] = Value::String("A backend".to_string());
+        let body = build_create_body("MyBackend", Some("A backend"));
         assert_eq!(body["displayName"], "MyBackend");
         assert_eq!(body["description"], "A backend");
     }
 
     #[test]
     fn create_body_without_description() {
-        let body = serde_json::json!({"displayName": "MyBackend"});
+        let body = build_create_body("MyBackend", None);
         assert_eq!(body["displayName"], "MyBackend");
         assert!(body.get("description").is_none());
     }
 
     #[test]
     fn update_body_name_only() {
-        let mut body = serde_json::json!({});
-        body["displayName"] = Value::String("New Name".to_string());
+        let body = build_update_body(Some("New Name"), None).unwrap();
         assert_eq!(body["displayName"], "New Name");
         assert!(body.get("description").is_none());
     }
 
     #[test]
     fn update_body_description_only() {
-        let mut body = serde_json::json!({});
-        body["description"] = Value::String("New Desc".to_string());
+        let body = build_update_body(None, Some("New Desc")).unwrap();
         assert!(body.get("displayName").is_none());
         assert_eq!(body["description"], "New Desc");
     }
 
     #[test]
     fn update_body_both_fields() {
-        let mut body = serde_json::json!({});
-        body["displayName"] = Value::String("Name".to_string());
-        body["description"] = Value::String("Desc".to_string());
+        let body = build_update_body(Some("Name"), Some("Desc")).unwrap();
         assert_eq!(body["displayName"], "Name");
         assert_eq!(body["description"], "Desc");
+    }
+
+    #[test]
+    fn update_body_requires_at_least_one_field() {
+        let err = build_update_body(None, None).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("At least one of --name or --description must be provided"));
     }
 }
