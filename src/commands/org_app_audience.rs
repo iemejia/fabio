@@ -9,34 +9,34 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
-pub enum CopyJobCommand {
+pub enum OrgAppAudienceCommand {
     // ── CRUD ─────────────────────────────────────────────────────────────
-    /// List copy jobs in a workspace
+    /// List org app audiences in a workspace
     #[command(display_order = 1)]
     List {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
-    /// Show details of a copy job
+    /// Show details of an org app audience
     #[command(display_order = 2)]
     Show {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Copy job ID
+        /// Org app audience ID
         #[arg(long)]
         id: String,
     },
-    /// Create a new copy job
+    /// Create a new org app audience
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Copy job display name
+        /// Display name
         #[arg(long)]
         name: String,
 
@@ -44,14 +44,14 @@ pub enum CopyJobCommand {
         #[arg(long)]
         description: Option<String>,
     },
-    /// Update copy job properties (name and/or description)
+    /// Update org app audience properties (name and/or description)
     #[command(display_order = 4)]
     Update {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Copy job ID
+        /// Org app audience ID
         #[arg(long)]
         id: String,
 
@@ -63,14 +63,14 @@ pub enum CopyJobCommand {
         #[arg(long)]
         description: Option<String>,
     },
-    /// Delete a copy job
+    /// Delete an org app audience
     #[command(display_order = 5)]
     Delete {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Copy job ID
+        /// Org app audience ID
         #[arg(long)]
         id: String,
 
@@ -80,14 +80,14 @@ pub enum CopyJobCommand {
     },
 
     // ── Definitions ──────────────────────────────────────────────────────
-    /// Get the definition of a copy job
-    #[command(display_order = 6)]
+    /// Get the definition of an org app audience
+    #[command(display_order = 6, name = "get-definition")]
     GetDefinition {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Copy job ID
+        /// Org app audience ID
         #[arg(long)]
         id: String,
 
@@ -95,34 +95,14 @@ pub enum CopyJobCommand {
         #[arg(long)]
         decode: bool,
     },
-    /// Reset a copy job (all entities or selected entities)
-    #[command(display_order = 8)]
-    Reset {
-        /// Workspace ID
-        #[arg(short, long, env = "FABIO_WORKSPACE")]
-        workspace: String,
-
-        /// Copy job ID
-        #[arg(long)]
-        id: String,
-
-        /// Reset all copy job entities (mutually exclusive with --entity-ids)
-        #[arg(long, conflicts_with = "entity_ids")]
-        all: bool,
-
-        /// Comma-separated list of entity IDs to reset (mutually exclusive with --all)
-        #[arg(long, value_delimiter = ',', conflicts_with = "all")]
-        entity_ids: Vec<String>,
-    },
-
-    /// Update the definition of a copy job
-    #[command(display_order = 9)]
+    /// Update the definition of an org app audience
+    #[command(display_order = 7, name = "update-definition")]
     UpdateDefinition {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Copy job ID
+        /// Org app audience ID
         #[arg(long)]
         id: String,
 
@@ -130,22 +110,26 @@ pub enum CopyJobCommand {
         #[arg(long)]
         file: Option<String>,
 
-        /// Definition content (inline)
+        /// Definition content (inline JSON)
         #[arg(long)]
         content: Option<String>,
     },
 }
 
-pub async fn execute(cli: &Cli, client: &FabricClient, command: &CopyJobCommand) -> Result<()> {
+pub async fn execute(
+    cli: &Cli,
+    client: &FabricClient,
+    command: &OrgAppAudienceCommand,
+) -> Result<()> {
     match command {
-        CopyJobCommand::List { workspace } => list(cli, client, workspace).await,
-        CopyJobCommand::Show { workspace, id } => show(cli, client, workspace, id).await,
-        CopyJobCommand::Create {
+        OrgAppAudienceCommand::List { workspace } => list(cli, client, workspace).await,
+        OrgAppAudienceCommand::Show { workspace, id } => show(cli, client, workspace, id).await,
+        OrgAppAudienceCommand::Create {
             workspace,
             name,
             description,
         } => create(cli, client, workspace, name, description.as_deref()).await,
-        CopyJobCommand::Update {
+        OrgAppAudienceCommand::Update {
             workspace,
             id,
             name,
@@ -161,23 +145,17 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &CopyJobCommand)
             )
             .await
         }
-        CopyJobCommand::Delete {
+        OrgAppAudienceCommand::Delete {
             workspace,
             id,
             hard_delete,
         } => delete(cli, client, workspace, id, *hard_delete).await,
-        CopyJobCommand::GetDefinition {
+        OrgAppAudienceCommand::GetDefinition {
             workspace,
             id,
             decode,
         } => get_definition(cli, client, workspace, id, *decode).await,
-        CopyJobCommand::Reset {
-            workspace,
-            id,
-            all,
-            entity_ids,
-        } => reset(cli, client, workspace, id, *all, entity_ids).await,
-        CopyJobCommand::UpdateDefinition {
+        OrgAppAudienceCommand::UpdateDefinition {
             workspace,
             id,
             file,
@@ -198,10 +176,55 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &CopyJobCommand)
 
 // ─── CRUD ────────────────────────────────────────────────────────────────────
 
+fn build_list_url(workspace: &str) -> String {
+    format!("/workspaces/{workspace}/orgAppAudiences")
+}
+
+fn build_item_url(workspace: &str, id: &str) -> String {
+    format!("/workspaces/{workspace}/orgAppAudiences/{id}")
+}
+
+fn build_delete_url(workspace: &str, id: &str, hard_delete: bool) -> String {
+    if hard_delete {
+        format!("/workspaces/{workspace}/orgAppAudiences/{id}?hardDelete=true")
+    } else {
+        format!("/workspaces/{workspace}/orgAppAudiences/{id}")
+    }
+}
+
+fn build_create_body(name: &str, description: Option<&str>) -> Value {
+    let mut body = serde_json::json!({ "displayName": name });
+    if let Some(desc) = description {
+        body["description"] = Value::String(desc.to_string());
+    }
+    body
+}
+
+fn build_update_body(name: Option<&str>, description: Option<&str>) -> Result<Value> {
+    if name.is_none() && description.is_none() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "At least one of --name or --description must be provided".to_string(),
+            "Example: fabio org-app-audience update --workspace <WS> --id <ID> --name \"New Name\""
+                .to_string(),
+        )
+        .into());
+    }
+
+    let mut body = serde_json::json!({});
+    if let Some(n) = name {
+        body["displayName"] = Value::String(n.to_string());
+    }
+    if let Some(d) = description {
+        body["description"] = Value::String(d.to_string());
+    }
+    Ok(body)
+}
+
 async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
     let resp = client
         .get_list(
-            &format!("/workspaces/{workspace}/copyJobs"),
+            &build_list_url(workspace),
             "value",
             cli.all,
             cli.continuation_token.as_deref(),
@@ -220,9 +243,7 @@ async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
 }
 
 async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
-    let data = client
-        .get(&format!("/workspaces/{workspace}/copyJobs/{id}"))
-        .await?;
+    let data = client.get(&build_item_url(workspace, id)).await?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -234,21 +255,16 @@ async fn create(
     name: &str,
     description: Option<&str>,
 ) -> Result<()> {
-    let mut body = serde_json::json!({
-        "displayName": name,
-    });
-    if let Some(desc) = description {
-        body["description"] = Value::String(desc.to_string());
-    }
+    let body = build_create_body(name, description);
 
-    if output::dry_run_guard(cli, "copy-job create", &body) {
+    if output::dry_run_guard(cli, "org-app-audience create", &body) {
         return Ok(());
     }
 
     let data = client
-        .post(&format!("/workspaces/{workspace}/copyJobs"), &body, true)
+        .post(&build_list_url(workspace), &body, true)
         .await
-        .map_err(|e| enrich_forbidden(e, "copy-job create", "Member"))?;
+        .map_err(|e| enrich_forbidden(e, "org-app-audience create", "Contributor"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -261,32 +277,16 @@ async fn update(
     name: Option<&str>,
     description: Option<&str>,
 ) -> Result<()> {
-    if name.is_none() && description.is_none() {
-        return Err(FabioError::with_hint(
-            ErrorCode::InvalidInput,
-            "At least one of --name or --description must be provided".to_string(),
-            "Example: fabio copy-job update --workspace <WS> --id <ID> --name \"New Name\""
-                .to_string(),
-        )
-        .into());
-    }
+    let body = build_update_body(name, description)?;
 
-    let mut body = serde_json::json!({});
-    if let Some(n) = name {
-        body["displayName"] = Value::String(n.to_string());
-    }
-    if let Some(d) = description {
-        body["description"] = Value::String(d.to_string());
-    }
-
-    if output::dry_run_guard(cli, "copy-job update", &body) {
+    if output::dry_run_guard(cli, "org-app-audience update", &body) {
         return Ok(());
     }
 
     let data = client
-        .patch(&format!("/workspaces/{workspace}/copyJobs/{id}"), &body)
+        .patch(&build_item_url(workspace, id), &body)
         .await
-        .map_err(|e| enrich_forbidden(e, "copy-job update", "Contributor"))?;
+        .map_err(|e| enrich_forbidden(e, "org-app-audience update", "Contributor"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -300,22 +300,18 @@ async fn delete(
 ) -> Result<()> {
     if output::dry_run_guard(
         cli,
-        "copy-job delete",
+        "org-app-audience delete",
         &serde_json::json!({ "workspace": workspace, "id": id, "hardDelete": hard_delete }),
     ) {
         return Ok(());
     }
 
-    let url = if hard_delete {
-        format!("/workspaces/{workspace}/copyJobs/{id}?hardDelete=true")
-    } else {
-        format!("/workspaces/{workspace}/copyJobs/{id}")
-    };
+    let url = build_delete_url(workspace, id, hard_delete);
 
     client
         .delete(&url)
         .await
-        .map_err(|e| enrich_forbidden(e, "copy-job delete", "Member"))?;
+        .map_err(|e| enrich_forbidden(e, "org-app-audience delete", "Contributor"))?;
 
     let obj = serde_json::json!({ "id": id, "status": "deleted" });
     output::render_object(cli, &obj, "status");
@@ -333,12 +329,13 @@ async fn get_definition(
 ) -> Result<()> {
     let data = client
         .post(
-            &format!("/workspaces/{workspace}/copyJobs/{id}/getDefinition"),
+            &format!("/workspaces/{workspace}/orgAppAudiences/{id}/getDefinition"),
             &serde_json::json!({}),
             true,
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "copy-job get-definition", "Contributor"))?;
+        .map_err(|e| enrich_forbidden(e, "org-app-audience get-definition", "Contributor"))?;
+
     if decode {
         let decoded = output::decode_definition_parts(data);
         output::render_object(cli, &decoded, "definition");
@@ -364,8 +361,9 @@ async fn update_definition(
             return Err(FabioError::with_hint(
                 ErrorCode::InvalidInput,
                 "Either --file or --content must be provided".to_string(),
-                "Example: fabio copy-job update-definition --workspace <WS> --id <ID> --file definition.json".to_string(),
-            ).into());
+                "Example: fabio org-app-audience update-definition --workspace <WS> --id <ID> --file definition.json".to_string(),
+            )
+            .into());
         }
     };
 
@@ -375,7 +373,7 @@ async fn update_definition(
         "definition": {
             "parts": [
                 {
-                    "path": "CopyJobV1.json",
+                    "path": "definition.json",
                     "payload": encoded,
                     "payloadType": "InlineBase64"
                 }
@@ -385,7 +383,7 @@ async fn update_definition(
 
     if output::dry_run_guard(
         cli,
-        "copy-job update-definition",
+        "org-app-audience update-definition",
         &serde_json::json!({
             "workspace": workspace,
             "id": id,
@@ -397,12 +395,12 @@ async fn update_definition(
 
     let data = client
         .post(
-            &format!("/workspaces/{workspace}/copyJobs/{id}/updateDefinition"),
+            &format!("/workspaces/{workspace}/orgAppAudiences/{id}/updateDefinition"),
             &body,
             true,
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "copy-job update-definition", "Contributor"))?;
+        .map_err(|e| enrich_forbidden(e, "org-app-audience update-definition", "Contributor"))?;
 
     if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
         let obj = serde_json::json!({ "id": id, "status": "definition_updated" });
@@ -413,87 +411,53 @@ async fn update_definition(
     Ok(())
 }
 
-// ─── Reset ────────────────────────────────────────────────────────────────────
-
-fn build_reset_body(reset_all: bool, entity_ids: &[String]) -> Result<Value> {
-    if !reset_all && entity_ids.is_empty() {
-        return Err(FabioError::with_hint(
-            ErrorCode::InvalidInput,
-            "Either --all or --entity-ids must be provided".to_string(),
-            "Example: fabio copy-job reset --workspace <WS> --id <ID> --all".to_string(),
-        )
-        .into());
-    }
-
-    let body = if reset_all {
-        serde_json::json!({ "resetAllCopyJobEntities": true })
-    } else {
-        let entities: Vec<_> = entity_ids
-            .iter()
-            .map(|eid| serde_json::json!({ "copyJobEntityId": eid }))
-            .collect();
-        serde_json::json!({
-            "resetAllCopyJobEntities": false,
-            "copyJobEntitiesToReset": entities
-        })
-    };
-
-    Ok(body)
-}
-
-async fn reset(
-    cli: &Cli,
-    client: &FabricClient,
-    workspace: &str,
-    id: &str,
-    reset_all: bool,
-    entity_ids: &[String],
-) -> Result<()> {
-    let body = build_reset_body(reset_all, entity_ids)?;
-
-    if output::dry_run_guard(cli, "copy-job reset", &body) {
-        return Ok(());
-    }
-
-    client
-        .post(
-            &format!("/workspaces/{workspace}/copyJobs/{id}/resetCopyJob"),
-            &body,
-            false,
-        )
-        .await
-        .map_err(|e| enrich_forbidden(e, "copy-job reset", "Contributor"))?;
-
-    let obj = serde_json::json!({ "id": id, "status": "reset" });
-    output::render_object(cli, &obj, "status");
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn reset_body_all() {
-        let body = build_reset_body(true, &[]).unwrap();
-        assert_eq!(body["resetAllCopyJobEntities"], true);
-        assert!(body.get("copyJobEntitiesToReset").is_none());
+    fn list_url_construction() {
+        assert_eq!(build_list_url("ws-1"), "/workspaces/ws-1/orgAppAudiences");
     }
 
     #[test]
-    fn reset_body_specific_entities() {
-        let ids = vec!["id-1".to_string(), "id-2".to_string()];
-        let body = build_reset_body(false, &ids).unwrap();
-        assert_eq!(body["resetAllCopyJobEntities"], false);
-        let entities = body["copyJobEntitiesToReset"].as_array().unwrap();
-        assert_eq!(entities.len(), 2);
-        assert_eq!(entities[0]["copyJobEntityId"], "id-1");
-        assert_eq!(entities[1]["copyJobEntityId"], "id-2");
+    fn item_url_construction() {
+        assert_eq!(
+            build_item_url("ws-1", "id-2"),
+            "/workspaces/ws-1/orgAppAudiences/id-2"
+        );
     }
 
     #[test]
-    fn reset_body_no_flags_errors() {
-        let result = build_reset_body(false, &[]);
-        assert!(result.is_err());
+    fn delete_url_without_hard_delete() {
+        let url = build_delete_url("ws-1", "id-2", false);
+        assert!(!url.contains("hardDelete"));
+    }
+
+    #[test]
+    fn delete_url_with_hard_delete() {
+        let url = build_delete_url("ws-1", "id-2", true);
+        assert!(url.contains("hardDelete=true"));
+    }
+
+    #[test]
+    fn create_body_with_description() {
+        let body = build_create_body("Aud", Some("desc"));
+        assert_eq!(body["displayName"], "Aud");
+        assert_eq!(body["description"], "desc");
+    }
+
+    #[test]
+    fn create_body_without_description() {
+        let body = build_create_body("Aud", None);
+        assert_eq!(body["displayName"], "Aud");
+        assert!(body.get("description").is_none());
+    }
+
+    #[test]
+    fn update_body_validates_at_least_one_field() {
+        assert!(build_update_body(None, None).is_err());
+        assert!(build_update_body(Some("x"), None).is_ok());
+        assert!(build_update_body(None, Some("y")).is_ok());
     }
 }

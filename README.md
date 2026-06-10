@@ -126,7 +126,7 @@ Error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITE
 
 ## Commands
 
-See [COMMANDS.md](COMMANDS.md) for the full list of 70 command groups and 771 subcommands.
+See [COMMANDS.md](COMMANDS.md) for the full list of 74 command groups and 790+ subcommands.
 
 If you are an AI agent, run `fabio agent-context` to get a machine-readable command schema with flags, types, mutability, and examples.
 
@@ -172,7 +172,7 @@ Supported credential sources (in priority order):
 
 ## Shell Completions
 
-Generate tab-completion scripts for your shell. Completions cover all 70 command groups, 771 subcommands, and their flags.
+Generate tab-completion scripts for your shell. Completions cover all 74 command groups, 790+ subcommands, and their flags.
 
 ### Bash
 
@@ -247,10 +247,10 @@ cargo install --path .
 # Build
 cargo build
 
-# Run tests (unit + offline integration -- 634 tests)
+# Run tests (unit + offline integration -- 841 tests)
 cargo test
 
-# Run E2E tests (requires live Fabric tenant -- 667 tests)
+# Run E2E tests (requires live Fabric tenant -- 721 tests)
 cargo test -- --ignored
 
 # Lint (pedantic + nursery, zero warnings required)
@@ -270,8 +270,8 @@ cargo fmt
 
 ### Project Stats
 
-- **70 command groups** with **771 subcommands**
-- **2162 tests** (583 unit + 879 offline integration + 700 E2E requiring live tenant)
+- **74 command groups** with **790+ subcommands**
+- **1562 tests** (841 unit + 721 offline/E2E integration)
 - **~16 MB** release binary (stripped, full LTO, panic=abort)
 - Zero clippy warnings, zero unsafe code
 

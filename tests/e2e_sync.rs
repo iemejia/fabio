@@ -1362,7 +1362,7 @@ fn sync_ambiguous_sizes_no_false_rename() {
 /// independently uploaded files with the same content).
 ///
 /// Setup:
-/// - Source has file A (unique content "dedup_content_xyz")
+/// - Source has file A (unique content "`dedup_content_xyz`")
 /// - Destination already has file B at a different path with the same content
 /// - Syncing should result in `dedupCopied: 1` because the dest can provide
 ///   the content locally.

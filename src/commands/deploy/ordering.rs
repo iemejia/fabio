@@ -63,6 +63,8 @@ pub const DEPLOY_ORDER: &[&str] = &[
     // --- Visualization & cross-cutting ---
     "Map",
     "Connection",
+    "OrgApp",
+    "OrgAppAudience",
 ];
 
 /// Returns the deploy priority for a given item type.
@@ -227,8 +229,8 @@ mod tests {
         // Guard against accidental additions/removals — update this if DEPLOY_ORDER changes
         assert_eq!(
             DEPLOY_ORDER.len(),
-            43,
-            "DEPLOY_ORDER should have 43 entries; update this test if intentionally changed"
+            45,
+            "DEPLOY_ORDER should have 45 entries; update this test if intentionally changed"
         );
     }
 

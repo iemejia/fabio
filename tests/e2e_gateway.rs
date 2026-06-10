@@ -93,3 +93,41 @@ fn gateway_add_role_assignment_dry_run() {
     assert_eq!(data["dry_run"], true);
     assert_eq!(data["would_execute"], "gateway add-role-assignment");
 }
+
+#[test]
+fn gateway_dry_run_restart() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "gateway",
+            "restart",
+            "--gateway",
+            "00000000-0000-0000-0000-000000000001",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = json.get("data").expect("should have data");
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "gateway restart");
+}
+
+#[test]
+fn gateway_dry_run_shutdown() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "gateway",
+            "shutdown",
+            "--gateway",
+            "00000000-0000-0000-0000-000000000001",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = json.get("data").expect("should have data");
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "gateway shutdown");
+}

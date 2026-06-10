@@ -128,3 +128,38 @@ fn copy_job_dry_run_create() {
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(json["data"]["would_execute"], "copy-job create");
 }
+
+#[test]
+fn copy_job_dry_run_reset_all() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "copy-job",
+            "reset",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--all",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "copy-job reset");
+}
+
+#[test]
+fn copy_job_reset_requires_all_or_entity_ids() {
+    fabio()
+        .args([
+            "copy-job",
+            "reset",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+        ])
+        .assert()
+        .failure();
+}

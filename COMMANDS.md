@@ -274,6 +274,7 @@ fabio copy-job update        Update copy job properties
 fabio copy-job delete        Delete a copy job
 fabio copy-job get-definition   Get copy job definition
 fabio copy-job update-definition Update copy job definition
+fabio copy-job reset         Reset copy job entities (--all or --entity-ids)
 
 fabio dataflow list          List dataflows
 fabio dataflow show          Show dataflow details
@@ -291,6 +292,31 @@ fabio app-backend show       Show app backend details
 fabio app-backend create     Create an app backend (LRO)
 fabio app-backend update     Update app backend properties (name/description)
 fabio app-backend delete     Delete an app backend (--hard-delete for permanent)
+
+fabio data-build-tool-job list List data build tool jobs [preview]
+fabio data-build-tool-job show Show data build tool job details
+fabio data-build-tool-job create Create a data build tool job
+fabio data-build-tool-job update Update data build tool job properties
+fabio data-build-tool-job delete Delete a data build tool job (--hard-delete)
+fabio data-build-tool-job get-definition   Get definition
+fabio data-build-tool-job update-definition Update definition
+fabio data-build-tool-job run  Run a data build tool job (--wait, --timeout, --cancel-on-timeout)
+
+fabio org-app list           List organizational apps
+fabio org-app show           Show org app details
+fabio org-app create         Create an org app
+fabio org-app update         Update org app properties
+fabio org-app delete         Delete an org app (--hard-delete)
+fabio org-app get-definition Get org app definition
+fabio org-app update-definition Update org app definition
+
+fabio org-app-audience list  List org app audiences
+fabio org-app-audience show  Show org app audience details
+fabio org-app-audience create Create an org app audience
+fabio org-app-audience update Update org app audience properties
+fabio org-app-audience delete Delete an org app audience (--hard-delete)
+fabio org-app-audience get-definition Get org app audience definition
+fabio org-app-audience update-definition Update org app audience definition
 ```
 
 ## Analytics & Reporting
@@ -760,6 +786,10 @@ fabio gateway add-role-assignment     Add a role assignment
 fabio gateway show-role-assignment    Show a role assignment
 fabio gateway update-role-assignment  Update a role assignment
 fabio gateway delete-role-assignment  Delete a role assignment
+fabio gateway check-status   Check gateway connectivity status
+fabio gateway check-member-status Check gateway member connectivity status
+fabio gateway restart        Restart a gateway (LRO, requires Admin)
+fabio gateway shutdown       Shut down a gateway (LRO, requires Admin)
 ```
 
 ## Administration

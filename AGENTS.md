@@ -35,7 +35,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 
 ## Progress
 ### Done
-- **Full Rust implementation** (broad command surface): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, app-backend, rti, rest, profile, jobs, feedback, operation, agent-context
+- **Full Rust implementation** (broad command surface): auth, workspace, item, lakehouse, capacity, catalog, notebook, warehouse, data-agent, sql-database, sql-endpoint, ontology, environment, data-pipeline, copy-job, dataflow, report, semantic-model, eventhouse, eventstream, kql-database, kql-queryset, kql-dashboard, mirrored-database, mirrored-catalog, mirrored-databricks-catalog, mirrored-warehouse, reflex, ml-model, ml-experiment, spark, spark-job-definition, graphql-api, cosmos-db-database, snowflake-database, digital-twin-builder, digital-twin-builder-flow, event-schema-set, operations-agent, mounted-data-factory, user-data-function, git, connection, deployment-pipeline, domain, deploy, gateway, job-scheduler, variable-library, map, graph-query-set, graph-model, onelake-security, managed-private-endpoint, warehouse-snapshot, admin, paginated-report, dashboard, datamart, anomaly-detector, apache-airflow-job, app-backend, data-build-tool-job, org-app, org-app-audience, rti, rest, profile, jobs, feedback, operation, agent-context
 - Core output system: JSON envelope (`{"data":..., "count":N}` or `{"error":{"code":...,"message":...}}`), table, plain, CSV, TSV formats
 - Structured error system: `ErrorCode` enum (AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, CAPACITY_INACTIVE, API_ERROR, TIMEOUT, etc.) + `FabioError`
 - Global options fully wired: `--output/-o`, `--query/-q` (JMESPath expression — see jmespath.org), `--quiet` (suppresses stdout), `--verbose/-v` (HTTP/LRO/auth diagnostics on stderr), `--profile`, `--dry-run`, `--limit`, `--all`, `--continuation-token`, `--lro-timeout`
@@ -70,7 +70,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Reflex**: list, show, create, update, delete, get-definition, update-definition (Data Activator triggers)
 - **ML Model**: list, show, create, update, delete (CRUD only, no definition support)
 - **ML Experiment**: list, show, create, update, delete (CRUD only, no definition support)
-- **Copy Job**: list, show, create, update, delete, get-definition, update-definition (data movement)
+- **Copy Job**: list, show, create, update, delete, get-definition, update-definition, reset (data movement)
 - **Dataflow**: list, show, create, update, delete, get-definition, update-definition, discover-parameters, run, execute-query (Power BI transformation)
 - **GraphQL API**: list, show, create, update, delete, get-definition, update-definition (schema.graphql)
 - **Report**: list, show, create (from definition file), update, delete, get-definition, update-definition
@@ -110,10 +110,13 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Snowflake Database**: list/show/create/update/delete/get-definition/update-definition (requires connection payload)
 - **Anomaly Detector**: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
 - **Deploy**: plan/apply/export/init-params (CI/CD deployment engine: content-hash diffing, parameter substitution, rename detection, creationPayload, post-deploy hooks, logical ID resolution)
-- **Gateway**: list/show/create/update/delete, list-members/update-member/delete-member, list/add/show/update/delete-role-assignments (VNet gateways)
+- **Gateway**: list/show/create/update/delete, list-members/update-member/delete-member, list/add/show/update/delete-role-assignments, check-status/check-member-status/restart/shutdown (VNet gateways)
 - **Admin**: 49 subcommands (tenant settings, tags, workloads, workspaces, items, users, domains, labels, sharing links, external data shares, network policies)
 - **Apache Airflow Job**: list/show/create/update/delete/get-definition/update-definition, start-environment/stop-environment/get-environment, list-files/get-file/upload-file/delete-file, get-compute/get-workspace-settings/deploy-requirements
 - **App Backend**: list/show/create/update/delete (`--hard-delete` support, create uses LRO, update requires `--name` and/or `--description`)
+- **Data Build Tool Job**: list/show/create/update/delete/get-definition/update-definition/run (with --wait/--timeout/--cancel-on-timeout) [preview]
+- **OrgApp**: list/show/create/update/delete/get-definition/update-definition (Organizational App)
+- **OrgAppAudience**: list/show/create/update/delete/get-definition/update-definition (Org App Audience)
 - **Mirrored Catalog**: list/show/create/update/delete/get-definition/update-definition, refresh-metadata/mirroring-status/tables-status (requires tenant feature flag)
 - **Mirrored Databricks Catalog**: list/show/create/update/delete/get-definition/update-definition, discover-catalogs/refresh-metadata/mirroring-status
 - **Mirrored Warehouse**: list (requires tenant feature flag for mutations)
@@ -143,7 +146,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Notebook --strip-output**: `get-definition --strip-output` clears `outputs`/`execution_count` from ipynb cells; gracefully passes through `.py` format
 - **CSV/TSV output**: Global `--output csv|tsv` on all commands; RFC 4180 quoting via `format_csv_value()`
 - **Deploy validate**: Local-only pre-flight checks on source directory (validates .platform files, item types, definition structure, logical ID references); no API calls required
-- **1328 Rust tests** (507 unit + 143 offline integration + 678 E2E requiring live tenant), zero clippy warnings, rustfmt clean
+- **1562 Rust tests** (841 unit + 721 offline/E2E integration), zero clippy warnings, rustfmt clean
 - **CI/CD**: GitHub Actions (6-target matrix: x64+arm64 for linux/macos/windows), Dependabot auto-merge, CodeQL, Secret Scanning
 - **Release workflow**: Triggered on tags, builds 6 binaries, publishes GitHub Release with SHA256 checksums
 - Release binary: ~16 MB, stripped, full LTO, panic=abort
@@ -185,7 +188,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - **Deploy creationPayload**: Separate `creationPayload.json` file in item directory; merged into creation body as `creationPayload` field; parameter substitution applied
 - **Deploy post-hooks**: Opt-out via `--no-post-hooks`; hooks never fire during `--dry-run`; failures are non-fatal (reported in output, don't fail the deploy). SemanticModel → `POST /refreshes`, Environment → `POST /staging/publish`
 - **Deploy empty definitions**: Items with no parts (Lakehouse, MLModel) omit `definition` field on create; skip `updateDefinition` on update
-- **Deploy ordering**: 42 item types in `DEPLOY_ORDER`; deployed in dependency order (storage → compute → code → models → reactive → APIs → ML → graph → viz)
+- **Deploy ordering**: 45 item types in `DEPLOY_ORDER`; deployed in dependency order (storage → compute → code → models → reactive → APIs → ML → graph → viz)
 - **Deploy no state file**: Stateless — always queries live workspace. No `.tfstate` equivalent.
 
 ## Critical Context
@@ -208,7 +211,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `Cargo.toml`: Project config, dependencies, clippy/lints config, release profile (LTO+strip)
 - `rust-toolchain.toml`: stable channel, rustfmt+clippy components
 - `src/main.rs`: Entry point, `#![recursion_limit = "256"]`, tokio async main, error handling dispatch
-- `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 66 subcommand groups
+- `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 74 subcommand groups
 - `src/errors.rs`: ErrorCode enum + FabioError struct with thiserror
 - `src/output.rs`: render_list_with_token, render_object, render_error (respects --quiet/--query), apply_query, dry_run_guard, unit tests
 - `src/parallel.rs`: Parallel execution framework for concurrent file/table operations with rate-limit retry
@@ -239,7 +242,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/reflex.rs`: list/show/create/update/delete/get-definition/update-definition (Data Activator)
 - `src/commands/ml_model.rs`: list/show/create/update/delete (CRUD only)
 - `src/commands/ml_experiment.rs`: list/show/create/update/delete (CRUD only)
-- `src/commands/copy_job.rs`: list/show/create/update/delete/get-definition/update-definition
+- `src/commands/copy_job.rs`: list/show/create/update/delete/get-definition/update-definition/reset
 - `src/commands/dataflow.rs`: list/show/create/update/delete/get-definition/update-definition/discover-parameters/run/execute-query
 - `src/commands/graphql_api.rs`: list/show/create/update/delete/get-definition/update-definition (schema.graphql)
 - `src/commands/spark.rs`: get-settings/update-settings/list-pools/get-pool/create-pool/update-pool/delete-pool
@@ -268,10 +271,10 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/deploy/params.rs`: Parameter substitution: find_replace, key_value_replace, spark_pool, semantic_model_binding
 - `src/commands/deploy/init_params.rs`: scan_for_candidates, diff_for_parameters (GUID discovery, cross-environment diffing)
 - `src/commands/deploy/changeset.rs`: Change, ChangeAction (Create/Update/Rename/Delete/Skip), Changeset (with warnings/errors), DeployResult
-- `src/commands/deploy/ordering.rs`: DEPLOY_ORDER (42 types), deploy_priority, delete_priority, topological_sort
+- `src/commands/deploy/ordering.rs`: DEPLOY_ORDER (45 types), deploy_priority, delete_priority, topological_sort
 - `src/commands/deploy/platform.rs`: parse_source_directory (creationPayload.json parsing), SourceItem, SourceWorkspace, PlatformMetadata
 - `src/commands/deploy/export.rs`: export_workspace (getDefinition LRO per item, write .platform + parts)
-- `src/commands/gateway.rs`: list/show/create/update/delete, members, role assignments (VNet gateways)
+- `src/commands/gateway.rs`: list/show/create/update/delete, members, role assignments, check-status/check-member-status/restart/shutdown (VNet gateways)
 - `src/commands/admin.rs`: 49 subcommands for tenant administration
 - `src/commands/apache_airflow_job.rs`: CRUD + environment lifecycle + file ops + compute settings
 - `src/commands/mirrored_catalog.rs`: CRUD + definition + mirroring operations
@@ -290,6 +293,9 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `src/commands/agent_context.rs`: Machine-readable command schema for AI agents
 - `src/commands/rest.rs`: Raw REST passthrough (method/path/body/query-params/poll); `resolve_body()` for @file/@- support; `--api powerbi` targets Power BI REST API
 - `src/commands/rti.rs`: nl-to-kql (natural language to KQL translation)
+- `src/commands/data_build_tool_job.rs`: list/show/create/update/delete/get-definition/update-definition/run (with --wait/--timeout/--cancel-on-timeout) [preview]
+- `src/commands/org_app.rs`: list/show/create/update/delete/get-definition/update-definition (Organizational App)
+- `src/commands/org_app_audience.rs`: list/show/create/update/delete/get-definition/update-definition (Org App Audience)
 - `tests/common/mod.rs`: Shared E2E test harness (TestConfig, helpers)
 - `tests/e2e_auth.rs`: Auth integration tests (device code, service principal secret/certificate/federated, WAM, input validation)
 - `tests/e2e_workspace.rs`: Workspace CRUD + assign-capacity + networking + OneLake settings + folders + storage format + roles filter tests
@@ -321,7 +327,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `tests/e2e_graphql_api.rs`: GraphQL API CRUD tests
 - `tests/e2e_ml_model.rs`: ML model CRUD tests
 - `tests/e2e_ml_experiment.rs`: ML experiment CRUD tests
-- `tests/e2e_copy_job.rs`: Copy job CRUD tests
+- `tests/e2e_copy_job.rs`: Copy job CRUD + reset tests
 - `tests/e2e_dataflow.rs`: Dataflow CRUD + run + execute-query tests
 - `tests/e2e_report.rs`: Report CRUD tests
 - `tests/e2e_semantic_model.rs`: Semantic model CRUD tests
@@ -336,7 +342,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `tests/e2e_managed_private_endpoint.rs`: Managed private endpoint tests
 - `tests/e2e_admin.rs`: Admin API tests (63 tests: listing, tag lifecycle, domain lifecycle, dry-run validations, sharing links, labels, external data shares)
 - `tests/e2e_deploy.rs`: Deploy plan/apply/export/validate tests (42 tests: create, update, rename, creationPayload, parameters, staleness, logical ID resolution, post-hooks, init-params, validate)
-- `tests/e2e_gateway.rs`: Gateway CRUD + role assignment tests
+- `tests/e2e_gateway.rs`: Gateway CRUD + role assignment + lifecycle tests
 - `tests/e2e_apache_airflow_job.rs`: Apache Airflow job CRUD + environment + file ops tests
 - `tests/e2e_mirrored_catalog.rs`: Mirrored catalog tests
 - `tests/e2e_mirrored_databricks_catalog.rs`: Mirrored Databricks catalog tests
@@ -365,6 +371,9 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - `tests/e2e_agent_context.rs`: Agent context schema tests
 - `tests/e2e_rest.rs`: REST passthrough tests (dry-run, body resolution, live calls)
 - `tests/e2e_rti.rs`: RTI nl-to-kql tests (dry-run + live failure)
+- `tests/e2e_data_build_tool_job.rs`: DataBuildToolJob CRUD + definition + run tests
+- `tests/e2e_org_app.rs`: OrgApp CRUD + definition tests
+- `tests/e2e_org_app_audience.rs`: OrgAppAudience CRUD + definition tests
 - `.github/workflows/ci.yml`: Rust CI (fmt, clippy, test, build) on 6 targets (x64+arm64 x linux/macos/windows)
 - `.github/workflows/release.yml`: Release workflow (tag-triggered, 6 binaries, SHA256 checksums, GitHub Release)
 - `.github/workflows/dependabot-auto-merge.yml`: Auto-merge Dependabot PRs on CI pass
@@ -2222,4 +2231,44 @@ Git commands are run with CWD set to source directory. Returns `None` entirely i
 - **Plan source path must persist**: When applying from a plan file, the source directory at `source_path` must still exist on disk
 - **No definition-managed items detection**: Items that don't support `getDefinition` are always marked as Update
 - **`_ALL_` wildcard precedence**: Specific env name is checked first (case-insensitive); `_ALL_` is fallback only
+
+## Data Build Tool Job API Behaviors Discovered
+- **Item type**: `DataBuildToolJob` (preview item type for dbt integration).
+- **Endpoint pattern**: `/workspaces/{ws}/dataBuildToolJobs/{id}`.
+- **Run uses item-specific path**: `POST /workspaces/{ws}/dataBuildToolJobs/{id}/jobs/execute/instances` (NOT the generic items job endpoint). Uses `trigger_item_job(workspace, id, "execute", None)` for proper job ID extraction from Location header.
+- **Run supports --wait/--timeout/--cancel-on-timeout**: Polls `GET /workspaces/{ws}/items/{id}/jobs/instances/{job_id}` every 5 seconds. Default timeout 600s. Terminal statuses: `Completed`, `Failed`, `Cancelled`.
+- **Create is LRO**: Returns 202, requires polling.
+- **getDefinition/updateDefinition are LRO**: Both use standard Fabric LRO polling pattern.
+- **Definition format**: Not yet documented (pending live tenant validation).
+- **Added to DEPLOY_ORDER**: Position between existing items in dependency chain.
+
+## OrgApp API Behaviors Discovered
+- **Item type**: `OrgApp` (Organizational App — published app packages for workspace content distribution).
+- **Endpoint pattern**: `/workspaces/{ws}/orgApps/{id}`.
+- **Standard CRUD + definitions**: Full lifecycle via list/show/create/update/delete/get-definition/update-definition.
+- **Create is LRO**: Returns 202, requires polling.
+- **getDefinition/updateDefinition are LRO**: Both use standard Fabric LRO polling pattern.
+- **Added to DEPLOY_ORDER**: Positioned after visualization items.
+
+## OrgAppAudience API Behaviors Discovered
+- **Item type**: `OrgAppAudience` (audience targeting for Organizational Apps).
+- **Endpoint pattern**: `/workspaces/{ws}/orgAppAudiences/{id}`.
+- **Standard CRUD + definitions**: Full lifecycle via list/show/create/update/delete/get-definition/update-definition.
+- **Create is LRO**: Returns 202, requires polling.
+- **getDefinition/updateDefinition are LRO**: Both use standard Fabric LRO polling pattern.
+- **Added to DEPLOY_ORDER**: Positioned after OrgApp (dependent item).
+
+## Copy Job Reset API Behaviors Discovered
+- **Reset endpoint**: `POST /workspaces/{ws}/copyJobs/{id}/resetCopyJob` resets copy job entities to allow re-copying.
+- **Reset all entities**: Body `{"resetAllCopyJobEntities": true}` resets everything.
+- **Reset specific entities**: Body `{"copyJobEntityIds": ["uuid1", "uuid2"]}` resets selected entities by UUID.
+- **Mutually exclusive flags**: `--all` and `--entity-ids` cannot be used together; omitting both is a client-side error.
+- **No LRO**: Returns immediately (fire-and-forget).
+
+## Gateway Lifecycle API Behaviors Discovered
+- **Check status**: `GET /gateways/{id}/checkStatus` returns gateway connectivity status.
+- **Check member status**: `GET /gateways/{id}/members/{memberId}/checkStatus` returns individual member connectivity status.
+- **Restart**: `POST /gateways/{id}/restart` with empty body `{}`. LRO (polls until complete). Requires Admin permission.
+- **Shutdown**: `POST /gateways/{id}/shutdown` with empty body `{}`. LRO (polls until complete). Requires Admin permission.
+- **All require gateway Admin role**: Lifecycle operations restricted to gateway administrators.
 

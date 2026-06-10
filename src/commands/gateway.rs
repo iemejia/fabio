@@ -189,6 +189,40 @@ pub enum GatewayCommand {
         #[arg(long)]
         assignment_id: String,
     },
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────
+    /// Check the status of a gateway (`VNet` only)
+    #[command(display_order = 30, name = "check-status")]
+    CheckStatus {
+        /// Gateway ID
+        #[arg(short, long)]
+        gateway: String,
+    },
+    /// Check the status of a gateway member (on-premises only)
+    #[command(display_order = 31, name = "check-member-status")]
+    CheckMemberStatus {
+        /// Gateway ID
+        #[arg(short, long)]
+        gateway: String,
+
+        /// Gateway member ID
+        #[arg(long)]
+        member_id: String,
+    },
+    /// Restart a gateway (`VNet` only, LRO)
+    #[command(display_order = 32)]
+    Restart {
+        /// Gateway ID
+        #[arg(short, long)]
+        gateway: String,
+    },
+    /// Shut down a gateway (`VNet` only, LRO)
+    #[command(display_order = 33)]
+    Shutdown {
+        /// Gateway ID
+        #[arg(short, long)]
+        gateway: String,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -281,6 +315,12 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GatewayCommand)
             gateway,
             assignment_id,
         } => delete_role_assignment(cli, client, gateway, assignment_id).await,
+        GatewayCommand::CheckStatus { gateway } => check_status(cli, client, gateway).await,
+        GatewayCommand::CheckMemberStatus { gateway, member_id } => {
+            check_member_status(cli, client, gateway, member_id).await
+        }
+        GatewayCommand::Restart { gateway } => restart(cli, client, gateway).await,
+        GatewayCommand::Shutdown { gateway } => shutdown(cli, client, gateway).await,
     }
 }
 
@@ -629,4 +669,119 @@ async fn delete_role_assignment(
     let obj = serde_json::json!({ "id": assignment_id, "status": "deleted" });
     output::render_object(cli, &obj, "status");
     Ok(())
+}
+
+// ─── Lifecycle ────────────────────────────────────────────────────────────────
+
+fn build_check_status_url(gateway: &str) -> String {
+    format!("/gateways/{gateway}/checkStatus")
+}
+
+fn build_check_member_status_url(gateway: &str, member_id: &str) -> String {
+    format!("/gateways/{gateway}/members/{member_id}/checkStatus")
+}
+
+fn build_restart_url(gateway: &str) -> String {
+    format!("/gateways/{gateway}/restart")
+}
+
+fn build_shutdown_url(gateway: &str) -> String {
+    format!("/gateways/{gateway}/shutdown")
+}
+
+async fn check_status(cli: &Cli, client: &FabricClient, gateway: &str) -> Result<()> {
+    let data = client
+        .get(&build_check_status_url(gateway))
+        .await
+        .map_err(|e| enrich_forbidden(e, "gateway check-status", "Admin"))?;
+    output::render_object(cli, &data, "status");
+    Ok(())
+}
+
+async fn check_member_status(
+    cli: &Cli,
+    client: &FabricClient,
+    gateway: &str,
+    member_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&build_check_member_status_url(gateway, member_id))
+        .await
+        .map_err(|e| enrich_forbidden(e, "gateway check-member-status", "Admin"))?;
+    output::render_object(cli, &data, "status");
+    Ok(())
+}
+
+async fn restart(cli: &Cli, client: &FabricClient, gateway: &str) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "gateway restart",
+        &serde_json::json!({ "gatewayId": gateway }),
+    ) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(&build_restart_url(gateway), &serde_json::json!({}), true)
+        .await
+        .map_err(|e| enrich_forbidden(e, "gateway restart", "Admin"))?;
+
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let obj = serde_json::json!({ "id": gateway, "status": "restarted" });
+        output::render_object(cli, &obj, "status");
+    } else {
+        output::render_object(cli, &data, "status");
+    }
+    Ok(())
+}
+
+async fn shutdown(cli: &Cli, client: &FabricClient, gateway: &str) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "gateway shutdown",
+        &serde_json::json!({ "gatewayId": gateway }),
+    ) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(&build_shutdown_url(gateway), &serde_json::json!({}), true)
+        .await
+        .map_err(|e| enrich_forbidden(e, "gateway shutdown", "Admin"))?;
+
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let obj = serde_json::json!({ "id": gateway, "status": "shutdown" });
+        output::render_object(cli, &obj, "status");
+    } else {
+        output::render_object(cli, &data, "status");
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+
+    #[test]
+    fn check_status_url() {
+        assert_eq!(build_check_status_url("gw-1"), "/gateways/gw-1/checkStatus");
+    }
+
+    #[test]
+    fn check_member_status_url() {
+        assert_eq!(
+            build_check_member_status_url("gw-1", "mem-2"),
+            "/gateways/gw-1/members/mem-2/checkStatus"
+        );
+    }
+
+    #[test]
+    fn restart_url() {
+        assert_eq!(build_restart_url("gw-1"), "/gateways/gw-1/restart");
+    }
+
+    #[test]
+    fn shutdown_url() {
+        assert_eq!(build_shutdown_url("gw-1"), "/gateways/gw-1/shutdown");
+    }
 }

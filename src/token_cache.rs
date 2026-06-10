@@ -920,13 +920,14 @@ fn open_browser(url: &str) {
 /// The `client_id` should be the Fabio CLI app registration (public client).
 /// The `authority` is the AAD tenant (e.g., `"organizations"` for multi-tenant).
 #[cfg(windows)]
+#[allow(clippy::unused_async, clippy::too_many_lines)]
 pub async fn wam_login(
     tenant: Option<&str>,
     scope: Option<&str>,
     client_id: Option<&str>,
 ) -> Result<TokenData> {
     use windows::Security::Authentication::Web::Core::{
-        WebAuthenticationCoreManager, WebTokenRequest, WebTokenRequestResult, WebTokenRequestStatus,
+        WebAuthenticationCoreManager, WebTokenRequest, WebTokenRequestStatus,
     };
     let tenant = tenant.unwrap_or("organizations");
     let scope = scope.unwrap_or(FABRIC_SCOPE);
@@ -1104,13 +1105,13 @@ fn dpapi_encrypt(data: &[u8]) -> Result<Vec<u8>> {
     // We free the output buffer with LocalFree after copying.
     let result = unsafe {
         CryptProtectData(
-            &input,
+            &raw const input,
             std::ptr::null(), // description (optional)
             std::ptr::null(), // entropy (optional)
             std::ptr::null(), // reserved
             std::ptr::null(), // prompt struct (optional)
             0,                // flags: 0 = user scope
-            &mut output,
+            &raw mut output,
         )
     };
 
@@ -1154,13 +1155,13 @@ fn dpapi_decrypt(data: &[u8]) -> Result<Vec<u8>> {
     // Input is a valid byte slice, output is zeroed. We free the output buffer with LocalFree.
     let result = unsafe {
         CryptUnprotectData(
-            &input,
+            &raw const input,
             std::ptr::null_mut(), // description out (PWSTR)
             std::ptr::null(),     // entropy
             std::ptr::null(),     // reserved
             std::ptr::null(),     // prompt struct
             0,                    // flags
-            &mut output,
+            &raw mut output,
         )
     };
 
@@ -1407,7 +1408,7 @@ mod tests {
         // Verify the file on disk is NOT plaintext
         let path = cache_path().unwrap();
         let raw_bytes = std::fs::read(&path).unwrap();
-        let raw_str = String::from_utf8(raw_bytes.clone());
+        let raw_str = String::from_utf8(raw_bytes);
         assert!(
             raw_str.is_err() || !raw_str.unwrap().contains("dpapi-roundtrip-test-token"),
             "token should be encrypted on disk, not plaintext"

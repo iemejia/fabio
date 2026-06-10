@@ -9,6 +9,7 @@ pub mod connection;
 pub mod copy_job;
 pub mod cosmos_db_database;
 pub mod dashboard;
+pub mod data_build_tool_job;
 pub mod data_pipeline;
 pub mod dataagent;
 pub mod dataflow;
@@ -49,6 +50,8 @@ pub mod notebook;
 pub mod onelake_security;
 pub mod ontology;
 pub mod operations_agent;
+pub mod org_app;
+pub mod org_app_audience;
 pub mod paginated_report;
 pub mod profile;
 pub mod reflex;
@@ -195,6 +198,13 @@ pub async fn execute(cli: Cli) -> Result<()> {
             anomaly_detector::execute(&cli, &client, command).await
         }
         Command::AppBackend { command } => app_backend::execute(&cli, &client, command).await,
+        Command::DataBuildToolJob { command } => {
+            data_build_tool_job::execute(&cli, &client, command).await
+        }
+        Command::OrgApp { command } => org_app::execute(&cli, &client, command).await,
+        Command::OrgAppAudience { command } => {
+            org_app_audience::execute(&cli, &client, command).await
+        }
         // Integration
         Command::Gateway { command } => gateway::execute(&cli, &client, command).await,
         Command::Git { command } => git::execute(&cli, &client, command).await,
