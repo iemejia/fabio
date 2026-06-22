@@ -15,12 +15,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout fabio
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Checkout fabric-rest-api-specs
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: microsoft/fabric-rest-api-specs
           path: fabric-rest-api-specs
