@@ -429,8 +429,13 @@ async fn update_definition(
                 "payloadType": "InlineBase64"
             }])
         }
-        (_, Some(c)) => serde_json::from_str::<Value>(c)
-            .map_err(|e| anyhow::anyhow!("Invalid JSON in --content: {e}"))?,
+        (_, Some(c)) => serde_json::from_str::<Value>(c).unwrap_or_else(|_| {
+            serde_json::json!([{
+                "path": "report.rdl",
+                "payload": c,
+                "payloadType": "InlineBase64"
+            }])
+        }),
         (None, None) => {
             return Err(FabioError::with_hint(
                 ErrorCode::InvalidInput,
@@ -486,10 +491,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_create_dry_run_requires_file_or_content() {
-        // Verifies the error path when neither file nor content is given
-        // (tested via the actual CLI rather than unit-testing async fn directly)
-        // This test ensures the enum derives Debug correctly.
+    fn test_list_command_derives_debug() {
+        // Verifies that PaginatedReportCommand derives Debug correctly.
         let cmd = PaginatedReportCommand::List {
             workspace: "test".to_string(),
         };

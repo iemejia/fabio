@@ -93,9 +93,8 @@ fn paginated_report_delete_dry_run() {
 }
 
 #[test]
-fn paginated_report_get_definition_dry_run() {
-    // --dry-run on read commands: get-definition still requires auth but
-    // this test exercises flag parsing at minimum.
+fn paginated_report_get_definition_help() {
+    // Exercises flag/help parsing for get-definition.
     fabio()
         .args([
             "paginated-report",
