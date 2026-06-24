@@ -319,3 +319,79 @@ pub(super) async fn update_settings(
     output::render_object(cli, &data, "id");
     Ok(())
 }
+
+// ─── CMK Encryption ──────────────────────────────────────────────────────────
+
+pub(super) async fn get_encryption(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!("/workspaces/{workspace}/encryption"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace get-encryption", "Admin"))?;
+    output::render_object(cli, &data, "encryptionDetail");
+    Ok(())
+}
+
+pub(super) async fn assign_encryption(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    key_identifier: &str,
+) -> Result<()> {
+    let body = serde_json::json!({ "keyIdentifier": key_identifier });
+    if output::dry_run_guard(
+        cli,
+        "workspace assign-encryption",
+        &serde_json::json!({ "workspace": workspace, "keyIdentifier": key_identifier }),
+    ) {
+        return Ok(());
+    }
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/encryption/assign"),
+            &body,
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace assign-encryption", "Admin"))?;
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let result = serde_json::json!({ "workspace": workspace, "status": "assign_in_progress", "keyIdentifier": key_identifier });
+        output::render_object(cli, &result, "status");
+    } else {
+        output::render_object(cli, &data, "encryptionDetail");
+    }
+    Ok(())
+}
+
+pub(super) async fn reset_encryption(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+) -> Result<()> {
+    let body = serde_json::json!({});
+    if output::dry_run_guard(
+        cli,
+        "workspace reset-encryption",
+        &serde_json::json!({ "workspace": workspace }),
+    ) {
+        return Ok(());
+    }
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/encryption/reset"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace reset-encryption", "Admin"))?;
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let result = serde_json::json!({ "workspace": workspace, "status": "reset_complete" });
+        output::render_object(cli, &result, "status");
+    } else {
+        output::render_object(cli, &data, "encryptionDetail");
+    }
+    Ok(())
+}

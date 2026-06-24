@@ -5,10 +5,28 @@ use crate::client::FabricClient;
 use crate::errors::enrich_admin;
 use crate::output;
 
-pub(super) async fn list_workspaces(cli: &Cli, client: &FabricClient) -> Result<()> {
+pub(super) async fn list_workspaces(
+    cli: &Cli,
+    client: &FabricClient,
+    include: Option<&str>,
+    encryption_status: Option<&str>,
+) -> Result<()> {
+    let mut url = "/admin/workspaces".to_string();
+    let mut params: Vec<String> = Vec::new();
+    if let Some(inc) = include {
+        params.push(format!("include={inc}"));
+    }
+    if let Some(status) = encryption_status {
+        params.push(format!("encryptionStatus={status}"));
+    }
+    if !params.is_empty() {
+        url.push('?');
+        url.push_str(&params.join("&"));
+    }
+
     let resp = client
         .get_list(
-            "/admin/workspaces",
+            &url,
             "workspaces",
             cli.all,
             cli.continuation_token.as_deref(),

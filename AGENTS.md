@@ -491,7 +491,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
   - `fabio context examples <GROUP> <CMD>` — Output shape examples for command responses
 - **Dashboard**: list (read-only, portal-created)
 - **Datamart**: list (read-only, portal-created)
-- **Paginated Report**: list/update (read-only creation via portal/SSRS)
+- **Paginated Report**: list/show/create/update/delete/get-definition/update-definition (previously only list+update)
 - **RTI (Real-Time Intelligence)**: nl-to-kql (natural language to KQL translation via POST /realTimeIntelligence/nltokql?beta=true)
 - **Lakehouse query**: Resolves SQL analytics endpoint from lakehouse properties, executes T-SQL via shared TDS utilities
 - **Rest**: Raw REST passthrough command (`fabio rest call`); supports GET/POST/PUT/PATCH/DELETE; `--body` accepts inline JSON, `@file`, `@-` (stdin); `--query-params` for URL params; `--poll` for LRO; dry-run for mutating methods; `--api powerbi` targets Power BI REST API
@@ -668,7 +668,7 @@ If any validation step fails (fmt, clippy, tests, cross-check), the script abort
 - `src/commands/context.rs`: extract (workspace graph extraction — nodes/edges/summary, three-layer relationship discovery, parallel execution, incremental building)
 - `src/commands/dashboard.rs`: list (read-only)
 - `src/commands/datamart.rs`: list (read-only)
-- `src/commands/paginated_report.rs`: list/update (read-only creation)
+- `src/commands/paginated_report.rs`: list/show/create/update/delete/get-definition/update-definition
 - `src/commands/profile.rs`: save/use/list/show/delete (named profiles with defaults)
 - `src/commands/jobs.rs`: list/get/prune (local async job ledger)
 - `src/commands/feedback.rs`: send/list (two-way I/O for CLI friction reporting)
@@ -1666,6 +1666,13 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **OAP inbound restriction works on Trial**: `PUT /workspaces/{ws}/networking/communicationPolicy` with inbound `defaultAction: "Deny"` succeeds on Trial capacity. However, `GET .../inbound/azureResourceInstances` returns NOT_FOUND even with inbound restriction enabled — requires actual Azure Private Endpoint infrastructure to populate.
 - **Git outbound policy GET works without outbound restriction**: `GET .../outbound/git` returns `{"defaultAction":"Deny"}` even when workspace-level outbound restriction is not enabled. Only the SET (PUT) operation requires OAP to be active.
 - **Tenant settings for networking**: `WorkspaceBlockOutboundAccess` and `WorkspaceBlockInboundAccess` must be enabled at tenant level (via admin API) as prerequisites for workspace-level networking policies. `AllowAccessOverPrivateLinks` controls private link access but does not affect the tag or basic networking functionality.
+- **CMK encryption endpoints (Preview)**: Three workspace-scoped encryption endpoints:
+  - `GET /workspaces/{ws}/encryption` — Returns `WorkspaceEncryptionDetail` with `encryptionDetail.keyIdentifier`, `encryptionDetail.encryptionStatus`, optional `previousEncryptionDetail`, and optional `workspaceEncryptionItemsDetails`.
+  - `POST /workspaces/{ws}/encryption/assign` — Body: `{"keyIdentifier": "<versionless-key-uri>"}`. Returns 200 or 202 (LRO). Assigns a customer-managed key to the workspace. Requires Admin role.
+  - `POST /workspaces/{ws}/encryption/reset` — Body: `{}`. Returns 200. Removes CMK config and reverts to Microsoft-managed keys. Requires Admin role.
+- **EncryptionStatus enum values**: `Disabled`, `Active`, `EnableInProgress`, `DisableInProgress`, `Failed`.
+- **Versionless key identifier required**: The `keyIdentifier` for `assign-encryption` must be a versionless Azure Key Vault URI (e.g., `https://myvault.vault.azure.net/keys/mykey`), NOT a versioned URI with the version GUID appended.
+- **Admin list-workspaces encryption filter**: `GET /admin/workspaces?include=encryption` adds `encryption.status` and `encryption.keyIdentifier` fields to each workspace in the response. `?encryptionStatus=<status>` filters results — only valid when `include=encryption` is also specified.
 
 ## Item API Behaviors Discovered
 - **Type filter on list**: `GET /workspaces/{ws}/items?type={ItemType}` filters server-side. Type values are PascalCase (e.g., `Lakehouse`, `Notebook`, `Warehouse`).
@@ -2083,6 +2090,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **deploy-requirements requires running environment**: Returns error if environment is in `Stopping`/`Stopped` state.
 - **list-files returns directory structure**: `{"value":[{"filePath":"dags/","sizeInBytes":null},{"filePath":"plugins/","sizeInBytes":null}]}`. Directories have null `sizeInBytes`.
 - **get-compute returns pool template details**: Includes `poolTemplateId`, `poolTemplateName`, `nodeSize`, `computeScalability.minNodeCount/maxNodeCount`, `apacheAirflowJobVersion`, `apacheAirflowJobVersionDetails.apacheAirflowVersion/pythonVersion`, `availabilityZones`, `shutdownPolicy`.
+- **update-compute endpoint**: `POST /workspaces/{ws}/apacheAirflowJobs/{id}/environment/updateCompute?beta=true` with body `{"poolTemplateId": "<uuid>"}`. LRO (202 with `Retry-After: 30`). Updates which pool template is assigned to the environment. Requires `Contributor` role.
 - **Pool templates available**: `StarterPool` (ID: `00000000-...-000000000000`, Auto Pausing) and `Starter Pool (Always On)` (ID: `...000000000001`). Both are Small size, 5 nodes, Airflow 2.10.5, Python 3.12.
 - **get-workspace-settings**: Returns `{"defaultPoolTemplateId":"00000000-..."}`.
 - **Shutdown policies**: `OneHourInactivity` (auto pausing) and `AlwaysOn`.
@@ -2173,8 +2181,13 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Available commands**: list, show, create (with --warehouse-id), update, delete.
 
 ## Dashboard/Datamart/Paginated Report API Behaviors Discovered
-- **Read-only list items**: Dashboard has only `list` command. Datamart has only `list`. Paginated Report has `list` and `update`.
-- **No creation via REST API**: These item types are created through the portal or Power BI Desktop. The REST API provides read-only access.
+- **Read-only list items**: Dashboard has only `list` command. Datamart has only `list`.
+- **Paginated Report now supports full CRUD + definitions**: As of spec commit 49e5f16, the Fabric REST API exposes `create`, `show` (GET), `delete`, `getDefinition` (POST LRO), and `updateDefinition` (POST LRO) endpoints for paginated reports in addition to the existing `list` and `update` (PATCH) commands.
+- **Create is LRO**: `POST /workspaces/{ws}/paginatedReports` returns 202, requires polling. Body requires `displayName` and `definition` (with `format: "PaginatedReportDefinition"` and `parts` array).
+- **Definition format is `PaginatedReportDefinition`**: Definition parts contain the `.rdl` file(s). Each part: `{"path": "ContosoReport.rdl", "payload": "<base64>", "payloadType": "InlineBase64"}`.
+- **getDefinition is LRO**: `POST .../getDefinition` with empty body `{}`. Returns 202, requires polling.
+- **updateDefinition supports `?updateMetadata=true`**: Append to URL to propagate `.platform` metadata changes.
+- **delete returns 200**: `DELETE /workspaces/{ws}/paginatedReports/{id}` returns immediately (not LRO). Supports `?hardDelete=true` for permanent deletion.
 - **Endpoint patterns**: `/workspaces/{ws}/dashboards`, `/workspaces/{ws}/datamarts`, `/workspaces/{ws}/paginatedReports/{id}`.
 
 ## Catalog API Behaviors Discovered

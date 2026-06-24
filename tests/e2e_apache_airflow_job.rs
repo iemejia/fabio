@@ -48,3 +48,37 @@ fn airflow_dry_run_create() {
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(json["data"]["would_execute"], "apache-airflow-job create");
 }
+
+#[test]
+fn airflow_update_compute_dry_run() {
+    fabio()
+        .args([
+            "apache-airflow-job",
+            "update-compute",
+            "--workspace",
+            "test-ws",
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--pool-template-id",
+            "00000000-0000-0000-0000-000000000002",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+fn airflow_update_compute_missing_pool_template_id_fails() {
+    fabio()
+        .args([
+            "apache-airflow-job",
+            "update-compute",
+            "--workspace",
+            "test-ws",
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            // missing --pool-template-id
+        ])
+        .assert()
+        .failure();
+}

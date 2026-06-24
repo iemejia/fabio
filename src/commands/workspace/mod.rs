@@ -465,6 +465,32 @@ pub enum WorkspaceCommand {
         #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
+    // ─── CMK Encryption ──────────────────────────────────────────────────────
+    /// Get workspace Customer-Managed Key (CMK) encryption settings (Preview)
+    #[command(display_order = 70)]
+    GetEncryption {
+        /// Workspace ID
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+    },
+    /// Assign a Customer-Managed Key (CMK) to a workspace, enabling or rotating encryption (Preview)
+    #[command(display_order = 71)]
+    AssignEncryption {
+        /// Workspace ID
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Azure Key Vault key identifier (must be a versionless key URI)
+        #[arg(long)]
+        key_identifier: String,
+    },
+    /// Reset workspace encryption by removing the CMK configuration (reverts to Microsoft-managed keys) (Preview)
+    #[command(display_order = 72)]
+    ResetEncryption {
+        /// Workspace ID
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -758,6 +784,16 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceComman
         }
         WorkspaceCommand::GetDatasetStorageFormat { workspace } => {
             settings::get_dataset_storage_format(cli, client, workspace).await
+        }
+        WorkspaceCommand::GetEncryption { workspace } => {
+            settings::get_encryption(cli, client, workspace).await
+        }
+        WorkspaceCommand::AssignEncryption {
+            workspace,
+            key_identifier,
+        } => settings::assign_encryption(cli, client, workspace, key_identifier).await,
+        WorkspaceCommand::ResetEncryption { workspace } => {
+            settings::reset_encryption(cli, client, workspace).await
         }
     }
 }

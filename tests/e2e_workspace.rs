@@ -2766,3 +2766,57 @@ fn workspace_list_capacity_combined_with_roles() {
         "expected at least one Admin workspace on our capacity"
     );
 }
+
+// ─── CMK Encryption ──────────────────────────────────────────────────────────
+
+#[test]
+fn workspace_assign_encryption_dry_run() {
+    fabio()
+        .args([
+            "workspace",
+            "assign-encryption",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--key-identifier",
+            "https://myvault.vault.azure.net/keys/mykey",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+fn workspace_assign_encryption_missing_key_fails() {
+    fabio()
+        .args([
+            "workspace",
+            "assign-encryption",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            // missing --key-identifier
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn workspace_reset_encryption_dry_run() {
+    fabio()
+        .args([
+            "workspace",
+            "reset-encryption",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+fn workspace_get_encryption_help() {
+    fabio()
+        .args(["workspace", "get-encryption", "--help"])
+        .assert()
+        .success();
+}

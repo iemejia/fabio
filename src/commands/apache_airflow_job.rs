@@ -221,6 +221,21 @@ pub enum ApacheAirflowJobCommand {
         #[arg(long)]
         id: String,
     },
+    /// Update the compute configuration for the Airflow job environment (pool template)
+    #[command(display_order = 26)]
+    UpdateCompute {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Apache Airflow job ID
+        #[arg(long)]
+        id: String,
+
+        /// Pool template ID to assign to this environment
+        #[arg(long)]
+        pool_template_id: String,
+    },
     // ─── Files Operations ────────────────────────────────────────────────────
     /// List files (DAGs) in the Airflow job
     #[command(display_order = 30)]
@@ -465,6 +480,11 @@ pub async fn execute(
         ApacheAirflowJobCommand::GetCompute { workspace, id } => {
             get_compute(cli, client, workspace, id).await
         }
+        ApacheAirflowJobCommand::UpdateCompute {
+            workspace,
+            id,
+            pool_template_id,
+        } => update_compute(cli, client, workspace, id, pool_template_id).await,
         // Files
         ApacheAirflowJobCommand::ListFiles { workspace, id } => {
             list_files(cli, client, workspace, id).await
@@ -948,6 +968,45 @@ async fn get_compute(cli: &Cli, client: &FabricClient, workspace: &str, id: &str
         ))
         .await?;
     output::render_object(cli, &data, "compute");
+    Ok(())
+}
+
+async fn update_compute(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    pool_template_id: &str,
+) -> Result<()> {
+    let body = serde_json::json!({ "poolTemplateId": pool_template_id });
+
+    if output::dry_run_guard(
+        cli,
+        "apache-airflow-job update-compute",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "poolTemplateId": pool_template_id
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/{BASE}/{id}/environment/updateCompute?beta=true"),
+            &body,
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "apache-airflow-job update-compute", "Contributor"))?;
+
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let result = serde_json::json!({ "id": id, "status": "compute_updated", "poolTemplateId": pool_template_id });
+        output::render_object(cli, &result, "status");
+    } else {
+        output::render_object(cli, &data, "id");
+    }
     Ok(())
 }
 

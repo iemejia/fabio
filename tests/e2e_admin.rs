@@ -2153,3 +2153,27 @@ fn admin_bulk_set_labels_no_purview() {
         "Expected label-related error, got stdout={stdout} stderr={stderr}"
     );
 }
+
+// ─── Admin list-workspaces encryption params ─────────────────────────────────
+
+#[test]
+fn admin_list_workspaces_include_encryption_help() {
+    fabio()
+        .args(["admin", "list-workspaces", "--help"])
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with admin role"]
+#[serial]
+fn admin_list_workspaces_with_encryption_filter() {
+    let _cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args(["admin", "list-workspaces", "--include", "encryption"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert!(json["data"].is_array());
+}

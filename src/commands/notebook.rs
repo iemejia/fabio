@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Subcommand;
 use serde_json::Value;
@@ -983,6 +982,8 @@ fn build_run_body(
 
 #[cfg(test)]
 mod tests {
+    use base64::Engine;
+
     use super::*;
     use serde_json::json;
 

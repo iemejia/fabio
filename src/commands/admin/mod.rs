@@ -149,7 +149,16 @@ pub enum AdminCommand {
     // ── Workspaces ───────────────────────────────────────────────────────
     /// List workspaces (admin view)
     #[command(display_order = 30)]
-    ListWorkspaces,
+    ListWorkspaces {
+        /// Include additional data in the response (e.g. "encryption")
+        #[arg(long)]
+        include: Option<String>,
+
+        /// Filter workspaces by encryption status (only valid when --include=encryption is set).
+        /// Valid values: `Disabled`, `Active`, `EnableInProgress`, `DisableInProgress`, `Failed`
+        #[arg(long)]
+        encryption_status: Option<String>,
+    },
     /// Show workspace details (admin view)
     #[command(display_order = 31)]
     ShowWorkspace {
@@ -538,7 +547,18 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &AdminCommand) -
             workloads::delete_workload_assignment(cli, client, assignment_id).await
         }
         // Workspaces
-        AdminCommand::ListWorkspaces => workspaces::list_workspaces(cli, client).await,
+        AdminCommand::ListWorkspaces {
+            include,
+            encryption_status,
+        } => {
+            workspaces::list_workspaces(
+                cli,
+                client,
+                include.as_deref(),
+                encryption_status.as_deref(),
+            )
+            .await
+        }
         AdminCommand::ShowWorkspace { workspace } => {
             workspaces::show_workspace(cli, client, workspace).await
         }
