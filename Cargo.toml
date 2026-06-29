@@ -69,7 +69,7 @@ mssql-tds = { git = "https://github.com/iemejia/mssql-rs.git", rev = "bb063b01fa
 urlencoding = "2"
 
 # XML parsing (OWL/RDF ontology import)
-quick-xml = "0.40"
+quick-xml = "0.41"
 
 # OpenSSL (transitive via azure_identity/client_certificate; made explicit so
 # the vendored-openssl feature can gate the vendored build for cross-compilation)
