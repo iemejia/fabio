@@ -209,12 +209,14 @@ fabio item list --workspace $WS --type Lakehouse             # filter by type
 fabio item exists --workspace $WS --id $ID                   # returns {"data":{"exists":true}}
 fabio item bulk-create --workspace $WS --items '[{"type":"Notebook","displayName":"NB1"},{"type":"Notebook","displayName":"NB2"}]'
 fabio item bulk-delete --workspace $WS --ids "$ID1,$ID2"     # parallel delete
+fabio item list-upstream-relations --workspace $WS --id $ITEM_ID    # beta: items that $ITEM depends on
+fabio item list-downstream-relations --workspace $WS --id $ITEM_ID  # beta: items that depend on $ITEM
 fabio capacity list                                          # tenant-scoped (no --workspace)
 fabio gateway list                                           # tenant-scoped (no --workspace)
 fabio deployment-pipeline list                               # tenant-scoped (no --workspace)
 ```
 
-**Lakehouse (files, tables, sync, Iceberg):**
+**Lakehouse (files, tables, sync, Iceberg, Materialized Lake Views):**
 ```bash
 fabio lakehouse create --workspace $WS --name "DataLake"
 fabio lakehouse list --workspace $WS                         # workspace-scoped (requires --workspace)
@@ -233,6 +235,20 @@ fabio lakehouse sync --source-workspace $WS --source-id $LH1 --source-path Files
   --dest-workspace $WS --dest-id $LH2 --dest-path Files/ --delete
 # Sync local directory to lakehouse (upload only new/changed files)
 fabio lakehouse sync --local ./data/ --dest-workspace $WS --dest-id $LH --dest-path Files/data
+# Materialized Lake Views (MLV): pre-computed Delta table snapshots refreshed on schedule
+fabio lakehouse refresh-materialized-views --workspace $WS --id $LH   # ad-hoc refresh
+# MLV execution definitions: scope + Spark environment for refresh jobs
+DEF_ID=$(fabio lakehouse create-execution-definition --workspace $WS --id $LH \
+  --content '{"displayName":"nightly","currentLakehouseExecutionContext":{"mode":"All"}}' \
+  --query 'data.id' -o plain)
+fabio lakehouse list-execution-definitions --workspace $WS --id $LH   # discover existing definitions
+fabio lakehouse show-execution-definition --workspace $WS --id $LH --execution-definition-id $DEF_ID
+fabio lakehouse update-execution-definition --workspace $WS --id $LH \
+  --execution-definition-id $DEF_ID --content '{"settings":{"refreshMode":"Full"}}'
+fabio lakehouse delete-execution-definition --workspace $WS --id $LH --execution-definition-id $DEF_ID
+# MLV refresh schedules: link a schedule to an execution definition
+fabio lakehouse create-materialized-views-schedule --workspace $WS --id $LH \
+  --content '{"startDateTime":"2025-01-01T02:00:00","interval":1440,"enabled":true,"executionData":{"mlvExecutionDefinitionId":"'"$DEF_ID"'"}}'
 ```
 
 **Warehouse & SQL:**
