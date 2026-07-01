@@ -115,7 +115,7 @@ pub(super) async fn list_relations(
     let data = client
         .get(&relations_path(workspace, id, direction))
         .await
-        .map_err(|e| enrich_forbidden(e, &format!("item list-{direction}-relations"), "Read"))?;
+        .map_err(|e| enrich_forbidden(e, &format!("item list-{direction}-relations"), "Viewer"))?;
 
     output::render_object(cli, &data, "items");
     Ok(())

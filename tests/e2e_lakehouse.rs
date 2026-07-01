@@ -1013,7 +1013,7 @@ fn lakehouse_delete_execution_definition_dry_run() {
 
 #[test]
 fn lakehouse_create_execution_definition_requires_file_or_content() {
-    fabio()
+    let assert = fabio()
         .args([
             "lakehouse",
             "create-execution-definition",
@@ -1024,6 +1024,10 @@ fn lakehouse_create_execution_definition_requires_file_or_content() {
         ])
         .assert()
         .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err_json["error"]["code"], "INVALID_INPUT");
 }
 
 #[test]

@@ -1222,6 +1222,29 @@ fn generate_schema_from_clap() -> serde_json::Value {
             serde_json::Value::Object(subcommands),
         );
 
+        // Carry over group-level annotations preserved in the existing schema.
+        // This is critical for leaf commands (e.g. `upgrade`) that have no
+        // subcommands: their `examples`, `mutates`, `returns`, etc. live at the
+        // group level and would otherwise be silently dropped on every
+        // regeneration.
+        if let Some(existing) = existing_group {
+            for key in [
+                "examples",
+                "mutates",
+                "returns",
+                "async",
+                "destructive",
+                "flags",
+                "hint",
+                "notes",
+                "output_fields",
+            ] {
+                if let Some(val) = existing.get(key) {
+                    group_obj.insert(key.to_owned(), val.clone());
+                }
+            }
+        }
+
         result.insert(group_name, serde_json::Value::Object(group_obj));
     }
 
