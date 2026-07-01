@@ -3071,7 +3071,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio lakehouse refresh-materialized-views --workspace $WS --id $LAKEHOUSE_ID"
+        ]
       },
       "create-materialized-views-schedule": {
         "description": "Create a schedule for materialized lake view refresh",
@@ -3096,7 +3099,11 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio lakehouse create-materialized-views-schedule --workspace $WS --id $LAKEHOUSE_ID --content '{\"startDateTime\":\"2025-01-01T02:00:00\",\"interval\":1440,\"enabled\":true}'",
+          "fabio lakehouse create-materialized-views-schedule --workspace $WS --id $LAKEHOUSE_ID --content '{\"startDateTime\":\"2025-01-01T02:00:00\",\"interval\":1440,\"enabled\":true,\"executionData\":{\"mlvExecutionDefinitionId\":\"$DEF_ID\"}}'"
+        ]
       },
       "update-materialized-views-schedule": {
         "description": "Update a schedule for materialized lake view refresh",
@@ -3126,7 +3133,11 @@
           }
         },
         "mutates": true,
-        "returns": "void"
+        "returns": "void",
+        "examples": [
+          "fabio lakehouse update-materialized-views-schedule --workspace $WS --id $LAKEHOUSE_ID --schedule-id $SCHED_ID --content '{\"enabled\":false}'",
+          "fabio lakehouse update-materialized-views-schedule --workspace $WS --id $LAKEHOUSE_ID --schedule-id $SCHED_ID --content '{\"executionData\":{\"mlvExecutionDefinitionId\":\"$DEF_ID\"}}'"
+        ]
       },
       "delete-materialized-views-schedule": {
         "description": "Delete a schedule for materialized lake view refresh",
@@ -3149,7 +3160,10 @@
         },
         "mutates": true,
         "returns": "void",
-        "destructive": true
+        "destructive": true,
+        "examples": [
+          "fabio lakehouse delete-materialized-views-schedule --workspace $WS --id $LAKEHOUSE_ID --schedule-id $SCHED_ID"
+        ]
       },
       "list-execution-definitions": {
         "description": "List materialized lake view execution definitions for a lakehouse",
@@ -3982,7 +3996,7 @@
           },
           "--budget": {
             "type": "string",
-            "description": "Approximate token budget — returns the most compact useful subset that fits within this many tokens (4 chars/token estimate). Overrides --full"
+            "description": "Approximate token budget \u2014 returns the most compact useful subset that fits within this many tokens (4 chars/token estimate). Overrides --full"
           }
         },
         "mutates": false,
@@ -3993,7 +4007,7 @@
         "notes": "Returns the full command surface as JSON. Call once at session start for tool discovery."
       },
       "describe": {
-        "description": "Deep-dive on a single command: flags, examples, output shape, notes — everything to invoke it",
+        "description": "Deep-dive on a single command: flags, examples, output shape, notes \u2014 everything to invoke it",
         "mutates": false,
         "returns": "object",
         "notes": "Cross-references command metadata with output examples when available. Use after `fabio context agent` to get full details on a specific command."
@@ -4048,7 +4062,7 @@
         "notes": "Returns top-10 matching commands ranked by relevance. Use when unsure which command to use."
       },
       "tenant": {
-        "description": "Scan your Fabric tenant — build a relationship graph from workspace(s)",
+        "description": "Scan your Fabric tenant \u2014 build a relationship graph from workspace(s)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -4079,7 +4093,7 @@
               "rdf",
               "full"
             ],
-            "description": "Output format: graph (default) — native arrays for fabio merge/query; jsonld — instance data as RDF for triple stores; owl — OWL schema as JSON-LD for `fabio ontology import`; rdf — OWL schema as RDF/XML for `fabio ontology import` and Ontology Playground"
+            "description": "Output format: graph (default) \u2014 native arrays for fabio merge/query; jsonld \u2014 instance data as RDF for triple stores; owl \u2014 OWL schema as JSON-LD for `fabio ontology import`; rdf \u2014 OWL schema as RDF/XML for `fabio ontology import` and Ontology Playground"
           },
           "--merge": {
             "type": "string",
@@ -7865,7 +7879,7 @@
           "--file": {
             "type": "string",
             "required": true,
-            "description": "Path to definition.pbir file (semantic model binding — always required)"
+            "description": "Path to definition.pbir file (semantic model binding \u2014 always required)"
           },
           "--report-json": {
             "type": "string",
@@ -12181,7 +12195,7 @@
           "--name": {
             "type": "string",
             "required": true,
-            "description": "Display name (letters, numbers, underscores only — no hyphens)"
+            "description": "Display name (letters, numbers, underscores only \u2014 no hyphens)"
           },
           "--dtb-id": {
             "type": "string",
@@ -17257,7 +17271,7 @@
           },
           "--no-workspace-id-replace": {
             "type": "bool",
-            "description": "Skip automatic workspace ID replacement (00000000-... → target workspace)"
+            "description": "Skip automatic workspace ID replacement (00000000-... \u2192 target workspace)"
           }
         },
         "mutates": false,

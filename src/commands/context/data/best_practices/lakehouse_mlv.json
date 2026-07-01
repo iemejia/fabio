@@ -1,0 +1,95 @@
+{
+  "topic": "lakehouse_mlv",
+  "title": "Materialized Lake Views (MLV) in Fabric Lakehouses",
+  "summary": "Materialized Lake Views are pre-computed Delta table snapshots inside a Fabric Lakehouse that accelerate repeated query patterns. They are refreshed on demand or on a schedule, and their refresh behaviour is controlled by MLV execution definitions.",
+  "concept": {
+    "what_is_mlv": "A Materialized Lake View (MLV) is a Delta table computed from a query over other lakehouse tables. Fabric can refresh it automatically so downstream consumers always read current data without re-running the underlying query.",
+    "execution_definition_role": "An MLV execution definition groups the refresh scope, Spark environment, and refresh strategy for one or more materialized views. A refresh schedule then references the execution definition by ID via executionData.mlvExecutionDefinitionId, decoupling the schedule (when to refresh) from the execution parameters (how to refresh).",
+    "refresh_modes": {
+      "Optimal": "Default. Fabric decides whether to run an incremental or full refresh based on Delta log state.",
+      "Full": "Force a full recomputation on every refresh, discarding incremental state."
+    },
+    "execution_context_modes": {
+      "All": "Refresh every MLV in the lakehouse (or every lakehouse in the extended lineage group).",
+      "Selected": "Refresh only the MLVs listed in selectedMlvs (fully-qualified names, e.g. 'schema.view_name') or lakehouses listed in selectedLakehouses."
+    }
+  },
+  "key_commands": {
+    "trigger_refresh": "fabio lakehouse refresh-materialized-views --workspace $WS --id $LAKEHOUSE_ID",
+    "list_definitions": "fabio lakehouse list-execution-definitions --workspace $WS --id $LAKEHOUSE_ID",
+    "show_definition": "fabio lakehouse show-execution-definition --workspace $WS --id $LAKEHOUSE_ID --execution-definition-id $DEF_ID",
+    "create_definition_all_mode": "fabio lakehouse create-execution-definition --workspace $WS --id $LAKEHOUSE_ID --content '{\"displayName\":\"nightly-all\",\"currentLakehouseExecutionContext\":{\"mode\":\"All\"}}'",
+    "create_definition_selected_mode": "fabio lakehouse create-execution-definition --workspace $WS --id $LAKEHOUSE_ID --content '{\"displayName\":\"nightly-selected\",\"currentLakehouseExecutionContext\":{\"mode\":\"Selected\",\"selectedMlvs\":[\"dbo.sales_summary\",\"dbo.inventory_snapshot\"]}}'",
+    "create_schedule_with_def": "fabio lakehouse create-materialized-views-schedule --workspace $WS --id $LAKEHOUSE_ID --content '{\"startDateTime\":\"2025-01-01T02:00:00\",\"interval\":1440,\"enabled\":true,\"executionData\":{\"mlvExecutionDefinitionId\":\"$DEF_ID\"}}'",
+    "update_definition_refresh_mode": "fabio lakehouse update-execution-definition --workspace $WS --id $LAKEHOUSE_ID --execution-definition-id $DEF_ID --content '{\"settings\":{\"refreshMode\":\"Full\"}}'",
+    "delete_definition": "fabio lakehouse delete-execution-definition --workspace $WS --id $LAKEHOUSE_ID --execution-definition-id $DEF_ID"
+  },
+  "request_body_shapes": {
+    "create_execution_definition": {
+      "required_fields": ["displayName", "currentLakehouseExecutionContext"],
+      "optional_fields": ["description", "extendedLineageExecutionContext", "settings"],
+      "all_mode_example": {
+        "displayName": "refresh-all-views",
+        "currentLakehouseExecutionContext": {"mode": "All"}
+      },
+      "selected_mode_example": {
+        "displayName": "refresh-selected-views",
+        "description": "Refresh only revenue-critical views",
+        "currentLakehouseExecutionContext": {
+          "mode": "Selected",
+          "selectedMlvs": ["dbo.daily_revenue", "dbo.monthly_rollup"]
+        },
+        "settings": {"refreshMode": "Optimal"}
+      },
+      "with_extended_lineage_example": {
+        "displayName": "cross-lakehouse-refresh",
+        "currentLakehouseExecutionContext": {"mode": "All"},
+        "extendedLineageExecutionContext": {
+          "mode": "Selected",
+          "selectedLakehouses": [{"id": "<upstream-lakehouse-id>"}]
+        }
+      },
+      "with_spark_environment_example": {
+        "displayName": "custom-env-refresh",
+        "currentLakehouseExecutionContext": {"mode": "All"},
+        "settings": {
+          "environment": {"id": "<spark-environment-item-id>"},
+          "refreshMode": "Full"
+        }
+      }
+    },
+    "create_schedule": {
+      "note": "Pass via --file or --content JSON. Use executionData.mlvExecutionDefinitionId to link to an execution definition.",
+      "minimal_example": {
+        "startDateTime": "2025-01-01T02:00:00",
+        "interval": 1440,
+        "enabled": true
+      },
+      "with_execution_definition": {
+        "startDateTime": "2025-01-01T02:00:00",
+        "interval": 1440,
+        "enabled": true,
+        "executionData": {"mlvExecutionDefinitionId": "<def-id>"}
+      }
+    }
+  },
+  "recommended_workflow": [
+    "1. Create an MLV execution definition with the desired scope and refresh mode.",
+    "2. Capture the execution definition ID from the create response (data.id).",
+    "3. Create a refresh schedule referencing the definition ID via executionData.mlvExecutionDefinitionId.",
+    "4. Use refresh-materialized-views for ad-hoc refreshes outside the schedule."
+  ],
+  "what_agents_should_do": [
+    "Use list-execution-definitions to discover existing definitions before creating new ones.",
+    "Pass JSON bodies via --content for simple inline payloads, or --file for complex objects.",
+    "Capture the execution definition ID from create output with --query data.id before creating a schedule.",
+    "Set refreshMode to Full only when incremental refresh would produce stale results (e.g., after major source schema changes).",
+    "Use Selected mode with selectedMlvs to limit refresh scope and reduce Spark compute cost.",
+    "To update only one field of an execution definition, pass a partial JSON body — only provided fields are updated (PATCH semantics)."
+  ],
+  "error_patterns": {
+    "missing_required_fields": "create-execution-definition returns 400 if displayName or currentLakehouseExecutionContext is missing.",
+    "invalid_fqn_in_selected_mode": "selectedMlvs entries must be fully-qualified names matching the actual view names in the lakehouse. Typos return a 400 or 404.",
+    "definition_not_found": "show/update/delete return 404 if the execution-definition-id does not exist. List first: fabio lakehouse list-execution-definitions --workspace $WS --id $LAKEHOUSE_ID"
+  }
+}

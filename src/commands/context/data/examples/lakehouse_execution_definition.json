@@ -1,0 +1,27 @@
+{
+  "command": "fabio lakehouse create-execution-definition --workspace $WS_ID --id $LAKEHOUSE_ID --content '{\"displayName\":\"nightly-selected\",\"currentLakehouseExecutionContext\":{\"mode\":\"Selected\",\"selectedMlvs\":[\"dbo.daily_revenue\",\"dbo.monthly_rollup\"]},\"settings\":{\"refreshMode\":\"Optimal\"}}'",
+  "description": "Creates an MLV execution definition that refreshes two specific materialized lake views in Optimal mode. Required fields: displayName and currentLakehouseExecutionContext.",
+  "response": {
+    "data": {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "displayName": "nightly-selected",
+      "description": "",
+      "workspaceId": "w1w2w3w4-x5y6-7890-abcd-ef1234567890",
+      "lakehouseId": "lh101010-e5f6-7890-abcd-ef1234567890",
+      "currentLakehouseExecutionContext": {
+        "mode": "Selected",
+        "selectedMlvs": ["dbo.daily_revenue", "dbo.monthly_rollup"]
+      },
+      "settings": {
+        "refreshMode": "Optimal"
+      }
+    }
+  },
+  "notes": "Use the returned data.id as mlvExecutionDefinitionId when creating a refresh schedule. Omit currentLakehouseExecutionContext.selectedMlvs and set mode to All to refresh all views. extendedLineageExecutionContext is optional and used for cross-lakehouse lineage.",
+  "query_examples": [
+    {"query": "data.id", "description": "Capture the execution definition ID to reference in a refresh schedule."},
+    {"query": "data.currentLakehouseExecutionContext.mode", "description": "Check whether All or Selected refresh scope is configured."},
+    {"query": "data.currentLakehouseExecutionContext.selectedMlvs", "description": "List the specific views that will be refreshed."},
+    {"query": "data.settings.refreshMode", "description": "Check the refresh strategy: Optimal (incremental) or Full."}
+  ]
+}

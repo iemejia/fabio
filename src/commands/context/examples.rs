@@ -316,4 +316,8 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         "eventstream/get-topology",
         include_str!("data/examples/eventstream_get_topology.json"),
     ),
+    (
+        "lakehouse/create-execution-definition",
+        include_str!("data/examples/lakehouse_execution_definition.json"),
+    ),
 ];

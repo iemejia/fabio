@@ -1,0 +1,47 @@
+{
+  "name": "Materialized Lake View Scheduled Refresh",
+  "description": "Create an MLV execution definition scoped to specific views, then schedule automated refreshes linked to that definition.",
+  "prerequisites": ["Authenticated via fabio auth login", "Lakehouse exists with at least one materialized lake view", "Contributor role on the workspace"],
+  "steps": [
+    {
+      "step_number": 1,
+      "command": "fabio lakehouse list --workspace $WS --query 'data[?displayName==`SalesLakehouse`].id | [0]'",
+      "description": "Resolve the lakehouse ID by name if you don't already have it."
+    },
+    {
+      "step_number": 2,
+      "command": "fabio lakehouse list-execution-definitions --workspace $WS --id $LAKEHOUSE_ID",
+      "description": "Check for existing execution definitions to avoid duplicates."
+    },
+    {
+      "step_number": 3,
+      "command": "fabio lakehouse create-execution-definition --workspace $WS --id $LAKEHOUSE_ID --content '{\"displayName\":\"nightly-selected\",\"currentLakehouseExecutionContext\":{\"mode\":\"Selected\",\"selectedMlvs\":[\"dbo.daily_revenue\",\"dbo.monthly_rollup\"]},\"settings\":{\"refreshMode\":\"Optimal\"}}'",
+      "description": "Create an execution definition that refreshes only the two revenue views in Optimal mode."
+    },
+    {
+      "step_number": 4,
+      "command": "fabio lakehouse create-execution-definition ... --query data.id",
+      "description": "Capture the execution definition ID from the previous step's response.",
+      "notes": "Store the ID in $DEF_ID for the next step."
+    },
+    {
+      "step_number": 5,
+      "command": "fabio lakehouse create-materialized-views-schedule --workspace $WS --id $LAKEHOUSE_ID --content '{\"startDateTime\":\"2025-01-01T02:00:00\",\"interval\":1440,\"enabled\":true,\"executionData\":{\"mlvExecutionDefinitionId\":\"$DEF_ID\"}}'",
+      "description": "Create a daily (every 1440 minutes) schedule linked to the execution definition."
+    },
+    {
+      "step_number": 6,
+      "command": "fabio lakehouse refresh-materialized-views --workspace $WS --id $LAKEHOUSE_ID",
+      "description": "Trigger an ad-hoc refresh immediately to verify the setup works."
+    }
+  ],
+  "tips": [
+    "Use mode: All to refresh every MLV in the lakehouse — no selectedMlvs list needed.",
+    "Use mode: Selected with selectedMlvs to limit cost and refresh only the views downstream consumers depend on.",
+    "A single execution definition can be reused across multiple schedules (e.g., both hourly and on-demand).",
+    "To change the refresh scope, use update-execution-definition with a partial JSON body — only provided fields are changed.",
+    "Set refreshMode to Full only after major schema changes that invalidate incremental Delta state.",
+    "If you have cross-lakehouse MLV lineage, add extendedLineageExecutionContext to the execution definition.",
+    "Delete orphan execution definitions with delete-execution-definition after removing the associated schedule."
+  ]
+}
