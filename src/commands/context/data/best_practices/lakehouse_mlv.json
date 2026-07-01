@@ -1,7 +1,7 @@
 {
   "topic": "lakehouse_mlv",
   "title": "Materialized Lake Views (MLV) in Fabric Lakehouses",
-  "summary": "Materialized Lake Views are pre-computed Delta table snapshots inside a Fabric Lakehouse that accelerate repeated query patterns. They are refreshed on demand or on a schedule, and their refresh behaviour is controlled by MLV execution definitions.",
+  "summary": "Materialized Lake Views are pre-computed Delta table snapshots inside a Fabric Lakehouse that accelerate repeated query patterns. They are refreshed on demand or on a schedule, and their refresh behavior is controlled by MLV execution definitions.",
   "concept": {
     "what_is_mlv": "A Materialized Lake View (MLV) is a Delta table computed from a query over other lakehouse tables. Fabric can refresh it automatically so downstream consumers always read current data without re-running the underlying query.",
     "execution_definition_role": "An MLV execution definition groups the refresh scope, Spark environment, and refresh strategy for one or more materialized views. A refresh schedule then references the execution definition by ID via executionData.mlvExecutionDefinitionId, decoupling the schedule (when to refresh) from the execution parameters (how to refresh).",
