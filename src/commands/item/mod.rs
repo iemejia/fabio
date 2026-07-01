@@ -121,6 +121,28 @@ pub enum ItemCommand {
         #[arg(long)]
         id: String,
     },
+    /// Get downstream relations for an item (beta API)
+    #[command(display_order = 8)]
+    ListDownstreamRelations {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Item ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Get upstream relations for an item (beta API)
+    #[command(display_order = 9)]
+    ListUpstreamRelations {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Item ID
+        #[arg(long)]
+        id: String,
+    },
 
     // ── Create/Update/Delete ─────────────────────────────────────────────
     /// Create a new item
@@ -525,6 +547,12 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             item_type,
         } => crud::url(cli, workspace, id, item_type.as_deref()),
         ItemCommand::Inspect { workspace, id } => crud::inspect(cli, client, workspace, id).await,
+        ItemCommand::ListDownstreamRelations { workspace, id } => {
+            crud::list_relations(cli, client, workspace, id, "downstream").await
+        }
+        ItemCommand::ListUpstreamRelations { workspace, id } => {
+            crud::list_relations(cli, client, workspace, id, "upstream").await
+        }
         ItemCommand::Create {
             workspace,
             name,

@@ -934,3 +934,138 @@ fn lakehouse_delete_hard_delete_dry_run() {
     assert_eq!(data["dry_run"], true);
     assert_eq!(data["details"]["hardDelete"], true);
 }
+
+// ─── Materialized Lake View Execution Definitions ───────────────────────────
+
+#[test]
+fn lakehouse_create_execution_definition_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "lakehouse",
+            "create-execution-definition",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--content",
+            r#"{"displayName":"nightly-refresh","currentLakehouseExecutionContext":{"mode":"All"}}"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["displayName"], "nightly-refresh");
+}
+
+#[test]
+fn lakehouse_update_execution_definition_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "lakehouse",
+            "update-execution-definition",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--execution-definition-id",
+            "cccccccc-1111-2222-3333-444444444444",
+            "--content",
+            r#"{"description":"Updated"}"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["description"], "Updated");
+}
+
+#[test]
+fn lakehouse_delete_execution_definition_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "lakehouse",
+            "delete-execution-definition",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--execution-definition-id",
+            "cccccccc-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(
+        data["details"]["executionDefinitionId"],
+        "cccccccc-1111-2222-3333-444444444444"
+    );
+}
+
+#[test]
+fn lakehouse_create_execution_definition_requires_file_or_content() {
+    fabio()
+        .args([
+            "lakehouse",
+            "create-execution-definition",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_list_execution_definitions_returns_array() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "list-execution-definitions",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(data.is_array(), "Expected array, got: {data}");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_show_execution_definition_nonexistent_fails() {
+    let cfg = TestConfig::from_env();
+
+    fabio()
+        .args([
+            "lakehouse",
+            "show-execution-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--execution-definition-id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure();
+}

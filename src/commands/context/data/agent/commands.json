@@ -676,16 +676,16 @@
         },
         "mutates": false,
         "returns": "list",
+        "examples": [
+          "fabio workspace list --query displayName",
+          "fabio workspace list --limit 3",
+          "fabio workspace list -o table"
+        ],
         "output_fields": [
           "id",
           "displayName",
           "type",
           "capacityId"
-        ],
-        "examples": [
-          "fabio workspace list --query displayName",
-          "fabio workspace list --limit 3",
-          "fabio workspace list -o table"
         ]
       },
       "show": {
@@ -735,12 +735,12 @@
         },
         "mutates": true,
         "returns": "object",
+        "examples": [
+          "fabio workspace create --name \"my-project\""
+        ],
         "output_fields": [
           "id",
           "displayName"
-        ],
-        "examples": [
-          "fabio workspace create --name \"my-project\""
         ]
       },
       "update": {
@@ -823,12 +823,12 @@
         "mutates": true,
         "returns": "object",
         "async": true,
+        "examples": [
+          "fabio workspace provision-identity --id $WS"
+        ],
         "output_fields": [
           "applicationId",
           "servicePrincipalId"
-        ],
-        "examples": [
-          "fabio workspace provision-identity --id $WS"
         ]
       },
       "deprovision-identity": {
@@ -1536,15 +1536,15 @@
         },
         "mutates": false,
         "returns": "list",
+        "examples": [
+          "fabio item list --workspace $WS --all",
+          "fabio item list --workspace $WS --continuation-token \"eyJ...\""
+        ],
         "output_fields": [
           "id",
           "displayName",
           "type",
           "description"
-        ],
-        "examples": [
-          "fabio item list --workspace $WS --all",
-          "fabio item list --workspace $WS --continuation-token \"eyJ...\""
         ]
       },
       "show": {
@@ -1668,6 +1668,46 @@
         },
         "mutates": false,
         "returns": "object"
+      },
+      "list-downstream-relations": {
+        "description": "Get downstream relations for an item (beta API)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Item ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio item list-downstream-relations --workspace $WS --id $ITEM_ID"
+        ]
+      },
+      "list-upstream-relations": {
+        "description": "Get upstream relations for an item (beta API)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Item ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio item list-upstream-relations --workspace $WS --id $ITEM_ID"
+        ]
       },
       "create": {
         "description": "Create a new item",
@@ -2232,12 +2272,12 @@
         },
         "mutates": true,
         "returns": "object",
+        "examples": [
+          "fabio lakehouse create --workspace $WS --name \"DataLake\""
+        ],
         "output_fields": [
           "id",
           "displayName"
-        ],
-        "examples": [
-          "fabio lakehouse create --workspace $WS --name \"DataLake\""
         ]
       },
       "update": {
@@ -2303,11 +2343,11 @@
         },
         "mutates": false,
         "returns": "list",
-        "aliases": [
-          "tables"
-        ],
         "examples": [
           "fabio lakehouse list-tables --workspace $WS --id $LH -o table"
+        ],
+        "aliases": [
+          "tables"
         ]
       },
       "list-files": {
@@ -2330,11 +2370,11 @@
         },
         "mutates": false,
         "returns": "list",
-        "aliases": [
-          "files"
-        ],
         "examples": [
           "fabio lakehouse list-files --workspace $WS --id $LH --path Files/raw/"
+        ],
+        "aliases": [
+          "files"
         ]
       },
       "query": {
@@ -2384,10 +2424,10 @@
         },
         "mutates": true,
         "returns": "object",
-        "hint": "For incremental sync (only upload new/changed files), use: fabio lakehouse sync --local <dir> --dest-workspace <ws> --dest-id <id> --dest-path <path>. Supports --checksum, --include/--exclude, --delete, and other rsync-inspired flags.",
         "examples": [
           "fabio lakehouse upload --workspace $WS --id $LH --source \"data/*.parquet\" --dest Files/raw/"
-        ]
+        ],
+        "hint": "For incremental sync (only upload new/changed files), use: fabio lakehouse sync --local <dir> --dest-workspace <ws> --dest-id <id> --dest-path <path>. Supports --checksum, --include/--exclude, --delete, and other rsync-inspired flags."
       },
       "download": {
         "description": "Download a file from a lakehouse",
@@ -3111,6 +3151,138 @@
         "returns": "void",
         "destructive": true
       },
+      "list-execution-definitions": {
+        "description": "List materialized lake view execution definitions for a lakehouse",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio lakehouse list-execution-definitions --workspace $WS --id $LAKEHOUSE_ID"
+        ]
+      },
+      "show-execution-definition": {
+        "description": "Show a materialized lake view execution definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID"
+          },
+          "--execution-definition-id": {
+            "type": "string",
+            "required": true,
+            "description": "Materialized lake view execution definition ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio lakehouse show-execution-definition --workspace $WS --id $LAKEHOUSE_ID --execution-definition-id $DEF_ID"
+        ]
+      },
+      "create-execution-definition": {
+        "description": "Create a materialized lake view execution definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID"
+          },
+          "--file": {
+            "type": "string",
+            "description": "Execution definition file path (JSON, must include displayName and currentLakehouseExecutionContext)"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Execution definition content (inline JSON)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio lakehouse create-execution-definition --workspace $WS --id $LAKEHOUSE_ID --content '{\"displayName\":\"nightly-refresh\",\"currentLakehouseExecutionContext\":{\"mode\":\"All\"}}'"
+        ]
+      },
+      "update-execution-definition": {
+        "description": "Update a materialized lake view execution definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID"
+          },
+          "--execution-definition-id": {
+            "type": "string",
+            "required": true,
+            "description": "Materialized lake view execution definition ID"
+          },
+          "--file": {
+            "type": "string",
+            "description": "Execution definition file path (JSON, only provided fields are updated)"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Execution definition content (inline JSON)"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "examples": [
+          "fabio lakehouse update-execution-definition --workspace $WS --id $LAKEHOUSE_ID --execution-definition-id $DEF_ID --content '{\"description\":\"Updated\"}'"
+        ]
+      },
+      "delete-execution-definition": {
+        "description": "Delete a materialized lake view execution definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID"
+          },
+          "--execution-definition-id": {
+            "type": "string",
+            "required": true,
+            "description": "Materialized lake view execution definition ID"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true,
+        "examples": [
+          "fabio lakehouse delete-execution-definition --workspace $WS --id $LAKEHOUSE_ID --execution-definition-id $DEF_ID"
+        ]
+      },
       "run-table-maintenance": {
         "description": "Run table maintenance on a lakehouse",
         "flags": {
@@ -3815,10 +3987,10 @@
         },
         "mutates": false,
         "returns": "object",
-        "notes": "Returns the full command surface as JSON. Call once at session start for tool discovery.",
         "examples": [
           "fabio context agent | jq '.commands[] | select(.group == \"lakehouse\")'"
-        ]
+        ],
+        "notes": "Returns the full command surface as JSON. Call once at session start for tool discovery."
       },
       "describe": {
         "description": "Deep-dive on a single command: flags, examples, output shape, notes — everything to invoke it",
@@ -3830,31 +4002,31 @@
         "description": "Show the definition schema/template for a Fabric item type",
         "mutates": false,
         "returns": "object",
-        "notes": "Returns creation body template, definition parts, flags, and tips for the specified item type.",
         "examples": [
           "fabio context schema Notebook",
           "fabio context schema DataPipeline"
-        ]
+        ],
+        "notes": "Returns creation body template, definition parts, flags, and tips for the specified item type."
       },
       "workflow": {
         "description": "Show a multi-step workflow recipe",
         "mutates": false,
         "returns": "object",
-        "notes": "Returns ordered steps with fabio commands for common multi-step tasks.",
         "examples": [
           "fabio context workflow direct-lake-report",
           "fabio context workflow cicd-deploy"
-        ]
+        ],
+        "notes": "Returns ordered steps with fabio commands for common multi-step tasks."
       },
       "best-practices": {
         "description": "Show best-practices guidance for a topic",
         "mutates": false,
         "returns": "object",
-        "notes": "Returns operational guidance tailored for agents using fabio as execution layer.",
         "examples": [
           "fabio context best-practices throttling",
           "fabio context best-practices lro"
-        ]
+        ],
+        "notes": "Returns operational guidance tailored for agents using fabio as execution layer."
       },
       "examples": {
         "description": "Show example output for a command (response shape + `JMESPath` tips)",
@@ -3923,24 +4095,23 @@
           },
           "--summary-only": {
             "type": "bool",
-            "description": "Return only a lightweight inventory summary (item counts by type, workspace info) without building the full graph. Useful for agents to probe before a full scan."
+            "description": "Return only a lightweight inventory summary (item counts by type, workspace info) without building the full graph. Useful for agents to probe before a full scan"
           },
           "--resolve": {
             "type": "string",
-            "description": "Fast name-to-ID resolution. Comma-separated Type:Name pairs (e.g. Notebook:my-nb,Lakehouse:bronze). Returns matching items without full graph."
+            "description": "Fast name-to-ID resolution. Comma-separated `Type:Name` pairs (e.g. `Notebook:my-nb,Lakehouse:bronze`). Returns matching items without full graph"
           },
           "--focus": {
             "type": "string",
-            "description": "Focus on a single item: return only the subgraph within --depth hops of this item ID"
+            "description": "Focus on a single item: return only the subgraph within `--depth` hops of this item ID"
           },
           "--depth": {
             "type": "integer",
-            "description": "Maximum hop distance from the focused item (default: 1). Requires --focus."
+            "description": "Maximum hop distance from the focused item (default: 1). Requires `--focus`"
           }
         },
         "mutates": false,
         "returns": "object",
-        "notes": "Output is a graph with nodes (items), edges (relationships), workspaces metadata, summary, and a meta envelope (scannedAt, etag, scanDurationMs, partial, scope) for agent freshness tracking. Edges include confidence (high/medium/low) and discoveryMethod fields. Use --summary-only to probe workspace contents cheaply before a full scan. Use --resolve for fast name-to-ID lookups. Use --focus <id> --depth N for ego-centric subgraphs. Use --deep for full relationship discovery via definition scanning. Use --no-properties for fast inventory-only extraction. Use --output-file + --merge for incremental context building across sessions.",
         "examples": [
           "fabio context tenant --workspace $WS --summary-only",
           "fabio context tenant --workspace $WS --resolve Notebook:my-nb,Lakehouse:bronze",
@@ -3948,7 +4119,8 @@
           "fabio context tenant --workspace $WS --deep --include-connections",
           "fabio context tenant --workspace $WS --deep --output-file context.json",
           "fabio context tenant --workspace $NEW_WS --deep --merge context.json --output-file context.json"
-        ]
+        ],
+        "notes": "Output is a graph with nodes (items), edges (relationships), workspaces metadata, summary, and a meta envelope (scannedAt, etag, scanDurationMs, partial, scope) for agent freshness tracking. Edges include confidence (high/medium/low) and discoveryMethod fields. Use --summary-only to probe workspace contents cheaply before a full scan. Use --resolve for fast name-to-ID lookups. Use --focus <id> --depth N for ego-centric subgraphs. Use --deep for full relationship discovery via definition scanning. Use --no-properties for fast inventory-only extraction. Use --output-file + --merge for incremental context building across sessions."
       }
     }
   },
@@ -4019,12 +4191,12 @@
         },
         "mutates": true,
         "returns": "object",
+        "examples": [
+          "fabio notebook create --workspace $WS --name \"ETL-Pipeline\" --lakehouse $LH --source etl_notebook.py"
+        ],
         "output_fields": [
           "id",
           "displayName"
-        ],
-        "examples": [
-          "fabio notebook create --workspace $WS --name \"ETL-Pipeline\" --lakehouse $LH --source etl_notebook.py"
         ]
       },
       "update": {
@@ -4348,12 +4520,12 @@
         },
         "mutates": true,
         "returns": "object",
+        "examples": [
+          "fabio warehouse create --workspace $WS --name \"SalesWarehouse\""
+        ],
         "output_fields": [
           "id",
           "displayName"
-        ],
-        "examples": [
-          "fabio warehouse create --workspace $WS --name \"SalesWarehouse\""
         ]
       },
       "update": {
@@ -6392,12 +6564,12 @@
         },
         "mutates": true,
         "returns": "object",
+        "examples": [
+          "fabio environment create --workspace $WS --name \"DataScience-Env\""
+        ],
         "output_fields": [
           "id",
           "displayName"
-        ],
-        "examples": [
-          "fabio environment create --workspace $WS --name \"DataScience-Env\""
         ]
       },
       "update": {
@@ -6813,12 +6985,12 @@
         },
         "mutates": true,
         "returns": "object",
+        "examples": [
+          "fabio data-pipeline create --workspace $WS --name \"Daily-ETL\""
+        ],
         "output_fields": [
           "id",
           "displayName"
-        ],
-        "examples": [
-          "fabio data-pipeline create --workspace $WS --name \"Daily-ETL\""
         ]
       },
       "update": {
@@ -6981,13 +7153,13 @@
         },
         "mutates": false,
         "returns": "list",
+        "examples": [
+          "fabio data-pipeline list-schedules --workspace $WS --id $DP"
+        ],
         "output_fields": [
           "id",
           "enabled",
           "createdDateTime"
-        ],
-        "examples": [
-          "fabio data-pipeline list-schedules --workspace $WS --id $DP"
         ]
       },
       "get-schedule": {
@@ -7084,15 +7256,15 @@
         },
         "mutates": false,
         "returns": "list",
+        "examples": [
+          "fabio data-pipeline list-instances --workspace $WS --id $DP -o table"
+        ],
         "output_fields": [
           "id",
           "status",
           "invokeType",
           "startTimeUtc",
           "endTimeUtc"
-        ],
-        "examples": [
-          "fabio data-pipeline list-instances --workspace $WS --id $DP -o table"
         ]
       },
       "get-instance": {
@@ -7799,12 +7971,12 @@
         "mutates": true,
         "returns": "object",
         "async": true,
+        "examples": [
+          "fabio semantic-model create --workspace $WS --name \"SalesModel\" --file model.tmdl --connection $SQL_ENDPOINT_ID"
+        ],
         "output_fields": [
           "id",
           "displayName"
-        ],
-        "examples": [
-          "fabio semantic-model create --workspace $WS --name \"SalesModel\" --file model.tmdl --connection $SQL_ENDPOINT_ID"
         ]
       },
       "update": {
@@ -8345,12 +8517,12 @@
         },
         "mutates": true,
         "returns": "object",
+        "examples": [
+          "fabio eventhouse create --workspace $WS --name \"TelemetryHub\""
+        ],
         "output_fields": [
           "id",
           "displayName"
-        ],
-        "examples": [
-          "fabio eventhouse create --workspace $WS --name \"TelemetryHub\""
         ]
       },
       "update": {
@@ -15001,13 +15173,13 @@
         },
         "mutates": false,
         "returns": "list",
+        "examples": [
+          "fabio azure-databricks-storage list --workspace $WS"
+        ],
         "output_fields": [
           "id",
           "displayName",
           "description"
-        ],
-        "examples": [
-          "fabio azure-databricks-storage list --workspace $WS"
         ]
       },
       "show": {
@@ -15048,12 +15220,12 @@
         "mutates": true,
         "returns": "object",
         "async": true,
+        "examples": [
+          "fabio azure-databricks-storage create --workspace $WS --name \"My Databricks Storage\""
+        ],
         "output_fields": [
           "id",
           "displayName"
-        ],
-        "examples": [
-          "fabio azure-databricks-storage create --workspace $WS --name \"My Databricks Storage\""
         ]
       },
       "update": {
@@ -16334,12 +16506,12 @@
         },
         "mutates": true,
         "returns": "object",
+        "examples": [
+          "fabio connection create --name \"AzureSQL-Prod\" --connectivity-type ShareableCloud --type Sql --parameters '{\"server\":\"myserver.database.windows.net\",\"database\":\"mydb\"}' --credential-type Basic --credentials '{\"username\":\"admin\",\"password\":\"***\"}'"
+        ],
         "output_fields": [
           "id",
           "displayName"
-        ],
-        "examples": [
-          "fabio connection create --name \"AzureSQL-Prod\" --connectivity-type ShareableCloud --type Sql --parameters '{\"server\":\"myserver.database.windows.net\",\"database\":\"mydb\"}' --credential-type Basic --credentials '{\"username\":\"admin\",\"password\":\"***\"}'"
         ]
       },
       "update": {
@@ -17090,16 +17262,16 @@
         },
         "mutates": false,
         "returns": "object",
+        "examples": [
+          "fabio deploy plan --source ./fabric-items/ --workspace \"Staging\"",
+          "fabio deploy plan --source ./fabric-items/ --workspace \"Staging\" --out plan.json"
+        ],
         "output_fields": [
           "workspace_id",
           "changes",
           "warnings",
           "errors",
           "summary"
-        ],
-        "examples": [
-          "fabio deploy plan --source ./fabric-items/ --workspace \"Staging\"",
-          "fabio deploy plan --source ./fabric-items/ --workspace \"Staging\" --out plan.json"
         ]
       },
       "apply": {
@@ -17201,6 +17373,12 @@
         },
         "mutates": true,
         "returns": "object",
+        "examples": [
+          "fabio deploy apply --source ./fabric-items/ --workspace \"Staging\"",
+          "fabio deploy apply --source ./fabric-items/ --workspace \"Staging\" --dry-run",
+          "fabio deploy apply --source ./fabric-items/ --workspace \"Production\" --parameters params.json --env prod",
+          "fabio deploy apply --source ./fabric-items/ --workspace \"Staging\" --delete-orphans"
+        ],
         "output_fields": [
           "status",
           "succeeded",
@@ -17209,12 +17387,6 @@
           "duration_ms",
           "failures",
           "post_hooks"
-        ],
-        "examples": [
-          "fabio deploy apply --source ./fabric-items/ --workspace \"Staging\"",
-          "fabio deploy apply --source ./fabric-items/ --workspace \"Staging\" --dry-run",
-          "fabio deploy apply --source ./fabric-items/ --workspace \"Production\" --parameters params.json --env prod",
-          "fabio deploy apply --source ./fabric-items/ --workspace \"Staging\" --delete-orphans"
         ]
       },
       "export": {
@@ -17241,6 +17413,9 @@
         },
         "mutates": false,
         "returns": "object",
+        "examples": [
+          "fabio deploy export --workspace \"Production\" --dir ./fabric-items/ --overwrite"
+        ],
         "output_fields": [
           "status",
           "workspace_id",
@@ -17248,9 +17423,6 @@
           "total_items",
           "exported",
           "skipped"
-        ],
-        "examples": [
-          "fabio deploy export --workspace \"Production\" --dir ./fabric-items/ --overwrite"
         ]
       },
       "init-params": {
@@ -17280,16 +17452,16 @@
         },
         "mutates": false,
         "returns": "object",
+        "examples": [
+          "fabio deploy init-params --source ./fabric-items/ --out params.json",
+          "fabio deploy init-params --source ./dev-items/ --compare ./prod-items/ --source-env dev --compare-env prod --out params.json"
+        ],
         "output_fields": [
           "status",
           "mode",
           "source_items",
           "rules_generated",
           "guids_found"
-        ],
-        "examples": [
-          "fabio deploy init-params --source ./fabric-items/ --out params.json",
-          "fabio deploy init-params --source ./dev-items/ --compare ./prod-items/ --source-env dev --compare-env prod --out params.json"
         ]
       },
       "validate": {
@@ -18080,13 +18252,7 @@
   "upgrade": {
     "auth_scope": "local",
     "description": "Upgrade fabio to the latest release from GitHub",
-    "subcommands": {},
-    "examples": [
-      "fabio upgrade --check",
-      "fabio upgrade --dry-run",
-      "fabio upgrade --target-version 0.23.0",
-      "fabio upgrade --force"
-    ]
+    "subcommands": {}
   },
   "completions": {
     "auth_scope": "fabric",
@@ -18098,7 +18264,21 @@
     "description": "MCP (Model Context Protocol) server for native agent integration",
     "subcommands": {
       "serve": {
-        "description": "Start the MCP server (JSON-RPC 2.0 over stdin/stdout)",
+        "description": "Start the MCP server (JSON-RPC 2.0 over stdin/stdout). Read-only by default: only non-mutating tools are exposed",
+        "flags": {
+          "--allow-write": {
+            "type": "bool",
+            "description": "Expose mutation tools (create, update, delete, run, etc.). Without this flag, only read-only tools are visible"
+          },
+          "--allow-tool": {
+            "type": "string",
+            "description": "Only expose tools matching these patterns (comma-separated). Patterns match tool name prefixes: \"workspace\" matches all workspace tools. Without this flag, all tools (subject to --allow-write) are exposed"
+          },
+          "--list-tools": {
+            "type": "bool",
+            "description": "Print the list of tools that would be exposed, then exit. Useful for inspecting the effective tool surface before starting the server"
+          }
+        },
         "mutates": false,
         "returns": "void",
         "notes": "The server reads JSON-RPC messages from stdin and writes responses to stdout. Supports: initialize, tools/list, tools/call, ping."

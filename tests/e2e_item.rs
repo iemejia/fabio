@@ -1601,3 +1601,73 @@ fn item_list_with_type_and_recursive() {
     let data = extract_data(&json);
     assert!(data.is_array());
 }
+
+// ===========================================================================
+// item list-downstream-relations / list-upstream-relations (beta API)
+// ===========================================================================
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_list_downstream_relations_returns_object() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "item",
+            "list-downstream-relations",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // Response is an object with items/relations/workspaces arrays (possibly empty).
+    assert!(data.is_object(), "Expected object, got: {data}");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_list_upstream_relations_returns_object() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "item",
+            "list-upstream-relations",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(data.is_object(), "Expected object, got: {data}");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_list_downstream_relations_invalid_item_fails() {
+    let cfg = TestConfig::from_env();
+
+    fabio()
+        .args([
+            "item",
+            "list-downstream-relations",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure();
+}

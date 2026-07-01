@@ -498,6 +498,7 @@ pub(super) fn list_components(cli: &Cli, category: &str) {
         {"type": "FabricWorkspaceItemEvents", "category": "source", "description": "Fabric workspace item events"},
         {"type": "FabricJobEvents", "category": "source", "description": "Fabric job events"},
         {"type": "FabricOneLakeEvents", "category": "source", "description": "Fabric OneLake events"},
+        {"type": "FabricAnomalyDetectionEvents", "category": "source", "description": "Fabric anomaly detection events"},
     ]);
 
     let destinations = serde_json::json!([

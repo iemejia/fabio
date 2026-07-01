@@ -11,6 +11,7 @@ use crate::output;
 
 mod crud;
 mod definitions;
+mod execution_definitions;
 mod files;
 mod iceberg;
 mod livy;
@@ -702,6 +703,91 @@ pub enum LakehouseCommand {
         schedule_id: String,
     },
 
+    // ── Materialized Lake View Execution Definitions ─────────────────────
+    /// List materialized lake view execution definitions for a lakehouse
+    #[command(display_order = 64)]
+    ListExecutionDefinitions {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+    },
+    /// Show a materialized lake view execution definition
+    #[command(display_order = 64)]
+    ShowExecutionDefinition {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Materialized lake view execution definition ID
+        #[arg(long)]
+        execution_definition_id: String,
+    },
+    /// Create a materialized lake view execution definition
+    #[command(display_order = 64)]
+    CreateExecutionDefinition {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Execution definition file path (JSON, must include displayName and currentLakehouseExecutionContext)
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Execution definition content (inline JSON)
+        #[arg(long)]
+        content: Option<String>,
+    },
+    /// Update a materialized lake view execution definition
+    #[command(display_order = 64)]
+    UpdateExecutionDefinition {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Materialized lake view execution definition ID
+        #[arg(long)]
+        execution_definition_id: String,
+
+        /// Execution definition file path (JSON, only provided fields are updated)
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Execution definition content (inline JSON)
+        #[arg(long)]
+        content: Option<String>,
+    },
+    /// Delete a materialized lake view execution definition
+    #[command(display_order = 64)]
+    DeleteExecutionDefinition {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Materialized lake view execution definition ID
+        #[arg(long)]
+        execution_definition_id: String,
+    },
+
     // ── Table Maintenance ────────────────────────────────────────────────
     /// Run table maintenance on a lakehouse
     #[command(display_order = 70)]
@@ -1370,6 +1456,71 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
         } => {
             maintenance::delete_materialized_views_schedule(cli, client, workspace, id, schedule_id)
                 .await
+        }
+        LakehouseCommand::ListExecutionDefinitions { workspace, id } => {
+            execution_definitions::list_execution_definitions(cli, client, workspace, id).await
+        }
+        LakehouseCommand::ShowExecutionDefinition {
+            workspace,
+            id,
+            execution_definition_id,
+        } => {
+            execution_definitions::show_execution_definition(
+                cli,
+                client,
+                workspace,
+                id,
+                execution_definition_id,
+            )
+            .await
+        }
+        LakehouseCommand::CreateExecutionDefinition {
+            workspace,
+            id,
+            file,
+            content,
+        } => {
+            execution_definitions::create_execution_definition(
+                cli,
+                client,
+                workspace,
+                id,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        LakehouseCommand::UpdateExecutionDefinition {
+            workspace,
+            id,
+            execution_definition_id,
+            file,
+            content,
+        } => {
+            execution_definitions::update_execution_definition(
+                cli,
+                client,
+                workspace,
+                id,
+                execution_definition_id,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        LakehouseCommand::DeleteExecutionDefinition {
+            workspace,
+            id,
+            execution_definition_id,
+        } => {
+            execution_definitions::delete_execution_definition(
+                cli,
+                client,
+                workspace,
+                id,
+                execution_definition_id,
+            )
+            .await
         }
         LakehouseCommand::RunTableMaintenance {
             workspace,

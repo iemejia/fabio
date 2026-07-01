@@ -99,6 +99,28 @@ pub(super) async fn list_connections(
     Ok(())
 }
 
+// ─── Relations (beta) ───────────────────────────────────────────────────────
+
+fn relations_path(workspace: &str, id: &str, direction: &str) -> String {
+    format!("/workspaces/{workspace}/items/{id}/relations/{direction}?beta=true")
+}
+
+pub(super) async fn list_relations(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    direction: &str,
+) -> Result<()> {
+    let data = client
+        .get(&relations_path(workspace, id, direction))
+        .await
+        .map_err(|e| enrich_forbidden(e, &format!("item list-{direction}-relations"), "Read"))?;
+
+    output::render_object(cli, &data, "items");
+    Ok(())
+}
+
 // ─── Exists ──────────────────────────────────────────────────────────────────
 
 pub(super) async fn exists(
@@ -545,6 +567,24 @@ mod tests {
         assert_eq!(
             u,
             "https://app.fabric.microsoft.com/groups/ws-1/lakehouses/item-1"
+        );
+    }
+
+    #[test]
+    fn relations_path_downstream_includes_beta_flag() {
+        let p = super::relations_path("ws-1", "item-1", "downstream");
+        assert_eq!(
+            p,
+            "/workspaces/ws-1/items/item-1/relations/downstream?beta=true"
+        );
+    }
+
+    #[test]
+    fn relations_path_upstream_includes_beta_flag() {
+        let p = super::relations_path("ws-1", "item-1", "upstream");
+        assert_eq!(
+            p,
+            "/workspaces/ws-1/items/item-1/relations/upstream?beta=true"
         );
     }
 }

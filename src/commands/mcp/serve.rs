@@ -258,9 +258,12 @@ fn handle_tools_list(id: Option<&Value>, policy: &McpPolicy) -> Value {
 }
 
 async fn handle_tools_call(request: &Value, id: Option<&Value>, policy: &McpPolicy) -> Value {
-    let params = request.get("params").cloned().unwrap_or(json!({}));
+    let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
     let tool_name = params.get("name").and_then(Value::as_str).unwrap_or("");
-    let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
+    let arguments = params
+        .get("arguments")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
 
     // Parse tool name back to group + subcommand.
     let Some((group, cmd)) = parse_tool_name(tool_name) else {
