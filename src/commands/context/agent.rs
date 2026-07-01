@@ -1181,7 +1181,6 @@ fn extract_clap_surface() -> std::collections::BTreeMap<String, Vec<String>> {
 /// annotations (mutates, returns, async, destructive, `auth_scope`) from the
 /// current `commands.json`.
 #[cfg(test)]
-#[allow(dead_code)]
 fn generate_schema_from_clap() -> serde_json::Value {
     use clap::CommandFactory;
     let cmd = crate::cli::Cli::command();
@@ -1526,6 +1525,33 @@ mod tests {
                 "commands.json is missing these command groups: {missing_groups:?}\n\
                  Run `cargo test generate_agent_schema -- --ignored` to regenerate."
             );
+        });
+    }
+
+    /// Regenerate `commands.json` from clap metadata.
+    ///
+    /// Run with:
+    /// ```bash
+    /// cargo test generate_agent_schema -- --ignored
+    /// ```
+    ///
+    /// Merges structural data (groups, subcommands, flags) from clap with
+    /// existing semantic annotations (`mutates`, `returns`, `async`,
+    /// `destructive`, `auth_scope`, `examples`) preserved from the current
+    /// committed `commands.json`.  After regenerating, add any missing semantic
+    /// annotations to the new entries and run the drift detection tests to
+    /// verify.
+    #[test]
+    #[ignore = "writes commands.json to disk — run manually after adding/changing commands"]
+    fn generate_agent_schema() {
+        with_large_stack(|| {
+            let schema = generate_schema_from_clap();
+            let json =
+                serde_json::to_string_pretty(&schema).expect("serialize commands schema to JSON");
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("src/commands/context/data/agent/commands.json");
+            std::fs::write(&path, format!("{json}\n")).expect("write commands.json");
+            println!("Wrote {}", path.display());
         });
     }
 

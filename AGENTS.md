@@ -187,10 +187,10 @@ After adding, modifying, or removing commands/flags, run ALL of these:
 
 ```bash
 # 1. Regenerate commands.json (the single source of truth for all agent-facing metadata)
-cargo test --bin fabio generate_agent_schema -- --include-ignored
+cargo test generate_agent_schema -- --ignored
 
 # 2. Verify drift detection passes (these run in cargo test / CI)
-cargo test --bin fabio agent_schema_covers
+cargo test agent_schema_covers
 ```
 
 ### File Inventory
@@ -201,18 +201,14 @@ cargo test --bin fabio agent_schema_covers
 
 ### How Drift Detection Works
 
-Each auto-generated file has a corresponding unit test that:
-1. Regenerates the expected content in memory (same algorithm as the generator)
-2. Reads the committed file from disk
-3. Asserts they are identical
-4. Fails with a message showing the exact regeneration command
+`agent_schema_covers_all_groups` and `agent_schema_covers_all_subcommands` are unit tests that run in the standard `cargo test` suite (and in CI). They compare the actual clap CLI surface against the committed `commands.json` and fail with a clear message (including the regeneration command) if any group or subcommand is missing.
 
-These tests run as part of the standard `cargo test` suite and in CI. If a contributor adds a command but forgets to regenerate, CI will fail with a clear error message.
+The `generate_agent_schema` test (`#[ignore]`) writes a freshly generated `commands.json` to disk — run it manually whenever commands change. It merges clap-derived structural data with the semantic annotations already in the file, so existing `mutates`, `returns`, `async`, `destructive`, `auth_scope`, and `examples` values are preserved.
 
 ### One-Liner (Regenerate Everything)
 
 ```bash
-cargo test --bin fabio generate_agent_schema -- --include-ignored
+cargo test generate_agent_schema -- --ignored
 ```
 
 ## Documentation Updates (MANDATORY)
