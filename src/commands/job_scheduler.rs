@@ -19,6 +19,7 @@ pub const KNOWN_JOB_TYPES: &[&str] = &[
     "Pipeline",
     "TableMaintenance",
     "SparkJob",
+    "RefreshMaterializedLakeViews",
 ];
 
 #[derive(Debug, Subcommand)]

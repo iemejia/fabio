@@ -17760,7 +17760,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio job-scheduler create-schedule --workspace $WS --id $LAKEHOUSE_ID --job-type RefreshMaterializedLakeViews --config '{\"configuration\":{\"type\":\"Cron\",\"interval\":10,\"startDateTime\":\"2025-04-28T00:00:00\",\"endDateTime\":\"2025-04-30T23:59:00\",\"localTimeZoneId\":\"UTC\"},\"executionData\":{\"mlvExecutionDefinitionId\":\"$MLV_EXEC_DEF_ID\"}}'"
+        ]
       },
       "update-schedule": {
         "description": "Update an existing schedule",
