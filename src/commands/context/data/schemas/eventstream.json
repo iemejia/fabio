@@ -22,7 +22,7 @@
     "compatibilityLevel should be '1.1'",
     "CDC sources (AzureSQLDBCDC, AzureSQLMIDBCDC, SQLServerOnVMDBCDC, MySQLCDC, PostgreSQLCDC) support snapshotMode (Initial/InitialOnly/NoData) in --properties to customize the initial snapshot",
     "SQL Server-family CDC sources only (AzureSQLDBCDC, AzureSQLMIDBCDC, SQLServerOnVMDBCDC) additionally support excludedColumns (comma-separated), databaseApplicationIntent (ReadWrite/ReadOnly), and snapshotSelectStatementOverrides ([{tableName, selectStatement}])",
-    "ApacheKafka and MQTT sources support tlsSettings.trustCACertificate / tlsSettings.clientCertificate, each referencing a KeyVault-backed certificate ({\"type\":\"KeyVault\",\"azureKeyVaultResourceId\":\"<ARM id>\",\"certificateName\":\"<name>\"})",
+    "ApacheKafka, ConfluentCloud, and MQTT sources support tlsSettings.trustCACertificate / tlsSettings.clientCertificate, each referencing a KeyVault-backed certificate ({\"type\":\"KeyVault\",\"azureKeyVaultResourceId\":\"<ARM id>\",\"certificateName\":\"<name>\"})",
     "FabricAnomalyDetectionEvents source properties: workspaceId, itemId, configurationId, includedEventTypes (e.g. Microsoft.Fabric.AnomalyDetection.AnomalyDetected), and optional Event Grid advanced filters"
   ],
   "related_commands": [
