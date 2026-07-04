@@ -16,9 +16,10 @@
       {"type": "PostgreSQLCDC", "category": "source", "description": "PostgreSQL Change Data Capture"},
       {"type": "FabricWorkspaceItemEvents", "category": "source", "description": "Fabric workspace item events"},
       {"type": "FabricJobEvents", "category": "source", "description": "Fabric job events"},
-      {"type": "FabricOneLakeEvents", "category": "source", "description": "Fabric OneLake events"}
+      {"type": "FabricOneLakeEvents", "category": "source", "description": "Fabric OneLake events"},
+      {"type": "FabricAnomalyDetectionEvents", "category": "source", "description": "Fabric anomaly detection events"}
     ],
-    "count": 14
+    "count": 15
   },
   "notes": "Use --category destination to see destination types (Eventhouse, Lakehouse, CustomEndpoint, Activator). Use --category all for both.",
   "query_examples": [

@@ -46,14 +46,14 @@
         "currentLakehouseExecutionContext": {"mode": "All"},
         "extendedLineageExecutionContext": {
           "mode": "Selected",
-          "selectedLakehouses": [{"id": "<upstream-lakehouse-id>"}]
+          "selectedLakehouses": [{"referenceType": "ById", "itemId": "<upstream-lakehouse-id>", "workspaceId": "<upstream-workspace-id>"}]
         }
       },
       "with_spark_environment_example": {
         "displayName": "custom-env-refresh",
         "currentLakehouseExecutionContext": {"mode": "All"},
         "settings": {
-          "environment": {"id": "<spark-environment-item-id>"},
+          "environment": {"referenceType": "ById", "itemId": "<spark-environment-item-id>", "workspaceId": "<spark-environment-workspace-id>"},
           "refreshMode": "Full"
         }
       }
@@ -85,7 +85,8 @@
     "Capture the execution definition ID from create output with --query data.id before creating a schedule.",
     "Set refreshMode to Full only when incremental refresh would produce stale results (e.g., after major source schema changes).",
     "Use Selected mode with selectedMlvs to limit refresh scope and reduce Spark compute cost.",
-    "To update only one field of an execution definition, pass a partial JSON body — only provided fields are updated (PATCH semantics)."
+    "To update only one field of an execution definition, pass a partial JSON body — only provided fields are updated (PATCH semantics).",
+    "Item references (settings.environment, extendedLineageExecutionContext.selectedLakehouses entries) use the discriminated ItemReferenceById shape: {\"referenceType\":\"ById\",\"itemId\":\"<uuid>\",\"workspaceId\":\"<uuid>\"} — not a bare {\"id\":...} object."
   ],
   "error_patterns": {
     "missing_required_fields": "create-execution-definition returns 400 if displayName or currentLakehouseExecutionContext is missing.",
