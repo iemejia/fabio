@@ -95,7 +95,7 @@ windows = { version = "0.62", features = ["Foundation", "Security_Authentication
 # Windows runners don't have it pre-installed, especially ARM64)
 openssl = { version = "0.10", features = ["vendored"] }
 # Zip extraction for upgrade on Windows
-zip = { version = "7", default-features = false, features = ["deflate"] }
+zip = { version = "8", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 assert_cmd = "2"
