@@ -58,6 +58,29 @@ pub enum GatewayCommand {
         #[arg(long, default_value = "1")]
         member_count: i64,
     },
+    /// Create a new streaming virtual network gateway
+    #[command(display_order = 3, name = "create-streaming")]
+    CreateStreaming {
+        /// Display name (max 200 characters)
+        #[arg(long)]
+        name: String,
+
+        /// Azure subscription ID containing the virtual network
+        #[arg(long)]
+        subscription_id: String,
+
+        /// Resource group name containing the virtual network
+        #[arg(long)]
+        resource_group: String,
+
+        /// Virtual network name
+        #[arg(long)]
+        vnet_name: String,
+
+        /// Subnet name (must be delegated to Microsoft.PowerPlatform/vnetaccesslinks)
+        #[arg(long)]
+        subnet: String,
+    },
     /// Update gateway properties
     #[command(display_order = 4)]
     Update {
@@ -257,6 +280,24 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GatewayCommand)
             )
             .await
         }
+        GatewayCommand::CreateStreaming {
+            name,
+            subscription_id,
+            resource_group,
+            vnet_name,
+            subnet,
+        } => {
+            create_streaming(
+                cli,
+                client,
+                name,
+                subscription_id,
+                resource_group,
+                vnet_name,
+                subnet,
+            )
+            .await
+        }
         GatewayCommand::Update {
             gateway,
             name,
@@ -391,6 +432,38 @@ async fn create(
         .post("/gateways", &body, false)
         .await
         .map_err(|e| enrich_forbidden(e, "gateway create", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn create_streaming(
+    cli: &Cli,
+    client: &FabricClient,
+    name: &str,
+    subscription_id: &str,
+    resource_group: &str,
+    vnet_name: &str,
+    subnet: &str,
+) -> Result<()> {
+    let body = serde_json::json!({
+        "type": "StreamingVirtualNetwork",
+        "displayName": name,
+        "virtualNetworkAzureResource": {
+            "subscriptionId": subscription_id,
+            "resourceGroupName": resource_group,
+            "virtualNetworkName": vnet_name,
+            "subnetName": subnet
+        }
+    });
+
+    if output::dry_run_guard(cli, "gateway create-streaming", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post("/gateways", &body, false)
+        .await
+        .map_err(|e| enrich_forbidden(e, "gateway create-streaming", "Contributor"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }

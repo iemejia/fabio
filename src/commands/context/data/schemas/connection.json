@@ -25,10 +25,11 @@
   },
   "notes": [
     "Tenant-level scope: endpoints at /connections/{id} (NO workspace prefix)",
-    "Connectivity types: ShareableCloud, OnPremises, VirtualNetworkGateway, PersonalCloud",
+    "Connectivity types: ShareableCloud, OnPremises, VirtualNetworkGateway, StreamingVirtualNetworkGateway, PersonalCloud",
     "Credential types: Basic, OAuth2, Key, Anonymous, ServicePrincipal, WorkspaceIdentity",
     "Privacy levels: None, Public, Organizational, Private",
     "Parameters provided as JSON object are converted to array format automatically",
+    "VirtualNetworkGateway and StreamingVirtualNetworkGateway connections require --gateway-id (the gateway's object ID)",
     "list-supported-types returns all available connection type definitions"
   ],
   "related_commands": [

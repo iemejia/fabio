@@ -16926,6 +16926,41 @@
           "fabio gateway create --name \"data-gateway\" --capacity $CAP --subscription $SUB --resource-group $RG --vnet myVNet --subnet data-subnet"
         ]
       },
+      "create-streaming": {
+        "description": "Create a new streaming virtual network gateway",
+        "flags": {
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Display name (max 200 characters)"
+          },
+          "--subscription-id": {
+            "type": "string",
+            "required": true,
+            "description": "Azure subscription ID containing the virtual network"
+          },
+          "--resource-group": {
+            "type": "string",
+            "required": true,
+            "description": "Resource group name containing the virtual network"
+          },
+          "--vnet-name": {
+            "type": "string",
+            "required": true,
+            "description": "Virtual network name"
+          },
+          "--subnet": {
+            "type": "string",
+            "required": true,
+            "description": "Subnet name (must be delegated to Microsoft.PowerPlatform/vnetaccesslinks)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio gateway create-streaming --name \"streaming-gateway\" --subscription-id $SUB --resource-group $RG --vnet-name myVNet --subnet streaming-subnet"
+        ]
+      },
       "update": {
         "description": "Update gateway properties",
         "flags": {
@@ -17537,6 +17572,7 @@
               "ShareableCloud",
               "OnPremises",
               "VirtualNetworkGateway",
+              "StreamingVirtualNetworkGateway",
               "PersonalCloud"
             ],
             "required": true,
@@ -17551,6 +17587,10 @@
             "type": "string",
             "required": true,
             "description": "Connection parameters as JSON (e.g., '{\"server\":\"host\",\"database\":\"db\"}')"
+          },
+          "--gateway-id": {
+            "type": "string",
+            "description": "Gateway ID (required when `--connectivity-type` is `VirtualNetworkGateway` or `StreamingVirtualNetworkGateway`)"
           },
           "--credential-type": {
             "type": "enum",
@@ -17589,7 +17629,8 @@
         "mutates": true,
         "returns": "object",
         "examples": [
-          "fabio connection create --name \"AzureSQL-Prod\" --connectivity-type ShareableCloud --type Sql --parameters '{\"server\":\"myserver.database.windows.net\",\"database\":\"mydb\"}' --credential-type Basic --credentials '{\"username\":\"admin\",\"password\":\"***\"}'"
+          "fabio connection create --name \"AzureSQL-Prod\" --connectivity-type ShareableCloud --type Sql --parameters '{\"server\":\"myserver.database.windows.net\",\"database\":\"mydb\"}' --credential-type Basic --credentials '{\"username\":\"admin\",\"password\":\"***\"}'",
+          "fabio connection create --name \"ContosoStreamingVNGConn\" --connectivity-type StreamingVirtualNetworkGateway --gateway-id $GATEWAY_ID --type Sql --parameters '{\"server\":\"contoso.database.windows.net\",\"database\":\"sales\"}' --credential-type Basic --credentials '{\"username\":\"admin\",\"password\":\"***\"}'"
         ],
         "output_fields": [
           "id",
@@ -17773,7 +17814,7 @@
         "destructive": true
       },
       "test-connection": {
-        "description": "Test a connection",
+        "description": "Test a connection (not supported for `StreamingVirtualNetworkGateway` connections)",
         "flags": {
           "--id": {
             "type": "string",

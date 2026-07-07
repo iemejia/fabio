@@ -798,6 +798,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **`modifyDefaultTier` uses query parameter**: `POST /workspaces/{ws}/onelake/modifyDefaultTier?defaultTier=Hot` with empty body `{}`. NOT a JSON body field. Supported values: `Hot`, `Cool`, `Cold`.
 - **Default tier values (corrected)**: `"Hot"`, `"Cool"`, or `"Cold"` (PascalCase). All three tiers are supported.
 - **List workspaces `roles` filter**: `GET /workspaces?roles=Admin,Member` supports server-side filtering by the caller's role in the workspace. Comma-separated values.
+- **`capacityRegion` moved to `WorkspaceInfo`**: The spec relocated the read-only `capacityRegion` field from the create-workspace response definition to the shared `WorkspaceInfo` definition used by `list`/`show`/`update` responses (no field removed, just consolidated so it now consistently appears across all workspace read responses, including `list`). No fabio code change needed — fabio passes workspace JSON through untyped, and `capacityRegion` was already surfaced in `workspace show`/`list`/`create` output examples.
 - **Reset shortcut cache is LRO**: `POST /workspaces/{ws}/onelake/resetShortcutCache` returns 200 or 202 (LRO). Requires `OneLake.ReadWrite.All` scope. Returns `API_ERROR` ("missing or invalid information") on workspaces that have no cached shortcut data — this is a no-op error, not a permission issue.
 - **Folder create body**: `POST /workspaces/{ws}/folders` with `{"displayName": "<name>", "description"?: "<desc>", "parentFolderId"?: "<id>"}`. Returns created folder with `id`, `displayName`.
 - **Folder move body**: `POST /workspaces/{ws}/folders/{id}/move` with `{"targetFolderId": "<id>"}`. Use `null` or omit to move to workspace root.
@@ -948,11 +949,14 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 
 ## Connection API Behaviors Discovered
 - **Tenant-level scope**: All connection endpoints use `/connections/{id}` (no workspace prefix). Connections are shared across workspaces.
-- **Connectivity types**: `ShareableCloud`, `OnPremises`, `VirtualNetworkGateway`, `PersonalCloud`.
+- **Connectivity types**: `ShareableCloud`, `OnPremises`, `VirtualNetworkGateway`, `StreamingVirtualNetworkGateway`, `PersonalCloud`.
 - **Credential types**: `Basic`, `OAuth2`, `Key`, `Anonymous`, `ServicePrincipal`, `SharedAccessSignature`, `WorkspaceIdentity`, `KeyPair`.
 - **Privacy levels**: `None`, `Public`, `Organizational`, `Private`.
 - **Parameters format conversion**: User provides JSON object `{"key": "value"}` which is converted to array format `[{"dataType": "Text", "name": "key", "value": "value"}]` for the API.
 - **Create body structure**: `{"displayName": "...", "connectivityType": "...", "connectionDetails": {"type": "...", "creationMethod": "...", "parameters": [...]}, "credentialDetails": {"singleSignOnType": "None", "connectionEncryption": "NotEncrypted", "skipTestConnection": bool, "credentials": {"credentialType": "..."}}, "privacyLevel": "..."}`.
+- **`gatewayId` required for gateway-routed connections**: `VirtualNetworkGateway` and `StreamingVirtualNetworkGateway` connections both require a top-level `gatewayId` field (the object ID of the gateway the connection is created under) in the create request. `fabio connection create --gateway-id <ID>` maps to this field; the CLI rejects create requests for these two connectivity types when `--gateway-id` is omitted.
+- **`StreamingVirtualNetworkGateway` connectivity type (new)**: Mirrors `VirtualNetworkGateway`'s create/update request shape exactly (`gatewayId` + `credentialDetails` on create; `displayName` + `credentialDetails` on update) but connects through a streaming virtual network gateway (`GatewayType` = `StreamingVirtualNetwork`) instead of a regular virtual network gateway.
+- **`testConnection` not supported for `StreamingVirtualNetworkGateway`**: The Fabric API explicitly does not support `POST /connections/{id}/testConnection` for connections whose `connectivityType` is `StreamingVirtualNetworkGateway`.
 - **Test connection**: `POST /connections/{id}/testConnection` with empty body `{}`.
 - **Role assignments**: Full CRUD at `/connections/{id}/roleAssignments/{assignmentId}`. Roles: `Owner`, `User`, `UserWithReshare`.
 - **Role assignment body**: `{"principal": {"id": "...", "type": "User|Group|ServicePrincipal"}, "role": "Owner|User|UserWithReshare"}`.
@@ -1299,19 +1303,20 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 ## Gateway API Behaviors Discovered
 - **Tenant-level scope**: `GET /gateways` (no workspace prefix). Individual: `GET /gateways/{id}`.
 - **Create requires VNet infrastructure**: `POST /gateways` needs capacity ID, VNet subscription/resource group/name/subnet. Subnet must be delegated to `Microsoft.PowerPlatform/vnetaccesslinks`. The `Microsoft.PowerPlatform` resource provider must be registered on the Azure subscription.
-- **Gateway type**: Only `VirtualNetwork` type supported via REST API. On-premises gateways are managed by the gateway application installer.
+- **Gateway type**: `VirtualNetwork` and `StreamingVirtualNetwork` types are supported via REST API (`fabio gateway create` / `fabio gateway create-streaming`, respectively). On-premises gateways are managed by the gateway application installer.
+- **`StreamingVirtualNetworkGateway` type (new)**: `POST /gateways` with `"type": "StreamingVirtualNetwork"` only requires `displayName` and `virtualNetworkAzureResource` — no `capacityId`, `inactivityMinutesBeforeSleep`, or `numberOfMemberGateways` (unlike the regular `VirtualNetwork` type). Update (`UpdateStreamingVirtualNetworkGatewayRequest`) only supports the base `displayName`/`type` fields — no other mutable properties. `fabio gateway create-streaming` implements the create path; `fabio gateway update` (shared with all gateway types) covers the update path.
 - **`virtualNetworkAzureResource` uses component fields**: The API expects separate `subscriptionId`, `resourceGroupName`, `virtualNetworkName`, `subnetName` fields — NOT a full ARM resource ID.
-- **`inactivityMinutesBeforeSleep` is required**: Must be one of: 30, 60, 90, 120, 150, 240, 360, 480, 720, 1440. Default in CLI: 120.
-- **`numberOfMemberGateways` is required**: Must be between 1 and 9. Default in CLI: 1.
+- **`inactivityMinutesBeforeSleep` is required**: Must be one of: 30, 60, 90, 120, 150, 240, 360, 480, 720, 1440. Default in CLI: 120. Not applicable to `StreamingVirtualNetwork` gateways.
+- **`numberOfMemberGateways` is required**: Must be between 1 and 9. Default in CLI: 1. Not applicable to `StreamingVirtualNetwork` gateways.
 - **Creation is slow**: Gateway creation takes 60-90 seconds to return. No LRO pattern (returns 201 directly, but response is delayed).
-- **Update requires `type` field**: `PATCH /gateways/{id}` body MUST include `"type": "VirtualNetwork"` (or `"OnPremises"` for on-prem). Without it, returns "The request has an invalid input". The CLI auto-fetches the current type via GET before PATCH.
+- **Update requires `type` field**: `PATCH /gateways/{id}` body MUST include `"type": "VirtualNetwork"` (or `"OnPremises"`/`"StreamingVirtualNetwork"` for other gateway types). Without it, returns "The request has an invalid input". The CLI auto-fetches the current type via GET before PATCH.
 - **VNet gateways have no "members" endpoint**: `GET /gateways/{id}/members` returns NOT_FOUND for VNet gateways. Members are an on-premises gateway concept.
 - **Role assignment uses nested principal object**: `POST /gateways/{id}/roleAssignments` body format: `{"principal": {"id": "<uuid>", "type": "User|Group|ServicePrincipal"}, "role": "Admin|ConnectionCreator|ConnectionCreatorWithResharing"}`. Flat `principalId`/`principalType` format is rejected.
 - **Cannot demote last Admin**: Attempting to update the sole Admin's role to a lower level returns `DMTS_CannotDeleteLastGatewayPrincipalError`.
 - **Duplicate role assignment returns CONFLICT**: Adding a role for a principal that already has one returns 409 with "Gateway role assignemnt already exists" (note: API has typo "assignemnt").
 - **Non-existent principal returns 500**: Adding a role for a UUID that doesn't resolve to a real Entra ID principal returns "An unexpected error occurred" (internal server error, not a clean validation error).
 - **Delete is immediate**: `DELETE /gateways/{id}` returns immediately. However, the Azure VNet's `serviceAssociationLinks/PowerPlatformSAL` persists for several minutes after deletion, blocking VNet/subnet removal until Power Platform cleans up.
-- **Available commands**: list, show, create, update, delete, list-members, update-member, delete-member, list-role-assignments, add-role-assignment, show-role-assignment, update-role-assignment, delete-role-assignment.
+- **Available commands**: list, show, create, create-streaming, update, delete, list-members, update-member, delete-member, list-role-assignments, add-role-assignment, show-role-assignment, update-role-assignment, delete-role-assignment.
 - **Roles enum**: `Admin`, `ConnectionCreator`, `ConnectionCreatorWithResharing` (hierarchical, Admin is highest).
 - **Load balancing settings**: `Failover` (default), `DistributeEvenly`. Only applicable to on-premises gateways with multiple members.
 

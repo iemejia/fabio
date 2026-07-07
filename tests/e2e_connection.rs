@@ -299,3 +299,77 @@ fn connection_create_invalid_credential_type_rejected() {
         .assert()
         .failure();
 }
+
+#[test]
+fn connection_create_streaming_virtual_network_gateway_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "connection",
+            "create",
+            "--name",
+            "test-streaming-vng-conn",
+            "--connectivity-type",
+            "StreamingVirtualNetworkGateway",
+            "--connection-type",
+            "SQL",
+            "--parameters",
+            r#"{"server": "contoso.database.windows.net", "database": "sales"}"#,
+            "--gateway-id",
+            "93491300-cfbd-402f-bf17-9ace59a92354",
+            "--credential-type",
+            "Basic",
+            "--credentials",
+            r#"{"username": "admin", "password": "secret"}"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "dry_run");
+}
+
+#[test]
+fn connection_create_virtual_network_gateway_requires_gateway_id() {
+    fabio()
+        .args([
+            "--dry-run",
+            "connection",
+            "create",
+            "--name",
+            "test-vng-conn",
+            "--connectivity-type",
+            "VirtualNetworkGateway",
+            "--connection-type",
+            "SQL",
+            "--parameters",
+            r#"{"server": "contoso.database.windows.net"}"#,
+            "--credential-type",
+            "Basic",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn connection_create_streaming_virtual_network_gateway_requires_gateway_id() {
+    fabio()
+        .args([
+            "--dry-run",
+            "connection",
+            "create",
+            "--name",
+            "test-streaming-vng-conn",
+            "--connectivity-type",
+            "StreamingVirtualNetworkGateway",
+            "--connection-type",
+            "SQL",
+            "--parameters",
+            r#"{"server": "contoso.database.windows.net"}"#,
+            "--credential-type",
+            "Basic",
+        ])
+        .assert()
+        .failure();
+}

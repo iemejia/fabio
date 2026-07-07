@@ -48,6 +48,33 @@ fn gateway_dry_run_create() {
 }
 
 #[test]
+fn gateway_dry_run_create_streaming() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "gateway",
+            "create-streaming",
+            "--name",
+            "test-streaming-gw",
+            "--subscription-id",
+            "00000000-0000-0000-0000-000000000099",
+            "--resource-group",
+            "rg",
+            "--vnet-name",
+            "vnet",
+            "--subnet",
+            "default",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = json.get("data").expect("should have data");
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "gateway create-streaming");
+}
+
+#[test]
 fn gateway_update_member_requires_field() {
     let assert = fabio()
         .args([

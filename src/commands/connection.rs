@@ -30,7 +30,7 @@ pub enum ConnectionCommand {
         name: String,
 
         /// Connectivity type
-        #[arg(long, value_name = "TYPE", value_parser = ["ShareableCloud", "OnPremises", "VirtualNetworkGateway", "PersonalCloud"])]
+        #[arg(long, value_name = "TYPE", value_parser = ["ShareableCloud", "OnPremises", "VirtualNetworkGateway", "StreamingVirtualNetworkGateway", "PersonalCloud"])]
         connectivity_type: String,
 
         /// Connection type path (e.g., Web, SQL, `GitHubSourceControl`)
@@ -40,6 +40,10 @@ pub enum ConnectionCommand {
         /// Connection parameters as JSON (e.g., '{"server":"host","database":"db"}')
         #[arg(long)]
         parameters: String,
+
+        /// Gateway ID (required when `--connectivity-type` is `VirtualNetworkGateway` or `StreamingVirtualNetworkGateway`)
+        #[arg(long, value_name = "GATEWAY_ID")]
+        gateway_id: Option<String>,
 
         /// Credential type
         #[arg(long, value_parser = ["Basic", "OAuth2", "Key", "Anonymous", "ServicePrincipal", "SharedAccessSignature", "WorkspaceIdentity", "KeyPair"])]
@@ -153,7 +157,7 @@ pub enum ConnectionCommand {
         #[arg(long)]
         assignment_id: String,
     },
-    /// Test a connection
+    /// Test a connection (not supported for `StreamingVirtualNetworkGateway` connections)
     #[command(display_order = 30)]
     TestConnection {
         /// Connection ID
@@ -171,6 +175,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ConnectionComma
             connectivity_type,
             connection_type,
             parameters,
+            gateway_id,
             credential_type,
             credentials,
             privacy_level,
@@ -183,6 +188,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ConnectionComma
                 connectivity_type,
                 connection_type,
                 parameters,
+                gateway_id.as_deref(),
                 credential_type,
                 credentials.as_deref(),
                 privacy_level,
@@ -261,6 +267,14 @@ async fn show(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Connectivity types whose create request requires a `gatewayId`.
+fn connectivity_type_requires_gateway_id(connectivity_type: &str) -> bool {
+    matches!(
+        connectivity_type,
+        "VirtualNetworkGateway" | "StreamingVirtualNetworkGateway"
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn create(
     cli: &Cli,
@@ -269,11 +283,21 @@ async fn create(
     connectivity_type: &str,
     connection_type: &str,
     parameters: &str,
+    gateway_id: Option<&str>,
     credential_type: &str,
     credentials: Option<&str>,
     privacy_level: &str,
     skip_test_connection: bool,
 ) -> Result<()> {
+    if connectivity_type_requires_gateway_id(connectivity_type) && gateway_id.is_none() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("--gateway-id is required when --connectivity-type is '{connectivity_type}'"),
+            "Example: --gateway-id <GATEWAY_ID>",
+        )
+        .into());
+    }
+
     if cli.dry_run {
         let preview = json!({
             "status": "dry_run",
@@ -338,7 +362,7 @@ async fn create(
         bail!("--parameters must be a JSON object (e.g., '{{\"server\":\"host\"}}')");
     };
 
-    let body = json!({
+    let mut body = json!({
         "displayName": name,
         "connectivityType": connectivity_type,
         "connectionDetails": {
@@ -349,6 +373,9 @@ async fn create(
         "credentialDetails": cred_details,
         "privacyLevel": privacy_level,
     });
+    if let Some(gw_id) = gateway_id {
+        body["gatewayId"] = json!(gw_id);
+    }
 
     let data = client.post("/connections", &body, false).await?;
     output::render_object(cli, &data, "id");
@@ -613,4 +640,30 @@ async fn test_connection(cli: &Cli, client: &FabricClient, id: &str) -> Result<(
         .map_err(|e| enrich_forbidden(e, "connection test-connection", "User"))?;
     output::render_object(cli, &data, "status");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gateway_id_required_for_virtual_network_gateway() {
+        assert!(connectivity_type_requires_gateway_id(
+            "VirtualNetworkGateway"
+        ));
+    }
+
+    #[test]
+    fn gateway_id_required_for_streaming_virtual_network_gateway() {
+        assert!(connectivity_type_requires_gateway_id(
+            "StreamingVirtualNetworkGateway"
+        ));
+    }
+
+    #[test]
+    fn gateway_id_not_required_for_other_types() {
+        assert!(!connectivity_type_requires_gateway_id("ShareableCloud"));
+        assert!(!connectivity_type_requires_gateway_id("OnPremises"));
+        assert!(!connectivity_type_requires_gateway_id("PersonalCloud"));
+    }
 }
