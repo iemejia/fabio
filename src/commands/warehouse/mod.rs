@@ -464,11 +464,7 @@ pub enum WarehouseCommand {
     },
 }
 
-#[allow(
-    clippy::too_many_lines,
-    clippy::large_stack_frames,
-    clippy::large_futures
-)]
+#[allow(clippy::too_many_lines, clippy::large_stack_frames)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseCommand) -> Result<()> {
     match command {
         WarehouseCommand::List { workspace } => crud::list(cli, client, workspace).await,
@@ -511,12 +507,12 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
             hard_delete,
         } => crud::delete_warehouse(cli, client, workspace, id, *hard_delete).await,
         WarehouseCommand::Query { workspace, id, sql } => {
-            query::query(cli, client, workspace, id, sql.as_deref())
+            Box::pin(query::query(cli, client, workspace, id, sql.as_deref()))
                 .await
                 .map_err(|e| enrich_forbidden(e, "warehouse query", "Viewer"))
         }
         WarehouseCommand::Plan { workspace, id, sql } => {
-            query::plan(cli, client, workspace, id, sql.as_deref())
+            Box::pin(query::plan(cli, client, workspace, id, sql.as_deref()))
                 .await
                 .map_err(|e| enrich_forbidden(e, "warehouse plan", "Viewer"))
         }
@@ -627,49 +623,75 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
                 .await
         }
         WarehouseCommand::QueriesRunning { workspace, id } => {
-            insights::queries_running(cli, client, workspace, id).await
+            Box::pin(insights::queries_running(cli, client, workspace, id)).await
         }
         WarehouseCommand::QueriesFrequent { workspace, id, top } => {
-            insights::queries_frequent(cli, client, workspace, id, *top).await
+            Box::pin(insights::queries_frequent(cli, client, workspace, id, *top)).await
         }
         WarehouseCommand::QueriesLongRunning { workspace, id, top } => {
-            insights::queries_long_running(cli, client, workspace, id, *top).await
+            Box::pin(insights::queries_long_running(
+                cli, client, workspace, id, *top,
+            ))
+            .await
         }
         WarehouseCommand::QueriesHistory { workspace, id, top } => {
-            insights::queries_history(cli, client, workspace, id, *top).await
+            Box::pin(insights::queries_history(cli, client, workspace, id, *top)).await
         }
         WarehouseCommand::QueriesKill {
             workspace,
             id,
             session_id,
-        } => insights::queries_kill(cli, client, workspace, id, *session_id).await,
+        } => {
+            Box::pin(insights::queries_kill(
+                cli,
+                client,
+                workspace,
+                id,
+                *session_id,
+            ))
+            .await
+        }
         WarehouseCommand::StatisticsList {
             workspace,
             id,
             table,
-        } => statistics::list(cli, client, workspace, id, table.as_deref()).await,
+        } => {
+            Box::pin(statistics::list(
+                cli,
+                client,
+                workspace,
+                id,
+                table.as_deref(),
+            ))
+            .await
+        }
         WarehouseCommand::StatisticsShow {
             workspace,
             id,
             name,
-        } => statistics::show(cli, client, workspace, id, name).await,
+        } => Box::pin(statistics::show(cli, client, workspace, id, name)).await,
         WarehouseCommand::StatisticsCreate {
             workspace,
             id,
             table,
             column,
             name,
-        } => statistics::create(cli, client, workspace, id, table, column, name).await,
+        } => {
+            Box::pin(statistics::create(
+                cli, client, workspace, id, table, column, name,
+            ))
+            .await
+        }
         WarehouseCommand::StatisticsUpdate {
             workspace,
             id,
             name,
-        } => statistics::update(cli, client, workspace, id, name).await,
+        } => Box::pin(statistics::update(cli, client, workspace, id, name)).await,
         WarehouseCommand::StatisticsDelete {
             workspace,
             id,
             name,
-        } => statistics::delete(cli, client, workspace, id, name).await,
+        } => Box::pin(statistics::delete(cli, client, workspace, id, name)).await,
     }
 }
 
