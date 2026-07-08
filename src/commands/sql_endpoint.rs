@@ -691,7 +691,7 @@ async fn insights_running(
                FROM sys.dm_exec_requests r \
                WHERE r.status != 'background' \
                ORDER BY r.total_elapsed_time DESC";
-    execute_endpoint_query(cli, client, workspace, id, sql).await
+    Box::pin(execute_endpoint_query(cli, client, workspace, id, sql)).await
 }
 
 async fn insights_frequent(
@@ -712,7 +712,7 @@ async fn insights_frequent(
          FROM queryinsights.frequently_run_queries \
          ORDER BY number_of_runs DESC"
     );
-    execute_endpoint_query(cli, client, workspace, id, &sql).await
+    Box::pin(execute_endpoint_query(cli, client, workspace, id, &sql)).await
 }
 
 async fn insights_long_running(
@@ -732,7 +732,7 @@ async fn insights_long_running(
          FROM queryinsights.long_running_queries \
          ORDER BY median_total_elapsed_time_ms DESC"
     );
-    execute_endpoint_query(cli, client, workspace, id, &sql).await
+    Box::pin(execute_endpoint_query(cli, client, workspace, id, &sql)).await
 }
 
 async fn insights_history(
@@ -753,5 +753,5 @@ async fn insights_history(
          FROM queryinsights.exec_requests_history \
          ORDER BY start_time DESC"
     );
-    execute_endpoint_query(cli, client, workspace, id, &sql).await
+    Box::pin(execute_endpoint_query(cli, client, workspace, id, &sql)).await
 }

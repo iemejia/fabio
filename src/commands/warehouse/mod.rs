@@ -464,7 +464,11 @@ pub enum WarehouseCommand {
     },
 }
 
-#[allow(clippy::too_many_lines, clippy::large_stack_frames)]
+#[allow(
+    clippy::too_many_lines,
+    clippy::large_stack_frames,
+    clippy::large_futures
+)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseCommand) -> Result<()> {
     match command {
         WarehouseCommand::List { workspace } => crud::list(cli, client, workspace).await,
