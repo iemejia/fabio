@@ -1112,6 +1112,103 @@ impl FabricClient {
         handle_response(resp).await
     }
 
+    /// GET request to Fabric REST API that merges the response `ETag` header
+    /// into the returned JSON as an `etag` field. Used for optimistic-concurrency
+    /// resources (e.g., workspace networking policies) where callers need the
+    /// `ETag` to pass back via `If-Match` on a subsequent PUT.
+    pub async fn get_with_etag(&self, path: &str) -> Result<Value> {
+        let token = self.require_auth().await?;
+        let url = self.fabric_url(path);
+
+        let resp = self
+            .http
+            .get(&url)
+            .header(AUTHORIZATION, &token)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .get(&url)
+                .header(AUTHORIZATION, &token)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return Self::merge_etag(resp).await;
+        }
+
+        Self::merge_etag(resp).await
+    }
+
+    /// PUT request to Fabric REST API with an optional `If-Match` header for
+    /// optimistic concurrency. Merges the response `ETag` header into the
+    /// returned JSON as an `etag` field (the body itself is often empty).
+    pub async fn put_with_if_match(
+        &self,
+        path: &str,
+        body: &Value,
+        if_match: Option<&str>,
+    ) -> Result<Value> {
+        self.guard_readonly("PUT", path)?;
+        let token = self.require_auth().await?;
+        let url = self.fabric_url(path);
+
+        let resp = self
+            .put_with_if_match_request(&url, &token, body, if_match)
+            .await?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .put_with_if_match_request(&url, &token, body, if_match)
+                .await?;
+            return Self::merge_etag(resp).await;
+        }
+
+        Self::merge_etag(resp).await
+    }
+
+    async fn put_with_if_match_request(
+        &self,
+        url: &str,
+        token: &str,
+        body: &Value,
+        if_match: Option<&str>,
+    ) -> Result<Response> {
+        let mut req = self.http.put(url).header(AUTHORIZATION, token).json(body);
+        if let Some(etag) = if_match {
+            req = req.header("If-Match", etag);
+        }
+        req.send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()).into())
+    }
+
+    /// Extract the `ETag` response header (if present) and merge it into the
+    /// JSON body as an `etag` field. If the body is empty/null, returns a JSON
+    /// object containing just the `etag`.
+    async fn merge_etag(resp: Response) -> Result<Value> {
+        let etag = resp
+            .headers()
+            .get("ETag")
+            .and_then(|v| v.to_str().ok())
+            .map(String::from);
+        let value = handle_response(resp).await?;
+        Ok(match (etag, value) {
+            (Some(etag), Value::Null) => serde_json::json!({ "etag": etag }),
+            (Some(etag), Value::Object(mut obj)) => {
+                obj.insert("etag".to_string(), Value::from(etag));
+                Value::Object(obj)
+            }
+            (_, value) => value,
+        })
+    }
+
     /// GET request returning raw text response as a JSON string value.
     /// Used for endpoints that return non-JSON content (e.g., file downloads).
     pub async fn get_text(&self, path: &str) -> Result<String> {
@@ -4310,7 +4407,82 @@ mod tests {
         }
     }
 
-    // ── Private link URL routing ─────────────────────────────────────────
+    // ── merge_etag (get_with_etag / put_with_if_match support) ────────────
+
+    mod merge_etag_tests {
+        use super::*;
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        async fn get_response(server: &MockServer) -> Response {
+            reqwest::get(server.uri()).await.unwrap()
+        }
+
+        #[tokio::test]
+        async fn merges_etag_into_json_object() {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .insert_header("ETag", "\"abc123\"")
+                        .set_body_json(serde_json::json!({"defaultAction": "Allow"})),
+                )
+                .mount(&server)
+                .await;
+
+            let resp = get_response(&server).await;
+            let result = FabricClient::merge_etag(resp).await.unwrap();
+            assert_eq!(result["defaultAction"], "Allow");
+            assert_eq!(result["etag"], "\"abc123\"");
+        }
+
+        #[tokio::test]
+        async fn merges_etag_into_null_body_as_object() {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .insert_header("ETag", "\"xyz789\"")
+                        .set_body_string(""),
+                )
+                .mount(&server)
+                .await;
+
+            let resp = get_response(&server).await;
+            let result = FabricClient::merge_etag(resp).await.unwrap();
+            assert_eq!(result, serde_json::json!({"etag": "\"xyz789\""}));
+        }
+
+        #[tokio::test]
+        async fn no_etag_header_leaves_body_unchanged() {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_json(serde_json::json!({"defaultAction": "Deny"})),
+                )
+                .mount(&server)
+                .await;
+
+            let resp = get_response(&server).await;
+            let result = FabricClient::merge_etag(resp).await.unwrap();
+            assert_eq!(result, serde_json::json!({"defaultAction": "Deny"}));
+            assert!(result.get("etag").is_none());
+        }
+
+        #[tokio::test]
+        async fn no_etag_header_and_null_body_stays_null() {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .respond_with(ResponseTemplate::new(200).set_body_string(""))
+                .mount(&server)
+                .await;
+
+            let resp = get_response(&server).await;
+            let result = FabricClient::merge_etag(resp).await.unwrap();
+            assert_eq!(result, Value::Null);
+        }
+    }
 
     #[test]
     fn fabric_url_without_private_link() {

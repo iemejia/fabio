@@ -455,6 +455,24 @@ pub enum WorkspaceCommand {
         #[arg(long)]
         content: Option<String>,
     },
+    /// Get workspace inbound External Data Shares bypass policy
+    #[command(display_order = 54)]
+    GetInboundExternalDataSharesPolicy {
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+    },
+    /// Set workspace inbound External Data Shares bypass policy (preview API, requires *admin* role)
+    #[command(display_order = 54)]
+    SetInboundExternalDataSharesPolicy {
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Whether External Data Shares traffic may bypass inbound networking restrictions
+        #[arg(long, value_parser = ["Allow", "Deny"])]
+        default_action: String,
+        /// `ETag` from a previous `get-inbound-external-data-shares-policy` call, for optimistic concurrency
+        #[arg(long)]
+        if_match: Option<String>,
+    },
     /// Get workspace settings (properties including `automaticMetadataSync`)
     #[command(display_order = 62)]
     GetSettings {
@@ -805,6 +823,23 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceComman
                 workspace,
                 file.as_deref(),
                 content.as_deref(),
+            )
+            .await
+        }
+        WorkspaceCommand::GetInboundExternalDataSharesPolicy { workspace } => {
+            networking::get_inbound_external_data_shares_policy(cli, client, workspace).await
+        }
+        WorkspaceCommand::SetInboundExternalDataSharesPolicy {
+            workspace,
+            default_action,
+            if_match,
+        } => {
+            networking::set_inbound_external_data_shares_policy(
+                cli,
+                client,
+                workspace,
+                default_action,
+                if_match.as_deref(),
             )
             .await
         }

@@ -1427,6 +1427,48 @@
         "mutates": true,
         "returns": "void"
       },
+      "get-inbound-external-data-shares-policy": {
+        "description": "Get workspace inbound External Data Shares bypass policy",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio workspace get-inbound-external-data-shares-policy --workspace $WS"
+        ]
+      },
+      "set-inbound-external-data-shares-policy": {
+        "description": "Set workspace inbound External Data Shares bypass policy (preview API, requires *admin* role)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--default-action": {
+            "type": "enum",
+            "values": [
+              "Allow",
+              "Deny"
+            ],
+            "required": true,
+            "description": "Whether External Data Shares traffic may bypass inbound networking restrictions"
+          },
+          "--if-match": {
+            "type": "string",
+            "description": "`ETag` from a previous `get-inbound-external-data-shares-policy` call, for optimistic concurrency"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio workspace set-inbound-external-data-shares-policy --workspace $WS --default-action Allow",
+          "fabio workspace set-inbound-external-data-shares-policy --workspace $WS --default-action Deny --if-match \"a1b2c3d4\""
+        ]
+      },
       "get-settings": {
         "description": "Get workspace settings (properties including `automaticMetadataSync`)",
         "flags": {
@@ -17600,7 +17642,7 @@
           },
           "--gateway-id": {
             "type": "string",
-            "description": "Gateway ID (required when `--connectivity-type` is `VirtualNetworkGateway` or `StreamingVirtualNetworkGateway`)"
+            "description": "Gateway ID through which the connection is made (required when `--connectivity-type` is `VirtualNetworkGateway` or `StreamingVirtualNetworkGateway`; optional for other types, e.g. to route a `ShareableCloud` connection through a virtual network gateway)"
           },
           "--credential-type": {
             "type": "enum",

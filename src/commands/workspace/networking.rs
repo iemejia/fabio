@@ -233,6 +233,69 @@ pub(super) async fn set_outbound_cloud_connection_rules(
     Ok(())
 }
 
+/// Get the inbound External Data Shares bypass policy for a workspace.
+/// Returns `defaultAction` (Allow/Deny) plus an `etag` field (from the response
+/// `ETag` header) that can be passed to `set-inbound-external-data-shares-policy --if-match`.
+pub(super) async fn get_inbound_external_data_shares_policy(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+) -> Result<()> {
+    let data = client
+        .get_with_etag(&format!(
+            "/workspaces/{workspace}/networking/communicationPolicy/inbound/externalDataShares"
+        ))
+        .await
+        .map_err(|e| {
+            enrich_forbidden(
+                e,
+                "workspace get-inbound-external-data-shares-policy",
+                "Viewer",
+            )
+        })?;
+    output::render_object(cli, &data, "defaultAction");
+    Ok(())
+}
+
+/// Set the inbound External Data Shares bypass policy for a workspace (preview API).
+/// Requires *admin* workspace role. Supports optimistic concurrency via `--if-match`.
+pub(super) async fn set_inbound_external_data_shares_policy(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    default_action: &str,
+    if_match: Option<&str>,
+) -> Result<()> {
+    let body = serde_json::json!({ "defaultAction": default_action });
+
+    if output::dry_run_guard(
+        cli,
+        "workspace set-inbound-external-data-shares-policy",
+        &body,
+    ) {
+        return Ok(());
+    }
+
+    let data = client
+        .put_with_if_match(
+            &format!(
+                "/workspaces/{workspace}/networking/communicationPolicy/inbound/externalDataShares"
+            ),
+            &body,
+            if_match,
+        )
+        .await
+        .map_err(|e| {
+            enrich_forbidden(
+                e,
+                "workspace set-inbound-external-data-shares-policy",
+                "Admin",
+            )
+        })?;
+    output::render_object(cli, &data, "etag");
+    Ok(())
+}
+
 pub(super) async fn get_outbound_gateway_rules(
     cli: &Cli,
     client: &FabricClient,

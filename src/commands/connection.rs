@@ -41,7 +41,7 @@ pub enum ConnectionCommand {
         #[arg(long)]
         parameters: String,
 
-        /// Gateway ID (required when `--connectivity-type` is `VirtualNetworkGateway` or `StreamingVirtualNetworkGateway`)
+        /// Gateway ID through which the connection is made (required when `--connectivity-type` is `VirtualNetworkGateway` or `StreamingVirtualNetworkGateway`; optional for other types, e.g. to route a `ShareableCloud` connection through a virtual network gateway)
         #[arg(long, value_name = "GATEWAY_ID")]
         gateway_id: Option<String>,
 
@@ -250,14 +250,30 @@ async fn list(cli: &Cli, client: &FabricClient) -> Result<()> {
         )
         .await?;
 
-    output::render_list_with_token(
-        cli,
-        &resp.items,
-        &["displayName", "id", "connectivityType"],
-        &["NAME", "ID", "CONNECTIVITY TYPE"],
-        "id",
-        resp.continuation_token.as_deref(),
-    );
+    let has_gateway_id = resp
+        .items
+        .iter()
+        .any(|item| item.get("gatewayId").is_some_and(|v| !v.is_null()));
+
+    if has_gateway_id {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "connectivityType", "gatewayId"],
+            &["NAME", "ID", "CONNECTIVITY TYPE", "GATEWAY ID"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    } else {
+        output::render_list_with_token(
+            cli,
+            &resp.items,
+            &["displayName", "id", "connectivityType"],
+            &["NAME", "ID", "CONNECTIVITY TYPE"],
+            "id",
+            resp.continuation_token.as_deref(),
+        );
+    }
     Ok(())
 }
 

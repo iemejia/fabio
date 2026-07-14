@@ -2425,6 +2425,100 @@ fn workspace_set_outbound_gateway_rules_dry_run() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
+fn workspace_get_inbound_external_data_shares_policy_live() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "get-inbound-external-data-shares-policy",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(
+        data.get("defaultAction").is_some(),
+        "expected 'defaultAction' field"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_set_inbound_external_data_shares_policy_live() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "set-inbound-external-data-shares-policy",
+            "--workspace",
+            &cfg.source_workspace,
+            "--default-action",
+            "Allow",
+        ])
+        .assert();
+
+    let output = assert.get_output();
+    let code = output.status.code().unwrap_or(1);
+    if code != 0 {
+        // FORBIDDEN expected without workspace admin role
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("FORBIDDEN") || stderr.contains("NOT_FOUND"),
+            "unexpected error: {stderr}"
+        );
+    }
+}
+
+#[test]
+fn workspace_set_inbound_external_data_shares_policy_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "set-inbound-external-data-shares-policy",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--default-action",
+            "Deny",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert!(
+        data["would_execute"]
+            .as_str()
+            .unwrap()
+            .contains("set-inbound-external-data-shares-policy")
+    );
+}
+
+#[test]
+fn workspace_set_inbound_external_data_shares_policy_invalid_value() {
+    fabio()
+        .args([
+            "workspace",
+            "set-inbound-external-data-shares-policy",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--default-action",
+            "Maybe",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn workspace_inbound_restriction_roundtrip() {
     let cfg = TestConfig::from_env();
 

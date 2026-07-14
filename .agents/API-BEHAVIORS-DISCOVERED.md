@@ -794,6 +794,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Inbound Azure resource rules**: `GET/PUT /workspaces/{ws}/networking/communicationPolicy/inbound/azureResourceInstances`. Requires inbound network restriction enabled.
 - **Outbound cloud connection rules**: `GET/PUT /workspaces/{ws}/networking/communicationPolicy/outbound/cloudConnections`. Requires OAP enabled.
 - **Outbound gateway rules**: `GET/PUT /workspaces/{ws}/networking/communicationPolicy/outbound/gateways`. Requires OAP enabled.
+- **Inbound External Data Shares bypass policy (new, July 2026 spec, Preview)**: `GET/PUT /workspaces/{ws}/networking/communicationPolicy/inbound/externalDataShares`. Body: `{"defaultAction":"Allow|Deny"}` — no `rules` array (unlike the other inbound/outbound policies). GET requires *viewer*+ role; PUT (`fabio workspace set-inbound-external-data-shares-policy`) requires *admin* role and is marked Preview by Microsoft. Both GET and PUT return an `ETag` response header (not present on the other networking policy endpoints) for optimistic concurrency — PUT accepts an optional `If-Match` request header. fabio surfaces the header as an `etag` field merged into the JSON body (`client.get_with_etag()` / `client.put_with_if_match()`); `fabio workspace get-inbound-external-data-shares-policy` returns `{"defaultAction":"...","etag":"\"...\""}` and `set-inbound-external-data-shares-policy --if-match "<etag>"` passes it back. The PUT response body itself is empty — fabio synthesizes `{"etag":"..."}` from the header alone.
 - **Dataset storage format (Power BI API)**: `GET /v1.0/myorg/groups/{id}` returns `defaultDatasetStorageFormat` field (value: `"Small"` or `"Large"`). `PATCH /v1.0/myorg/groups/{id}` with `{"defaultDatasetStorageFormat":"Large"}` changes it. PATCH returns empty 200.
 - **`modifyDefaultTier` uses query parameter**: `POST /workspaces/{ws}/onelake/modifyDefaultTier?defaultTier=Hot` with empty body `{}`. NOT a JSON body field. Supported values: `Hot`, `Cool`, `Cold`.
 - **Default tier values (corrected)**: `"Hot"`, `"Cool"`, or `"Cold"` (PascalCase). All three tiers are supported.
@@ -961,6 +962,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Role assignments**: Full CRUD at `/connections/{id}/roleAssignments/{assignmentId}`. Roles: `Owner`, `User`, `UserWithReshare`.
 - **Role assignment body**: `{"principal": {"id": "...", "type": "User|Group|ServicePrincipal"}, "role": "Owner|User|UserWithReshare"}`.
 - **List supported types**: `GET /connections/supportedConnectionTypes` returns all available connection type definitions.
+- **`gatewayId` is now a base `Connection` response property (July 2026 spec update)**: Previously `gatewayId` only appeared on the `OnPremisesGatewayConnection`/`OnPremisesGatewayPersonalConnection`/`VirtualNetworkGatewayConnection` discriminated response subtypes. The spec moved it to the base `Connection` schema, so it can now appear on ANY connectivity type's response (e.g., a `ShareableCloud` connection can report a `gatewayId` if it routes through a gateway). No request-shape change — `fabio connection create --gateway-id` already sent the field unconditionally when provided. `fabio connection list` now shows a dynamic `GATEWAY ID` column when any returned connection has a non-null `gatewayId` (mirrors the sensitivity-label dynamic-column pattern).
 
 ## Spark API Behaviors Discovered
 - **Workspace-level settings**: `GET/PATCH /workspaces/{ws}/spark/settings`.
@@ -1950,6 +1952,7 @@ Git commands are run with CWD set to source directory. Returns `None` entirely i
 - **Create is LRO**: Returns 202, requires polling.
 - **getDefinition/updateDefinition are LRO**: Both use standard Fabric LRO polling pattern.
 - **Added to DEPLOY_ORDER**: Positioned after visualization items.
+- **`format` enum removed from public definition (July 2026 spec update)**: `OrgAppPublicDefinition.format` is no longer a constrained enum (`OrgAppV1` value + `x-ms-enum` removed) — it's now a free-form string, with the create/get/update examples dropping the `format` field and part path entirely (examples now use generic `definition.json` instead of `OrgAppV1.json`). No fabio code change needed: `org_app.rs` already builds `update-definition` requests with `path: "definition.json"` and never hardcoded a `format` field.
 
 ## OrgAppAudience API Behaviors Discovered
 - **Item type**: `OrgAppAudience` (audience targeting for Organizational Apps).
@@ -1958,6 +1961,7 @@ Git commands are run with CWD set to source directory. Returns `None` entirely i
 - **Create is LRO**: Returns 202, requires polling.
 - **getDefinition/updateDefinition are LRO**: Both use standard Fabric LRO polling pattern.
 - **Added to DEPLOY_ORDER**: Positioned after OrgApp (dependent item).
+- **`format` enum removed from public definition (July 2026 spec update)**: Same change as `OrgApp` — `OrgAppAudiencePublicDefinition.format` (previously the `OrgAppAudienceV1` enum) is now a free-form string, and the `CreateOrgAppAudience` example dropped the `"format": "OrgAppAudienceV1"` field and part path entirely (now `definition.json`). No fabio code change needed: `org_app_audience.rs` never sets a `format` field and already uses `definition.json` as the part path.
 
 ## Copy Job Reset API Behaviors Discovered
 - **Reset endpoint**: `POST /workspaces/{ws}/copyJobs/{id}/resetCopyJob` resets copy job entities to allow re-copying.
