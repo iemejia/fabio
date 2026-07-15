@@ -1952,7 +1952,7 @@ Git commands are run with CWD set to source directory. Returns `None` entirely i
 - **Create is LRO**: Returns 202, requires polling.
 - **getDefinition/updateDefinition are LRO**: Both use standard Fabric LRO polling pattern.
 - **Added to DEPLOY_ORDER**: Positioned after visualization items.
-- **`format` enum removed from public definition (July 2026 spec update)**: `OrgAppPublicDefinition.format` is no longer a constrained enum (`OrgAppV1` value + `x-ms-enum` removed) — it's now a free-form string, with the create/get/update examples dropping the `format` field and part path entirely (examples now use generic `definition.json` instead of `OrgAppV1.json`). No fabio code change needed: `org_app.rs` already builds `update-definition` requests with `path: "definition.json"` and never hardcoded a `format` field.
+- **`format` field and part path renamed (July 2026 spec update)**: `OrgAppPublicDefinition.format` is no longer a constrained enum (`OrgAppV1` value + `x-ms-enum` removed) — it's now a free-form string. The create/get/update examples also changed the part path from `OrgAppV1.json` to `definition.json`. No fabio code change needed: `org_app.rs` already builds `update-definition` requests with `path: "definition.json"` and never hardcoded a `format` field.
 
 ## OrgAppAudience API Behaviors Discovered
 - **Item type**: `OrgAppAudience` (audience targeting for Organizational Apps).
@@ -1961,7 +1961,7 @@ Git commands are run with CWD set to source directory. Returns `None` entirely i
 - **Create is LRO**: Returns 202, requires polling.
 - **getDefinition/updateDefinition are LRO**: Both use standard Fabric LRO polling pattern.
 - **Added to DEPLOY_ORDER**: Positioned after OrgApp (dependent item).
-- **`format` enum removed from public definition (July 2026 spec update)**: Same change as `OrgApp` — `OrgAppAudiencePublicDefinition.format` (previously the `OrgAppAudienceV1` enum) is now a free-form string, and the `CreateOrgAppAudience` example dropped the `"format": "OrgAppAudienceV1"` field and part path entirely (now `definition.json`). No fabio code change needed: `org_app_audience.rs` never sets a `format` field and already uses `definition.json` as the part path.
+- **`format` field and part path renamed (July 2026 spec update)**: Same change as `OrgApp` — `OrgAppAudiencePublicDefinition.format` (previously the `OrgAppAudienceV1` enum) is now a free-form string, and the `CreateOrgAppAudience` example changed the part path from `OrgAppAudienceV1.json` to `definition.json` (the `"format": "OrgAppAudienceV1"` field was also dropped). No fabio code change needed: `org_app_audience.rs` never sets a `format` field and already uses `definition.json` as the part path.
 
 ## Copy Job Reset API Behaviors Discovered
 - **Reset endpoint**: `POST /workspaces/{ws}/copyJobs/{id}/resetCopyJob` resets copy job entities to allow re-copying.

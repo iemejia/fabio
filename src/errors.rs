@@ -282,7 +282,16 @@ impl FabioError {
         let hint = match code {
             ErrorCode::AuthRequired => Some("Run 'fabio auth login' to authenticate.".to_string()),
             ErrorCode::Forbidden => Some(forbidden_hint(&msg, body)),
-            ErrorCode::Conflict => Some(conflict_hint(&msg, body)),
+            ErrorCode::Conflict => Some(if status == 412 {
+                // 412 Precondition Failed: always use the ETag-specific hint regardless of body
+                // content — an empty or unrecognized body must not fall through to the generic
+                // "Resource conflict (409)" message.
+                "ETag precondition failed. Re-fetch the resource using the corresponding get \
+                 command, then retry with --if-match using the returned etag value."
+                    .to_string()
+            } else {
+                conflict_hint(&msg, body)
+            }),
             ErrorCode::RateLimited => {
                 Some("Too many requests. Retry after a short backoff.".to_string())
             }

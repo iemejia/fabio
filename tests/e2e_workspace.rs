@@ -2488,11 +2488,11 @@ fn workspace_set_inbound_external_data_shares_policy_live() {
         ])
         .assert();
 
-    let output = update_assert.get_output();
-    let code = output.status.code().unwrap_or(1);
-    if code != 0 {
+    let update_output = update_assert.get_output();
+    let update_code = update_output.status.code().unwrap_or(1);
+    if update_code != 0 {
         // FORBIDDEN expected without workspace admin role
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stderr = String::from_utf8_lossy(&update_output.stderr);
         assert!(
             stderr.contains("FORBIDDEN") || stderr.contains("NOT_FOUND"),
             "unexpected error: {stderr}"
@@ -2500,6 +2500,20 @@ fn workspace_set_inbound_external_data_shares_policy_live() {
         return;
     }
 
+    // (comment 15) Verify the PUT response body contains the `etag` field — confirming the
+    // empty-body/header-merge contract is working end-to-end.
+    let update_stdout = String::from_utf8_lossy(&update_output.stdout);
+    let update_json: serde_json::Value =
+        serde_json::from_str(&update_stdout).expect("expected valid JSON from set command");
+    let update_returned_etag = update_json
+        .get("data")
+        .and_then(|d| d.get("etag"))
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    // (comment 14) GET the fresh policy immediately after the mutation to capture both the
+    // updated action and a fresh ETag for guaranteed cleanup — this is independent of any
+    // assertion so a subsequent assert failure cannot prevent the restore.
     let verify_assert = fabio()
         .args([
             "workspace",
@@ -2507,19 +2521,26 @@ fn workspace_set_inbound_external_data_shares_policy_live() {
             "--workspace",
             &cfg.source_workspace,
         ])
-        .assert()
-        .success();
-    let verify_json = parse_json(&verify_assert);
-    let verify_data = extract_data(&verify_json);
-    assert_eq!(
-        verify_data["defaultAction"].as_str().unwrap_or(""),
-        updated_action
-    );
-    let verify_etag = verify_data["etag"]
-        .as_str()
-        .expect("expected etag in verification GET response")
+        .assert();
+    let verify_stdout = String::from_utf8_lossy(&verify_assert.get_output().stdout);
+    let verify_json: Option<serde_json::Value> = serde_json::from_str(&verify_stdout).ok();
+    let verify_action = verify_json
+        .as_ref()
+        .and_then(|j| j.get("data"))
+        .and_then(|d| d.get("defaultAction"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
         .to_string();
+    // Use the fresh etag from the verify GET; fall back to original if the GET failed.
+    let verify_etag = verify_json
+        .as_ref()
+        .and_then(|j| j.get("data"))
+        .and_then(|d| d.get("etag"))
+        .and_then(|v| v.as_str())
+        .map_or_else(|| original_etag.clone(), String::from);
 
+    // Restore BEFORE asserting — any assert failure after this point cannot leave the tenant
+    // in the modified state.
     fabio()
         .args([
             "workspace",
@@ -2545,6 +2566,16 @@ fn workspace_set_inbound_external_data_shares_policy_live() {
         .success();
     let restore_verify_json = parse_json(&restore_verify_assert);
     let restore_verify_data = extract_data(&restore_verify_json);
+
+    // All assertions below — restore is already done.
+    assert!(
+        update_returned_etag.is_some(),
+        "expected PUT response to contain 'etag' field (empty-body/header-merge contract)"
+    );
+    assert_eq!(
+        verify_action, updated_action,
+        "GET after PUT should show the updated defaultAction"
+    );
     assert_eq!(
         restore_verify_data["defaultAction"].as_str().unwrap_or(""),
         original_action
@@ -2574,6 +2605,41 @@ fn workspace_set_inbound_external_data_shares_policy_dry_run() {
             .as_str()
             .unwrap()
             .contains("set-inbound-external-data-shares-policy")
+    );
+}
+
+#[test]
+fn workspace_set_inbound_external_data_shares_policy_dry_run_with_if_match() {
+    // When --if-match is supplied, the dry-run preview must include the If-Match header so the
+    // agent can see that this is a conditional (not unconditional) update.
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "set-inbound-external-data-shares-policy",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--default-action",
+            "Deny",
+            "--if-match",
+            "\"abc123\"",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert!(
+        data["would_execute"]
+            .as_str()
+            .unwrap()
+            .contains("set-inbound-external-data-shares-policy")
+    );
+    // The details field must expose the If-Match header so agents know this is conditional.
+    assert_eq!(
+        data["details"]["If-Match"].as_str().unwrap_or(""),
+        "\"abc123\""
     );
 }
 

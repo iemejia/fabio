@@ -1145,22 +1145,11 @@ impl FabricClient {
             return Self::merge_etag(resp).await;
         }
 
-        if resp.status() == StatusCode::PRECONDITION_FAILED {
-            let text = resp.text().await.unwrap_or_default();
-            let message = if text.is_empty() {
-                "ETag precondition failed (HTTP 412).".to_string()
-            } else {
-                text
-            };
-            return Err(FabioError::with_hint(
-                ErrorCode::Conflict,
-                message,
-                "Re-fetch the resource with the corresponding get command and retry with --if-match using the returned etag value."
-                    .to_string(),
-            )
-            .into());
-        }
-
+        // 412 Precondition Failed and all other non-2xx responses are handled by
+        // merge_etag → handle_response → from_status_with_body, which now always
+        // provides the ETag-specific hint for 412 (selected by status code, not body
+        // keywords). This ensures JSON error fields (requestId, moreDetails, etc.) are
+        // properly extracted rather than consumed as raw text.
         Self::merge_etag(resp).await
     }
 
@@ -4530,6 +4519,91 @@ mod tests {
             assert!(
                 requests[0].headers.get("If-Match").is_none(),
                 "If-Match header should be omitted when --if-match is not provided"
+            );
+        }
+
+        #[tokio::test]
+        async fn returns_conflict_error_with_etag_hint_on_412_json_body() {
+            // When the server returns 412 with a JSON error body, handle_response should
+            // extract the JSON message (not raw text) and the hint should be ETag-specific.
+            let server = MockServer::start().await;
+            Mock::given(method("PUT"))
+                .and(path("/policy"))
+                .respond_with(ResponseTemplate::new(412).set_body_json(serde_json::json!({
+                    "error": {
+                        "code": "PreconditionFailed",
+                        "message": "The supplied ETag does not match the current ETag."
+                    }
+                })))
+                .mount(&server)
+                .await;
+
+            let client = FabricClient::new();
+            let resp = client
+                .put_with_if_match_request(
+                    &format!("{}/policy", server.uri()),
+                    "******",
+                    &serde_json::json!({"defaultAction": "Allow"}),
+                    Some("\"stale-etag\""),
+                )
+                .await
+                .unwrap();
+
+            // Route through merge_etag (the path taken after removing the manual 412 check)
+            let err = FabricClient::merge_etag(resp).await.unwrap_err();
+            let fabio_err = err.downcast_ref::<FabioError>().unwrap();
+            assert_eq!(fabio_err.code, ErrorCode::Conflict);
+            // JSON message should be extracted (not raw text)
+            assert!(
+                fabio_err.message.contains("ETag"),
+                "expected JSON-extracted message, got: {}",
+                fabio_err.message
+            );
+            // Hint must always be the ETag-specific hint for 412
+            let hint = fabio_err.hint.as_ref().unwrap();
+            assert!(
+                hint.contains("--if-match"),
+                "expected ETag hint mentioning --if-match, got: {hint}"
+            );
+            assert!(
+                hint.contains("etag"),
+                "expected ETag hint mentioning etag, got: {hint}"
+            );
+        }
+
+        #[tokio::test]
+        async fn returns_conflict_error_with_etag_hint_on_412_empty_body() {
+            // When the server returns 412 with an empty body (common for some Fabric endpoints),
+            // the hint must still be ETag-specific — not fall through to "Resource conflict (409)".
+            let server = MockServer::start().await;
+            Mock::given(method("PUT"))
+                .and(path("/policy"))
+                .respond_with(ResponseTemplate::new(412).set_body_string(""))
+                .mount(&server)
+                .await;
+
+            let client = FabricClient::new();
+            let resp = client
+                .put_with_if_match_request(
+                    &format!("{}/policy", server.uri()),
+                    "******",
+                    &serde_json::json!({"defaultAction": "Allow"}),
+                    Some("\"stale-etag\""),
+                )
+                .await
+                .unwrap();
+
+            let err = FabricClient::merge_etag(resp).await.unwrap_err();
+            let fabio_err = err.downcast_ref::<FabioError>().unwrap();
+            assert_eq!(fabio_err.code, ErrorCode::Conflict);
+            let hint = fabio_err.hint.as_ref().unwrap();
+            assert!(
+                hint.contains("--if-match"),
+                "expected ETag hint, got: {hint}"
+            );
+            assert!(
+                !hint.contains("409"),
+                "hint must not reference 409 for a 412 response, got: {hint}"
             );
         }
     }

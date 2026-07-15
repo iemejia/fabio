@@ -268,10 +268,16 @@ pub(super) async fn set_inbound_external_data_shares_policy(
 ) -> Result<()> {
     let body = serde_json::json!({ "defaultAction": default_action });
 
+    // Include the If-Match header in dry-run details so the preview fully describes the
+    // planned request — conditional vs unconditional execution is material to this mutation.
+    let dry_run_details = if_match.map_or_else(
+        || body.clone(),
+        |etag| serde_json::json!({ "defaultAction": default_action, "If-Match": etag }),
+    );
     if output::dry_run_guard(
         cli,
         "workspace set-inbound-external-data-shares-policy",
-        &body,
+        &dry_run_details,
     ) {
         return Ok(());
     }

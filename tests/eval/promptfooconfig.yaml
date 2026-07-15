@@ -496,6 +496,11 @@ tests:
         value: "Deny"
       - type: icontains
         value: "--if-match"
+      - type: icontains
+        value: "a1b2c3d4"
+      - type: llm-rubric
+        value: "The response passes the ETag value to --if-match with its surrounding double-quotes preserved (e.g. '\"a1b2c3d4\"' or \\\"a1b2c3d4\\\"), not as a bare unquoted token 'a1b2c3d4', because omitting the quotes causes the server to reject the request."
+        metric: etag-quote-preservation
 
   - description: "Invocation: deploy with parameters requires --env"
     vars:
