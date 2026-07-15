@@ -2501,7 +2501,8 @@ fn workspace_set_inbound_external_data_shares_policy_live() {
     }
 
     // Verify the PUT response contains an etag field — proves the ETag header → JSON body
-    // merge contract is working (server returns 204 with ETag header; we inject it as a field).
+    // merge contract is working (server returns an empty body with an ETag response header;
+    // merge_etag injects it as a field so the CLI output always contains the fresh token).
     let update_stdout = String::from_utf8_lossy(&update_output.stdout);
     let update_json: serde_json::Value =
         serde_json::from_str(&update_stdout).expect("expected valid JSON from set command");
