@@ -17642,7 +17642,7 @@
           },
           "--gateway-id": {
             "type": "string",
-            "description": "Gateway ID through which the connection is made (required when `--connectivity-type` is `VirtualNetworkGateway` or `StreamingVirtualNetworkGateway`; optional for other types to route through a gateway)"
+            "description": "Gateway ID through which the connection is made (required when `--connectivity-type` is `VirtualNetworkGateway` or `StreamingVirtualNetworkGateway`)"
           },
           "--credential-type": {
             "type": "enum",

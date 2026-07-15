@@ -41,7 +41,7 @@ pub enum ConnectionCommand {
         #[arg(long)]
         parameters: String,
 
-        /// Gateway ID through which the connection is made (required when `--connectivity-type` is `VirtualNetworkGateway` or `StreamingVirtualNetworkGateway`; optional for other types to route through a gateway)
+        /// Gateway ID through which the connection is made (required when `--connectivity-type` is `VirtualNetworkGateway` or `StreamingVirtualNetworkGateway`)
         #[arg(long, value_name = "GATEWAY_ID")]
         gateway_id: Option<String>,
 

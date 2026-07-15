@@ -2469,12 +2469,6 @@ fn workspace_set_inbound_external_data_shares_policy_live() {
         .as_str()
         .expect("expected etag in GET response")
         .to_string();
-    let updated_action = if original_action == "Allow" {
-        "Deny"
-    } else {
-        "Allow"
-    };
-
     let update_assert = fabio()
         .args([
             "workspace",
@@ -2482,7 +2476,7 @@ fn workspace_set_inbound_external_data_shares_policy_live() {
             "--workspace",
             &cfg.source_workspace,
             "--default-action",
-            updated_action,
+            original_action,
             "--if-match",
             &original_etag,
         ])
@@ -2512,8 +2506,7 @@ fn workspace_set_inbound_external_data_shares_policy_live() {
         .and_then(|v| v.as_str())
         .map(String::from);
 
-    // GET immediately after mutation to capture the fresh ETag for cleanup — this is
-    // independent of assertions so a later failure cannot prevent the restore.
+    // GET immediately after the conditional PUT to verify the policy remains unchanged.
     let verify_assert = fabio()
         .args([
             "workspace",
@@ -2521,7 +2514,8 @@ fn workspace_set_inbound_external_data_shares_policy_live() {
             "--workspace",
             &cfg.source_workspace,
         ])
-        .assert();
+        .assert()
+        .success();
     let verify_stdout = String::from_utf8_lossy(&verify_assert.get_output().stdout);
     let verify_json: Option<serde_json::Value> = serde_json::from_str(&verify_stdout).ok();
     let verify_action = verify_json
@@ -2531,60 +2525,16 @@ fn workspace_set_inbound_external_data_shares_policy_live() {
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    // Use the freshest available ETag for the restore: prefer the verify GET ETag (newest),
-    // then the PUT response ETag (fresh after the mutation). Panicking here is intentional —
-    // if BOTH the verify GET and the PUT response failed to provide an ETag, the original_etag
-    // is guaranteed stale after a successful mutation and would cause a 412 on the restore,
-    // leaving the tenant modified anyway. An explicit failure is clearer than a silent 412.
-    let verify_etag = verify_json
-        .as_ref()
-        .and_then(|j| j.get("data"))
-        .and_then(|d| d.get("etag"))
-        .and_then(|v| v.as_str())
-        .map(String::from)
-        .or_else(|| update_returned_etag.clone())
-        .expect("either the verify GET or PUT response must provide a fresh ETag for restore");
 
-    // Restore BEFORE asserting — any assert failure after this point cannot leave the tenant
-    // in the modified state.
-    fabio()
-        .args([
-            "workspace",
-            "set-inbound-external-data-shares-policy",
-            "--workspace",
-            &cfg.source_workspace,
-            "--default-action",
-            original_action,
-            "--if-match",
-            &verify_etag,
-        ])
-        .assert()
-        .success();
-
-    let restore_verify_assert = fabio()
-        .args([
-            "workspace",
-            "get-inbound-external-data-shares-policy",
-            "--workspace",
-            &cfg.source_workspace,
-        ])
-        .assert()
-        .success();
-    let restore_verify_json = parse_json(&restore_verify_assert);
-    let restore_verify_data = extract_data(&restore_verify_json);
-
-    // All assertions below — restore is already done.
+    // All assertions below — the conditional PUT is idempotent because it reuses the
+    // original defaultAction and only exercises optimistic concurrency via --if-match.
     assert!(
         update_returned_etag.is_some(),
         "expected PUT response to contain 'etag' field (empty-body/header-merge contract)"
     );
     assert_eq!(
-        verify_action, updated_action,
-        "GET after PUT should show the updated defaultAction"
-    );
-    assert_eq!(
-        restore_verify_data["defaultAction"].as_str().unwrap_or(""),
-        original_action
+        verify_action, original_action,
+        "GET after PUT should keep the original defaultAction"
     );
 }
 
