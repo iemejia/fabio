@@ -1131,17 +1131,25 @@ impl FabricClient {
         self.guard_readonly("PUT", path)?;
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
+        let body_str = serde_json::to_string(body).unwrap_or_default();
+
+        verbose::trace_request("PUT", &url, Some(&body_str));
+        let start = std::time::Instant::now();
 
         let resp = self
             .put_with_if_match_request(&url, &token, body, if_match)
             .await?;
 
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
+
         if resp.status() == StatusCode::UNAUTHORIZED {
+            verbose::trace_category("auth", "401 received, refreshing token and retrying");
             self.invalidate_fabric_token().await;
             let token = self.require_auth().await?;
             let resp = self
                 .put_with_if_match_request(&url, &token, body, if_match)
                 .await?;
+            verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
             return Self::merge_etag(resp).await;
         }
 
