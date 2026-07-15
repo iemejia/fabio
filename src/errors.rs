@@ -528,8 +528,7 @@ fn conflict_hint(message: &str, body: &str) -> String {
         || combined.contains("if match")
         || combined.contains("etag")
     {
-        return "ETag precondition failed. Re-fetch the latest policy and ETag with: \
-                fabio workspace get-inbound-external-data-shares-policy --workspace <WS>, \
+        return "ETag precondition failed. Re-fetch the resource using the corresponding get command, \
                 then retry with --if-match using the returned etag value."
             .to_string();
     }

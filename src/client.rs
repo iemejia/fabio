@@ -1155,7 +1155,7 @@ impl FabricClient {
             return Err(FabioError::with_hint(
                 ErrorCode::Conflict,
                 message,
-                "Run: fabio workspace get-inbound-external-data-shares-policy --workspace <WS> and retry with --if-match using the returned etag."
+                "Re-fetch the resource with the corresponding get command and retry with --if-match using the returned etag value."
                     .to_string(),
             )
             .into());

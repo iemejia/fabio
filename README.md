@@ -289,6 +289,12 @@ fabio workspace set-inbound-external-data-shares-policy --workspace <WS> \
   --default-action Deny --if-match '"a1b2c3d4"'
 ```
 
+PowerShell equivalent:
+
+```powershell
+fabio workspace set-inbound-external-data-shares-policy --workspace <WS> --default-action Deny --if-match "`"a1b2c3d4`""
+```
+
 ### Agent knowledge architecture
 
 fabio ships a layered, **generated** knowledge base for AI agents — inspired by [microsoft/skills-for-fabric](https://github.com/microsoft/skills-for-fabric)'s Agents→Skills→Common model, but implemented so that every mechanical index is generated from the CLI's own schema and CI-drift-checked (nothing can fall out of sync with the commands):
