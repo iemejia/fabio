@@ -287,7 +287,9 @@ impl FabioError {
                 // content — an empty or unrecognized body must not fall through to the generic
                 // "Resource conflict (409)" message.
                 "ETag precondition failed. Re-fetch the resource using the corresponding get \
-                 command, then retry with --if-match using the returned etag value."
+                 command, then retry with --if-match using the returned etag value. Pass the \
+                 full value verbatim, including any surrounding double-quotes \
+                 (bash: --if-match '\"a1b2c3d4\"'; PowerShell: --if-match \"`\"a1b2c3d4`\"\")."
                     .to_string()
             } else {
                 conflict_hint(&msg, body)

@@ -263,9 +263,11 @@ async fn list(cli: &Cli, client: &FabricClient) -> Result<()> {
 }
 
 fn list_table_columns(items: &[Value]) -> (&'static [&'static str], &'static [&'static str]) {
-    let has_gateway_id = items
-        .iter()
-        .any(|item| item.get("gatewayId").is_some_and(|v| !v.is_null()));
+    let has_gateway_id = items.iter().any(|item| {
+        item.get("gatewayId")
+            .and_then(Value::as_str)
+            .is_some_and(|s| !s.is_empty())
+    });
 
     if has_gateway_id {
         (
@@ -717,6 +719,19 @@ mod tests {
                 "gatewayId": null
             }),
         ];
+        let (columns, headers) = list_table_columns(&items);
+        assert_eq!(columns, ["displayName", "id", "connectivityType"]);
+        assert_eq!(headers, ["NAME", "ID", "CONNECTIVITY TYPE"]);
+    }
+
+    #[test]
+    fn list_table_columns_omits_gateway_id_when_empty_string() {
+        let items = vec![json!({
+            "id": "conn-1",
+            "displayName": "Conn",
+            "connectivityType": "OnPremises",
+            "gatewayId": ""
+        })];
         let (columns, headers) = list_table_columns(&items);
         assert_eq!(columns, ["displayName", "id", "connectivityType"]);
         assert_eq!(headers, ["NAME", "ID", "CONNECTIVITY TYPE"]);
