@@ -4,6 +4,8 @@ mod common;
 
 use common::{extract_data, fabio, parse_json};
 use serial_test::serial;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[test]
 #[ignore = "requires live Fabric tenant"]
@@ -412,4 +414,108 @@ fn connection_create_streaming_virtual_network_gateway_requires_gateway_id() {
         ])
         .assert()
         .failure();
+}
+
+// ── GATEWAY ID dynamic column (offline, wiremock) ────────────────────────────
+
+/// Verifies that `connection list --output table` shows a `GATEWAY ID` column
+/// when the API response contains at least one connection with a non-null,
+/// non-empty `gatewayId`.
+#[test]
+fn connection_list_table_shows_gateway_id_column_when_connections_have_gateway_id() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    // Start mock server and register the `/connections` route.
+    let (server_uri, _server) = rt.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/connections"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [
+                    {
+                        "id": "conn-1",
+                        "displayName": "VNet Conn",
+                        "connectivityType": "VirtualNetworkGateway",
+                        "gatewayId": "gw-abc123"
+                    },
+                    {
+                        "id": "conn-2",
+                        "displayName": "ShareableCloud Conn",
+                        "connectivityType": "ShareableCloud"
+                    }
+                ]
+            })))
+            .mount(&server)
+            .await;
+        let uri = server.uri();
+        (uri, server)
+    });
+
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args(["connection", "list", "--output", "table"])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        stdout.contains("GATEWAY ID"),
+        "expected 'GATEWAY ID' column header when at least one connection has a non-null gatewayId, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("gw-abc123"),
+        "expected gatewayId value in table output, got:\n{stdout}"
+    );
+}
+
+/// Verifies that `connection list --output table` omits the `GATEWAY ID` column
+/// when no connection in the API response has a non-null/non-empty `gatewayId`.
+#[test]
+fn connection_list_table_omits_gateway_id_column_when_no_connections_have_gateway_id() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let (server_uri, _server) = rt.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/connections"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [
+                    {
+                        "id": "conn-1",
+                        "displayName": "ShareableCloud Conn",
+                        "connectivityType": "ShareableCloud"
+                    },
+                    {
+                        "id": "conn-2",
+                        "displayName": "Another Conn",
+                        "connectivityType": "ShareableCloud",
+                        "gatewayId": null
+                    }
+                ]
+            })))
+            .mount(&server)
+            .await;
+        let uri = server.uri();
+        (uri, server)
+    });
+
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args(["connection", "list", "--output", "table"])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        !stdout.contains("GATEWAY ID"),
+        "unexpected 'GATEWAY ID' column header when no connection has a non-null gatewayId, got:\n{stdout}"
+    );
 }
