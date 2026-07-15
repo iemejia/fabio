@@ -330,6 +330,46 @@ fn connection_create_streaming_virtual_network_gateway_dry_run() {
     assert_eq!(data["status"], "dry_run");
 }
 
+/// Live test that verifies the `GATEWAY ID` column is shown in table output
+/// when at least one connection in the tenant has a non-null `gatewayId`, and
+/// omitted otherwise. Covers both branches of the conditional column logic.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn connection_list_table_output_gateway_id_column() {
+    // First, get the JSON list to know whether any connection has a gatewayId.
+    let json_assert = fabio().args(["connection", "list"]).assert().success();
+    let json = parse_json(&json_assert);
+    let data = json
+        .get("data")
+        .and_then(|d| d.as_array())
+        .expect("data should be an array");
+
+    let any_gateway_id = data.iter().any(|item| {
+        item.get("gatewayId")
+            .is_some_and(|v| !v.is_null() && v.as_str().is_some_and(|s| !s.is_empty()))
+    });
+
+    // Now get the table output.
+    let table_assert = fabio()
+        .args(["connection", "list", "--output", "table"])
+        .assert()
+        .success();
+    let table_stdout = String::from_utf8_lossy(&table_assert.get_output().stdout);
+
+    if any_gateway_id {
+        assert!(
+            table_stdout.contains("GATEWAY ID"),
+            "expected 'GATEWAY ID' column in table output when at least one connection has gatewayId, got:\n{table_stdout}"
+        );
+    } else {
+        assert!(
+            !table_stdout.contains("GATEWAY ID"),
+            "unexpected 'GATEWAY ID' column in table output when no connection has gatewayId, got:\n{table_stdout}"
+        );
+    }
+}
+
 #[test]
 fn connection_create_virtual_network_gateway_requires_gateway_id() {
     fabio()

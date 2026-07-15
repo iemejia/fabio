@@ -16,3 +16,6 @@
 .DS_Store
 Thumbs.db
 .env
+
+# Rust compiler ICE (internal compiler error) logs
+rustc-ice-*.txt

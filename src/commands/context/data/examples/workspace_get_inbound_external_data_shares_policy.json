@@ -1,6 +1,6 @@
 {
   "command": "fabio workspace get-inbound-external-data-shares-policy --workspace $WS",
-  "description": "Get the inbound External Data Shares bypass policy for a workspace (Preview API). Response merges the ETag response header into an `etag` field so it can round-trip through `set-inbound-external-data-shares-policy --if-match`.",
+  "description": "Get the inbound External Data Shares bypass policy for a workspace. Response merges the ETag response header into an `etag` field so it can round-trip through `set-inbound-external-data-shares-policy --if-match` (the corresponding PUT is a Preview API).",
   "response": {
     "data": {
       "defaultAction": "Deny",

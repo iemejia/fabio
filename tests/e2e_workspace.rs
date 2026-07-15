@@ -2531,13 +2531,17 @@ fn workspace_set_inbound_external_data_shares_policy_live() {
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    // Use the fresh etag from the verify GET; fall back to original if the GET failed.
+    // Use the freshest available ETag for the restore: prefer the verify GET ETag (newest),
+    // then the PUT response ETag (fresh after the mutation), then the original (stale — the
+    // PUT succeeded, so original_etag is guaranteed to cause a 412 if used).
     let verify_etag = verify_json
         .as_ref()
         .and_then(|j| j.get("data"))
         .and_then(|d| d.get("etag"))
         .and_then(|v| v.as_str())
-        .map_or_else(|| original_etag.clone(), String::from);
+        .map(String::from)
+        .or_else(|| update_returned_etag.clone())
+        .unwrap_or_else(|| original_etag.clone());
 
     // Restore BEFORE asserting — any assert failure after this point cannot leave the tenant
     // in the modified state.
