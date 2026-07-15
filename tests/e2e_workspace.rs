@@ -2500,8 +2500,8 @@ fn workspace_set_inbound_external_data_shares_policy_live() {
         return;
     }
 
-    // (comment 15) Verify the PUT response body contains the `etag` field — confirming the
-    // empty-body/header-merge contract is working end-to-end.
+    // Verify the PUT response contains an etag field — proves the ETag header → JSON body
+    // merge contract is working (server returns 204 with ETag header; we inject it as a field).
     let update_stdout = String::from_utf8_lossy(&update_output.stdout);
     let update_json: serde_json::Value =
         serde_json::from_str(&update_stdout).expect("expected valid JSON from set command");
@@ -2511,9 +2511,8 @@ fn workspace_set_inbound_external_data_shares_policy_live() {
         .and_then(|v| v.as_str())
         .map(String::from);
 
-    // (comment 14) GET the fresh policy immediately after the mutation to capture both the
-    // updated action and a fresh ETag for guaranteed cleanup — this is independent of any
-    // assertion so a subsequent assert failure cannot prevent the restore.
+    // GET immediately after mutation to capture the fresh ETag for cleanup — this is
+    // independent of assertions so a later failure cannot prevent the restore.
     let verify_assert = fabio()
         .args([
             "workspace",

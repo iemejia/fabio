@@ -1146,7 +1146,7 @@ impl FabricClient {
         }
 
         // 412 Precondition Failed and all other non-2xx responses are handled by
-        // merge_etag → handle_response → from_status_with_body, which now always
+        // merge_etag → handle_response → from_status_with_body (errors.rs), which
         // provides the ETag-specific hint for 412 (selected by status code, not body
         // keywords). This ensures JSON error fields (requestId, moreDetails, etc.) are
         // properly extracted rather than consumed as raw text.

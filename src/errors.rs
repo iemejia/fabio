@@ -532,16 +532,6 @@ fn conflict_hint(message: &str, body: &str) -> String {
             .to_string();
     }
 
-    if combined.contains("precondition")
-        || combined.contains("if-match")
-        || combined.contains("if match")
-        || combined.contains("etag")
-    {
-        return "ETag precondition failed. Re-fetch the resource using the corresponding get command, \
-                then retry with --if-match using the returned etag value."
-            .to_string();
-    }
-
     "Resource conflict (409). The item may already exist or be in a state that \
      conflicts with this operation. Check existing items with: \
      fabio <resource> list --workspace <WS>"
