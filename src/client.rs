@@ -1047,8 +1047,18 @@ impl FabricClient {
         }))
     }
 
-    /// GET request to Fabric REST API (retries once on 401 with fresh token).
-    pub async fn get(&self, path: &str) -> Result<Value> {
+    async fn get_request_with_token(&self, url: &str, token: &str) -> Result<Response> {
+        self.http
+            .get(url)
+            .header(AUTHORIZATION, token)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()).into())
+    }
+
+    /// GET request to Fabric REST API, returning the raw HTTP response while
+    /// preserving standard auth refresh and transient retry behavior.
+    async fn get_raw_response(&self, path: &str) -> Result<Response> {
         const MAX_TRANSIENT_RETRIES: u32 = 3;
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
@@ -1056,13 +1066,7 @@ impl FabricClient {
         verbose::trace_request("GET", &url, None);
         let start = std::time::Instant::now();
 
-        let resp = self
-            .http
-            .get(&url)
-            .header(AUTHORIZATION, &token)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+        let resp = self.get_request_with_token(&url, &token).await?;
 
         verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
@@ -1071,15 +1075,9 @@ impl FabricClient {
             // Token may have expired server-side; refresh and retry once
             self.invalidate_fabric_token().await;
             let token = self.require_auth().await?;
-            let resp = self
-                .http
-                .get(&url)
-                .header(AUTHORIZATION, &token)
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            let resp = self.get_request_with_token(&url, &token).await?;
             verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
-            return handle_response(resp).await;
+            return Ok(resp);
         }
 
         // Retry on transient server errors (502/503/504)
@@ -1092,23 +1090,23 @@ impl FabricClient {
                 );
                 sleep(Duration::from_secs(backoff_secs)).await;
                 let token = self.require_auth().await?;
-                let resp = self
-                    .http
-                    .get(&url)
-                    .header(AUTHORIZATION, &token)
-                    .send()
-                    .await
-                    .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+                let resp = self.get_request_with_token(&url, &token).await?;
                 let retry_status = resp.status().as_u16();
                 if !matches!(retry_status, 502..=504) {
-                    return handle_response(resp).await;
+                    return Ok(resp);
                 }
                 if attempt == MAX_TRANSIENT_RETRIES {
-                    return handle_response(resp).await;
+                    return Ok(resp);
                 }
             }
         }
 
+        Ok(resp)
+    }
+
+    /// GET request to Fabric REST API (retries once on 401 with fresh token).
+    pub async fn get(&self, path: &str) -> Result<Value> {
+        let resp = self.get_raw_response(path).await?;
         handle_response(resp).await
     }
 
@@ -1117,30 +1115,7 @@ impl FabricClient {
     /// resources (e.g., workspace networking policies) where callers need the
     /// `ETag` to pass back via `If-Match` on a subsequent PUT.
     pub async fn get_with_etag(&self, path: &str) -> Result<Value> {
-        let token = self.require_auth().await?;
-        let url = self.fabric_url(path);
-
-        let resp = self
-            .http
-            .get(&url)
-            .header(AUTHORIZATION, &token)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-        if resp.status() == StatusCode::UNAUTHORIZED {
-            self.invalidate_fabric_token().await;
-            let token = self.require_auth().await?;
-            let resp = self
-                .http
-                .get(&url)
-                .header(AUTHORIZATION, &token)
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            return Self::merge_etag(resp).await;
-        }
-
+        let resp = self.get_raw_response(path).await?;
         Self::merge_etag(resp).await
     }
 
@@ -1168,6 +1143,22 @@ impl FabricClient {
                 .put_with_if_match_request(&url, &token, body, if_match)
                 .await?;
             return Self::merge_etag(resp).await;
+        }
+
+        if resp.status() == StatusCode::PRECONDITION_FAILED {
+            let text = resp.text().await.unwrap_or_default();
+            let message = if text.is_empty() {
+                "ETag precondition failed (HTTP 412).".to_string()
+            } else {
+                text
+            };
+            return Err(FabioError::with_hint(
+                ErrorCode::Conflict,
+                message,
+                "Run: fabio workspace get-inbound-external-data-shares-policy --workspace <WS> and retry with --if-match using the returned etag."
+                    .to_string(),
+            )
+            .into());
         }
 
         Self::merge_etag(resp).await
@@ -4481,6 +4472,65 @@ mod tests {
             let resp = get_response(&server).await;
             let result = FabricClient::merge_etag(resp).await.unwrap();
             assert_eq!(result, Value::Null);
+        }
+    }
+
+    mod put_with_if_match_tests {
+        use super::*;
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        #[tokio::test]
+        async fn forwards_if_match_header_with_exact_quoted_value() {
+            let server = MockServer::start().await;
+            Mock::given(method("PUT"))
+                .and(path("/policy"))
+                .and(header("If-Match", "\"abc123\""))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+                .mount(&server)
+                .await;
+
+            let client = FabricClient::new();
+            let response = client
+                .put_with_if_match_request(
+                    &format!("{}/policy", server.uri()),
+                    "******",
+                    &serde_json::json!({"defaultAction":"Allow"}),
+                    Some("\"abc123\""),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+
+        #[tokio::test]
+        async fn omits_if_match_header_when_not_provided() {
+            let server = MockServer::start().await;
+            Mock::given(method("PUT"))
+                .and(path("/policy"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+                .mount(&server)
+                .await;
+
+            let client = FabricClient::new();
+            let response = client
+                .put_with_if_match_request(
+                    &format!("{}/policy", server.uri()),
+                    "******",
+                    &serde_json::json!({"defaultAction":"Deny"}),
+                    None,
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(response.status(), StatusCode::OK);
+            let requests = server.received_requests().await.unwrap();
+            assert_eq!(requests.len(), 1);
+            assert!(
+                requests[0].headers.get("If-Match").is_none(),
+                "If-Match header should be omitted when --if-match is not provided"
+            );
         }
     }
 

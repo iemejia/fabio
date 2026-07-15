@@ -2451,19 +2451,44 @@ fn workspace_get_inbound_external_data_shares_policy_live() {
 #[serial]
 fn workspace_set_inbound_external_data_shares_policy_live() {
     let cfg = TestConfig::from_env();
+    let get_assert = fabio()
+        .args([
+            "workspace",
+            "get-inbound-external-data-shares-policy",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+    let get_json = parse_json(&get_assert);
+    let get_data = extract_data(&get_json);
+    let original_action = get_data["defaultAction"]
+        .as_str()
+        .expect("expected defaultAction in GET response");
+    let original_etag = get_data["etag"]
+        .as_str()
+        .expect("expected etag in GET response")
+        .to_string();
+    let updated_action = if original_action == "Allow" {
+        "Deny"
+    } else {
+        "Allow"
+    };
 
-    let assert = fabio()
+    let update_assert = fabio()
         .args([
             "workspace",
             "set-inbound-external-data-shares-policy",
             "--workspace",
             &cfg.source_workspace,
             "--default-action",
-            "Allow",
+            updated_action,
+            "--if-match",
+            &original_etag,
         ])
         .assert();
 
-    let output = assert.get_output();
+    let output = update_assert.get_output();
     let code = output.status.code().unwrap_or(1);
     if code != 0 {
         // FORBIDDEN expected without workspace admin role
@@ -2472,7 +2497,58 @@ fn workspace_set_inbound_external_data_shares_policy_live() {
             stderr.contains("FORBIDDEN") || stderr.contains("NOT_FOUND"),
             "unexpected error: {stderr}"
         );
+        return;
     }
+
+    let verify_assert = fabio()
+        .args([
+            "workspace",
+            "get-inbound-external-data-shares-policy",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+    let verify_json = parse_json(&verify_assert);
+    let verify_data = extract_data(&verify_json);
+    assert_eq!(
+        verify_data["defaultAction"].as_str().unwrap_or(""),
+        updated_action
+    );
+    let verify_etag = verify_data["etag"]
+        .as_str()
+        .expect("expected etag in verification GET response")
+        .to_string();
+
+    fabio()
+        .args([
+            "workspace",
+            "set-inbound-external-data-shares-policy",
+            "--workspace",
+            &cfg.source_workspace,
+            "--default-action",
+            original_action,
+            "--if-match",
+            &verify_etag,
+        ])
+        .assert()
+        .success();
+
+    let restore_verify_assert = fabio()
+        .args([
+            "workspace",
+            "get-inbound-external-data-shares-policy",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+    let restore_verify_json = parse_json(&restore_verify_assert);
+    let restore_verify_data = extract_data(&restore_verify_json);
+    assert_eq!(
+        restore_verify_data["defaultAction"].as_str().unwrap_or(""),
+        original_action
+    );
 }
 
 #[test]

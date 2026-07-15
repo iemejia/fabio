@@ -250,31 +250,34 @@ async fn list(cli: &Cli, client: &FabricClient) -> Result<()> {
         )
         .await?;
 
-    let has_gateway_id = resp
-        .items
+    let (columns, headers) = list_table_columns(&resp.items);
+    output::render_list_with_token(
+        cli,
+        &resp.items,
+        columns,
+        headers,
+        "id",
+        resp.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+fn list_table_columns(items: &[Value]) -> (&'static [&'static str], &'static [&'static str]) {
+    let has_gateway_id = items
         .iter()
         .any(|item| item.get("gatewayId").is_some_and(|v| !v.is_null()));
 
     if has_gateway_id {
-        output::render_list_with_token(
-            cli,
-            &resp.items,
+        (
             &["displayName", "id", "connectivityType", "gatewayId"],
             &["NAME", "ID", "CONNECTIVITY TYPE", "GATEWAY ID"],
-            "id",
-            resp.continuation_token.as_deref(),
-        );
+        )
     } else {
-        output::render_list_with_token(
-            cli,
-            &resp.items,
+        (
             &["displayName", "id", "connectivityType"],
             &["NAME", "ID", "CONNECTIVITY TYPE"],
-            "id",
-            resp.continuation_token.as_deref(),
-        );
+        )
     }
-    Ok(())
 }
 
 async fn show(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
@@ -681,5 +684,41 @@ mod tests {
         assert!(!connectivity_type_requires_gateway_id("ShareableCloud"));
         assert!(!connectivity_type_requires_gateway_id("OnPremises"));
         assert!(!connectivity_type_requires_gateway_id("PersonalCloud"));
+    }
+
+    #[test]
+    fn list_table_columns_includes_gateway_id_when_present() {
+        let items = vec![json!({
+            "id": "conn-1",
+            "displayName": "Conn",
+            "connectivityType": "OnPremises",
+            "gatewayId": "gw-1"
+        })];
+        let (columns, headers) = list_table_columns(&items);
+        assert_eq!(
+            columns,
+            ["displayName", "id", "connectivityType", "gatewayId"]
+        );
+        assert_eq!(headers, ["NAME", "ID", "CONNECTIVITY TYPE", "GATEWAY ID"]);
+    }
+
+    #[test]
+    fn list_table_columns_omits_gateway_id_when_missing_or_null() {
+        let items = vec![
+            json!({
+                "id": "conn-1",
+                "displayName": "Conn 1",
+                "connectivityType": "OnPremises"
+            }),
+            json!({
+                "id": "conn-2",
+                "displayName": "Conn 2",
+                "connectivityType": "ShareableCloud",
+                "gatewayId": null
+            }),
+        ];
+        let (columns, headers) = list_table_columns(&items);
+        assert_eq!(columns, ["displayName", "id", "connectivityType"]);
+        assert_eq!(headers, ["NAME", "ID", "CONNECTIVITY TYPE"]);
     }
 }

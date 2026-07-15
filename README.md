@@ -278,6 +278,17 @@ fabio context persona data-engineer     # also: data-scientist, app-developer, b
 fabio context disambiguate "materialized view"   # also: dataflow, semantic-model, sql-endpoint, mirroring, model
 ```
 
+Workspace inbound External Data Shares policy (ETag round trip):
+
+```bash
+# Read current policy + etag
+fabio workspace get-inbound-external-data-shares-policy --workspace <WS>
+
+# Update safely with optimistic concurrency (preserve quotes in etag)
+fabio workspace set-inbound-external-data-shares-policy --workspace <WS> \
+  --default-action Deny --if-match '"a1b2c3d4"'
+```
+
 ### Agent knowledge architecture
 
 fabio ships a layered, **generated** knowledge base for AI agents — inspired by [microsoft/skills-for-fabric](https://github.com/microsoft/skills-for-fabric)'s Agents→Skills→Common model, but implemented so that every mechanical index is generated from the CLI's own schema and CI-drift-checked (nothing can fall out of sync with the commands):

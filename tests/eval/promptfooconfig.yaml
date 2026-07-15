@@ -473,6 +473,30 @@ tests:
       - type: icontains
         value: "--capacity"
 
+  - description: "Invocation: get inbound External Data Shares policy requires workspace"
+    vars:
+      user_query: "Get the inbound External Data Shares bypass policy for workspace ws-001"
+    assert:
+      - type: icontains
+        value: "fabio workspace get-inbound-external-data-shares-policy"
+      - type: icontains
+        value: "--workspace"
+
+  - description: "Invocation: set inbound External Data Shares policy uses if-match etag"
+    vars:
+      user_query: "Set inbound External Data Shares bypass policy to Deny for workspace ws-001 using etag \"a1b2c3d4\""
+    assert:
+      - type: icontains
+        value: "fabio workspace set-inbound-external-data-shares-policy"
+      - type: icontains
+        value: "--workspace"
+      - type: icontains
+        value: "--default-action"
+      - type: icontains
+        value: "Deny"
+      - type: icontains
+        value: "--if-match"
+
   - description: "Invocation: deploy with parameters requires --env"
     vars:
       user_query: "Deploy fabric items to the production workspace using my parameters.json file for the prod environment"

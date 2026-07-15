@@ -1466,7 +1466,7 @@
         "returns": "object",
         "examples": [
           "fabio workspace set-inbound-external-data-shares-policy --workspace $WS --default-action Allow",
-          "fabio workspace set-inbound-external-data-shares-policy --workspace $WS --default-action Deny --if-match \"a1b2c3d4\""
+          "fabio workspace set-inbound-external-data-shares-policy --workspace $WS --default-action Deny --if-match '\"a1b2c3d4\"'"
         ]
       },
       "get-settings": {

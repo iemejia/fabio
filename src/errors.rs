@@ -274,7 +274,7 @@ impl FabioError {
             401 => ErrorCode::AuthRequired,
             403 => ErrorCode::Forbidden,
             404 => ErrorCode::NotFound,
-            409 => ErrorCode::Conflict,
+            409 | 412 => ErrorCode::Conflict,
             429 | 430 => ErrorCode::RateLimited,
             _ if (500..600).contains(&status) => ErrorCode::ApiError,
             _ => ErrorCode::ApiError,
@@ -523,6 +523,17 @@ fn conflict_hint(message: &str, body: &str) -> String {
             .to_string();
     }
 
+    if combined.contains("precondition")
+        || combined.contains("if-match")
+        || combined.contains("if match")
+        || combined.contains("etag")
+    {
+        return "ETag precondition failed. Re-fetch the latest policy and ETag with: \
+                fabio workspace get-inbound-external-data-shares-policy --workspace <WS>, \
+                then retry with --if-match using the returned etag value."
+            .to_string();
+    }
+
     "Resource conflict (409). The item may already exist or be in a state that \
      conflicts with this operation. Check existing items with: \
      fabio <resource> list --workspace <WS>"
@@ -674,6 +685,21 @@ mod tests {
         assert!(
             hint.contains("Resource conflict"),
             "Hint should be generic conflict: {hint}"
+        );
+    }
+
+    #[test]
+    fn from_status_412_maps_to_conflict_with_etag_hint() {
+        let err = FabioError::from_status_with_body(
+            412,
+            "Precondition failed",
+            r#"{"error":{"code":"PreconditionFailed","message":"ETag does not match current resource version"}}"#,
+        );
+        assert_eq!(err.code, ErrorCode::Conflict);
+        let hint = err.hint.unwrap();
+        assert!(
+            hint.contains("ETag precondition failed"),
+            "Hint should explain stale ETag: {hint}"
         );
     }
 

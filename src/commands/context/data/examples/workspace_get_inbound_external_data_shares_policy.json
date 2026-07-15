@@ -10,11 +10,11 @@
   "notes": "Unlike the other workspace networking policy endpoints (network-policy, firewall-rules, git-outbound-policy, etc.), this endpoint returns an ETag for optimistic concurrency. `defaultAction` is either 'Allow' (External Data Shares traffic may bypass inbound restrictions) or 'Deny'. GET requires viewer+ role; the corresponding PUT (set-inbound-external-data-shares-policy) requires admin role and is a Preview API. Pass the `etag` value back via `--if-match` on set-inbound-external-data-shares-policy to avoid overwriting concurrent changes.",
   "query_examples": [
     {
-      "query": "data.defaultAction",
+      "query": "defaultAction",
       "description": "Extract just the current bypass setting"
     },
     {
-      "query": "data.etag",
+      "query": "etag",
       "description": "Extract the ETag to pass to --if-match on the next set call"
     }
   ]
