@@ -2611,7 +2611,9 @@ fn workspace_set_inbound_external_data_shares_policy_invalid_value() {
             "Maybe",
         ])
         .assert()
-        .failure();
+        .failure()
+        .stderr(predicate::str::contains("invalid value"))
+        .stderr(predicate::str::contains("Maybe"));
 }
 
 #[test]
