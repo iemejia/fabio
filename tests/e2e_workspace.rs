@@ -2532,8 +2532,10 @@ fn workspace_set_inbound_external_data_shares_policy_live() {
         .unwrap_or("")
         .to_string();
     // Use the freshest available ETag for the restore: prefer the verify GET ETag (newest),
-    // then the PUT response ETag (fresh after the mutation), then the original (stale — the
-    // PUT succeeded, so original_etag is guaranteed to cause a 412 if used).
+    // then the PUT response ETag (fresh after the mutation). Panicking here is intentional —
+    // if BOTH the verify GET and the PUT response failed to provide an ETag, the original_etag
+    // is guaranteed stale after a successful mutation and would cause a 412 on the restore,
+    // leaving the tenant modified anyway. An explicit failure is clearer than a silent 412.
     let verify_etag = verify_json
         .as_ref()
         .and_then(|j| j.get("data"))
@@ -2541,7 +2543,7 @@ fn workspace_set_inbound_external_data_shares_policy_live() {
         .and_then(|v| v.as_str())
         .map(String::from)
         .or_else(|| update_returned_etag.clone())
-        .unwrap_or_else(|| original_etag.clone());
+        .expect("either the verify GET or PUT response must provide a fresh ETag for restore");
 
     // Restore BEFORE asserting — any assert failure after this point cannot leave the tenant
     // in the modified state.
