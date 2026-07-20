@@ -25,7 +25,7 @@ jobs:
     steps:
       - name: Validate conventional commit format
         id: validation
-        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v7
         with:
           script: |
             const prTitle = context.payload.pull_request.title;
@@ -37,7 +37,7 @@ jobs:
 
       - name: Comment on invalid title
         if: failure()
-        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v7
         with:
           script: |
             const marker = '<!-- semantic-pr-comment -->';
@@ -83,7 +83,7 @@ jobs:
 
       - name: Clean up on valid title
         if: success()
-        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v7
         with:
           script: |
             const { data: labels } = await github.rest.issues.listLabelsOnIssue({
