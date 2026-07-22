@@ -122,6 +122,115 @@ fn gateway_add_role_assignment_dry_run() {
 }
 
 #[test]
+fn gateway_dry_run_create_with_member_count_range() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "gateway",
+            "create",
+            "--name",
+            "test-gw-range",
+            "--capacity-id",
+            "00000000-0000-0000-0000-000000000001",
+            "--subscription-id",
+            "00000000-0000-0000-0000-000000000099",
+            "--resource-group",
+            "rg",
+            "--vnet-name",
+            "vnet",
+            "--subnet",
+            "default",
+            "--max-member-gateway-count",
+            "5",
+            "--min-member-gateway-count",
+            "1",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = json.get("data").expect("should have data");
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "gateway create");
+}
+
+#[test]
+fn gateway_create_rejects_member_count_and_range_together() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "gateway",
+            "create",
+            "--name",
+            "test-gw-conflict",
+            "--capacity-id",
+            "00000000-0000-0000-0000-000000000001",
+            "--subscription-id",
+            "00000000-0000-0000-0000-000000000099",
+            "--resource-group",
+            "rg",
+            "--vnet-name",
+            "vnet",
+            "--subnet",
+            "default",
+            "--member-count",
+            "3",
+            "--max-member-gateway-count",
+            "5",
+            "--min-member-gateway-count",
+            "1",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("cannot be used with") || stderr.contains("conflicts"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant (gateway update needs GET to resolve gateway type before dry-run)"]
+fn gateway_update_dry_run_with_member_count_range() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "gateway",
+            "update",
+            "--gateway",
+            "00000000-0000-0000-0000-000000000001",
+            "--max-member-gateway-count",
+            "5",
+            "--min-member-gateway-count",
+            "1",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = json.get("data").expect("should have data");
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "gateway update");
+}
+
+#[test]
+fn gateway_update_max_requires_min() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "gateway",
+            "update",
+            "--gateway",
+            "00000000-0000-0000-0000-000000000001",
+            "--max-member-gateway-count",
+            "5",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("min-member-gateway-count") || stderr.contains("required"));
+}
+
+#[test]
 fn gateway_dry_run_restart() {
     let assert = fabio()
         .args([

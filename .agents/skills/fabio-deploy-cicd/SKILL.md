@@ -51,6 +51,7 @@ Manage Git integration (connect, commit, pull, status)
 | `fabio git disconnect` | yes | Disconnect a workspace from Git |
 | `fabio git init` | yes | Initialize a workspace Git connection (required after connect) |
 | `fabio git pull` | yes | Pull remote changes into the workspace (update from Git) |
+| `fabio git relation` | yes | Manage workspace relations (base/branch links between workspaces, Preview) |
 | `fabio git show-tracked` | no | Show tracked items and their Git sync status |
 | `fabio git status` | no | Show workspace Git status (changes, conflicts) |
 

@@ -7,6 +7,10 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
+#[path = "git_relation.rs"]
+mod relation;
+pub use relation::RelationCommand;
+
 #[derive(Debug, Subcommand)]
 #[command(
     after_help = "Before using this command, run: fabio context examples git\nReturns response shapes, required parameters, and JMESPath queries as JSON."
@@ -225,6 +229,9 @@ pub enum GitCommand {
     /// Manage Git credentials
     #[command(subcommand, display_order = 21)]
     Credentials(CredentialsCommand),
+    /// Manage workspace relations (base/branch links between workspaces, Preview)
+    #[command(subcommand, display_order = 22)]
+    Relation(RelationCommand),
     // ── Inspection ───────────────────────────────────────────────────────
     /// Show tracked items and their Git sync status
     #[command(display_order = 30)]
@@ -409,6 +416,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
                 .await
                 .map_err(|e| enrich_forbidden(e, "git credentials update", "Admin")),
         },
+        GitCommand::Relation(sub) => relation::execute(cli, client, sub).await,
         GitCommand::ShowTracked { workspace } => show_tracked(cli, client, workspace).await,
     }
 }

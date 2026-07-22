@@ -54,9 +54,24 @@ pub enum GatewayCommand {
         #[arg(long, default_value = "120")]
         inactivity_minutes: i64,
 
-        /// Number of gateway members (1-9)
-        #[arg(long, default_value = "1")]
-        member_count: i64,
+        /// Fixed number of gateway members (1-9). Cannot be used together with
+        /// --max-member-gateway-count/--min-member-gateway-count. Defaults to 1
+        /// when none of the member-count flags are provided.
+        #[arg(
+            long,
+            conflicts_with_all = ["max_member_gateway_count", "min_member_gateway_count"]
+        )]
+        member_count: Option<i64>,
+
+        /// Maximum number of gateway members (1-9, value range). Requires
+        /// --min-member-gateway-count; cannot be used with --member-count
+        #[arg(long, requires = "min_member_gateway_count")]
+        max_member_gateway_count: Option<i64>,
+
+        /// Minimum number of gateway members (1-9, value range). Requires
+        /// --max-member-gateway-count; cannot be used with --member-count
+        #[arg(long, requires = "max_member_gateway_count")]
+        min_member_gateway_count: Option<i64>,
     },
     /// Create a new streaming virtual network gateway
     #[command(display_order = 3, name = "create-streaming")]
@@ -103,6 +118,24 @@ pub enum GatewayCommand {
         /// Load balancing setting (e.g., Failover, `RoundRobin`)
         #[arg(long)]
         load_balancing: Option<String>,
+
+        /// Fixed number of gateway members (1-9, `VirtualNetwork` gateways only).
+        /// Cannot be used together with --max-member-gateway-count/--min-member-gateway-count.
+        #[arg(
+            long,
+            conflicts_with_all = ["max_member_gateway_count", "min_member_gateway_count"]
+        )]
+        member_count: Option<i64>,
+
+        /// Maximum number of gateway members (1-9, value range). Requires
+        /// --min-member-gateway-count; cannot be used with --member-count
+        #[arg(long, requires = "min_member_gateway_count")]
+        max_member_gateway_count: Option<i64>,
+
+        /// Minimum number of gateway members (1-9, value range). Requires
+        /// --max-member-gateway-count; cannot be used with --member-count
+        #[arg(long, requires = "max_member_gateway_count")]
+        min_member_gateway_count: Option<i64>,
     },
     /// Delete a gateway
     #[command(display_order = 5)]
@@ -265,6 +298,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GatewayCommand)
             subnet,
             inactivity_minutes,
             member_count,
+            max_member_gateway_count,
+            min_member_gateway_count,
         } => {
             create(
                 cli,
@@ -277,6 +312,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GatewayCommand)
                 subnet,
                 *inactivity_minutes,
                 *member_count,
+                *max_member_gateway_count,
+                *min_member_gateway_count,
             )
             .await
         }
@@ -304,6 +341,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GatewayCommand)
             allow_cloud_connection_refresh,
             allow_custom_connectors,
             load_balancing,
+            member_count,
+            max_member_gateway_count,
+            min_member_gateway_count,
         } => {
             update(
                 cli,
@@ -313,6 +353,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GatewayCommand)
                 *allow_cloud_connection_refresh,
                 *allow_custom_connectors,
                 load_balancing.as_deref(),
+                *member_count,
+                *max_member_gateway_count,
+                *min_member_gateway_count,
             )
             .await
         }
@@ -408,9 +451,11 @@ async fn create(
     vnet_name: &str,
     subnet: &str,
     inactivity_minutes: i64,
-    member_count: i64,
+    member_count: Option<i64>,
+    max_member_gateway_count: Option<i64>,
+    min_member_gateway_count: Option<i64>,
 ) -> Result<()> {
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "type": "VirtualNetwork",
         "displayName": name,
         "capacityId": capacity_id,
@@ -421,8 +466,14 @@ async fn create(
             "subnetName": subnet
         },
         "inactivityMinutesBeforeSleep": inactivity_minutes,
-        "numberOfMemberGateways": member_count
     });
+    apply_member_gateway_count(
+        &mut body,
+        member_count,
+        max_member_gateway_count,
+        min_member_gateway_count,
+        true,
+    );
 
     if output::dry_run_guard(cli, "gateway create", &body) {
         return Ok(());
@@ -434,6 +485,38 @@ async fn create(
         .map_err(|e| enrich_forbidden(e, "gateway create", "Contributor"))?;
     output::render_object(cli, &data, "id");
     Ok(())
+}
+
+/// Applies the mutually-exclusive gateway member-count fields to a request body.
+///
+/// Either `numberOfMemberGateways` (legacy, fixed value) or the
+/// `maxMemberGatewayCount`/`minMemberGatewayCount` pair (value range) may be
+/// set, never both — clap's `conflicts_with_all`/`requires` constraints
+/// guarantee only the combinations handled below can reach this function.
+/// When `default_when_absent` is true and none of the flags were provided,
+/// defaults to a fixed count of 1 (preserves the previous `gateway create` default).
+fn apply_member_gateway_count(
+    body: &mut Value,
+    member_count: Option<i64>,
+    max_member_gateway_count: Option<i64>,
+    min_member_gateway_count: Option<i64>,
+    default_when_absent: bool,
+) {
+    match (
+        member_count,
+        max_member_gateway_count,
+        min_member_gateway_count,
+    ) {
+        (Some(n), _, _) => body["numberOfMemberGateways"] = Value::from(n),
+        (None, Some(max), Some(min)) => {
+            body["maxMemberGatewayCount"] = Value::from(max);
+            body["minMemberGatewayCount"] = Value::from(min);
+        }
+        (None, None, None) if default_when_absent => {
+            body["numberOfMemberGateways"] = Value::from(1_i64);
+        }
+        (None, _, _) => {}
+    }
 }
 
 async fn create_streaming(
@@ -468,6 +551,7 @@ async fn create_streaming(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn update(
     cli: &Cli,
     client: &FabricClient,
@@ -476,16 +560,22 @@ async fn update(
     allow_cloud_connection_refresh: Option<bool>,
     allow_custom_connectors: Option<bool>,
     load_balancing: Option<&str>,
+    member_count: Option<i64>,
+    max_member_gateway_count: Option<i64>,
+    min_member_gateway_count: Option<i64>,
 ) -> Result<()> {
     if name.is_none()
         && allow_cloud_connection_refresh.is_none()
         && allow_custom_connectors.is_none()
         && load_balancing.is_none()
+        && member_count.is_none()
+        && max_member_gateway_count.is_none()
+        && min_member_gateway_count.is_none()
     {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
             "At least one field must be provided for update".to_string(),
-            "Options: --name, --allow-cloud-connection-refresh, --allow-custom-connectors, --load-balancing".to_string(),
+            "Options: --name, --allow-cloud-connection-refresh, --allow-custom-connectors, --load-balancing, --member-count, --max-member-gateway-count/--min-member-gateway-count".to_string(),
         )
         .into());
     }
@@ -510,6 +600,13 @@ async fn update(
     if let Some(lb) = load_balancing {
         body["loadBalancingSetting"] = Value::from(lb);
     }
+    apply_member_gateway_count(
+        &mut body,
+        member_count,
+        max_member_gateway_count,
+        min_member_gateway_count,
+        false,
+    );
 
     if output::dry_run_guard(cli, "gateway update", &body) {
         return Ok(());
@@ -859,5 +956,39 @@ mod lifecycle_tests {
     #[test]
     fn shutdown_url() {
         assert_eq!(build_shutdown_url("gw-1"), "/gateways/gw-1/shutdown");
+    }
+
+    #[test]
+    fn member_gateway_count_fixed_value() {
+        let mut body = serde_json::json!({});
+        apply_member_gateway_count(&mut body, Some(3), None, None, true);
+        assert_eq!(body["numberOfMemberGateways"], 3);
+        assert!(body.get("maxMemberGatewayCount").is_none());
+        assert!(body.get("minMemberGatewayCount").is_none());
+    }
+
+    #[test]
+    fn member_gateway_count_range() {
+        let mut body = serde_json::json!({});
+        apply_member_gateway_count(&mut body, None, Some(5), Some(1), true);
+        assert_eq!(body["maxMemberGatewayCount"], 5);
+        assert_eq!(body["minMemberGatewayCount"], 1);
+        assert!(body.get("numberOfMemberGateways").is_none());
+    }
+
+    #[test]
+    fn member_gateway_count_defaults_when_absent_and_requested() {
+        let mut body = serde_json::json!({});
+        apply_member_gateway_count(&mut body, None, None, None, true);
+        assert_eq!(body["numberOfMemberGateways"], 1);
+    }
+
+    #[test]
+    fn member_gateway_count_no_default_for_update() {
+        let mut body = serde_json::json!({});
+        apply_member_gateway_count(&mut body, None, None, None, false);
+        assert!(body.get("numberOfMemberGateways").is_none());
+        assert!(body.get("maxMemberGatewayCount").is_none());
+        assert!(body.get("minMemberGatewayCount").is_none());
     }
 }

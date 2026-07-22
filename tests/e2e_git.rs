@@ -2712,3 +2712,101 @@ fn git_branch_out_fails_on_unconnected_workspace() {
         "Should fail with 'not connected' error, got stderr: {stderr}"
     );
 }
+
+// ─── git relation (WorkspaceRelations, Preview) ────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+fn git_relation_list_returns_array() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "git",
+            "relation",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = json
+        .get("data")
+        .and_then(|d| d.as_array())
+        .expect("data should be array");
+    let _ = data;
+}
+
+#[test]
+fn git_relation_create_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "git",
+            "relation",
+            "create",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--related-workspace",
+            "00000000-0000-0000-0000-000000000002",
+            "--relation-type",
+            "base",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "git relation create");
+    assert_eq!(data["details"]["relationType"], "Base");
+    assert_eq!(
+        data["details"]["relatedWorkspaceId"],
+        "00000000-0000-0000-0000-000000000002"
+    );
+}
+
+#[test]
+fn git_relation_create_rejects_invalid_relation_type() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "git",
+            "relation",
+            "create",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--related-workspace",
+            "00000000-0000-0000-0000-000000000002",
+            "--relation-type",
+            "relatedworkspace",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("base") && stderr.contains("branch"));
+}
+
+#[test]
+fn git_relation_delete_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "git",
+            "relation",
+            "delete",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--relation-id",
+            "00000000-0000-0000-0000-000000000003",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "git relation delete");
+}

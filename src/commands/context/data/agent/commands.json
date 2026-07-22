@@ -16969,13 +16969,22 @@
           },
           "--member-count": {
             "type": "string",
-            "description": "Number of gateway members (1-9)"
+            "description": "Fixed number of gateway members (1-9). Cannot be used together with --max-member-gateway-count/--min-member-gateway-count. Defaults to 1 when none of the member-count flags are provided"
+          },
+          "--max-member-gateway-count": {
+            "type": "string",
+            "description": "Maximum number of gateway members (1-9, value range). Requires --min-member-gateway-count; cannot be used with --member-count"
+          },
+          "--min-member-gateway-count": {
+            "type": "string",
+            "description": "Minimum number of gateway members (1-9, value range). Requires --max-member-gateway-count; cannot be used with --member-count"
           }
         },
         "mutates": true,
         "returns": "object",
         "examples": [
-          "fabio gateway create --name \"data-gateway\" --capacity $CAP --subscription $SUB --resource-group $RG --vnet myVNet --subnet data-subnet"
+          "fabio gateway create --name \"data-gateway\" --capacity $CAP --subscription $SUB --resource-group $RG --vnet myVNet --subnet data-subnet",
+          "fabio gateway create --name \"data-gateway\" --capacity $CAP --subscription $SUB --resource-group $RG --vnet myVNet --subnet data-subnet --max-member-gateway-count 5 --min-member-gateway-count 1"
         ]
       },
       "create-streaming": {
@@ -17044,10 +17053,26 @@
           "--load-balancing": {
             "type": "string",
             "description": "Load balancing setting (e.g., Failover, `RoundRobin`)"
+          },
+          "--member-count": {
+            "type": "string",
+            "description": "Fixed number of gateway members (1-9, `VirtualNetwork` gateways only). Cannot be used together with --max-member-gateway-count/--min-member-gateway-count"
+          },
+          "--max-member-gateway-count": {
+            "type": "string",
+            "description": "Maximum number of gateway members (1-9, value range). Requires --min-member-gateway-count; cannot be used with --member-count"
+          },
+          "--min-member-gateway-count": {
+            "type": "string",
+            "description": "Minimum number of gateway members (1-9, value range). Requires --max-member-gateway-count; cannot be used with --member-count"
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio gateway update --gateway $GATEWAY_ID --load-balancing RoundRobin",
+          "fabio gateway update --gateway $GATEWAY_ID --max-member-gateway-count 5 --min-member-gateway-count 1"
+        ]
       },
       "delete": {
         "description": "Delete a gateway",
@@ -17568,6 +17593,16 @@
         "description": "Manage Git credentials",
         "mutates": false,
         "returns": "object"
+      },
+      "relation": {
+        "description": "Manage workspace relations (base/branch links between workspaces, Preview)",
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio git relation list --workspace $BRANCH_WS",
+          "fabio git relation create --workspace $BRANCH_WS --related-workspace $BASE_WS --relation-type base",
+          "fabio git relation delete --workspace $BRANCH_WS --relation-id $RELATION_ID"
+        ]
       },
       "show-tracked": {
         "description": "Show tracked items and their Git sync status",
