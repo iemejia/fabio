@@ -32,12 +32,8 @@ ENV PATH="/home/ubuntu/.cargo/bin:${PATH}"
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
     --default-toolchain stable \
-    --component rustfmt clippy \
-    --target x86_64-unknown-linux-musl \
-           aarch64-unknown-linux-musl \
-           x86_64-apple-darwin \
-           aarch64-apple-darwin \
-           x86_64-pc-windows-msvc
+    --component rustfmt,clippy \
+    --target x86_64-unknown-linux-musl,aarch64-unknown-linux-musl,x86_64-apple-darwin,aarch64-apple-darwin,x86_64-pc-windows-msvc
 
 # Install cargo dev tools (baked in for fast container startup)
 RUN cargo install git-cliff cargo-zigbuild cargo-xwin cargo-audit prek \
