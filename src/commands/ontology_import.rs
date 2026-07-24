@@ -909,6 +909,36 @@ struct EntityBindingSpec {
     /// Base entity type name for inheritance (overrides `rdfs:subClassOf`).
     #[serde(default)]
     base_entity_type: Option<String>,
+    /// Multiple data bindings for one entity (e.g. a static `NonTimeSeries` table
+    /// plus a telemetry `TimeSeries` table). When present, the single-binding
+    /// shorthand fields above (except `timeseriesProperties`/`baseEntityType`)
+    /// are ignored.
+    #[serde(default)]
+    bindings: Vec<EntityDataBindingSpec>,
+}
+
+/// One data binding within an entity's `bindings` list.
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EntityDataBindingSpec {
+    #[serde(default)]
+    table: Option<String>,
+    /// `NonTimeSeries` (default) or `TimeSeries`.
+    #[serde(default)]
+    data_binding_type: Option<String>,
+    #[serde(default)]
+    timestamp_column: Option<String>,
+    /// Per-binding data source override.
+    #[serde(default)]
+    source: Option<SourceSpec>,
+    /// Maps ontology property label → source column name. When set, this
+    /// binding covers exactly these properties.
+    #[serde(default)]
+    columns: HashMap<String, String>,
+    /// Explicit list of property labels this binding covers (alternative to
+    /// `columns`; source column defaults to the property label).
+    #[serde(default)]
+    properties: Vec<String>,
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -1352,8 +1382,8 @@ fn generate_fabric_parts(
         let mut timeseries_properties: Vec<Value> = Vec::new();
         let mut id_parts: Vec<String> = Vec::new();
         let mut display_name_id: Option<String> = None;
-        // Ordered (source column, property id) pairs for the data binding.
-        let mut column_bindings: Vec<(String, String)> = Vec::new();
+        // Properties available to the entity's data bindings.
+        let mut binding_props: Vec<BindingProp> = Vec::new();
 
         for (pi, prop) in model
             .datatype_properties
@@ -1376,11 +1406,12 @@ fn generate_fabric_parts(
                 properties.push(prop_def);
             }
 
-            // Source column defaults to the property label; overridable per binding map.
-            let source_column = entity_spec
-                .and_then(|e| e.columns.get(&prop.label).cloned())
-                .unwrap_or_else(|| prop.label.clone());
-            column_bindings.push((source_column, prop_id.clone()));
+            binding_props.push(BindingProp {
+                id: prop_id.clone(),
+                label: prop.label.clone(),
+                is_time_series: time_series,
+                is_identifier: prop.is_identifier && !time_series,
+            });
 
             // Identifiers and the display name come from static (non-time-series) props.
             if prop.is_identifier && !time_series {
@@ -1433,16 +1464,14 @@ fn generate_fabric_parts(
             content: serde_json::to_string_pretty(&entity_def).unwrap_or_default(),
         });
 
-        // Emit a DataBinding when a data source is configured.
+        // Emit DataBinding(s) when a data source is configured.
         if let Some(ctx) = binding {
-            parts.push(build_entity_data_binding(
+            parts.extend(build_entity_data_bindings(
                 ctx,
                 &class.label,
                 type_id,
-                &class.label.to_lowercase(),
-                column_bindings,
+                &binding_props,
                 entity_spec,
-                !timeseries_properties.is_empty(),
             )?);
         }
     }
@@ -1508,27 +1537,180 @@ fn generate_fabric_parts(
     Ok(parts)
 }
 
-/// Build an `EntityType` `DataBinding` part for one entity, applying binding-map
-/// overrides and validating the dataBindingType/source combination against the
-/// Fabric schema rules. Shared by `import` (generated ids) and `bind` (live ids).
-fn build_entity_data_binding(
+/// A property available to entity data bindings.
+struct BindingProp {
+    id: String,
+    label: String,
+    is_time_series: bool,
+    is_identifier: bool,
+}
+
+/// Whether `label` matches any key, exactly or after name sanitization.
+fn label_matches_any<'a>(keys: impl Iterator<Item = &'a String>, label: &str) -> bool {
+    let target = sanitize_name(label);
+    let mut keys = keys;
+    keys.any(|k| k == label || sanitize_name(k) == target)
+}
+
+/// Resolve a data-binding type: explicit → CLI default → (`TimeSeries` if it
+/// covers time-series columns) → `NonTimeSeries`.
+fn resolve_data_binding_type(
+    explicit: Option<&str>,
+    ctx: &BindingContext,
+    covers_timeseries: bool,
+) -> String {
+    explicit
+        .map(str::to_string)
+        .or_else(|| ctx.default_data_binding_type.clone())
+        .or_else(|| covers_timeseries.then(|| "TimeSeries".to_string()))
+        .unwrap_or_else(|| "NonTimeSeries".to_string())
+}
+
+/// Build all `DataBinding` parts for one entity. Uses the entity's `bindings`
+/// list when present (multiple data bindings — e.g. a static `NonTimeSeries` table
+/// plus a telemetry `TimeSeries` table), otherwise a single binding from the
+/// shorthand fields covering every property. Shared by `import` and `bind`.
+#[allow(clippy::too_many_lines)]
+fn build_entity_data_bindings(
     ctx: &BindingContext,
     entity_name: &str,
     entity_id: &str,
-    default_table: &str,
-    column_bindings: Vec<(String, String)>,
+    props: &[BindingProp],
     entity_spec: Option<&EntityBindingSpec>,
-    has_timeseries: bool,
-) -> Result<FabricPart> {
-    let table = entity_spec
-        .and_then(|e| e.table.clone())
-        .unwrap_or_else(|| default_table.to_string());
+) -> Result<Vec<FabricPart>> {
+    let default_table = entity_name.to_lowercase();
+    let mut parts = Vec::new();
 
-    let data_binding_type = entity_spec
-        .and_then(|e| e.data_binding_type.clone())
-        .or_else(|| ctx.default_data_binding_type.clone())
-        .or_else(|| has_timeseries.then(|| "TimeSeries".to_string()))
-        .unwrap_or_else(|| "NonTimeSeries".to_string());
+    let multi = entity_spec.map(|e| &e.bindings).filter(|b| !b.is_empty());
+
+    if let Some(bindings) = multi {
+        for b in bindings {
+            let table = b.table.clone().unwrap_or_else(|| default_table.clone());
+
+            // Determine covered properties and the data-binding type.
+            let (covered, data_binding_type): (Vec<&BindingProp>, String) = if !b.columns.is_empty()
+            {
+                let cov: Vec<&BindingProp> = props
+                    .iter()
+                    .filter(|p| label_matches_any(b.columns.keys(), &p.label))
+                    .collect();
+                let covers_ts = cov.iter().any(|p| p.is_time_series);
+                (
+                    cov,
+                    resolve_data_binding_type(b.data_binding_type.as_deref(), ctx, covers_ts),
+                )
+            } else if !b.properties.is_empty() {
+                let cov: Vec<&BindingProp> = props
+                    .iter()
+                    .filter(|p| label_matches_any(b.properties.iter(), &p.label))
+                    .collect();
+                let covers_ts = cov.iter().any(|p| p.is_time_series);
+                (
+                    cov,
+                    resolve_data_binding_type(b.data_binding_type.as_deref(), ctx, covers_ts),
+                )
+            } else {
+                // Default coverage by binding type (type resolved without
+                // coverage to avoid circularity).
+                let dbt = b
+                    .data_binding_type
+                    .clone()
+                    .or_else(|| ctx.default_data_binding_type.clone())
+                    .unwrap_or_else(|| "NonTimeSeries".to_string());
+                let cov: Vec<&BindingProp> = if dbt == "TimeSeries" {
+                    props
+                        .iter()
+                        .filter(|p| p.is_time_series || p.is_identifier)
+                        .collect()
+                } else {
+                    props.iter().filter(|p| !p.is_time_series).collect()
+                };
+                (cov, dbt)
+            };
+
+            let column_bindings: Vec<(String, String)> = covered
+                .iter()
+                .map(|p| {
+                    let col = b
+                        .columns
+                        .iter()
+                        .find(|(k, _)| {
+                            *k == &p.label || sanitize_name(k) == sanitize_name(&p.label)
+                        })
+                        .map_or_else(|| p.label.clone(), |(_, v)| v.clone());
+                    (col, p.id.clone())
+                })
+                .collect();
+            let covers_ts = covered.iter().any(|p| p.is_time_series);
+            let seed = format!("{entity_name}:{table}:{data_binding_type}");
+            parts.push(build_one_data_binding(
+                ctx,
+                entity_name,
+                entity_id,
+                table,
+                data_binding_type,
+                b.timestamp_column
+                    .clone()
+                    .or_else(|| ctx.default_timestamp_column.clone()),
+                b.source.as_ref(),
+                column_bindings,
+                covers_ts,
+                &seed,
+            )?);
+        }
+    } else {
+        // Single shorthand binding covering all properties.
+        let table = entity_spec
+            .and_then(|e| e.table.clone())
+            .unwrap_or_else(|| default_table.clone());
+        let covers_ts = props.iter().any(|p| p.is_time_series);
+        let data_binding_type = resolve_data_binding_type(
+            entity_spec.and_then(|e| e.data_binding_type.as_deref()),
+            ctx,
+            covers_ts,
+        );
+        let column_bindings: Vec<(String, String)> = props
+            .iter()
+            .map(|p| {
+                let col = entity_spec
+                    .and_then(|e| e.columns.get(&p.label).cloned())
+                    .unwrap_or_else(|| p.label.clone());
+                (col, p.id.clone())
+            })
+            .collect();
+        parts.push(build_one_data_binding(
+            ctx,
+            entity_name,
+            entity_id,
+            table,
+            data_binding_type,
+            entity_spec
+                .and_then(|e| e.timestamp_column.clone())
+                .or_else(|| ctx.default_timestamp_column.clone()),
+            entity_spec.and_then(|e| e.source.as_ref()),
+            column_bindings,
+            covers_ts,
+            entity_name,
+        )?);
+    }
+    Ok(parts)
+}
+
+/// Low-level builder: one `DataBinding` part from fully-resolved parameters,
+/// validating the dataBindingType/source combination against the Fabric rules.
+#[allow(clippy::too_many_arguments)]
+fn build_one_data_binding(
+    ctx: &BindingContext,
+    entity_name: &str,
+    entity_id: &str,
+    table: String,
+    data_binding_type: String,
+    timestamp_column_name: Option<String>,
+    source_override: Option<&SourceSpec>,
+    column_bindings: Vec<(String, String)>,
+    covers_timeseries: bool,
+    uuid_seed: &str,
+) -> Result<FabricPart> {
     if data_binding_type != "NonTimeSeries" && data_binding_type != "TimeSeries" {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
@@ -1537,29 +1719,28 @@ fn build_entity_data_binding(
         )
         .into());
     }
-    if has_timeseries && data_binding_type != "TimeSeries" {
+    if covers_timeseries && data_binding_type != "TimeSeries" {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
-            format!("Entity '{entity_name}' has timeseriesProperties but a NonTimeSeries binding."),
-            "Time-series properties require a TimeSeries data binding; set \
-             entities.<name>.dataBindingType to 'TimeSeries' (and a timestampColumn).",
+            format!(
+                "Entity '{entity_name}' binds time-series properties with a NonTimeSeries binding."
+            ),
+            "Time-series properties require a TimeSeries data binding; set the binding's \
+             dataBindingType to 'TimeSeries' (and a timestampColumn).",
         )
         .into());
     }
-    let timestamp_column_name = entity_spec
-        .and_then(|e| e.timestamp_column.clone())
-        .or_else(|| ctx.default_timestamp_column.clone());
     if data_binding_type == "TimeSeries" && timestamp_column_name.is_none() {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
-            format!("Entity '{entity_name}' is TimeSeries but has no timestampColumn."),
-            "Pass --timestamp-column for an Eventhouse default source, or set \
-             entities.<name>.timestampColumn in the binding map.",
+            format!("Entity '{entity_name}' has a TimeSeries binding but no timestampColumn."),
+            "Pass --timestamp-column for an Eventhouse default source, or set the binding's \
+             timestampColumn in the binding map.",
         )
         .into());
     }
 
-    let source = ctx.resolve_source(entity_spec.and_then(|e| e.source.as_ref()))?;
+    let source = ctx.resolve_source(source_override)?;
     if !source.is_lakehouse() && data_binding_type == "NonTimeSeries" {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
@@ -1570,7 +1751,7 @@ fn build_entity_data_binding(
         .into());
     }
 
-    let binding_uuid = deterministic_uuid("binding", entity_name);
+    let binding_uuid = deterministic_uuid("binding", uuid_seed);
     let data_binding = DataBinding {
         id: binding_uuid.clone(),
         data_binding_configuration: DataBindingConfiguration {
@@ -1680,8 +1861,8 @@ struct LiveEntity {
     id: String,
     name: String,
     id_parts: Vec<String>,
-    /// (property id, property name), in definition order.
-    properties: Vec<(String, String)>,
+    /// (property id, property name, `is_time_series`), in definition order.
+    properties: Vec<(String, String, bool)>,
 }
 
 /// A relationship type parsed from a live ontology definition.
@@ -1832,18 +2013,21 @@ fn parse_live_types(parts: &[Value]) -> (Vec<LiveEntity>, Vec<LiveRelationship>)
                             .map(String::from)
                             .collect()
                     });
-                let properties =
-                    v.get("properties")
+                let read_props = |key: &str, is_ts: bool| -> Vec<(String, String, bool)> {
+                    v.get(key)
                         .and_then(Value::as_array)
                         .map_or_else(Vec::new, |a| {
                             a.iter()
                                 .filter_map(|p| {
                                     let pid = p.get("id").and_then(Value::as_str)?;
                                     let pname = p.get("name").and_then(Value::as_str)?;
-                                    Some((pid.to_string(), pname.to_string()))
+                                    Some((pid.to_string(), pname.to_string(), is_ts))
                                 })
                                 .collect()
-                        });
+                        })
+                };
+                let mut properties = read_props("properties", false);
+                properties.extend(read_props("timeseriesProperties", true));
                 entities.push(LiveEntity {
                     id: eid.to_string(),
                     name: name.to_string(),
@@ -1921,30 +2105,23 @@ fn generate_bindings_for_live(
             continue;
         }
 
-        let column_bindings: Vec<(String, String)> = entity
+        let binding_props: Vec<BindingProp> = entity
             .properties
             .iter()
-            .map(|(pid, pname)| {
-                let col = entity_spec
-                    .and_then(|s| {
-                        s.columns
-                            .iter()
-                            .find(|(k, _)| name_matches(k, pname))
-                            .map(|(_, v)| v.clone())
-                    })
-                    .unwrap_or_else(|| pname.clone());
-                (col, pid.clone())
+            .map(|(pid, pname, is_ts)| BindingProp {
+                id: pid.clone(),
+                label: pname.clone(),
+                is_time_series: *is_ts,
+                is_identifier: entity.id_parts.contains(pid) && !*is_ts,
             })
             .collect();
 
-        parts.push(build_entity_data_binding(
+        parts.extend(build_entity_data_bindings(
             ctx,
             &entity.name,
             &entity.id,
-            &entity.name.to_lowercase(),
-            column_bindings,
+            &binding_props,
             entity_spec,
-            false,
         )?);
         bound_entities.insert(entity.id.clone());
     }
@@ -3131,8 +3308,8 @@ mod tests {
         assert_eq!(
             study.properties,
             vec![
-                ("P1".into(), "studyId".into()),
-                ("P2".into(), "studyName".into())
+                ("P1".into(), "studyId".into(), false),
+                ("P2".into(), "studyName".into(), false)
             ]
         );
         assert_eq!(rels[0].source_type_id, "E1");
@@ -3416,6 +3593,167 @@ mod tests {
             r#"{"entities":{"Sensor":{"dataBindingType":"NonTimeSeries","timeseriesProperties":["temp"]}}}"#,
         ).unwrap();
         let err = generate_fabric_parts(&sensor_model(), Some(&lakehouse_ctx(spec))).unwrap_err();
-        assert!(err.to_string().contains("timeseriesProperties"), "{err}");
+        assert!(err.to_string().contains("time-series"), "{err}");
+    }
+
+    // -----------------------------------------------------------------------
+    // Multiple data bindings per entity (static NonTimeSeries + telemetry TS)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn multiple_bindings_per_entity_static_and_telemetry() {
+        // Sensor(sensorId id, ts DateTime, temp Double). Two bindings:
+        // a static NonTimeSeries table for sensorId, and a telemetry TimeSeries
+        // (KustoTable) table for ts + temp.
+        let spec: BindingSpec = serde_json::from_str(
+            r#"{"entities":{"Sensor":{
+                "timeseriesProperties":["ts","temp"],
+                "bindings":[
+                    {"table":"sensor_static","dataBindingType":"NonTimeSeries","properties":["sensorId"]},
+                    {"table":"sensor_telemetry","dataBindingType":"TimeSeries","timestampColumn":"ts",
+                     "properties":["ts","temp","sensorId"],
+                     "source":{"type":"KustoTable","clusterUri":"https://x.kusto","databaseName":"telemetry"}}
+                ]
+            }}}"#,
+        ).unwrap();
+        let parts = generate_fabric_parts(&sensor_model(), Some(&lakehouse_ctx(spec))).unwrap();
+
+        // Two DataBinding parts under the Sensor entity, both schema-valid.
+        let dbs: Vec<&FabricPart> = parts
+            .iter()
+            .filter(|p| p.path.contains("EntityTypes/8880000000001/DataBindings"))
+            .collect();
+        assert_eq!(dbs.len(), 2, "two data bindings; got {}", dbs.len());
+        for db in &dbs {
+            assert_schema_valid("dataBinding", &payload(db));
+        }
+
+        // Distinguish by dataBindingType.
+        let by_type: std::collections::HashMap<String, Value> = dbs
+            .iter()
+            .map(|p| {
+                let v = payload(p);
+                (
+                    v["dataBindingConfiguration"]["dataBindingType"]
+                        .as_str()
+                        .unwrap()
+                        .to_string(),
+                    v,
+                )
+            })
+            .collect();
+
+        let static_b = &by_type["NonTimeSeries"];
+        assert_eq!(
+            static_b["dataBindingConfiguration"]["sourceTableProperties"]["sourceTableName"],
+            "sensor_static"
+        );
+        assert_eq!(
+            static_b["dataBindingConfiguration"]["sourceTableProperties"]["sourceType"],
+            "LakehouseTable"
+        );
+        let static_cols: Vec<&str> = static_b["dataBindingConfiguration"]["propertyBindings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| b["sourceColumnName"].as_str().unwrap())
+            .collect();
+        assert_eq!(static_cols, vec!["sensorId"]);
+
+        let tel = &by_type["TimeSeries"];
+        assert_eq!(
+            tel["dataBindingConfiguration"]["sourceTableProperties"]["sourceType"],
+            "KustoTable"
+        );
+        assert_eq!(tel["dataBindingConfiguration"]["timestampColumnName"], "ts");
+        let tel_cols: Vec<&str> = tel["dataBindingConfiguration"]["propertyBindings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| b["sourceColumnName"].as_str().unwrap())
+            .collect();
+        assert_eq!(tel_cols, vec!["sensorId", "ts", "temp"]);
+    }
+
+    #[test]
+    fn multiple_bindings_have_distinct_ids() {
+        let spec: BindingSpec = serde_json::from_str(
+            r#"{"entities":{"Sensor":{"timeseriesProperties":["temp"],"bindings":[
+                {"table":"a","dataBindingType":"NonTimeSeries","properties":["sensorId"]},
+                {"table":"b","dataBindingType":"TimeSeries","timestampColumn":"ts","properties":["temp"]}
+            ]}}}"#,
+        ).unwrap();
+        let parts = generate_fabric_parts(&sensor_model(), Some(&lakehouse_ctx(spec))).unwrap();
+        let ids: std::collections::HashSet<String> = parts
+            .iter()
+            .filter(|p| p.path.contains("/DataBindings/"))
+            .map(|p| payload(p)["id"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(ids.len(), 2, "distinct binding ids");
+    }
+
+    #[test]
+    fn multi_binding_default_coverage_by_type() {
+        // No explicit columns/properties: NonTimeSeries covers static props,
+        // TimeSeries covers time-series props + identifier.
+        let spec: BindingSpec = serde_json::from_str(
+            r#"{"entities":{"Sensor":{"timeseriesProperties":["ts","temp"],"bindings":[
+                {"table":"s","dataBindingType":"NonTimeSeries"},
+                {"table":"t","dataBindingType":"TimeSeries","timestampColumn":"ts"}
+            ]}}}"#,
+        )
+        .unwrap();
+        let parts = generate_fabric_parts(&sensor_model(), Some(&lakehouse_ctx(spec))).unwrap();
+        let by_type: std::collections::HashMap<String, Value> = parts
+            .iter()
+            .filter(|p| p.path.contains("/DataBindings/"))
+            .map(|p| {
+                let v = payload(p);
+                (
+                    v["dataBindingConfiguration"]["dataBindingType"]
+                        .as_str()
+                        .unwrap()
+                        .to_string(),
+                    v,
+                )
+            })
+            .collect();
+        let static_cols: Vec<&str> =
+            by_type["NonTimeSeries"]["dataBindingConfiguration"]["propertyBindings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|b| b["sourceColumnName"].as_str().unwrap())
+                .collect();
+        assert_eq!(static_cols, vec!["sensorId"]);
+        let tel_cols: Vec<&str> =
+            by_type["TimeSeries"]["dataBindingConfiguration"]["propertyBindings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|b| b["sourceColumnName"].as_str().unwrap())
+                .collect();
+        // ts + temp (time-series) + sensorId (identifier)
+        assert!(
+            tel_cols.contains(&"ts")
+                && tel_cols.contains(&"temp")
+                && tel_cols.contains(&"sensorId")
+        );
+    }
+
+    #[test]
+    fn single_binding_shorthand_unchanged_uuid() {
+        // Back-compat: the shorthand path keeps one binding seeded by entity name.
+        let parts = generate_fabric_parts(
+            &binding_model(),
+            Some(&lakehouse_ctx(BindingSpec::default())),
+        )
+        .unwrap();
+        let db = find_part(&parts, "EntityTypes/8880000000001/DataBindings");
+        let expected = deterministic_uuid("binding", "Study");
+        assert!(
+            db.path.contains(&expected),
+            "shorthand uuid seeded by entity name"
+        );
     }
 }
