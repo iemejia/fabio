@@ -177,6 +177,16 @@ Before pushing changes to the remote, you MUST run the cross-compilation check t
 - You can target a single platform to iterate faster: `./scripts/cross-check.sh --target windows-x64`
 - This catches issues that local clippy/tests miss: Windows-only code paths (`windows-sys`, `windows` crates), macOS Darwin targets, and ARM64 variants.
 
+## Git History & Merge Strategy (MANDATORY)
+
+Keep `main` history **linear**. NEVER create merge commits.
+
+- **Integrate branches by rebasing, then fast-forwarding** — bring a branch's commits on top of the base (`git rebase main` on the branch, then fast-forward `main` to it). Never `git merge --no-ff`, never a merge commit.
+- **Update a feature branch with `git rebase main`**, not `git merge main` into the branch. Do not create "Merge branch 'main' into …" commits.
+- **Merge PRs with "Rebase and merge" or "Squash and merge"** — never "Create a merge commit". Keep the GitHub repo setting for merge commits disabled.
+- **Never force-push shared branches** (`main`, release branches). Rebasing your own feature branch before it is merged is fine.
+- Keep commits focused and Conventional-Commit style (see the Pre-Commit sections); a clean linear history is part of the deliverable.
+
 ## Agent Knowledge Architecture (MANDATORY READING)
 
 fabio's agent-facing knowledge is organized as a layered information architecture, inspired by microsoft/skills-for-fabric's Agents→Skills→Common model but implemented the fabio way: **authored judgment lives in data files; every mechanical index is generated from the source of truth (`commands.json`), so nothing drifts from the CLI.** When adding knowledge for agents, put it in the correct layer — do NOT hand-write command lists into markdown.
