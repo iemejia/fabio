@@ -310,7 +310,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
             sensitivity_label.as_deref(),
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "ontology create", "Member")),
+        .map_err(|e| enrich_forbidden(e, "ontology create", "Member"))
+        .map_err(|e| enrich_ontology_definition_error(e, "ontology create")),
         OntologyCommand::Update {
             workspace,
             id,
@@ -1014,6 +1015,13 @@ struct OrderedSourceTableProperties {
 /// Normalize a data binding JSON to ensure `sourceType` is the first key in
 /// `sourceTableProperties`. The Fabric API uses ordered JSON deserialization
 /// with `sourceType` as a discriminator field for the union type.
+///
+/// IMPORTANT: this round-trips through `serde_json::Value`, so it depends on the
+/// crate's `preserve_order` feature (enabled in `[dependencies]`). Without it,
+/// `Value` is backed by a `BTreeMap` that alphabetizes keys on re-serialization,
+/// pushing `sourceType` out of first position and making Fabric reject the push
+/// with a generic `ALMOperationImportFailed`. See the `serde_json` note in
+/// `Cargo.toml`.
 fn normalize_data_binding(content: &[u8]) -> Result<Vec<u8>> {
     let mut binding: Value = serde_json::from_slice(content)
         .map_err(|e| FabioError::with_hint(ErrorCode::InvalidInput, format!("Invalid JSON in DataBinding file: {e}"), "DataBinding files must be valid JSON. See format: fabio ontology get-definition --workspace <WS> --id <ID> --decode"))?;
@@ -1544,6 +1552,34 @@ GRAPH :EventGraph {
             .unwrap();
         let keys: Vec<&String> = source_props.keys().collect();
         assert_eq!(keys[0], "sourceType", "sourceType must be the first key");
+    }
+
+    #[test]
+    fn normalize_data_binding_wire_order_puts_source_type_first() {
+        // Regression guard for the `serde_json` `preserve_order` requirement.
+        // Fabric's ordered union deserializer reads the FIRST key of
+        // `sourceTableProperties` as the `sourceType` discriminator; if any other
+        // key precedes it on the wire, the whole push is rejected with a generic
+        // `ALMOperationImportFailed`. This asserts the actual serialized BYTES
+        // (not a re-parsed Value, which would hide the ordering), so it fails if
+        // `preserve_order` is ever dropped and `Value` starts alphabetizing keys.
+        let input = br#"{"id":"b0000001-0001-0001-0001-000000000001","dataBindingConfiguration":{"dataBindingType":"NonTimeSeries","sourceTableProperties":{"itemId":"abc","sourceSchema":"dbo","sourceTableName":"t","sourceType":"LakehouseTable","workspaceId":"ws"}}}"#;
+        let output = normalize_data_binding(input).unwrap();
+        let wire = String::from_utf8(output).unwrap();
+        let source_type_pos = wire.find("\"sourceType\"").expect("sourceType present");
+        // Every other sourceTableProperties key must appear AFTER sourceType.
+        for key in [
+            "\"itemId\"",
+            "\"sourceSchema\"",
+            "\"sourceTableName\"",
+            "\"workspaceId\"",
+        ] {
+            let pos = wire.find(key).unwrap_or_else(|| panic!("{key} present"));
+            assert!(
+                source_type_pos < pos,
+                "sourceType must precede {key} on the wire (preserve_order regression); got: {wire}"
+            );
+        }
     }
 
     #[test]

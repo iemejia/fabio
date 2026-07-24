@@ -1,6 +1,6 @@
 [package]
 name = "fabio"
-version = "0.50.0-dev"
+version = "0.49.1"
 edition = "2024"
 rust-version = "1.97.1"
 description = "Agent-first CLI for managing Microsoft Fabric artifacts and data"
@@ -32,7 +32,16 @@ webpki-root-certs = "1"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# `preserve_order` is LOAD-BEARING, not cosmetic: several code paths rebuild a
+# `serde_json::Value` and rely on object key insertion order being preserved on
+# re-serialization. The most critical is ontology `normalize_data_binding`, which
+# must keep `sourceType` as the FIRST key of `sourceTableProperties` (Fabric's
+# ordered union deserializer requires the discriminator first, or it rejects the
+# whole push with a generic `ALMOperationImportFailed`). Without this feature,
+# `Value` uses a `BTreeMap` that alphabetizes keys, silently breaking those pushes
+# in release builds. Do NOT remove. (Tests can't catch its removal because they
+# pull it transitively — that is exactly how it once regressed.)
+serde_json = { version = "1", features = ["preserve_order"] }
 
 # Azure auth
 azure_identity = { version = "1", default-features = false, features = ["tokio"] }
@@ -99,7 +108,6 @@ predicates = "3"
 tempfile = "3"
 wiremock = "0.6"
 serial_test = "3"
-serde_json = { version = "1", features = ["preserve_order"] }
 jsonschema = "0.48.5"
 
 [profile.dev]
