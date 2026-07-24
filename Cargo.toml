@@ -52,7 +52,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 home = "0.5"
 
 # Misc
-base64 = "0.22"
+base64 = "0.23"
 glob = "0.3"
 csv = "1"
 
