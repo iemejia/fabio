@@ -7244,6 +7244,22 @@
           "--output-dir": {
             "type": "string",
             "description": "Export converted definition to a local directory"
+          },
+          "--lakehouse": {
+            "type": "string",
+            "description": "Lakehouse item ID for the default data source. When set, generates `DataBindings` (and `Contextualizations`, given `--bindings`) so the imported ontology is queryable, not just a bare schema. Eventhouse / `TimeSeries` / composite sources are configured via `--bindings`"
+          },
+          "--lakehouse-workspace": {
+            "type": "string",
+            "description": "Workspace ID that hosts the Lakehouse default source (defaults to --workspace)"
+          },
+          "--lakehouse-schema": {
+            "type": "string",
+            "description": "Schema for the Lakehouse default-source tables (default: dbo)"
+          },
+          "--bindings": {
+            "type": "string",
+            "description": "Path to a JSON binding map that overrides table/column names, selects data sources, and supplies relationship key columns. See `fabio context examples ontology`"
           }
         },
         "mutates": true,
@@ -7253,6 +7269,39 @@
           "fabio ontology import --workspace $WS --id $ONT --file domain-model.jsonld",
           "fabio ontology import --file ontology.rdf --output-dir ./fabric-format/"
         ]
+      },
+      "bind": {
+        "description": "Bind an existing ontology's types to data sources (no OWL re-import)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Ontology ID"
+          },
+          "--lakehouse": {
+            "type": "string",
+            "description": "Lakehouse item ID for the default data source"
+          },
+          "--lakehouse-workspace": {
+            "type": "string",
+            "description": "Workspace ID that hosts the Lakehouse default source (defaults to --workspace)"
+          },
+          "--lakehouse-schema": {
+            "type": "string",
+            "description": "Schema for the Lakehouse default-source tables (default: dbo)"
+          },
+          "--bindings": {
+            "type": "string",
+            "description": "Path to a JSON binding map (table/column overrides, data sources, relationship key columns). See `fabio context examples ontology`"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
       },
       "export": {
         "description": "Export a Fabric Ontology to OWL format (RDF/XML or JSON-LD)",

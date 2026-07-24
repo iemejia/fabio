@@ -198,6 +198,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/ontology_import.json"),
     ),
     (
+        "ontology/bind",
+        include_str!("data/examples/ontology_bind.json"),
+    ),
+    (
         "ontology/export",
         include_str!("data/examples/ontology_export.json"),
     ),

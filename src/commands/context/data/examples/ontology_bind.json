@@ -1,0 +1,18 @@
+{
+  "command": "fabio ontology bind --workspace $WS_ID --id $ONTOLOGY_ID --lakehouse $LAKEHOUSE_ID --bindings bindings.json",
+  "description": "Binds an existing ontology's entity/relationship types to data sources without re-importing OWL. Fetches the current definition, matches types by name, and adds DataBindings + Contextualizations in place. Use this for portal-authored ontologies or to add bindings incrementally.",
+  "response": {
+    "data": {
+      "status": "bound",
+      "id": "5f090b73-bae2-47d6-9e0c-f4777e77b8ca",
+      "entity_bindings": 13,
+      "contextualizations": 16
+    }
+  },
+  "notes": "Types are matched by NAME within the 'usertypes' namespace (Fabric addresses types by name; renaming a mapped type is unsupported). Binding-map keys may use the original OWL label ('has site') or the sanitized name ('has_site'). Matching is STRICT: a map key that names no existing type is an error. Entities are bound by convention when the map has no 'entities' block, else only the listed ones; relationships are bound only when named in the map. Re-running is idempotent — prior DataBindings/Contextualizations for the (re)bound types are replaced, other parts are left untouched. DataBindings/Contextualizations conform to the official Fabric schemas; see 'fabio context examples ontology' (ontology/import) for the binding-map format.",
+  "query_examples": [
+    {"query": "data.entity_bindings", "description": "Count of entity DataBindings written."},
+    {"query": "data.contextualizations", "description": "Count of relationship Contextualizations written."},
+    {"query": "data.status", "description": "'bound' on success."}
+  ]
+}

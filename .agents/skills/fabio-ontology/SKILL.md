@@ -32,6 +32,7 @@ Manage ontologies (entity types, data bindings)
 
 | Command | Mutates | Description |
 |---|---|---|
+| `fabio ontology bind` | yes | Bind an existing ontology's types to data sources (no OWL re-import) |
 | `fabio ontology create` | yes | Create an ontology |
 | `fabio ontology delete` | yes | Delete an ontology |
 | `fabio ontology export` | no | Export a Fabric Ontology to OWL format (RDF/XML or JSON-LD) |
@@ -106,6 +107,7 @@ Manage Digital Twin Builder flows
 ### PREFER
 - context tenant --format owl to bootstrap an ontology schema from a real workspace scan, then ontology import.
 - ontology import --lakehouse <ID> --bindings <map.json> to generate DataBindings + relationship Contextualizations in the same step, so the imported ontology is queryable rather than a bare schema.
+- ontology bind --lakehouse <ID> --bindings <map.json> to add/update data bindings on an EXISTING ontology (e.g. portal-authored) without re-importing OWL; types are matched by name.
 - Runtime introspection (context agent --group ontology|graph-model) for exact flags.
 
 ### AVOID

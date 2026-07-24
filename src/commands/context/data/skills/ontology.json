@@ -22,6 +22,7 @@
   "prefer": [
     "context tenant --format owl to bootstrap an ontology schema from a real workspace scan, then ontology import.",
     "ontology import --lakehouse <ID> --bindings <map.json> to generate DataBindings + relationship Contextualizations in the same step, so the imported ontology is queryable rather than a bare schema.",
+    "ontology bind --lakehouse <ID> --bindings <map.json> to add/update data bindings on an EXISTING ontology (e.g. portal-authored) without re-importing OWL; types are matched by name.",
     "Runtime introspection (context agent --group ontology|graph-model) for exact flags."
   ],
   "avoid": [

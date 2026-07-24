@@ -165,22 +165,56 @@ pub enum OntologyCommand {
         #[arg(long)]
         output_dir: Option<String>,
 
-        /// Lakehouse item ID to bind entity/relationship types to. When set,
-        /// generates `DataBindings` (and `Contextualizations`, given `--bindings`)
-        /// so the imported ontology is queryable, not just a bare schema.
+        /// Lakehouse item ID for the default data source. When set, generates
+        /// `DataBindings` (and `Contextualizations`, given `--bindings`) so the
+        /// imported ontology is queryable, not just a bare schema. Eventhouse /
+        /// `TimeSeries` / composite sources are configured via `--bindings`.
         #[arg(long)]
         lakehouse: Option<String>,
 
-        /// Workspace ID that hosts the bound Lakehouse (defaults to --workspace)
+        /// Workspace ID that hosts the Lakehouse default source (defaults to --workspace)
         #[arg(long)]
         lakehouse_workspace: Option<String>,
 
-        /// Source schema for Lakehouse table bindings (default: dbo)
+        /// Schema for the Lakehouse default-source tables (default: dbo)
         #[arg(long)]
-        schema: Option<String>,
+        lakehouse_schema: Option<String>,
 
-        /// Path to a JSON binding map that overrides table/column names and
-        /// supplies relationship key columns. See `fabio context examples ontology`.
+        /// Path to a JSON binding map that overrides table/column names,
+        /// selects data sources, and supplies relationship key columns.
+        /// See `fabio context examples ontology`.
+        #[arg(long)]
+        bindings: Option<String>,
+    },
+    /// Bind an existing ontology's types to data sources (no OWL re-import)
+    ///
+    /// Fetches the current definition, matches entity/relationship types by
+    /// name, and adds `DataBindings` + `Contextualizations` in place. Use this
+    /// to bind a portal-authored ontology or add bindings incrementally.
+    #[command(display_order = 12)]
+    Bind {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Ontology ID
+        #[arg(long)]
+        id: String,
+
+        /// Lakehouse item ID for the default data source
+        #[arg(long)]
+        lakehouse: Option<String>,
+
+        /// Workspace ID that hosts the Lakehouse default source (defaults to --workspace)
+        #[arg(long)]
+        lakehouse_workspace: Option<String>,
+
+        /// Schema for the Lakehouse default-source tables (default: dbo)
+        #[arg(long)]
+        lakehouse_schema: Option<String>,
+
+        /// Path to a JSON binding map (table/column overrides, data sources,
+        /// relationship key columns). See `fabio context examples ontology`.
         #[arg(long)]
         bindings: Option<String>,
     },
@@ -289,7 +323,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
             output_dir,
             lakehouse,
             lakehouse_workspace,
-            schema,
+            lakehouse_schema,
             bindings,
         } => {
             crate::commands::ontology_import::import_owl(
@@ -301,11 +335,30 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
                 output_dir.as_deref(),
                 lakehouse.as_deref(),
                 lakehouse_workspace.as_deref(),
-                schema.as_deref(),
+                lakehouse_schema.as_deref(),
                 bindings.as_deref(),
             )
             .await
         }
+        OntologyCommand::Bind {
+            workspace,
+            id,
+            lakehouse,
+            lakehouse_workspace,
+            lakehouse_schema,
+            bindings,
+        } => crate::commands::ontology_import::bind_ontology(
+            cli,
+            client,
+            workspace,
+            id,
+            lakehouse.as_deref(),
+            lakehouse_workspace.as_deref(),
+            lakehouse_schema.as_deref(),
+            bindings.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "ontology bind", "Contributor")),
         OntologyCommand::Export {
             workspace,
             id,

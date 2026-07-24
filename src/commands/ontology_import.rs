@@ -4,7 +4,7 @@
 //! catalogue `.rdf` files. Parses `owl:Class`, `owl:DatatypeProperty`, and `owl:ObjectProperty`
 //! into Fabric `EntityTypes` and `RelationshipTypes`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
@@ -1284,71 +1284,14 @@ fn generate_fabric_parts(
 
         // Emit a DataBinding when a data source is configured.
         if let Some(ctx) = binding {
-            let table = entity_spec
-                .and_then(|e| e.table.clone())
-                .unwrap_or_else(|| class.label.to_lowercase());
-
-            let data_binding_type = entity_spec
-                .and_then(|e| e.data_binding_type.clone())
-                .unwrap_or_else(|| "NonTimeSeries".to_string());
-            if data_binding_type != "NonTimeSeries" && data_binding_type != "TimeSeries" {
-                return Err(FabioError::with_hint(
-                    ErrorCode::InvalidInput,
-                    format!(
-                        "Entity '{}' has invalid dataBindingType '{data_binding_type}'.",
-                        class.label
-                    ),
-                    "dataBindingType must be 'NonTimeSeries' or 'TimeSeries'.",
-                )
-                .into());
-            }
-            let timestamp_column_name = entity_spec.and_then(|e| e.timestamp_column.clone());
-            if data_binding_type == "TimeSeries" && timestamp_column_name.is_none() {
-                return Err(FabioError::with_hint(
-                    ErrorCode::InvalidInput,
-                    format!(
-                        "Entity '{}' is TimeSeries but has no timestampColumn.",
-                        class.label
-                    ),
-                    "Set entities.<name>.timestampColumn for TimeSeries data bindings.",
-                )
-                .into());
-            }
-
-            let source = ctx.resolve_source(entity_spec.and_then(|e| e.source.as_ref()))?;
-            if !source.is_lakehouse() && data_binding_type == "NonTimeSeries" {
-                return Err(FabioError::with_hint(
-                    ErrorCode::InvalidInput,
-                    format!(
-                        "Entity '{}' uses a KustoTable source with NonTimeSeries.",
-                        class.label
-                    ),
-                    "Fabric permits KustoTable only with TimeSeries; set dataBindingType to \
-                     'TimeSeries' or use a LakehouseTable source.",
-                )
-                .into());
-            }
-
-            let binding_uuid = deterministic_uuid("binding", &class.label);
-            let data_binding = DataBinding {
-                id: binding_uuid.clone(),
-                data_binding_configuration: DataBindingConfiguration {
-                    data_binding_type,
-                    timestamp_column_name,
-                    property_bindings: column_bindings
-                        .into_iter()
-                        .map(|(col, pid)| PropertyBinding {
-                            source_column_name: col,
-                            target_property_id: pid,
-                        })
-                        .collect(),
-                    source_table_properties: source.table_properties(table),
-                },
-            };
-            parts.push(FabricPart {
-                path: format!("EntityTypes/{type_id}/DataBindings/{binding_uuid}.json"),
-                content: serde_json::to_string_pretty(&data_binding).unwrap_or_default(),
-            });
+            parts.push(build_entity_data_binding(
+                ctx,
+                &class.label,
+                type_id,
+                &class.label.to_lowercase(),
+                column_bindings,
+                entity_spec,
+            )?);
         }
     }
 
@@ -1399,29 +1342,126 @@ fn generate_fabric_parts(
                 continue;
             };
 
-            let source_refs =
-                zip_key_refs(&rel.label, "source", &rel_spec.source_columns, source_parts)?;
-            let target_refs =
-                zip_key_refs(&rel.label, "target", &rel_spec.target_columns, target_parts)?;
-
-            let source = ctx.resolve_source(rel_spec.source.as_ref())?;
-            let data_binding_table = source.lakehouse_table(rel_spec.table.clone())?;
-
-            let ctx_uuid = deterministic_uuid("contextualization", &rel.label);
-            let contextualization = Contextualization {
-                id: ctx_uuid.clone(),
-                data_binding_table,
-                source_key_ref_bindings: source_refs,
-                target_key_ref_bindings: target_refs,
-            };
-            parts.push(FabricPart {
-                path: format!("RelationshipTypes/{rel_id}/Contextualizations/{ctx_uuid}.json"),
-                content: serde_json::to_string_pretty(&contextualization).unwrap_or_default(),
-            });
+            parts.push(build_relationship_contextualization(
+                ctx,
+                &rel.label,
+                &rel_id,
+                rel_spec,
+                source_parts,
+                target_parts,
+            )?);
         }
     }
 
     Ok(parts)
+}
+
+/// Build an `EntityType` `DataBinding` part for one entity, applying binding-map
+/// overrides and validating the dataBindingType/source combination against the
+/// Fabric schema rules. Shared by `import` (generated ids) and `bind` (live ids).
+fn build_entity_data_binding(
+    ctx: &BindingContext,
+    entity_name: &str,
+    entity_id: &str,
+    default_table: &str,
+    column_bindings: Vec<(String, String)>,
+    entity_spec: Option<&EntityBindingSpec>,
+) -> Result<FabricPart> {
+    let table = entity_spec
+        .and_then(|e| e.table.clone())
+        .unwrap_or_else(|| default_table.to_string());
+
+    let data_binding_type = entity_spec
+        .and_then(|e| e.data_binding_type.clone())
+        .unwrap_or_else(|| "NonTimeSeries".to_string());
+    if data_binding_type != "NonTimeSeries" && data_binding_type != "TimeSeries" {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Entity '{entity_name}' has invalid dataBindingType '{data_binding_type}'."),
+            "dataBindingType must be 'NonTimeSeries' or 'TimeSeries'.",
+        )
+        .into());
+    }
+    let timestamp_column_name = entity_spec.and_then(|e| e.timestamp_column.clone());
+    if data_binding_type == "TimeSeries" && timestamp_column_name.is_none() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Entity '{entity_name}' is TimeSeries but has no timestampColumn."),
+            "Set entities.<name>.timestampColumn for TimeSeries data bindings.",
+        )
+        .into());
+    }
+
+    let source = ctx.resolve_source(entity_spec.and_then(|e| e.source.as_ref()))?;
+    if !source.is_lakehouse() && data_binding_type == "NonTimeSeries" {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Entity '{entity_name}' uses a KustoTable source with NonTimeSeries."),
+            "Fabric permits KustoTable only with TimeSeries; set dataBindingType to \
+             'TimeSeries' or use a LakehouseTable source.",
+        )
+        .into());
+    }
+
+    let binding_uuid = deterministic_uuid("binding", entity_name);
+    let data_binding = DataBinding {
+        id: binding_uuid.clone(),
+        data_binding_configuration: DataBindingConfiguration {
+            data_binding_type,
+            timestamp_column_name,
+            property_bindings: column_bindings
+                .into_iter()
+                .map(|(col, pid)| PropertyBinding {
+                    source_column_name: col,
+                    target_property_id: pid,
+                })
+                .collect(),
+            source_table_properties: source.table_properties(table),
+        },
+    };
+    Ok(FabricPart {
+        path: format!("EntityTypes/{entity_id}/DataBindings/{binding_uuid}.json"),
+        content: serde_json::to_string_pretty(&data_binding).unwrap_or_default(),
+    })
+}
+
+/// Build a `RelationshipType` `Contextualization` part, zipping key columns to the
+/// endpoints' `entityIdParts`. Shared by `import` and `bind`.
+fn build_relationship_contextualization(
+    ctx: &BindingContext,
+    relationship_name: &str,
+    relationship_id: &str,
+    rel_spec: &RelationshipBindingSpec,
+    source_id_parts: &[String],
+    target_id_parts: &[String],
+) -> Result<FabricPart> {
+    let source_refs = zip_key_refs(
+        relationship_name,
+        "source",
+        &rel_spec.source_columns,
+        source_id_parts,
+    )?;
+    let target_refs = zip_key_refs(
+        relationship_name,
+        "target",
+        &rel_spec.target_columns,
+        target_id_parts,
+    )?;
+
+    let source = ctx.resolve_source(rel_spec.source.as_ref())?;
+    let data_binding_table = source.lakehouse_table(rel_spec.table.clone())?;
+
+    let ctx_uuid = deterministic_uuid("contextualization", relationship_name);
+    let contextualization = Contextualization {
+        id: ctx_uuid.clone(),
+        data_binding_table,
+        source_key_ref_bindings: source_refs,
+        target_key_ref_bindings: target_refs,
+    };
+    Ok(FabricPart {
+        path: format!("RelationshipTypes/{relationship_id}/Contextualizations/{ctx_uuid}.json"),
+        content: serde_json::to_string_pretty(&contextualization).unwrap_or_default(),
+    })
 }
 
 /// Zip relationship key columns against an entity's `entityIdParts`, producing
@@ -1463,6 +1503,374 @@ fn zip_key_refs(
 /// binding IDs. Fabric silently drops non-UUID data-binding IDs.
 fn deterministic_uuid(kind: &str, name: &str) -> String {
     uuid::Uuid::new_v5(&BINDING_NAMESPACE, format!("{kind}:{name}").as_bytes()).to_string()
+}
+
+// ─── Bind an existing ontology ───────────────────────────────────────────────
+
+/// An entity type parsed from a live ontology definition.
+#[derive(Debug)]
+struct LiveEntity {
+    id: String,
+    name: String,
+    id_parts: Vec<String>,
+    /// (property id, property name), in definition order.
+    properties: Vec<(String, String)>,
+}
+
+/// A relationship type parsed from a live ontology definition.
+#[derive(Debug)]
+struct LiveRelationship {
+    id: String,
+    name: String,
+    source_type_id: String,
+    target_type_id: String,
+}
+
+/// Bind an existing ontology's types to data sources without re-importing OWL.
+/// Fetches the current definition, matches entity/relationship types by name,
+/// generates DataBindings/Contextualizations against the live type/property ids,
+/// merges them into the definition, and pushes via `updateDefinition`.
+#[allow(clippy::too_many_arguments)]
+pub async fn bind_ontology(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    lakehouse: Option<&str>,
+    lakehouse_workspace: Option<&str>,
+    lakehouse_schema: Option<&str>,
+    bindings: Option<&str>,
+) -> Result<()> {
+    let ctx = resolve_binding_context(
+        Some(workspace),
+        lakehouse,
+        lakehouse_workspace,
+        lakehouse_schema,
+        bindings,
+    )?
+    .ok_or_else(|| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Nothing to bind: no data source provided.".to_string(),
+            "Pass --lakehouse <ITEM_ID> and/or --bindings <map.json>.",
+        )
+    })?;
+
+    // Fetch the current definition.
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/ontologies/{id}/getDefinition"),
+            &serde_json::json!({}),
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "ontology bind", "Contributor"))?;
+
+    let existing = data
+        .get("definition")
+        .and_then(|d| d.get("parts"))
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow::anyhow!("No definition parts returned for ontology '{id}'"))?;
+
+    let (entities, relationships) = parse_live_types(existing);
+
+    let (binding_parts, bound_entities, bound_rels) =
+        generate_bindings_for_live(&entities, &relationships, &ctx)?;
+
+    if output::dry_run_guard(
+        cli,
+        "ontology bind",
+        &serde_json::json!({
+            "id": id,
+            "entity_types": entities.len(),
+            "relationship_types": relationships.len(),
+            "entity_bindings": bound_entities.len(),
+            "contextualizations": bound_rels.len(),
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let merged = merge_definition_parts(existing, binding_parts, &bound_entities, &bound_rels);
+    let body = serde_json::json!({ "definition": { "parts": merged } });
+
+    let resp = client
+        .post(
+            &format!("/workspaces/{workspace}/ontologies/{id}/updateDefinition"),
+            &body,
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "ontology bind", "Contributor"))?;
+
+    if resp.is_null() || resp.as_object().is_some_and(serde_json::Map::is_empty) {
+        let obj = serde_json::json!({
+            "status": "bound",
+            "id": id,
+            "entity_bindings": bound_entities.len(),
+            "contextualizations": bound_rels.len(),
+        });
+        output::render_object(cli, &obj, "status");
+    } else {
+        output::render_object(cli, &resp, "id");
+    }
+    Ok(())
+}
+
+/// Decode a base64 definition part payload into JSON.
+fn decode_part(part: &Value) -> Value {
+    part.get("payload")
+        .and_then(Value::as_str)
+        .and_then(|p| BASE64.decode(p).ok())
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or(Value::Null)
+}
+
+/// Parse EntityTypes/RelationshipTypes (the `.../<id>/definition.json` parts)
+/// from a fetched ontology definition.
+fn parse_live_types(parts: &[Value]) -> (Vec<LiveEntity>, Vec<LiveRelationship>) {
+    let mut entities = Vec::new();
+    let mut relationships = Vec::new();
+
+    for part in parts {
+        let path = part.get("path").and_then(Value::as_str).unwrap_or("");
+        let segs: Vec<&str> = path.split('/').collect();
+        if segs.len() != 3 || segs[2] != "definition.json" {
+            continue;
+        }
+        let v = decode_part(part);
+        match segs[0] {
+            "EntityTypes" => {
+                let name = v.get("name").and_then(Value::as_str).unwrap_or("");
+                let eid = v.get("id").and_then(Value::as_str).unwrap_or("");
+                if name.is_empty() || eid.is_empty() {
+                    continue;
+                }
+                let id_parts = v
+                    .get("entityIdParts")
+                    .and_then(Value::as_array)
+                    .map_or_else(Vec::new, |a| {
+                        a.iter()
+                            .filter_map(Value::as_str)
+                            .map(String::from)
+                            .collect()
+                    });
+                let properties =
+                    v.get("properties")
+                        .and_then(Value::as_array)
+                        .map_or_else(Vec::new, |a| {
+                            a.iter()
+                                .filter_map(|p| {
+                                    let pid = p.get("id").and_then(Value::as_str)?;
+                                    let pname = p.get("name").and_then(Value::as_str)?;
+                                    Some((pid.to_string(), pname.to_string()))
+                                })
+                                .collect()
+                        });
+                entities.push(LiveEntity {
+                    id: eid.to_string(),
+                    name: name.to_string(),
+                    id_parts,
+                    properties,
+                });
+            }
+            "RelationshipTypes" => {
+                let name = v.get("name").and_then(Value::as_str).unwrap_or("");
+                let rid = v.get("id").and_then(Value::as_str).unwrap_or("");
+                let source_type_id = v
+                    .get("source")
+                    .and_then(|s| s.get("entityTypeId"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let target_type_id = v
+                    .get("target")
+                    .and_then(|t| t.get("entityTypeId"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                if name.is_empty() || rid.is_empty() {
+                    continue;
+                }
+                relationships.push(LiveRelationship {
+                    id: rid.to_string(),
+                    name: name.to_string(),
+                    source_type_id: source_type_id.to_string(),
+                    target_type_id: target_type_id.to_string(),
+                });
+            }
+            _ => {}
+        }
+    }
+    (entities, relationships)
+}
+
+/// Match a binding-map key against a live (already-sanitized) type name, either
+/// exactly or after sanitization (so users can key the map with OWL labels).
+fn name_matches(key: &str, live_name: &str) -> bool {
+    key == live_name || sanitize_name(key) == live_name
+}
+
+/// Generate binding parts against live types. Entities are bound by convention
+/// when the map has no `entities` block, else only the entities named in the
+/// map. Relationships are bound only when named in the map. Returns the parts
+/// plus the sets of entity/relationship ids that were (re)bound. Map keys that
+/// match no live type are a hard error (Fabric addresses types by name).
+#[allow(clippy::too_many_lines)]
+fn generate_bindings_for_live(
+    entities: &[LiveEntity],
+    relationships: &[LiveRelationship],
+    ctx: &BindingContext,
+) -> Result<(Vec<FabricPart>, HashSet<String>, HashSet<String>)> {
+    let mut parts = Vec::new();
+    let mut bound_entities = HashSet::new();
+    let mut bound_rels = HashSet::new();
+    let mut used_entity_keys: HashSet<String> = HashSet::new();
+    let mut used_rel_keys: HashSet<String> = HashSet::new();
+
+    let by_id: HashMap<&str, &LiveEntity> = entities.iter().map(|e| (e.id.as_str(), e)).collect();
+
+    // Entities: bind all when no `entities` block is given; else only listed ones.
+    let select_all = ctx.spec.entities.is_empty();
+    for entity in entities {
+        let matched = ctx
+            .spec
+            .entities
+            .iter()
+            .find(|(k, _)| name_matches(k, &entity.name));
+        if let Some((k, _)) = matched {
+            used_entity_keys.insert((*k).clone());
+        }
+        let entity_spec = matched.map(|(_, v)| v);
+        if !select_all && entity_spec.is_none() {
+            continue;
+        }
+
+        let column_bindings: Vec<(String, String)> = entity
+            .properties
+            .iter()
+            .map(|(pid, pname)| {
+                let col = entity_spec
+                    .and_then(|s| {
+                        s.columns
+                            .iter()
+                            .find(|(k, _)| name_matches(k, pname))
+                            .map(|(_, v)| v.clone())
+                    })
+                    .unwrap_or_else(|| pname.clone());
+                (col, pid.clone())
+            })
+            .collect();
+
+        parts.push(build_entity_data_binding(
+            ctx,
+            &entity.name,
+            &entity.id,
+            &entity.name.to_lowercase(),
+            column_bindings,
+            entity_spec,
+        )?);
+        bound_entities.insert(entity.id.clone());
+    }
+
+    // Relationships: only those named in the map.
+    for rel in relationships {
+        let Some((k, rel_spec)) = ctx
+            .spec
+            .relationships
+            .iter()
+            .find(|(k, _)| name_matches(k, &rel.name))
+        else {
+            continue;
+        };
+        used_rel_keys.insert(k.clone());
+
+        let (Some(src), Some(tgt)) = (
+            by_id.get(rel.source_type_id.as_str()),
+            by_id.get(rel.target_type_id.as_str()),
+        ) else {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!(
+                    "Relationship '{}' references an entity type not present in the definition.",
+                    rel.name
+                ),
+                "Fetch the definition to inspect: fabio ontology get-definition --decode.",
+            )
+            .into());
+        };
+
+        parts.push(build_relationship_contextualization(
+            ctx,
+            &rel.name,
+            &rel.id,
+            rel_spec,
+            &src.id_parts,
+            &tgt.id_parts,
+        )?);
+        bound_rels.insert(rel.id.clone());
+    }
+
+    // Strict: every map key must match a live type name.
+    let unmatched_entities: Vec<&String> = ctx
+        .spec
+        .entities
+        .keys()
+        .filter(|k| !used_entity_keys.contains(*k))
+        .collect();
+    let unmatched_rels: Vec<&String> = ctx
+        .spec
+        .relationships
+        .keys()
+        .filter(|k| !used_rel_keys.contains(*k))
+        .collect();
+    if !unmatched_entities.is_empty() || !unmatched_rels.is_empty() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!(
+                "Binding map names types that do not exist in the ontology: \
+                 entities={unmatched_entities:?}, relationships={unmatched_rels:?}."
+            ),
+            "Names must match the ontology's entity/relationship type names \
+             (see: fabio ontology get-definition --decode). Renaming a type after \
+             data is mapped is unsupported in Fabric.",
+        )
+        .into());
+    }
+
+    Ok((parts, bound_entities, bound_rels))
+}
+
+/// Merge freshly generated binding parts into the existing definition parts,
+/// dropping prior DataBindings/Contextualizations for the (re)bound types so the
+/// operation is idempotent, and leaving all other parts untouched.
+fn merge_definition_parts(
+    existing: &[Value],
+    new_parts: Vec<FabricPart>,
+    bound_entities: &HashSet<String>,
+    bound_rels: &HashSet<String>,
+) -> Vec<Value> {
+    let mut out: Vec<Value> = Vec::new();
+    for part in existing {
+        let path = part.get("path").and_then(Value::as_str).unwrap_or("");
+        let segs: Vec<&str> = path.split('/').collect();
+        let drop = segs.len() >= 3
+            && ((segs[0] == "EntityTypes"
+                && segs[2] == "DataBindings"
+                && bound_entities.contains(segs[1]))
+                || (segs[0] == "RelationshipTypes"
+                    && segs[2] == "Contextualizations"
+                    && bound_rels.contains(segs[1])));
+        if !drop {
+            out.push(part.clone());
+        }
+    }
+    for p in new_parts {
+        out.push(serde_json::json!({
+            "path": p.path,
+            "payload": BASE64.encode(p.content.as_bytes()),
+            "payloadType": "InlineBase64",
+        }));
+    }
+    out
 }
 
 // ─── Directory Export ────────────────────────────────────────────────────────
@@ -2309,5 +2717,183 @@ mod tests {
         let err =
             resolve_binding_context(Some("ws"), Some("lh"), None, None, file.to_str()).unwrap_err();
         assert!(err.to_string().contains("Invalid binding map JSON"));
+    }
+
+    // -----------------------------------------------------------------------
+    // `ontology bind` — bind live types by name
+    // -----------------------------------------------------------------------
+
+    /// Build fake getDefinition parts for an ontology:
+    /// Study(E1: studyId id, studyName) --`has_site(R1)`--> Site(E2: siteId id).
+    fn live_def_parts() -> Vec<Value> {
+        fn part(path: &str, body: &Value) -> Value {
+            serde_json::json!({
+                "path": path,
+                "payload": BASE64.encode(serde_json::to_vec(body).unwrap()),
+                "payloadType": "InlineBase64",
+            })
+        }
+        vec![
+            part("definition.json", &serde_json::json!({})),
+            part(
+                "EntityTypes/E1/definition.json",
+                &serde_json::json!({
+                    "id": "E1", "namespace": "usertypes", "name": "Study", "namespaceType": "Custom",
+                    "entityIdParts": ["P1"],
+                    "properties": [
+                        {"id": "P1", "name": "studyId", "valueType": "String"},
+                        {"id": "P2", "name": "studyName", "valueType": "String"}
+                    ]
+                }),
+            ),
+            part(
+                "EntityTypes/E2/definition.json",
+                &serde_json::json!({
+                    "id": "E2", "namespace": "usertypes", "name": "Site", "namespaceType": "Custom",
+                    "entityIdParts": ["P3"],
+                    "properties": [{"id": "P3", "name": "siteId", "valueType": "String"}]
+                }),
+            ),
+            part(
+                "RelationshipTypes/R1/definition.json",
+                &serde_json::json!({
+                    "id": "R1", "namespace": "usertypes", "name": "has_site", "namespaceType": "Custom",
+                    "source": {"entityTypeId": "E1"}, "target": {"entityTypeId": "E2"}
+                }),
+            ),
+        ]
+    }
+
+    #[test]
+    fn parse_live_types_extracts_ids_props_endpoints() {
+        let (entities, rels) = parse_live_types(&live_def_parts());
+        assert_eq!(entities.len(), 2);
+        assert_eq!(rels.len(), 1);
+        let study = entities.iter().find(|e| e.name == "Study").unwrap();
+        assert_eq!(study.id, "E1");
+        assert_eq!(study.id_parts, vec!["P1"]);
+        assert_eq!(
+            study.properties,
+            vec![
+                ("P1".into(), "studyId".into()),
+                ("P2".into(), "studyName".into())
+            ]
+        );
+        assert_eq!(rels[0].source_type_id, "E1");
+        assert_eq!(rels[0].target_type_id, "E2");
+    }
+
+    #[test]
+    fn bind_generates_against_live_ids_and_validates() {
+        let (entities, rels) = parse_live_types(&live_def_parts());
+        // Map keyed with the OWL label "has site" must match live "has_site".
+        let spec: BindingSpec = serde_json::from_str(
+            r#"{"relationships":{"has site":{"table":"site","sourceColumns":["study_id"],"targetColumns":["siteId"]}}}"#,
+        ).unwrap();
+        let (parts, bound_e, bound_r) =
+            generate_bindings_for_live(&entities, &rels, &lakehouse_ctx(spec)).unwrap();
+
+        assert_eq!(bound_e, HashSet::from(["E1".to_string(), "E2".to_string()]));
+        assert_eq!(bound_r, HashSet::from(["R1".to_string()]));
+
+        // DataBinding for Study targets the LIVE property ids and sits under E1.
+        let db = find_part(&parts, "EntityTypes/E1/DataBindings");
+        let v = payload(db);
+        assert_schema_valid("dataBinding", &v);
+        let pbs = v["dataBindingConfiguration"]["propertyBindings"]
+            .as_array()
+            .unwrap();
+        assert_eq!(pbs[0]["targetPropertyId"], "P1");
+        assert_eq!(pbs[0]["sourceColumnName"], "studyId");
+
+        // Contextualization keys map to live identifier property ids P1 / P3.
+        let cx = payload(find_part(&parts, "RelationshipTypes/R1/Contextualizations"));
+        assert_schema_valid("contextualization", &cx);
+        assert_eq!(cx["sourceKeyRefBindings"][0]["targetPropertyId"], "P1");
+        assert_eq!(
+            cx["sourceKeyRefBindings"][0]["sourceColumnName"],
+            "study_id"
+        );
+        assert_eq!(cx["targetKeyRefBindings"][0]["targetPropertyId"], "P3");
+    }
+
+    #[test]
+    fn bind_entities_block_is_surgical() {
+        let (entities, rels) = parse_live_types(&live_def_parts());
+        let spec: BindingSpec =
+            serde_json::from_str(r#"{"entities":{"Study":{"table":"study_dim"}}}"#).unwrap();
+        let (_, bound_e, _) =
+            generate_bindings_for_live(&entities, &rels, &lakehouse_ctx(spec)).unwrap();
+        assert_eq!(
+            bound_e,
+            HashSet::from(["E1".to_string()]),
+            "only Study bound"
+        );
+    }
+
+    #[test]
+    fn bind_binds_all_entities_when_no_entities_block() {
+        let (entities, rels) = parse_live_types(&live_def_parts());
+        let (_, bound_e, _) =
+            generate_bindings_for_live(&entities, &rels, &lakehouse_ctx(BindingSpec::default()))
+                .unwrap();
+        assert_eq!(bound_e, HashSet::from(["E1".to_string(), "E2".to_string()]));
+    }
+
+    #[test]
+    fn bind_strict_rejects_unknown_type_name() {
+        let (entities, rels) = parse_live_types(&live_def_parts());
+        let spec: BindingSpec = serde_json::from_str(
+            r#"{"relationships":{"nope":{"table":"t","sourceColumns":["a"],"targetColumns":["b"]}}}"#,
+        ).unwrap();
+        let err = generate_bindings_for_live(&entities, &rels, &lakehouse_ctx(spec)).unwrap_err();
+        assert!(err.to_string().contains("do not exist"), "{err}");
+    }
+
+    #[test]
+    fn merge_replaces_bound_bindings_and_keeps_others() {
+        // Existing definition already carries a stale DataBinding for E1 and an
+        // unrelated Contextualization for R9 that must survive.
+        let mut existing = live_def_parts();
+        existing.push(serde_json::json!({
+            "path": "EntityTypes/E1/DataBindings/stale-uuid.json",
+            "payload": BASE64.encode(b"{}"), "payloadType": "InlineBase64"
+        }));
+        existing.push(serde_json::json!({
+            "path": "RelationshipTypes/R9/Contextualizations/keep.json",
+            "payload": BASE64.encode(b"{}"), "payloadType": "InlineBase64"
+        }));
+
+        let new_parts = vec![FabricPart {
+            path: "EntityTypes/E1/DataBindings/new-uuid.json".to_string(),
+            content: "{}".to_string(),
+        }];
+        let bound_e = HashSet::from(["E1".to_string()]);
+        let merged = merge_definition_parts(&existing, new_parts, &bound_e, &HashSet::new());
+        let paths: Vec<&str> = merged.iter().map(|p| p["path"].as_str().unwrap()).collect();
+
+        assert!(
+            !paths.contains(&"EntityTypes/E1/DataBindings/stale-uuid.json"),
+            "stale dropped"
+        );
+        assert!(
+            paths.contains(&"EntityTypes/E1/DataBindings/new-uuid.json"),
+            "new added"
+        );
+        assert!(
+            paths.contains(&"RelationshipTypes/R9/Contextualizations/keep.json"),
+            "unrelated kept"
+        );
+        assert!(
+            paths.contains(&"EntityTypes/E1/definition.json"),
+            "type defs kept"
+        );
+    }
+
+    #[test]
+    fn name_matches_exact_and_sanitized() {
+        assert!(name_matches("has_site", "has_site"));
+        assert!(name_matches("has site", "has_site"));
+        assert!(!name_matches("has site", "site"));
     }
 }
