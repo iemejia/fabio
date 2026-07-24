@@ -43,3 +43,18 @@ language = "system"
 types = ["rust"]
 pass_filenames = false
 priority = 1
+
+# Docs website (Node). Deterministic, dependency-free unit tests for the
+# reference generator + link checker — reuses the existing `npm test` script
+# (node:test, ~50ms, no node_modules/astro needed). Only runs when the docs
+# site or its source of truth (commands.json) is staged. Heavier validation
+# (astro check, link validation against built content, full build) needs
+# node_modules and lives in the docs.yml CI workflow.
+[[repos.hooks]]
+id = "docs-scripts-test"
+name = "docs reference generator & link-checker tests"
+entry = "npm --prefix docs test"
+language = "system"
+files = "^(docs/|src/commands/context/data/agent/commands\\.json)"
+pass_filenames = false
+priority = 2

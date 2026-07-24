@@ -481,6 +481,22 @@ Invoke the release skill when cutting a new version. It covers: version bump, de
 
 Automated: `./scripts/release.sh <version>` handles all steps end-to-end.
 
+### Documentation website & the release
+
+The docs website's command reference is **generated** from `commands.json`
+(via `docs/scripts/generate-reference.mjs`) and **auto-deploys** to GitHub
+Pages through `.github/workflows/docs.yml` on every push to `main` touching
+`docs/**` or `commands.json` — there is no manual publish step. The website
+therefore stays current automatically **provided `commands.json` is
+regenerated whenever commands/subcommands/flags change** (see **Auto-Generated
+Files (MANDATORY)**). The release skill's Step 3 re-runs the generators and
+relies on the `agent_schema_covers_*` / `subskills_match_generated` drift tests
+(run in Step 4's `cargo test`) to hard-fail a release whose reference would be
+stale. Locally, the `docs-scripts-test` prek hook runs the deterministic
+`npm --prefix docs test` (reference generator + link-checker unit tests)
+whenever `docs/**` or `commands.json` is staged; the heavier `astro check` /
+link-validation / full build run in the docs CI workflow.
+
 ### Configuration
 
 - `cliff.toml` — git-cliff configuration (commit parsers, grouping, template)

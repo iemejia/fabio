@@ -45,6 +45,29 @@ cargo audit
 1. **README.md** — Docker image version in usage examples.
 2. **AGENTS.md** — Docker & Devcontainer section version examples.
 
+### Ensure the docs website reflects the release's CLI surface
+
+The documentation website's command reference is generated from
+`commands.json` (via `docs/scripts/generate-reference.mjs`) and auto-deploys
+to GitHub Pages through `.github/workflows/docs.yml` on every push to `main`
+that touches `docs/**` or `commands.json`. So the site updates itself — the
+only release-time obligation is to make sure the generated metadata is current
+with any commands/subcommands/flags added this cycle:
+
+```bash
+# Regenerate the source of truth for the website reference AND the sub-skills.
+cargo test generate_agent_schema -- --ignored && cargo test generate_subskills -- --ignored
+git status  # commands.json / .agents/skills/fabio-*/SKILL.md should be clean (no drift)
+```
+
+If `git status` shows changes here, a feature landed without regenerating —
+commit them. Step 4's `cargo test` will otherwise FAIL the release: the
+`agent_schema_covers_all_groups` / `agent_schema_covers_all_subcommands` /
+`subskills_match_generated` drift tests are the safety net that blocks a
+release whose website reference would be stale. Optionally sanity-check the
+site build locally with `npm --prefix docs run check` (needs `npm ci` in
+`docs/` first).
+
 ## Step 4: Run Full Validation
 
 ```bash
