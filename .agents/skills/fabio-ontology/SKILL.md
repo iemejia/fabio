@@ -140,3 +140,4 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 ## See also
 - fabio context schema ontology
 - fabio context persona data-engineer
+- fabio data-agent add-datasource --artifact-type Ontology (ground an agent on the ontology; scope with select-tables --elements)

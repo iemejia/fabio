@@ -6804,7 +6804,7 @@
         ]
       },
       "select-tables": {
-        "description": "Select or unselect tables in a data source",
+        "description": "Select or unselect data-source elements (tables, or ontology/graph entity types)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -6828,6 +6828,14 @@
           "--all-tables": {
             "type": "bool",
             "description": "Select all tables"
+          },
+          "--elements": {
+            "type": "string",
+            "description": "Comma-separated element names of any type to select (e.g. ontology entity types on an Ontology/GraphModel data source)"
+          },
+          "--all-elements": {
+            "type": "bool",
+            "description": "Select all elements regardless of type"
           },
           "--unselect": {
             "type": "bool",

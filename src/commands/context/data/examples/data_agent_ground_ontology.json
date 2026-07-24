@@ -1,0 +1,26 @@
+{
+  "command": "fabio data-agent add-datasource --workspace $WS_ID --id $AGENT_ID --artifact \"ClinicalSupplyChain\" --artifact-type Ontology",
+  "description": "Grounds a data agent on a Fabric Ontology (or GraphModel) so the LLM can answer questions by traversing governed entity/relationship types instead of guessing joins. The ontology is attached as a FabricItem datasource; then scope which entity types the agent uses with select-tables --elements.",
+  "response": {
+    "data": {
+      "id": "b3c4d5e6-f7a8-9012-bcde-345678901234",
+      "displayName": "ClinicalSupplyChain",
+      "type": "FabricItem",
+      "fabricItemType": "Ontology",
+      "itemReference": {
+        "itemId": "d4e5f6a7-b8c9-0123-def0-234567890abc",
+        "workspaceId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      }
+    }
+  },
+  "notes": "An Ontology data source exposes entity types (not tables) as its elements. Use 'fabio data-agent list-elements' to see them, then scope the agent with element-mode selection: 'fabio data-agent select-tables --datasource ClinicalSupplyChain --elements Study,Site,Inventory' (or --all-elements). --tables/--all-tables only match table-typed elements and will not match ontology entity types. Bind the ontology to its data first with 'fabio ontology bind' so its graph is queryable. Supported artifact types: Lakehouse, Warehouse, KQLDatabase, SemanticModel, Ontology, GraphModel, MirroredDatabase, SQLDatabase.",
+  "related": [
+    "fabio ontology bind --workspace $WS_ID --id $ONTOLOGY_ID --lakehouse $LAKEHOUSE_ID --bindings bindings.json",
+    "fabio data-agent list-elements --workspace $WS_ID --id $AGENT_ID --datasource ClinicalSupplyChain",
+    "fabio data-agent select-tables --workspace $WS_ID --id $AGENT_ID --datasource ClinicalSupplyChain --elements Study,Site,Inventory"
+  ],
+  "query_examples": [
+    {"query": "data.fabricItemType", "description": "Should be 'Ontology' or 'GraphModel'."},
+    {"query": "data.id", "description": "Datasource ID (used for list-elements / select-tables)."}
+  ]
+}

@@ -253,9 +253,14 @@ pub(super) async fn update_datasource(
     Ok(())
 }
 
-/// Select or unselect tables in a data source via the elements API.
+/// Select or unselect elements in a data source via the elements API.
 ///
-/// Uses: `GET .../staging/datasources/{dsId}/elements` to list tables,
+/// Tables mode (`--tables`/`--all-tables`) restricts to table-typed elements.
+/// Element mode (`--elements`/`--all-elements`) matches elements of ANY leaf
+/// type by name — this is how you scope an Ontology/GraphModel data source to
+/// specific entity types. Selection is a type-agnostic PATCH on the element id.
+///
+/// Uses: `GET .../staging/datasources/{dsId}/elements` to list elements,
 /// then `PATCH .../staging/datasources/{dsId}/elements?id={elementId}` per element.
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub(super) async fn select_tables(
@@ -265,13 +270,16 @@ pub(super) async fn select_tables(
     id: &str,
     datasource: &str,
     tables: Option<&str>,
+    elements: Option<&str>,
     all_tables: bool,
+    all_elements: bool,
     unselect: bool,
 ) -> Result<()> {
-    if tables.is_none() && !all_tables {
-        return Err(
-            FabioError::invalid_input("Either --tables or --all-tables must be provided").into(),
-        );
+    if tables.is_none() && elements.is_none() && !all_tables && !all_elements {
+        return Err(FabioError::invalid_input(
+            "Provide one of --tables, --elements, --all-tables, or --all-elements",
+        )
+        .into());
     }
 
     if output::dry_run_guard(
@@ -282,7 +290,9 @@ pub(super) async fn select_tables(
             "id": id,
             "datasource": datasource,
             "tables": tables,
+            "elements": elements,
             "allTables": all_tables,
+            "allElements": all_elements,
             "unselect": unselect,
         }),
     ) {
@@ -293,29 +303,42 @@ pub(super) async fn select_tables(
     let base_path =
         format!("/workspaces/{workspace}/dataAgents/{id}/staging/datasources/{ds_id}/elements");
 
-    // Fetch all elements (paginated) to find table-level elements
+    // Fetch all elements (paginated).
     let elements_resp = client.get_list(&base_path, "value", true, None).await?;
 
-    let table_names: Vec<&str> = tables
-        .map(|t| t.split(',').map(str::trim).collect())
-        .unwrap_or_default();
+    // Names to match (from --tables and/or --elements).
+    let names: Vec<String> = tables
+        .into_iter()
+        .chain(elements)
+        .flat_map(|s| s.split(','))
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_lowercase)
+        .collect();
+    let select_all = all_tables || all_elements;
     let target_selected = !unselect;
 
-    // Collect elements that need updating — filter to table-type elements
+    // Element mode (any leaf type) whenever an element flag is used; otherwise
+    // restrict to table-typed elements to preserve the table-only semantics.
+    let restrict_to_tables = elements.is_none() && !all_elements;
     let table_types = ["Table", "ExternalTable", "MaterializedView", "View"];
+    let is_container =
+        |t: &str| t.eq_ignore_ascii_case("Schema") || t.eq_ignore_ascii_case("Schemas");
+    let is_selectable = |t: &str| -> bool {
+        if restrict_to_tables {
+            table_types.iter().any(|x| x.eq_ignore_ascii_case(t))
+        } else {
+            !is_container(t)
+        }
+    };
+
     let mut modified = 0;
 
     for elem in &elements_resp.items {
         let elem_type = elem.get("type").and_then(Value::as_str).unwrap_or("");
-        if !table_types
-            .iter()
-            .any(|t| t.eq_ignore_ascii_case(elem_type))
-        {
-            // Might need to check sub-elements; first try flat list at root
-            // The API uses ?rootId for drill-down; tables may be nested under schemas
-            if elem_type.eq_ignore_ascii_case("Schema") || elem_type.eq_ignore_ascii_case("Schemas")
-            {
-                // Drill into this schema to find tables
+        if !is_selectable(elem_type) {
+            // Drill one level into schema containers to reach nested elements.
+            if is_container(elem_type) {
                 let elem_id = elem.get("id").and_then(Value::as_str).unwrap_or("");
                 if !elem_id.is_empty() {
                     let sub_resp = client
@@ -328,7 +351,7 @@ pub(super) async fn select_tables(
                         .await?;
                     for sub_elem in &sub_resp.items {
                         let sub_type = sub_elem.get("type").and_then(Value::as_str).unwrap_or("");
-                        if !table_types.iter().any(|t| t.eq_ignore_ascii_case(sub_type)) {
+                        if !is_selectable(sub_type) {
                             continue;
                         }
                         let display_name = sub_elem
@@ -336,16 +359,14 @@ pub(super) async fn select_tables(
                             .and_then(Value::as_str)
                             .unwrap_or("");
                         let sub_id = sub_elem.get("id").and_then(Value::as_str).unwrap_or("");
-                        let should_modify = all_tables
-                            || table_names
-                                .iter()
-                                .any(|t| t.eq_ignore_ascii_case(display_name));
+                        let should_modify =
+                            select_all || names.iter().any(|t| t == &display_name.to_lowercase());
                         if should_modify && !sub_id.is_empty() {
-                            let patch_body = serde_json::json!({
-                                "isSelected": target_selected,
-                            });
                             client
-                                .patch(&format!("{base_path}?id={sub_id}"), &patch_body)
+                                .patch(
+                                    &format!("{base_path}?id={sub_id}"),
+                                    &serde_json::json!({ "isSelected": target_selected }),
+                                )
                                 .await?;
                             modified += 1;
                         }
@@ -360,35 +381,37 @@ pub(super) async fn select_tables(
             .and_then(Value::as_str)
             .unwrap_or("");
         let elem_id = elem.get("id").and_then(Value::as_str).unwrap_or("");
-        let should_modify = all_tables
-            || table_names
-                .iter()
-                .any(|t| t.eq_ignore_ascii_case(display_name));
+        let should_modify = select_all || names.iter().any(|t| t == &display_name.to_lowercase());
 
         if should_modify && !elem_id.is_empty() {
-            let patch_body = serde_json::json!({
-                "isSelected": target_selected,
-            });
             client
-                .patch(&format!("{base_path}?id={elem_id}"), &patch_body)
+                .patch(
+                    &format!("{base_path}?id={elem_id}"),
+                    &serde_json::json!({ "isSelected": target_selected }),
+                )
                 .await?;
             modified += 1;
         }
     }
 
-    if modified == 0 && !all_tables {
+    if modified == 0 && !select_all {
         return Err(FabioError::with_hint(
             ErrorCode::NotFound,
-            format!("No matching tables found: {}", table_names.join(", ")),
-            "List available tables: fabio data-agent list-elements -w <workspace> --id <id> --datasource <ds>",
+            format!("No matching elements found: {}", names.join(", ")),
+            "List available elements: fabio data-agent list-elements -w <workspace> --id <id> --datasource <ds>",
         )
         .into());
     }
 
+    let noun = if restrict_to_tables {
+        "tables"
+    } else {
+        "elements"
+    };
     let result = serde_json::json!({
-        "status": if unselect { "tables_unselected" } else { "tables_selected" },
+        "status": if unselect { format!("{noun}_unselected") } else { format!("{noun}_selected") },
         "modified": modified,
-        "allTables": all_tables,
+        "allSelected": select_all,
     });
     output::render_object(cli, &result, "status");
     Ok(())

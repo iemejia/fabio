@@ -407,7 +407,7 @@ pub enum DataAgentCommand {
         #[arg(long)]
         file: String,
     },
-    /// Select or unselect tables in a data source
+    /// Select or unselect data-source elements (tables, or ontology/graph entity types)
     #[command(display_order = 21)]
     SelectTables {
         /// Workspace ID
@@ -429,6 +429,15 @@ pub enum DataAgentCommand {
         /// Select all tables
         #[arg(long, conflicts_with = "tables")]
         all_tables: bool,
+
+        /// Comma-separated element names of any type to select (e.g. ontology
+        /// entity types on an Ontology/GraphModel data source)
+        #[arg(long)]
+        elements: Option<String>,
+
+        /// Select all elements regardless of type
+        #[arg(long, conflicts_with_all = ["elements", "all_tables"])]
+        all_elements: bool,
 
         /// Unselect (instead of select)
         #[arg(long)]
@@ -788,6 +797,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             datasource,
             tables,
             all_tables,
+            elements,
+            all_elements,
             unselect,
         } => datasources::select_tables(
             cli,
@@ -796,7 +807,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             id,
             datasource,
             tables.as_deref(),
+            elements.as_deref(),
             *all_tables,
+            *all_elements,
             *unselect,
         )
         .await

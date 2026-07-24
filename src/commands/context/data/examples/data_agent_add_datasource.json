@@ -1,6 +1,6 @@
 {
-  "command": "fabio data-agent add-datasource --workspace $WS_ID --id $AGENT_ID --name \"SalesLakehouse\" --item-id $LH_ID --item-type Lakehouse",
-  "description": "Adds a datasource to a data agent's staging configuration. Triggers async schema discovery (LRO).",
+  "command": "fabio data-agent add-datasource --workspace $WS_ID --id $AGENT_ID --artifact \"SalesLakehouse\" --artifact-type Lakehouse",
+  "description": "Adds a datasource to a data agent's staging configuration. --artifact takes a name or ID; --artifact-type is auto-detected if omitted. Triggers async schema discovery (LRO).",
   "response": {
     "data": {
       "id": "b3c4d5e6-f7a8-9012-bcde-345678901234",

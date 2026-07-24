@@ -288,6 +288,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/data_agent_add_datasource.json"),
     ),
     (
+        "data-agent/ground-ontology",
+        include_str!("data/examples/data_agent_ground_ontology.json"),
+    ),
+    (
         "data-agent/list-datasources",
         include_str!("data/examples/data_agent_list_datasources.json"),
     ),
