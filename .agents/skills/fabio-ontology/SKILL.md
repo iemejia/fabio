@@ -118,12 +118,19 @@ Manage Digital Twin Builder flows
 - Ontology definitions use the item-definition (base64 parts) format; fetch the template with 'fabio context schema ontology'.
 - fabio's context tenant graph can emit OWL/RDF that imports directly via 'fabio ontology import --file'.
 - OWL carries no data-binding info (workspace/lakehouse/table/column). 'ontology import' generates only the type schema unless you pass --lakehouse (+ --bindings for relationship key columns).
+- Untyped properties (valueType Any) are NOT bindable — they live only under entityType.untypedProperties. Putting one in a DataBinding makes updateDefinition fail with a generic ALMOperationImportFailed. fabio import excludes them automatically; hand-authored parts must too.
+- Time-series entities need a timestampColumn on their TimeSeries binding. Convention bind-all (import/bind with no per-entity timestamp) errors: 'Entity X has a TimeSeries binding but no timestampColumn'. Supply it via the --entities/bind config or use non-time-series entities.
+- updateDefinition validates all parts together; a bad reference in ANY part fails the whole push. The generic ALMOperationImportFailed's real cause is in error.errorCode + error.moreDetails (fabio surfaces both and adds a self-correction checklist).
+- Fabric does NOT check that a bound Lakehouse table/column exists at updateDefinition time (deferred to query time) — a missing table imports fine and is never the cause of an import failure.
+- Ontology needs a capacity with the Ontology/Digital Twin Builder preview enabled; each create/import/getDefinition is an LRO taking ~60-100s.
 
 ## Troubleshooting
 | Symptom | Fix |
 |---|---|
-| Ontology import rejected | Validate the OWL/JSON-LD against the ontology schema (context schema ontology); ensure entity types precede bindings. |
-| Binding references a missing item | Create the bound data source (lakehouse/eventhouse/etc.) first, then add the binding. |
+| ALMOperationImportFailed / generic 'import failed' on import/bind/update-definition | The top-level message is often an unfilled '{0} {1} {2}' template — read error.errorCode + error.moreDetails (fabio flattens these into the message + hint). Check in order: (1) no untyped property is bound, (2) every entityTypeId/propertyId/relationshipTypeId referenced by a binding or contextualization is defined in the same push and case-matches, (3) TimeSeries bindings have a timestampColumn, (4) contextualization source/target entity ids match the relationship endpoints. A missing Lakehouse table is NOT a cause. |
+| 'Entity X has a TimeSeries binding but no timestampColumn' | Provide a timestampColumn for that entity (import --entities map / bind config), or model it as a non-time-series entity. |
+| Ontology import rejected before push | Validate the OWL/JSON-LD against the ontology schema (context schema ontology); ensure entity types precede bindings. |
+| Ontology query returns no data although import succeeded | updateDefinition does not validate table/column existence — verify the bound Lakehouse table and columns actually exist and the binding names match (import success != queryable). |
 
 ## Safety
 - Overwriting an ontology definition replaces its type system and bindings — confirm with the user.
