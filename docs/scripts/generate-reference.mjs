@@ -14,6 +14,20 @@ export function escapeHtml(value) {
   return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
+export function renderFlagDescription(flag) {
+  const parts = [];
+  if (flag.description) {
+    parts.push(escapeHtml(flag.description));
+  }
+  if (Array.isArray(flag.values) && flag.values.length > 0) {
+    parts.push(`One of: ${flag.values.map((value) => inlineCode(value)).join(", ")}.`);
+  }
+  if (flag.default !== undefined) {
+    parts.push(`Default: ${inlineCode(flag.default)}.`);
+  }
+  return parts.join(" ").replaceAll("|", "\\|");
+}
+
 export function renderGroup(groupName, group) {
   const lines = [
     "---",
@@ -27,8 +41,21 @@ export function renderGroup(groupName, group) {
     "",
   ];
 
+  if (Array.isArray(group.examples) && group.examples.length > 0) {
+    lines.push("**Examples**", "");
+    for (const example of group.examples) {
+      lines.push("```bash", example, "```", "");
+    }
+  }
+
   for (const [commandName, command] of Object.entries(group.subcommands ?? {})) {
-    lines.push(`## ${inlineCode(commandName)}`, "", escapeHtml(command.description ?? "No description available."), "");
+    lines.push(`## ${inlineCode(commandName)}`, "");
+
+    if (Array.isArray(command.aliases) && command.aliases.length > 0) {
+      lines.push(`**Aliases:** ${command.aliases.map((alias) => inlineCode(alias)).join(", ")}`, "");
+    }
+
+    lines.push(escapeHtml(command.description ?? "No description available."), "");
 
     const flags = Object.entries(command.flags ?? {});
     const requiredFlags = flags.filter(([, flag]) => flag.required).map(([name]) => `${name} <value>`);
@@ -39,7 +66,7 @@ export function renderGroup(groupName, group) {
       lines.push("| Flag | Type | Required | Description |", "| --- | --- | :---: | --- |");
       for (const [flagName, flag] of flags) {
         lines.push(
-          `| ${inlineCode(flagName)} | ${inlineCode(flag.type ?? "string")} | ${flag.required ? "Yes" : "No"} | ${escapeHtml(flag.description ?? "").replaceAll("|", "\\|")} |`,
+          `| ${inlineCode(flagName)} | ${inlineCode(flag.type ?? "string")} | ${flag.required ? "Yes" : "No"} | ${renderFlagDescription(flag)} |`,
         );
       }
       lines.push("");
@@ -50,6 +77,18 @@ export function renderGroup(groupName, group) {
       for (const example of command.examples) {
         lines.push("```bash", example, "```", "");
       }
+    }
+
+    if (Array.isArray(command.output_fields) && command.output_fields.length > 0) {
+      lines.push(`**Output fields:** ${command.output_fields.map((field) => inlineCode(field)).join(", ")}`, "");
+    }
+
+    if (command.notes) {
+      lines.push(":::note", escapeHtml(command.notes), ":::", "");
+    }
+
+    if (command.hint) {
+      lines.push(":::tip", escapeHtml(command.hint), ":::", "");
     }
 
     const traits = [
