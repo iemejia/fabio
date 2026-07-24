@@ -147,13 +147,23 @@ pub async fn import_owl(
         push_to_fabric(cli, client, ws, ont_id, &parts).await?;
     } else if output_dir.is_some() {
         // Only exported locally
-        let obj = serde_json::json!({
+        let mut obj = serde_json::json!({
             "status": "exported",
             "output_dir": output_dir,
             "entity_types": model.classes.len(),
             "relationship_types": model.object_properties.len(),
             "bindings": binding_count,
         });
+        if binding_count == 0 {
+            obj["hint"] = Value::from(
+                "Generated the type schema only (no data bindings), so the graph is not yet \
+                 queryable. Re-run with a data source to also generate DataBindings/\
+                 Contextualizations: --lakehouse <ID> [--bindings map.json] (or --eventhouse \
+                 <ID> --cluster-uri <URI> --database <DB> --timestamp-column <COL>). Or, after \
+                 creating the ontology, bind it: fabio ontology bind --workspace <WS> --id \
+                 <ONTOLOGY_ID> --lakehouse <ID>. See: fabio context examples ontology",
+            );
+        }
         output::render_object(cli, &obj, "status");
     }
 
@@ -2016,15 +2026,37 @@ async fn push_to_fabric(
         .filter(|p| p.path.contains("RelationshipTypes"))
         .count();
 
+    // When the import produced only the type schema, remind the caller how to
+    // make the graph queryable next.
+    let has_bindings = parts
+        .iter()
+        .any(|p| p.path.contains("DataBindings") || p.path.contains("Contextualizations"));
+    let hint = (!has_bindings).then(|| {
+        format!(
+            "Imported the type schema only (no data bindings), so the graph is not yet \
+             queryable. Bind the types to data: fabio ontology bind --workspace {workspace} \
+             --id {id} --lakehouse <LAKEHOUSE_ID> [--bindings map.json] (or --eventhouse <ID> \
+             --cluster-uri <URI> --database <DB> --timestamp-column <COL>). \
+             See: fabio context examples ontology"
+        )
+    });
+
     if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
-        let obj = serde_json::json!({
+        let mut obj = serde_json::json!({
             "status": "imported",
             "id": id,
             "entity_types": entity_count,
             "relationship_types": rel_count,
         });
+        if let Some(h) = &hint {
+            obj["hint"] = Value::from(h.clone());
+        }
         output::render_object(cli, &obj, "status");
     } else {
+        let mut data = data;
+        if let (Some(h), Some(map)) = (&hint, data.as_object_mut()) {
+            map.insert("hint".to_string(), Value::from(h.clone()));
+        }
         output::render_object(cli, &data, "id");
     }
     Ok(())

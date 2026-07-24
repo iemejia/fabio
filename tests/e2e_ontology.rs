@@ -2929,3 +2929,69 @@ fn context_tenant_rdf_format_valid_structure() {
 
     let _ = std::fs::remove_file(&tmp);
 }
+
+// ---------------------------------------------------------------------------
+// Offline: import without a data source hints how to bind next
+// ---------------------------------------------------------------------------
+
+#[test]
+fn ontology_import_without_binding_emits_next_step_hint() {
+    let dir = tempfile::tempdir().unwrap();
+    let rdf = dir.path().join("t.rdf");
+    std::fs::write(
+        &rdf,
+        r#"<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#">
+  <owl:Class rdf:about="http://ex.org/Thing"><rdfs:label>Thing</rdfs:label></owl:Class>
+</rdf:RDF>"#,
+    )
+    .unwrap();
+
+    // No data source -> schema only, hint present.
+    let out = dir.path().join("schema-only");
+    let assert = fabio()
+        .args([
+            "ontology",
+            "import",
+            "--file",
+            rdf.to_str().unwrap(),
+            "--output-dir",
+            out.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["bindings"], 0);
+    assert!(
+        data["hint"]
+            .as_str()
+            .unwrap_or("")
+            .contains("ontology bind"),
+        "expected a bind next-step hint, got: {data}"
+    );
+
+    // With a Lakehouse source -> bindings generated, no hint.
+    let out2 = dir.path().join("bound");
+    let assert = fabio()
+        .args([
+            "ontology",
+            "import",
+            "--file",
+            rdf.to_str().unwrap(),
+            "--lakehouse",
+            "22222222-2222-4222-8222-222222222222",
+            "--lakehouse-workspace",
+            "11111111-1111-4111-8111-111111111111",
+            "--output-dir",
+            out2.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["bindings"], 1);
+    assert!(data.get("hint").is_none(), "no hint when bound: {data}");
+}
