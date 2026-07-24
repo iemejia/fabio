@@ -267,6 +267,26 @@ fn fabric_definition_to_model(data: &Value) -> Result<OwlModel> {
                 });
             }
         }
+
+        // Time-series properties round-trip back as ont:isTimeSeries.
+        if let Some(props) = entity.get("timeseriesProperties").and_then(Value::as_array) {
+            for prop in props {
+                let pname = prop.get("name").and_then(Value::as_str).unwrap_or("");
+                let vtype = prop
+                    .get("valueType")
+                    .and_then(Value::as_str)
+                    .unwrap_or("String");
+                model
+                    .timeseries_properties
+                    .insert((uri.clone(), pname.to_string()));
+                model.datatype_properties.push(OwlDatatypeProperty {
+                    label: pname.to_string(),
+                    domain_uri: uri.clone(),
+                    property_type: vtype.to_string(),
+                    is_identifier: false,
+                });
+            }
+        }
     }
 
     for part in parts {
@@ -343,6 +363,12 @@ fn serialize_to_rdf_xml(model: &OwlModel) -> String {
         if p.is_identifier {
             s.push_str("\n        <ont:isIdentifier rdf:datatype=\"http://www.w3.org/2001/XMLSchema#boolean\">true</ont:isIdentifier>");
         }
+        if model
+            .timeseries_properties
+            .contains(&(p.domain_uri.clone(), p.label.clone()))
+        {
+            s.push_str("\n        <ont:isTimeSeries rdf:datatype=\"http://www.w3.org/2001/XMLSchema#boolean\">true</ont:isTimeSeries>");
+        }
         let _ = write!(
             s,
             "\n        <ont:propertyType>{}</ont:propertyType>",
@@ -390,6 +416,12 @@ fn serialize_to_jsonld(model: &OwlModel) -> String {
         });
         if p.is_identifier {
             node["ont:isIdentifier"] = serde_json::json!(true);
+        }
+        if model
+            .timeseries_properties
+            .contains(&(p.domain_uri.clone(), p.label.clone()))
+        {
+            node["ont:isTimeSeries"] = serde_json::json!(true);
         }
         graph.push(node);
     }
@@ -472,6 +504,8 @@ struct OwlModel {
     object_properties: Vec<OwlObjectProperty>,
     /// class URI → super-class URI (from `rdfs:subClassOf`), for `baseEntityTypeId`.
     subclass_of: HashMap<String, String>,
+    /// (domain URI, property label) marked time-series (from `ont:isTimeSeries`).
+    timeseries_properties: HashSet<(String, String)>,
 }
 
 #[derive(Debug)]
@@ -513,9 +547,11 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
     let mut current_prop_type = String::new();
     let mut current_is_id = false;
     let mut current_super_class = String::new();
+    let mut current_is_ts = false;
     let mut reading_label = false;
     let mut reading_prop_type = false;
     let mut reading_is_id = false;
+    let mut reading_is_ts = false;
 
     let mut buf = Vec::new();
 
@@ -541,6 +577,7 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
                         current_range.clear();
                         current_prop_type.clear();
                         current_is_id = false;
+                        current_is_ts = false;
                     }
                     "ObjectProperty" => {
                         in_object_prop = true;
@@ -552,6 +589,7 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
                     "label" => reading_label = true,
                     "propertyType" => reading_prop_type = true,
                     "isIdentifier" => reading_is_id = true,
+                    "isTimeSeries" => reading_is_ts = true,
                     "subClassOf" => {
                         if in_class {
                             current_super_class = extract_rdf_resource(e);
@@ -578,6 +616,8 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
                     current_prop_type = text;
                 } else if reading_is_id {
                     current_is_id = text == "true";
+                } else if reading_is_ts {
+                    current_is_ts = text == "true";
                 }
             }
             Ok(Event::End(ref e)) => {
@@ -606,15 +646,21 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
                     }
                     "DatatypeProperty" => {
                         if in_datatype_prop && !current_domain.is_empty() {
+                            let label = {
+                                let cleaned = clean_label(&current_label);
+                                if cleaned.is_empty() {
+                                    uri_local_name(&current_uri)
+                                } else {
+                                    cleaned
+                                }
+                            };
+                            if current_is_ts {
+                                model
+                                    .timeseries_properties
+                                    .insert((current_domain.clone(), label.clone()));
+                            }
                             model.datatype_properties.push(OwlDatatypeProperty {
-                                label: {
-                                    let cleaned = clean_label(&current_label);
-                                    if cleaned.is_empty() {
-                                        uri_local_name(&current_uri)
-                                    } else {
-                                        cleaned
-                                    }
-                                },
+                                label,
                                 domain_uri: current_domain.clone(),
                                 property_type: if current_prop_type.is_empty() {
                                     xsd_to_fabric_type(&current_range)
@@ -647,6 +693,7 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
                     "label" => reading_label = false,
                     "propertyType" => reading_prop_type = false,
                     "isIdentifier" => reading_is_id = false,
+                    "isTimeSeries" => reading_is_ts = false,
                     _ => {}
                 }
             }
@@ -776,14 +823,24 @@ fn parse_json_ld(content: &str) -> Result<OwlModel> {
                     .get("ont:isIdentifier")
                     .and_then(Value::as_bool)
                     .unwrap_or(false);
+                let is_ts = node
+                    .get("ont:isTimeSeries")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
 
                 if !domain.is_empty() {
+                    let label = if label.is_empty() {
+                        uri_local_name(node_id)
+                    } else {
+                        label
+                    };
+                    if is_ts {
+                        model
+                            .timeseries_properties
+                            .insert((domain.clone(), label.clone()));
+                    }
                     model.datatype_properties.push(OwlDatatypeProperty {
-                        label: if label.is_empty() {
-                            uri_local_name(node_id)
-                        } else {
-                            label
-                        },
+                        label,
                         domain_uri: domain,
                         property_type: xsd_to_fabric_type(&range),
                         is_identifier: is_id,
@@ -1367,14 +1424,17 @@ fn generate_fabric_parts(
 
         let entity_spec = binding.and_then(|b| entity_binding(&b.spec, class));
 
-        // A property is time-series when the binding map lists it under
-        // entities.<name>.timeseriesProperties.
+        // A property is time-series when the OWL marks it (ont:isTimeSeries) or
+        // the binding map lists it under entities.<name>.timeseriesProperties.
         let is_time_series = |label: &str| -> bool {
-            entity_spec.is_some_and(|e| {
-                e.timeseries_properties
-                    .iter()
-                    .any(|t| t == label || sanitize_name(t) == sanitize_name(label))
-            })
+            model
+                .timeseries_properties
+                .contains(&(class.uri.clone(), label.to_string()))
+                || entity_spec.is_some_and(|e| {
+                    e.timeseries_properties
+                        .iter()
+                        .any(|t| t == label || sanitize_name(t) == sanitize_name(label))
+                })
         };
 
         // Collect properties for this class, split into static vs time-series.
@@ -2487,6 +2547,7 @@ mod tests {
     fn test_generate_fabric_parts() {
         let model = OwlModel {
             subclass_of: std::collections::HashMap::new(),
+            timeseries_properties: std::collections::HashSet::new(),
             classes: vec![
                 OwlClass {
                     uri: "http://ex.org/A".to_string(),
@@ -2548,6 +2609,7 @@ mod tests {
     fn test_serialize_to_rdf_xml() {
         let model = OwlModel {
             subclass_of: std::collections::HashMap::new(),
+            timeseries_properties: std::collections::HashSet::new(),
             classes: vec![OwlClass {
                 uri: "http://ex.org/Thing".to_string(),
                 label: "Thing".to_string(),
@@ -2572,6 +2634,7 @@ mod tests {
     fn test_serialize_to_jsonld() {
         let model = OwlModel {
             subclass_of: std::collections::HashMap::new(),
+            timeseries_properties: std::collections::HashSet::new(),
             classes: vec![
                 OwlClass {
                     uri: "http://ex.org/A".to_string(),
@@ -2648,6 +2711,7 @@ mod tests {
     fn binding_model() -> OwlModel {
         OwlModel {
             subclass_of: std::collections::HashMap::new(),
+            timeseries_properties: std::collections::HashSet::new(),
             classes: vec![
                 OwlClass {
                     uri: "http://ex.org/Study".into(),
@@ -2855,6 +2919,7 @@ mod tests {
     fn composite_model() -> OwlModel {
         OwlModel {
             subclass_of: std::collections::HashMap::new(),
+            timeseries_properties: std::collections::HashSet::new(),
             classes: vec![
                 OwlClass {
                     uri: "http://ex.org/A".into(),
@@ -3754,6 +3819,108 @@ mod tests {
         assert!(
             db.path.contains(&expected),
             "shorthand uuid seeded by entity name"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // OWL-native ont:isTimeSeries (portable time-series designation)
+    // -----------------------------------------------------------------------
+
+    const TS_RDF: &str = r#"<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:ont="http://ex.org/">
+  <owl:Class rdf:about="http://ex.org/Sensor"><rdfs:label>Sensor</rdfs:label></owl:Class>
+  <owl:DatatypeProperty rdf:about="http://ex.org/sensorId">
+    <rdfs:label>sensorId</rdfs:label>
+    <rdfs:domain rdf:resource="http://ex.org/Sensor"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <ont:isIdentifier rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</ont:isIdentifier>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="http://ex.org/temperature">
+    <rdfs:label>temperature</rdfs:label>
+    <rdfs:domain rdf:resource="http://ex.org/Sensor"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#double"/>
+    <ont:isTimeSeries rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</ont:isTimeSeries>
+  </owl:DatatypeProperty>
+</rdf:RDF>"#;
+
+    #[test]
+    fn parse_rdf_xml_reads_is_time_series() {
+        let model = parse_rdf_xml(TS_RDF);
+        assert!(
+            model
+                .timeseries_properties
+                .contains(&("http://ex.org/Sensor".into(), "temperature".into()))
+        );
+        assert!(
+            !model
+                .timeseries_properties
+                .contains(&("http://ex.org/Sensor".into(), "sensorId".into()))
+        );
+    }
+
+    #[test]
+    fn owl_is_time_series_splits_without_binding_map() {
+        // No binding map timeseriesProperties needed — OWL marks it.
+        let model = parse_rdf_xml(TS_RDF);
+        let parts = generate_fabric_parts(&model, None).unwrap();
+        let def = payload(find_part(
+            &parts,
+            "EntityTypes/8880000000001/definition.json",
+        ));
+        assert_schema_valid("entityType", &def);
+        let props: Vec<&str> = def["properties"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(props, vec!["sensorId"]);
+        let ts: Vec<&str> = def["timeseriesProperties"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(ts, vec!["temperature"]);
+    }
+
+    #[test]
+    fn is_time_series_round_trips_through_export() {
+        // Build a Fabric definition (as getDefinition returns), convert to an
+        // OWL model, and confirm the time-series marker survives.
+        let def = serde_json::json!({
+            "definition": { "parts": [
+                {"path": "EntityTypes/1/definition.json", "payload": BASE64.encode(serde_json::to_vec(&serde_json::json!({
+                    "id": "1", "name": "Sensor", "entityIdParts": ["11"],
+                    "properties": [{"id": "11", "name": "sensorId", "valueType": "String"}],
+                    "timeseriesProperties": [{"id": "12", "name": "temperature", "valueType": "Double"}]
+                })).unwrap()), "payloadType": "InlineBase64"}
+            ]}
+        });
+        let model = fabric_definition_to_model(&def).unwrap();
+        let uri = "http://fabric.microsoft.com/ontology/Sensor".to_string();
+        assert!(
+            model
+                .timeseries_properties
+                .contains(&(uri, "temperature".into()))
+        );
+
+        // RDF/XML and JSON-LD both emit ont:isTimeSeries for it.
+        let rdf = serialize_to_rdf_xml(&model);
+        assert!(rdf.contains("ont:isTimeSeries"));
+        let jsonld = serialize_to_jsonld(&model);
+        assert!(jsonld.contains("ont:isTimeSeries"));
+
+        // Re-importing the exported RDF preserves the designation.
+        let reparsed = parse_rdf_xml(&rdf);
+        assert!(
+            reparsed
+                .timeseries_properties
+                .iter()
+                .any(|(_, l)| l == "temperature")
         );
     }
 }
