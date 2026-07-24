@@ -6,6 +6,7 @@
 mod common;
 
 use common::{TestConfig, extract_count, extract_data, fabio, parse_json, unique_name};
+use serde_json::Value;
 use serial_test::serial;
 
 // ---------------------------------------------------------------------------
@@ -2994,4 +2995,527 @@ fn ontology_import_without_binding_emits_next_step_hint() {
     let data = extract_data(&json);
     assert_eq!(data["bindings"], 1);
     assert!(data.get("hint").is_none(), "no hint when bound: {data}");
+}
+
+// ===========================================================================
+// New-feature E2E coverage (this session): schema-aligned bindings, inheritance,
+// time-series/untyped properties, multiple bindings, Documents/ResourceLinks,
+// `ontology bind`, the schema-only hint, and the --lakehouse-schema flag.
+// ===========================================================================
+
+/// A rich OWL model exercising inheritance, ont:isTimeSeries, ont:isUntyped.
+const FEATURES_RDF: &str = r#"<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:ont="http://example.org/dt/">
+  <owl:Class rdf:about="http://example.org/dt/Asset"><rdfs:label>Asset</rdfs:label></owl:Class>
+  <owl:DatatypeProperty rdf:about="http://example.org/dt/assetId">
+    <rdfs:label>assetId</rdfs:label>
+    <rdfs:domain rdf:resource="http://example.org/dt/Asset"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <ont:isIdentifier rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</ont:isIdentifier>
+  </owl:DatatypeProperty>
+  <owl:Class rdf:about="http://example.org/dt/Sensor">
+    <rdfs:label>Sensor</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://example.org/dt/Asset"/>
+  </owl:Class>
+  <owl:DatatypeProperty rdf:about="http://example.org/dt/sensorId">
+    <rdfs:label>sensorId</rdfs:label>
+    <rdfs:domain rdf:resource="http://example.org/dt/Sensor"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <ont:isIdentifier rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</ont:isIdentifier>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="http://example.org/dt/temperature">
+    <rdfs:label>temperature</rdfs:label>
+    <rdfs:domain rdf:resource="http://example.org/dt/Sensor"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#double"/>
+    <ont:isTimeSeries rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</ont:isTimeSeries>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="http://example.org/dt/reading_ts">
+    <rdfs:label>reading_ts</rdfs:label>
+    <rdfs:domain rdf:resource="http://example.org/dt/Sensor"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#dateTime"/>
+    <ont:isTimeSeries rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</ont:isTimeSeries>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="http://example.org/dt/payload">
+    <rdfs:label>payload</rdfs:label>
+    <rdfs:domain rdf:resource="http://example.org/dt/Sensor"/>
+    <ont:isUntyped rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</ont:isUntyped>
+  </owl:DatatypeProperty>
+  <owl:ObjectProperty rdf:about="http://example.org/dt/monitors">
+    <rdfs:label>monitors</rdfs:label>
+    <rdfs:domain rdf:resource="http://example.org/dt/Sensor"/>
+    <rdfs:range rdf:resource="http://example.org/dt/Asset"/>
+  </owl:ObjectProperty>
+</rdf:RDF>"#;
+
+fn decoded_parts(json: &Value) -> Vec<(String, Value)> {
+    json["data"]["definition"]["parts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| {
+            (
+                p["path"].as_str().unwrap_or("").to_string(),
+                p["decodedPayload"].clone(),
+            )
+        })
+        .collect()
+}
+
+fn part<'a>(parts: &'a [(String, Value)], needle: &str) -> &'a Value {
+    &parts
+        .iter()
+        .find(|(path, _)| path.contains(needle))
+        .unwrap_or_else(|| {
+            panic!(
+                "no part '{needle}'; have: {:?}",
+                parts.iter().map(|(p, _)| p).collect::<Vec<_>>()
+            )
+        })
+        .1
+}
+
+fn delete_ontology(ws: &str, id: &str) {
+    let _ = fabio()
+        .args([
+            "ontology",
+            "delete",
+            "--workspace",
+            ws,
+            "--id",
+            id,
+            "--hard",
+        ])
+        .assert();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn e2e_ontology_import_full_features_roundtrip() {
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+
+    let dir = tempfile::tempdir().unwrap();
+    let rdf = dir.path().join("dt.rdf");
+    std::fs::write(&rdf, FEATURES_RDF).unwrap();
+    let map = dir.path().join("bindings.json");
+    std::fs::write(
+        &map,
+        serde_json::to_string(&serde_json::json!({
+            "entities": {
+                "Asset": { "table": "asset" },
+                "Sensor": {
+                    "documents": [{"displayText": "Manual", "url": "https://example.org/manual"}],
+                    "bindings": [
+                        {"table": "sensor_static", "dataBindingType": "NonTimeSeries", "properties": ["sensorId", "payload"]},
+                        {"table": "sensor_telemetry", "dataBindingType": "TimeSeries", "timestampColumn": "reading_ts", "properties": ["sensorId", "temperature", "reading_ts"]}
+                    ]
+                }
+            },
+            "relationships": {
+                "monitors": {"table": "sensor", "sourceColumns": ["sensor_id"], "targetColumns": ["asset_id"]}
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    // Create an empty ontology, then import the schema + bindings into it.
+    let name = unique_name("ont_features");
+    let created = fabio()
+        .args(["ontology", "create", "--workspace", ws, "--name", &name])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let ont_id = extract_data(&parse_json(&created))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = fabio()
+        .args([
+            "ontology",
+            "import",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--file",
+            rdf.to_str().unwrap(),
+            "--lakehouse",
+            &cfg.source_lakehouse,
+            "--lakehouse-workspace",
+            ws,
+            "--bindings",
+            map.to_str().unwrap(),
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert();
+    // Import may return a non-zero status only on real error; surface stderr.
+    let out = res.get_output();
+    assert!(
+        out.status.success(),
+        "import failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // Read back the decoded definition and assert every new feature landed.
+    let json = parse_json(
+        &fabio()
+            .args([
+                "ontology",
+                "get-definition",
+                "--workspace",
+                ws,
+                "--id",
+                &ont_id,
+                "--decode",
+            ])
+            .timeout(std::time::Duration::from_mins(2))
+            .assert()
+            .success(),
+    );
+    let parts = decoded_parts(&json);
+
+    // Sensor entity: inheritance + time-series + untyped.
+    let sensor = part(&parts, "EntityTypes/8880000000002/definition.json");
+    assert_eq!(sensor["name"], "Sensor");
+    assert_eq!(
+        sensor["baseEntityTypeId"], "8880000000001",
+        "subClassOf -> baseEntityTypeId"
+    );
+    let ts: Vec<&str> = sensor["timeseriesProperties"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["name"].as_str().unwrap())
+        .collect();
+    assert!(
+        ts.contains(&"temperature") && ts.contains(&"reading_ts"),
+        "timeseriesProperties: {ts:?}"
+    );
+    let untyped: Vec<&str> = sensor["untypedProperties"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(untyped, vec!["payload"]);
+    assert_eq!(sensor["untypedProperties"][0]["valueType"], "Any");
+
+    // Two DataBindings for Sensor (static + telemetry).
+    let sensor_dbs = parts
+        .iter()
+        .filter(|(p, _)| p.contains("EntityTypes/8880000000002/DataBindings"))
+        .count();
+    assert_eq!(sensor_dbs, 2, "expected 2 data bindings for Sensor");
+
+    // Documents + relationship Contextualization present.
+    assert!(
+        parts
+            .iter()
+            .any(|(p, _)| p.contains("EntityTypes/8880000000002/Documents")),
+        "Documents part"
+    );
+    assert!(
+        parts
+            .iter()
+            .any(|(p, _)| p.contains("RelationshipTypes/9990000000001/Contextualizations")),
+        "Contextualization part"
+    );
+
+    delete_ontology(ws, &ont_id);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn e2e_ontology_bind_and_schema_only_hint() {
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+
+    let dir = tempfile::tempdir().unwrap();
+    let rdf = dir.path().join("dt.rdf");
+    std::fs::write(&rdf, FEATURES_RDF).unwrap();
+    let map = dir.path().join("bindings.json");
+    std::fs::write(
+        &map,
+        serde_json::to_string(&serde_json::json!({
+            "entities": {
+                "Sensor": {"table": "sensor", "timestampColumn": "reading_ts"},
+                "Asset": {"table": "asset"}
+            },
+            "relationships": {"monitors": {"table": "sensor", "sourceColumns": ["sensor_id"], "targetColumns": ["asset_id"]}}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let name = unique_name("ont_bind");
+    let created = fabio()
+        .args(["ontology", "create", "--workspace", ws, "--name", &name])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let ont_id = extract_data(&parse_json(&created))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Import types only (no data source) -> response carries the bind hint.
+    let json = parse_json(
+        &fabio()
+            .args([
+                "ontology",
+                "import",
+                "--workspace",
+                ws,
+                "--id",
+                &ont_id,
+                "--file",
+                rdf.to_str().unwrap(),
+            ])
+            .timeout(std::time::Duration::from_mins(3))
+            .assert()
+            .success(),
+    );
+    assert!(
+        extract_data(&json)["hint"]
+            .as_str()
+            .unwrap_or("")
+            .contains("ontology bind"),
+        "schema-only import should hint how to bind: {json}"
+    );
+
+    // Bind the live ontology's types to data (matches by name).
+    fabio()
+        .args([
+            "ontology",
+            "bind",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--lakehouse",
+            &cfg.source_lakehouse,
+            "--lakehouse-workspace",
+            ws,
+            "--bindings",
+            map.to_str().unwrap(),
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // Bindings + contextualizations now exist.
+    let json = parse_json(
+        &fabio()
+            .args([
+                "ontology",
+                "get-definition",
+                "--workspace",
+                ws,
+                "--id",
+                &ont_id,
+                "--decode",
+            ])
+            .timeout(std::time::Duration::from_mins(2))
+            .assert()
+            .success(),
+    );
+    let parts = decoded_parts(&json);
+    assert!(
+        parts.iter().any(|(p, _)| p.contains("/DataBindings/")),
+        "bind added DataBindings"
+    );
+    assert!(
+        parts
+            .iter()
+            .any(|(p, _)| p.contains("/Contextualizations/")),
+        "bind added Contextualizations"
+    );
+
+    delete_ontology(ws, &ont_id);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn e2e_ontology_import_lakehouse_schema_flag() {
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+
+    let dir = tempfile::tempdir().unwrap();
+    let rdf = dir.path().join("dt.rdf");
+    // Simple non-time-series model so convention binding is a plain
+    // NonTimeSeries LakehouseTable (no timestamp column needed).
+    std::fs::write(
+        &rdf,
+        r#"<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:ont="http://example.org/dt/">
+  <owl:Class rdf:about="http://example.org/dt/Widget"><rdfs:label>Widget</rdfs:label></owl:Class>
+  <owl:DatatypeProperty rdf:about="http://example.org/dt/widgetId">
+    <rdfs:label>widgetId</rdfs:label>
+    <rdfs:domain rdf:resource="http://example.org/dt/Widget"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <ont:isIdentifier rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</ont:isIdentifier>
+  </owl:DatatypeProperty>
+</rdf:RDF>"#,
+    )
+    .unwrap();
+
+    let name = unique_name("ont_schemaflag");
+    let created = fabio()
+        .args(["ontology", "create", "--workspace", ws, "--name", &name])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let ont_id = extract_data(&parse_json(&created))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    fabio()
+        .args([
+            "ontology",
+            "import",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--file",
+            rdf.to_str().unwrap(),
+            "--lakehouse",
+            &cfg.source_lakehouse,
+            "--lakehouse-workspace",
+            ws,
+            "--lakehouse-schema",
+            "silver",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    let json = parse_json(
+        &fabio()
+            .args([
+                "ontology",
+                "get-definition",
+                "--workspace",
+                ws,
+                "--id",
+                &ont_id,
+                "--decode",
+            ])
+            .timeout(std::time::Duration::from_mins(2))
+            .assert()
+            .success(),
+    );
+    let parts = decoded_parts(&json);
+    let db = part(&parts, "/DataBindings/");
+    assert_eq!(
+        db["dataBindingConfiguration"]["sourceTableProperties"]["sourceSchema"],
+        "silver"
+    );
+
+    delete_ontology(ws, &ont_id);
+}
+
+/// Eventhouse (`KustoTable`) `TimeSeries` binding. Requires an existing Eventhouse
+/// and KQL database; set these to run it, otherwise it no-ops:
+///   `FABIO_TEST_EVENTHOUSE_ID`, `FABIO_TEST_EVENTHOUSE_CLUSTER_URI`,
+///   `FABIO_TEST_EVENTHOUSE_DATABASE`
+#[test]
+#[ignore = "requires live Fabric tenant + Eventhouse"]
+#[serial]
+fn e2e_ontology_import_eventhouse_timeseries() {
+    let (Ok(eh_id), Ok(cluster), Ok(db)) = (
+        std::env::var("FABIO_TEST_EVENTHOUSE_ID"),
+        std::env::var("FABIO_TEST_EVENTHOUSE_CLUSTER_URI"),
+        std::env::var("FABIO_TEST_EVENTHOUSE_DATABASE"),
+    ) else {
+        eprintln!("[skip] set FABIO_TEST_EVENTHOUSE_ID/_CLUSTER_URI/_DATABASE to run");
+        return;
+    };
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+
+    let dir = tempfile::tempdir().unwrap();
+    let rdf = dir.path().join("dt.rdf");
+    std::fs::write(&rdf, FEATURES_RDF).unwrap();
+
+    let name = unique_name("ont_eh");
+    let created = fabio()
+        .args(["ontology", "create", "--workspace", ws, "--name", &name])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let ont_id = extract_data(&parse_json(&created))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Eventhouse default source: every entity binds TimeSeries to a KustoTable.
+    fabio()
+        .args([
+            "ontology",
+            "import",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--file",
+            rdf.to_str().unwrap(),
+            "--eventhouse",
+            &eh_id,
+            "--eventhouse-workspace",
+            ws,
+            "--cluster-uri",
+            &cluster,
+            "--database",
+            &db,
+            "--timestamp-column",
+            "reading_ts",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    let json = parse_json(
+        &fabio()
+            .args([
+                "ontology",
+                "get-definition",
+                "--workspace",
+                ws,
+                "--id",
+                &ont_id,
+                "--decode",
+            ])
+            .timeout(std::time::Duration::from_mins(2))
+            .assert()
+            .success(),
+    );
+    let parts = decoded_parts(&json);
+    let db_part = part(&parts, "/DataBindings/");
+    assert_eq!(
+        db_part["dataBindingConfiguration"]["dataBindingType"],
+        "TimeSeries"
+    );
+    assert_eq!(
+        db_part["dataBindingConfiguration"]["sourceTableProperties"]["sourceType"],
+        "KustoTable"
+    );
+    assert_eq!(
+        db_part["dataBindingConfiguration"]["sourceTableProperties"]["clusterUri"],
+        cluster
+    );
+
+    delete_ontology(ws, &ont_id);
 }

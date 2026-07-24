@@ -2804,3 +2804,103 @@ fn dataagent_new_commands_lifecycle() {
         .success();
     eprintln!("  Done. New commands lifecycle test complete.");
 }
+
+// ---------------------------------------------------------------------------
+// Ground a data agent on an Ontology, then scope with element selection.
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_ground_on_ontology_and_select_elements() {
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+
+    // An ontology to ground on.
+    let ont_name = unique_name("da_ont");
+    let ont = parse_json(
+        &fabio()
+            .args(["ontology", "create", "--workspace", ws, "--name", &ont_name])
+            .timeout(std::time::Duration::from_mins(2))
+            .assert()
+            .success(),
+    );
+    let ont_id = extract_data(&ont)["id"].as_str().unwrap().to_string();
+
+    // A data agent.
+    let agent_name = unique_name("da_ground");
+    let agent = parse_json(
+        &fabio()
+            .args([
+                "data-agent",
+                "create",
+                "--workspace",
+                ws,
+                "--name",
+                &agent_name,
+            ])
+            .timeout(std::time::Duration::from_mins(3))
+            .assert()
+            .success(),
+    );
+    let agent_id = extract_data(&agent)["id"].as_str().unwrap().to_string();
+
+    // Ground the agent on the ontology (FabricItem datasource).
+    let ds = parse_json(
+        &fabio()
+            .args([
+                "data-agent",
+                "add-datasource",
+                "--workspace",
+                ws,
+                "--id",
+                &agent_id,
+                "--artifact",
+                &ont_id,
+                "--artifact-type",
+                "Ontology",
+            ])
+            .timeout(std::time::Duration::from_mins(5))
+            .assert()
+            .success(),
+    );
+    assert_eq!(
+        extract_data(&ds)["FabricItemType"],
+        "Ontology",
+        "grounded on the ontology: {ds}"
+    );
+
+    // Element-mode selection works on a non-table datasource (any-type).
+    // --all-elements succeeds even before async schema discovery finishes.
+    fabio()
+        .args([
+            "data-agent",
+            "select-tables",
+            "--workspace",
+            ws,
+            "--id",
+            &agent_id,
+            "--datasource",
+            &ont_name,
+            "--all-elements",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // Cleanup.
+    let _ = fabio()
+        .args(["data-agent", "delete", "--workspace", ws, "--id", &agent_id])
+        .assert();
+    let _ = fabio()
+        .args([
+            "ontology",
+            "delete",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--hard",
+        ])
+        .assert();
+}
