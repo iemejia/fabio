@@ -214,6 +214,7 @@ pub async fn export_owl(
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 fn fabric_definition_to_model(data: &Value) -> Result<OwlModel> {
     let parts = data
         .get("definition")
@@ -283,6 +284,22 @@ fn fabric_definition_to_model(data: &Value) -> Result<OwlModel> {
                     label: pname.to_string(),
                     domain_uri: uri.clone(),
                     property_type: vtype.to_string(),
+                    is_identifier: false,
+                });
+            }
+        }
+
+        // Untyped properties round-trip back as ont:isUntyped.
+        if let Some(props) = entity.get("untypedProperties").and_then(Value::as_array) {
+            for prop in props {
+                let pname = prop.get("name").and_then(Value::as_str).unwrap_or("");
+                model
+                    .untyped_properties
+                    .insert((uri.clone(), pname.to_string()));
+                model.datatype_properties.push(OwlDatatypeProperty {
+                    label: pname.to_string(),
+                    domain_uri: uri.clone(),
+                    property_type: "String".to_string(),
                     is_identifier: false,
                 });
             }
@@ -369,6 +386,12 @@ fn serialize_to_rdf_xml(model: &OwlModel) -> String {
         {
             s.push_str("\n        <ont:isTimeSeries rdf:datatype=\"http://www.w3.org/2001/XMLSchema#boolean\">true</ont:isTimeSeries>");
         }
+        if model
+            .untyped_properties
+            .contains(&(p.domain_uri.clone(), p.label.clone()))
+        {
+            s.push_str("\n        <ont:isUntyped rdf:datatype=\"http://www.w3.org/2001/XMLSchema#boolean\">true</ont:isUntyped>");
+        }
         let _ = write!(
             s,
             "\n        <ont:propertyType>{}</ont:propertyType>",
@@ -422,6 +445,12 @@ fn serialize_to_jsonld(model: &OwlModel) -> String {
             .contains(&(p.domain_uri.clone(), p.label.clone()))
         {
             node["ont:isTimeSeries"] = serde_json::json!(true);
+        }
+        if model
+            .untyped_properties
+            .contains(&(p.domain_uri.clone(), p.label.clone()))
+        {
+            node["ont:isUntyped"] = serde_json::json!(true);
         }
         graph.push(node);
     }
@@ -506,6 +535,9 @@ struct OwlModel {
     subclass_of: HashMap<String, String>,
     /// (domain URI, property label) marked time-series (from `ont:isTimeSeries`).
     timeseries_properties: HashSet<(String, String)>,
+    /// (domain URI, property label) marked untyped (from `ont:isUntyped`); these
+    /// become `untypedProperties` with `valueType` "Any".
+    untyped_properties: HashSet<(String, String)>,
 }
 
 #[derive(Debug)]
@@ -548,10 +580,12 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
     let mut current_is_id = false;
     let mut current_super_class = String::new();
     let mut current_is_ts = false;
+    let mut current_is_untyped = false;
     let mut reading_label = false;
     let mut reading_prop_type = false;
     let mut reading_is_id = false;
     let mut reading_is_ts = false;
+    let mut reading_is_untyped = false;
 
     let mut buf = Vec::new();
 
@@ -578,6 +612,7 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
                         current_prop_type.clear();
                         current_is_id = false;
                         current_is_ts = false;
+                        current_is_untyped = false;
                     }
                     "ObjectProperty" => {
                         in_object_prop = true;
@@ -590,6 +625,7 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
                     "propertyType" => reading_prop_type = true,
                     "isIdentifier" => reading_is_id = true,
                     "isTimeSeries" => reading_is_ts = true,
+                    "isUntyped" => reading_is_untyped = true,
                     "subClassOf" => {
                         if in_class {
                             current_super_class = extract_rdf_resource(e);
@@ -618,6 +654,8 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
                     current_is_id = text == "true";
                 } else if reading_is_ts {
                     current_is_ts = text == "true";
+                } else if reading_is_untyped {
+                    current_is_untyped = text == "true";
                 }
             }
             Ok(Event::End(ref e)) => {
@@ -659,6 +697,11 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
                                     .timeseries_properties
                                     .insert((current_domain.clone(), label.clone()));
                             }
+                            if current_is_untyped {
+                                model
+                                    .untyped_properties
+                                    .insert((current_domain.clone(), label.clone()));
+                            }
                             model.datatype_properties.push(OwlDatatypeProperty {
                                 label,
                                 domain_uri: current_domain.clone(),
@@ -694,6 +737,7 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
                     "propertyType" => reading_prop_type = false,
                     "isIdentifier" => reading_is_id = false,
                     "isTimeSeries" => reading_is_ts = false,
+                    "isUntyped" => reading_is_untyped = false,
                     _ => {}
                 }
             }
@@ -827,6 +871,10 @@ fn parse_json_ld(content: &str) -> Result<OwlModel> {
                     .get("ont:isTimeSeries")
                     .and_then(Value::as_bool)
                     .unwrap_or(false);
+                let is_untyped = node
+                    .get("ont:isUntyped")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
 
                 if !domain.is_empty() {
                     let label = if label.is_empty() {
@@ -837,6 +885,11 @@ fn parse_json_ld(content: &str) -> Result<OwlModel> {
                     if is_ts {
                         model
                             .timeseries_properties
+                            .insert((domain.clone(), label.clone()));
+                    }
+                    if is_untyped {
+                        model
+                            .untyped_properties
                             .insert((domain.clone(), label.clone()));
                     }
                     model.datatype_properties.push(OwlDatatypeProperty {
@@ -1437,9 +1490,10 @@ fn generate_fabric_parts(
                 })
         };
 
-        // Collect properties for this class, split into static vs time-series.
+        // Collect properties for this class: static / time-series / untyped.
         let mut properties: Vec<Value> = Vec::new();
         let mut timeseries_properties: Vec<Value> = Vec::new();
+        let mut untyped_properties: Vec<Value> = Vec::new();
         let mut id_parts: Vec<String> = Vec::new();
         let mut display_name_id: Option<String> = None;
         // Properties available to the entity's data bindings.
@@ -1452,15 +1506,20 @@ fn generate_fabric_parts(
             .enumerate()
         {
             let prop_id = format!("{type_id}{:02}", pi + 1);
-            let time_series = is_time_series(&prop.label);
+            let untyped = model
+                .untyped_properties
+                .contains(&(class.uri.clone(), prop.label.clone()));
+            let time_series = !untyped && is_time_series(&prop.label);
             let prop_def = serde_json::json!({
                 "id": prop_id,
                 "name": sanitize_name(&prop.label),
                 "redefines": Value::Null,
                 "baseTypeNamespaceType": Value::Null,
-                "valueType": prop.property_type,
+                "valueType": if untyped { "Any" } else { prop.property_type.as_str() },
             });
-            if time_series {
+            if untyped {
+                untyped_properties.push(prop_def);
+            } else if time_series {
                 timeseries_properties.push(prop_def);
             } else {
                 properties.push(prop_def);
@@ -1470,14 +1529,19 @@ fn generate_fabric_parts(
                 id: prop_id.clone(),
                 label: prop.label.clone(),
                 is_time_series: time_series,
-                is_identifier: prop.is_identifier && !time_series,
+                is_identifier: prop.is_identifier && !time_series && !untyped,
             });
 
-            // Identifiers and the display name come from static (non-time-series) props.
-            if prop.is_identifier && !time_series {
+            // Identifiers and the display name come from static (non-time-series,
+            // non-untyped) properties.
+            if prop.is_identifier && !time_series && !untyped {
                 id_parts.push(prop_id.clone());
             }
-            if display_name_id.is_none() && !time_series && prop.property_type == "String" {
+            if display_name_id.is_none()
+                && !time_series
+                && !untyped
+                && prop.property_type == "String"
+            {
                 display_name_id = Some(prop_id.clone());
             }
         }
@@ -1517,6 +1581,9 @@ fn generate_fabric_parts(
         });
         if !timeseries_properties.is_empty() {
             entity_def["timeseriesProperties"] = Value::from(timeseries_properties.clone());
+        }
+        if !untyped_properties.is_empty() {
+            entity_def["untypedProperties"] = Value::from(untyped_properties);
         }
 
         parts.push(FabricPart {
@@ -2548,6 +2615,7 @@ mod tests {
         let model = OwlModel {
             subclass_of: std::collections::HashMap::new(),
             timeseries_properties: std::collections::HashSet::new(),
+            untyped_properties: std::collections::HashSet::new(),
             classes: vec![
                 OwlClass {
                     uri: "http://ex.org/A".to_string(),
@@ -2610,6 +2678,7 @@ mod tests {
         let model = OwlModel {
             subclass_of: std::collections::HashMap::new(),
             timeseries_properties: std::collections::HashSet::new(),
+            untyped_properties: std::collections::HashSet::new(),
             classes: vec![OwlClass {
                 uri: "http://ex.org/Thing".to_string(),
                 label: "Thing".to_string(),
@@ -2635,6 +2704,7 @@ mod tests {
         let model = OwlModel {
             subclass_of: std::collections::HashMap::new(),
             timeseries_properties: std::collections::HashSet::new(),
+            untyped_properties: std::collections::HashSet::new(),
             classes: vec![
                 OwlClass {
                     uri: "http://ex.org/A".to_string(),
@@ -2712,6 +2782,7 @@ mod tests {
         OwlModel {
             subclass_of: std::collections::HashMap::new(),
             timeseries_properties: std::collections::HashSet::new(),
+            untyped_properties: std::collections::HashSet::new(),
             classes: vec![
                 OwlClass {
                     uri: "http://ex.org/Study".into(),
@@ -2920,6 +2991,7 @@ mod tests {
         OwlModel {
             subclass_of: std::collections::HashMap::new(),
             timeseries_properties: std::collections::HashSet::new(),
+            untyped_properties: std::collections::HashSet::new(),
             classes: vec![
                 OwlClass {
                     uri: "http://ex.org/A".into(),
@@ -3922,5 +3994,65 @@ mod tests {
                 .iter()
                 .any(|(_, l)| l == "temperature")
         );
+    }
+
+    #[test]
+    fn owl_is_untyped_maps_to_untyped_properties() {
+        let rdf = r#"<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:ont="http://ex.org/">
+  <owl:Class rdf:about="http://ex.org/Thing"><rdfs:label>Thing</rdfs:label></owl:Class>
+  <owl:DatatypeProperty rdf:about="http://ex.org/thingId">
+    <rdfs:label>thingId</rdfs:label><rdfs:domain rdf:resource="http://ex.org/Thing"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <ont:isIdentifier rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</ont:isIdentifier>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="http://ex.org/payload">
+    <rdfs:label>payload</rdfs:label><rdfs:domain rdf:resource="http://ex.org/Thing"/>
+    <ont:isUntyped rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</ont:isUntyped>
+  </owl:DatatypeProperty>
+</rdf:RDF>"#;
+        let model = parse_rdf_xml(rdf);
+        assert!(
+            model
+                .untyped_properties
+                .contains(&("http://ex.org/Thing".into(), "payload".into()))
+        );
+        let parts = generate_fabric_parts(&model, None).unwrap();
+        let def = payload(find_part(
+            &parts,
+            "EntityTypes/8880000000001/definition.json",
+        ));
+        assert_schema_valid("entityType", &def);
+        let props: Vec<&str> = def["properties"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(props, vec!["thingId"]);
+        let untyped = def["untypedProperties"].as_array().unwrap();
+        assert_eq!(untyped.len(), 1);
+        assert_eq!(untyped[0]["name"], "payload");
+        assert_eq!(untyped[0]["valueType"], "Any");
+    }
+
+    #[test]
+    fn is_untyped_round_trips_through_export() {
+        let def = serde_json::json!({
+            "definition": { "parts": [
+                {"path": "EntityTypes/1/definition.json", "payload": BASE64.encode(serde_json::to_vec(&serde_json::json!({
+                    "id": "1", "name": "Thing", "entityIdParts": ["11"],
+                    "properties": [{"id": "11", "name": "thingId", "valueType": "String"}],
+                    "untypedProperties": [{"id": "12", "name": "payload", "valueType": "Any"}]
+                })).unwrap()), "payloadType": "InlineBase64"}
+            ]}
+        });
+        let model = fabric_definition_to_model(&def).unwrap();
+        assert!(model.untyped_properties.iter().any(|(_, l)| l == "payload"));
+        assert!(serialize_to_rdf_xml(&model).contains("ont:isUntyped"));
+        assert!(serialize_to_jsonld(&model).contains("ont:isUntyped"));
     }
 }
