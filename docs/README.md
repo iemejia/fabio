@@ -3,7 +3,7 @@
 The user-facing documentation for [fabio](https://github.com/iemejia/fabio), built with
 [Astro](https://astro.build) + [Starlight](https://starlight.astro.build) and organized with the
 [Diátaxis](https://diataxis.fr) framework. Published to GitHub Pages at
-<https://iemejia.github.io/fabio/>.
+<https://ismaelmejia.com/fabio/>.
 
 > Contributor process, deployment, and best practices are documented authoritatively in the
 > **Documentation Website (MANDATORY)** section of the repo root `AGENTS.md`. This file is a quick start.

@@ -607,7 +607,7 @@ Reference this file when looking up specific source locations or adding new file
 
 ## Documentation Website (MANDATORY)
 
-The user-facing documentation site lives in `docs/` — an [Astro](https://astro.build) + [Starlight](https://starlight.astro.build) static site organized with the [Diátaxis](https://diataxis.fr) framework (Tutorials / How-to guides / Explanation / Reference). It is published to GitHub Pages at `https://iemejia.github.io/fabio/`. Full-text search is provided by Pagefind (built in).
+The user-facing documentation site lives in `docs/` — an [Astro](https://astro.build) + [Starlight](https://starlight.astro.build) static site organized with the [Diátaxis](https://diataxis.fr) framework (Tutorials / How-to guides / Explanation / Reference). It is published to GitHub Pages and served from the custom apex domain at `https://ismaelmejia.com/fabio/`. Full-text search is provided by Pagefind (built in).
 
 ### Structure
 
@@ -663,7 +663,7 @@ Requires Node 22.12+ (CI uses Node 24). `npm run build`/`dev`/`check` all run `g
 `.github/workflows/docs.yml` builds on every push/PR that touches `docs/**`, `commands.json`, or the workflow, and deploys to GitHub Pages **only on push to `main`**:
 - **build job** (`docs-build-<ref>`, `cancel-in-progress: true`): `npm ci` → `npm test` → `npm run check` → `npm run build` → upload Pages artifact. Runs on PRs too (validation without deploy).
 - **deploy job** (`group: pages`, `cancel-in-progress: false`): serializes deploys and never cancels one mid-flight.
-- **Base path**: `astro.config.mjs` derives `site`/`base` from the auto-provided `GITHUB_REPOSITORY` env var (→ `https://iemejia.github.io` + `/fabio`). No workspace secret needed. If a custom apex domain is ever added, `BASE_PATH` must be overridden in the workflow (currently implicit).
+- **Base path & origin**: `astro.config.mjs` reads `SITE_URL`/`BASE_PATH` env vars (set explicitly in `docs.yml` to `https://ismaelmejia.com` + `/fabio`, because the site is served from the custom apex domain under the `/fabio` subpath). These override the `GITHUB_REPOSITORY`-derived fallback (`https://<owner>.github.io/<repo>`) used for forks/ad-hoc builds, and the localhost fallback used for local dev. Keep `SITE_URL`/`BASE_PATH` in the workflow in sync with the deployed domain so canonical URLs and the sitemap are correct.
 - **One-time prerequisite**: the repo's **Settings → Pages → Source must be set to "GitHub Actions"** (not "Deploy from a branch") or the deploy job fails.
 
 ### When and how to keep it updated
