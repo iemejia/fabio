@@ -2967,12 +2967,7 @@ impl FabricClient {
                             "Failed",
                             start.elapsed().as_millis(),
                         );
-                        let msg = body
-                            .get("error")
-                            .and_then(|e| e.get("message"))
-                            .and_then(Value::as_str)
-                            .unwrap_or("LRO failed");
-                        return Err(FabioError::api_error(msg).into());
+                        return Err(FabioError::api_error(lro_failure_message(&body)).into());
                     }
                     // Running, NotStarted, or other in-progress states - keep polling
                     _ => {
@@ -3322,6 +3317,57 @@ async fn handle_response(resp: Response) -> Result<Value> {
     )
 }
 
+/// Build a diagnosable failure message from a failed LRO result body.
+///
+/// Fabric LRO failures (e.g. ontology `updateDefinition`) frequently return a
+/// generic top-level `error.message` such as `"ALMOperationImportFailed"` with
+/// unfilled placeholders, while the *actionable* text lives in `error.errorCode`
+/// and the `error.moreDetails[]` array. This flattens all three into one string
+/// (`"<errorCode>: <message> (<detailCode>: <detailMsg>; ...)"`) so downstream
+/// enrichment (see `enrich_ontology_definition_error`) and humans can see the
+/// real cause instead of an opaque template.
+fn lro_failure_message(body: &Value) -> String {
+    let error_obj = body.get("error");
+    let code = error_obj
+        .and_then(|e| e.get("errorCode"))
+        .and_then(Value::as_str);
+    let message = error_obj
+        .and_then(|e| e.get("message"))
+        .and_then(Value::as_str)
+        .filter(|m| !m.trim().is_empty());
+
+    let mut base = match (code, message) {
+        (Some(c), Some(m)) if c != m => format!("{c}: {m}"),
+        (Some(c), _) => c.to_string(),
+        (None, Some(m)) => m.to_string(),
+        (None, None) => "LRO failed".to_string(),
+    };
+
+    // Append nested sub-errors — these usually carry the real, specific reason.
+    let details: Vec<String> = error_obj
+        .and_then(|e| e.get("moreDetails"))
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|d| {
+                    let dmsg = d.get("message").and_then(Value::as_str)?;
+                    let dcode = d.get("errorCode").and_then(Value::as_str);
+                    Some(match dcode {
+                        Some(dc) if dc != dmsg => format!("{dc}: {dmsg}"),
+                        _ => dmsg.to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if !details.is_empty() {
+        base = format!("{base} ({})", details.join("; "));
+    }
+
+    base
+}
+
 /// Extract enriched error metadata from a parsed Fabric API error response.
 ///
 /// Returns `(isRetriable, requestId, moreDetails, relatedResource)` fields
@@ -3539,6 +3585,40 @@ pub fn validate_uuid(value: &str, param_name: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── lro_failure_message ──────────────────────────────────────────────
+
+    #[test]
+    fn lro_failure_flattens_code_message_and_details() {
+        let body = serde_json::json!({
+            "status": "Failed",
+            "error": {
+                "errorCode": "ALMOperationImportFailed",
+                "message": "{0} {1} {2}",
+                "moreDetails": [
+                    {"errorCode": "InvalidBinding", "message": "Property 'payload' is untyped"}
+                ]
+            }
+        });
+        let msg = lro_failure_message(&body);
+        assert!(msg.contains("ALMOperationImportFailed"), "msg: {msg}");
+        assert!(msg.contains("InvalidBinding"), "msg: {msg}");
+        assert!(msg.contains("untyped"), "msg: {msg}");
+    }
+
+    #[test]
+    fn lro_failure_falls_back_when_no_error_object() {
+        let body = serde_json::json!({ "status": "Failed" });
+        assert_eq!(lro_failure_message(&body), "LRO failed");
+    }
+
+    #[test]
+    fn lro_failure_uses_code_when_message_empty() {
+        let body = serde_json::json!({
+            "error": { "errorCode": "SomeCode", "message": "" }
+        });
+        assert_eq!(lro_failure_message(&body), "SomeCode");
+    }
 
     // ── validate_trusted_url ─────────────────────────────────────────────
 

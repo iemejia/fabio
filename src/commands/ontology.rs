@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
+use crate::errors::{ErrorCode, FabioError, enrich_forbidden, enrich_ontology_definition_error};
 use crate::output;
 
 #[derive(Debug, Subcommand)]
@@ -357,7 +357,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
             *update_metadata,
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "ontology update-definition", "Contributor")),
+        .map_err(|e| enrich_forbidden(e, "ontology update-definition", "Contributor"))
+        .map_err(|e| enrich_ontology_definition_error(e, "ontology update-definition")),
         OntologyCommand::Import {
             workspace,
             id,

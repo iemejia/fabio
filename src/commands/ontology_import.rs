@@ -17,7 +17,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
+use crate::errors::{ErrorCode, FabioError, enrich_forbidden, enrich_ontology_definition_error};
 use crate::output;
 
 // ─── Public Entry Point ──────────────────────────────────────────────────────
@@ -2151,7 +2151,8 @@ pub async fn bind_ontology(
             true,
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "ontology bind", "Contributor"))?;
+        .map_err(|e| enrich_forbidden(e, "ontology bind", "Contributor"))
+        .map_err(|e| enrich_ontology_definition_error(e, "ontology bind"))?;
 
     if resp.is_null() || resp.as_object().is_some_and(serde_json::Map::is_empty) {
         let obj = serde_json::json!({
@@ -2473,7 +2474,8 @@ async fn push_to_fabric(
             true,
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "ontology import", "Contributor"))?;
+        .map_err(|e| enrich_forbidden(e, "ontology import", "Contributor"))
+        .map_err(|e| enrich_ontology_definition_error(e, "ontology import"))?;
 
     let entity_count = parts
         .iter()

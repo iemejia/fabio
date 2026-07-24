@@ -345,6 +345,64 @@ pub fn enrich_forbidden(err: anyhow::Error, operation: &str, required_role: &str
     FabioError::with_hint(ErrorCode::Forbidden, fabio_err.message.clone(), hint).into()
 }
 
+/// Enrich a failed ontology definition push (`import`, `bind`,
+/// `update-definition`) with a diagnostic hint.
+///
+/// Fabric validates an ontology's parts together at `updateDefinition` time and,
+/// on failure, returns a generic `ALMOperationImportFailed` with little context.
+/// Live testing established the recurring, non-obvious causes — this maps the
+/// error to an actionable checklist so agents can self-correct without a portal
+/// round-trip. Only applies to `ApiError`/`InvalidInput`; other codes (`Forbidden`,
+/// `NotFound`, ...) pass through so their own enrichment wins.
+pub fn enrich_ontology_definition_error(err: anyhow::Error, operation: &str) -> anyhow::Error {
+    let Some(fabio_err) = err.downcast_ref::<FabioError>() else {
+        return err;
+    };
+
+    let msg_lower = fabio_err.message.to_lowercase();
+    let is_import_failure = msg_lower.contains("almoperationimportfailed")
+        || msg_lower.contains("import failed")
+        || (msg_lower.contains("invalid definition") && msg_lower.contains("ontolog"));
+
+    // Only enrich generic server-side validation failures; leave permission,
+    // conflict, and not-found errors to their dedicated enrichers.
+    if !is_import_failure
+        || !matches!(
+            fabio_err.code,
+            ErrorCode::ApiError | ErrorCode::InvalidInput
+        )
+    {
+        return err;
+    }
+
+    let hint = format!(
+        "'{operation}' was rejected by Fabric's ontology validator (ALMOperationImportFailed \
+         is generic — the real cause is usually one of these, in order of likelihood): \
+         (1) A DataBinding's propertyBindings targets an UNTYPED property (valueType 'Any'). \
+         Untyped properties live only under entityType.untypedProperties and must NEVER appear \
+         in a binding — remove them from propertyBindings. \
+         (2) A DataBinding or Contextualization references an entityTypeId / propertyId / \
+         relationshipTypeId that is not defined by any part in the same push. IDs are \
+         case-sensitive and must match exactly. \
+         (3) A TimeSeries DataBinding is missing its timestampColumn, or a property marked \
+         timeSeries has no corresponding timeseries binding. \
+         (4) Malformed part: wrong $schema, missing required field, or a Contextualization \
+         whose sourceEntityTypeId/targetEntityTypeId do not match the relationship's endpoints. \
+         Note: Fabric does NOT validate that the referenced Lakehouse table/columns exist at \
+         this stage (that is deferred to query time), so a missing table is NOT the cause here. \
+         Inspect the current stored definition with: \
+         fabio ontology get-definition --workspace <WS> --id <ID> --decode"
+    );
+
+    FabioError::with_typed_hint(
+        fabio_err.code,
+        fabio_err.message.clone(),
+        hint,
+        HintType::SemanticCorrection,
+    )
+    .into()
+}
+
 /// Enrich errors from admin commands with tenant-level hints.
 ///
 /// Unlike `enrich_forbidden` (workspace-scoped), admin commands require
@@ -1029,5 +1087,51 @@ mod tests {
     fn from_status_403_sets_semantic_correction_hint_type() {
         let err = FabioError::from_status_with_body(403, "forbidden", "");
         assert_eq!(err.hint_type, Some(HintType::SemanticCorrection));
+    }
+
+    #[test]
+    fn enrich_ontology_import_failure_adds_untyped_binding_hint() {
+        let err: anyhow::Error =
+            FabioError::api_error("ALMOperationImportFailed: {0} {1} {2}").into();
+        let enriched = enrich_ontology_definition_error(err, "ontology import");
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        let hint = fabio_err.hint.as_ref().unwrap();
+        assert!(
+            hint.contains("UNTYPED property"),
+            "Hint should call out untyped-property bindings: {hint}"
+        );
+        assert!(
+            hint.contains("get-definition"),
+            "Hint should point at the inspection command: {hint}"
+        );
+        assert_eq!(fabio_err.hint_type, Some(HintType::SemanticCorrection));
+    }
+
+    #[test]
+    fn enrich_ontology_import_failure_matches_invalid_definition() {
+        let err: anyhow::Error =
+            FabioError::invalid_input("Invalid definition for ontology parts").into();
+        let enriched = enrich_ontology_definition_error(err, "ontology update-definition");
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        assert!(fabio_err.hint.is_some());
+    }
+
+    #[test]
+    fn enrich_ontology_definition_error_passes_through_forbidden() {
+        // Permission errors must keep their own (workspace-role) hint, not the
+        // generic validator checklist.
+        let err: anyhow::Error =
+            FabioError::with_hint(ErrorCode::Forbidden, "access denied", "role hint").into();
+        let enriched = enrich_ontology_definition_error(err, "ontology import");
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        assert_eq!(fabio_err.hint.as_deref(), Some("role hint"));
+    }
+
+    #[test]
+    fn enrich_ontology_definition_error_passes_through_unrelated_api_error() {
+        let err: anyhow::Error = FabioError::api_error("Some unrelated server error").into();
+        let enriched = enrich_ontology_definition_error(err, "ontology import");
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        assert!(fabio_err.hint.is_none());
     }
 }
