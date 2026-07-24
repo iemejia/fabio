@@ -15,14 +15,14 @@ on:
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
-concurrency:
-  group: pages-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   build:
     name: Build documentation
     runs-on: ubuntu-latest
+    # Cancel superseded builds for the same ref (e.g. rapid PR pushes).
+    concurrency:
+      group: docs-build-${{ github.ref }}
+      cancel-in-progress: true
     permissions:
       contents: read
     steps:
@@ -53,6 +53,11 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
+    # Serialize deployments and never cancel an in-flight deploy (GitHub Pages
+    # recommended pattern). A newer run waits for the current deploy to finish.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     permissions:
       pages: write
       id-token: write
