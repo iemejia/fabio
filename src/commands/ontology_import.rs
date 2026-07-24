@@ -1025,6 +1025,32 @@ struct EntityBindingSpec {
     /// are ignored.
     #[serde(default)]
     bindings: Vec<EntityDataBindingSpec>,
+    /// Documentation links attached to the entity type.
+    #[serde(default)]
+    documents: Vec<DocumentSpec>,
+    /// Linked resources (e.g. Power BI reports) attached to the entity type.
+    #[serde(default)]
+    resource_links: Vec<ResourceLinkSpec>,
+}
+
+/// A documentation link on an entity type (`Documents/document<N>.json`).
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DocumentSpec {
+    #[serde(default)]
+    display_text: Option<String>,
+    url: String,
+}
+
+/// A linked resource on an entity type (`ResourceLinks/definition.json`).
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ResourceLinkSpec {
+    /// Resource link type (default `PowerBIReport`).
+    #[serde(rename = "type", default)]
+    link_type: Option<String>,
+    workspace_id: String,
+    item_id: String,
 }
 
 /// One data binding within an entity's `bindings` list.
@@ -1590,6 +1616,40 @@ fn generate_fabric_parts(
             path: format!("EntityTypes/{type_id}/definition.json"),
             content: serde_json::to_string_pretty(&entity_def).unwrap_or_default(),
         });
+
+        // Optional entity metadata parts (Documents / ResourceLinks).
+        if let Some(es) = entity_spec {
+            for (di, doc) in es.documents.iter().enumerate() {
+                let mut d = serde_json::json!({ "url": doc.url });
+                if let Some(text) = &doc.display_text {
+                    d["displayText"] = Value::from(text.clone());
+                }
+                parts.push(FabricPart {
+                    path: format!("EntityTypes/{type_id}/Documents/document{}.json", di + 1),
+                    content: serde_json::to_string_pretty(&d).unwrap_or_default(),
+                });
+            }
+            if !es.resource_links.is_empty() {
+                let links: Vec<Value> = es
+                    .resource_links
+                    .iter()
+                    .map(|l| {
+                        serde_json::json!({
+                            "type": l.link_type.clone().unwrap_or_else(|| "PowerBIReport".to_string()),
+                            "workspaceId": l.workspace_id,
+                            "itemId": l.item_id,
+                        })
+                    })
+                    .collect();
+                parts.push(FabricPart {
+                    path: format!("EntityTypes/{type_id}/ResourceLinks/definition.json"),
+                    content: serde_json::to_string_pretty(
+                        &serde_json::json!({ "resourceLinks": links }),
+                    )
+                    .unwrap_or_default(),
+                });
+            }
+        }
 
         // Emit DataBinding(s) when a data source is configured.
         if let Some(ctx) = binding {
@@ -4054,5 +4114,43 @@ mod tests {
         assert!(model.untyped_properties.iter().any(|(_, l)| l == "payload"));
         assert!(serialize_to_rdf_xml(&model).contains("ont:isUntyped"));
         assert!(serialize_to_jsonld(&model).contains("ont:isUntyped"));
+    }
+
+    #[test]
+    fn documents_and_resource_links_are_generated() {
+        let spec: BindingSpec = serde_json::from_str(
+            r#"{"entities":{"Study":{
+                "documents":[{"displayText":"Protocol","url":"https://x/doc"},{"url":"https://x/doc2"}],
+                "resourceLinks":[{"workspaceId":"11111111-1111-4111-8111-111111111111","itemId":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}]
+            }}}"#,
+        ).unwrap();
+        let parts = generate_fabric_parts(&binding_model(), Some(&lakehouse_ctx(spec))).unwrap();
+
+        let doc1 = payload(find_part(
+            &parts,
+            "EntityTypes/8880000000001/Documents/document1.json",
+        ));
+        assert_eq!(doc1["displayText"], "Protocol");
+        assert_eq!(doc1["url"], "https://x/doc");
+        let doc2 = payload(find_part(
+            &parts,
+            "EntityTypes/8880000000001/Documents/document2.json",
+        ));
+        assert_eq!(doc2["url"], "https://x/doc2");
+        assert!(doc2.get("displayText").is_none());
+
+        let rl = payload(find_part(
+            &parts,
+            "EntityTypes/8880000000001/ResourceLinks/definition.json",
+        ));
+        assert_eq!(rl["resourceLinks"][0]["type"], "PowerBIReport");
+        assert_eq!(
+            rl["resourceLinks"][0]["workspaceId"],
+            "11111111-1111-4111-8111-111111111111"
+        );
+        assert_eq!(
+            rl["resourceLinks"][0]["itemId"],
+            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        );
     }
 }
