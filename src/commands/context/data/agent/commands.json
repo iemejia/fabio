@@ -7265,6 +7265,26 @@
             "type": "string",
             "description": "Schema for the Lakehouse default-source tables (default: dbo)"
           },
+          "--eventhouse": {
+            "type": "string",
+            "description": "Eventhouse item ID for a `KustoTable` default source (`TimeSeries`). Requires --cluster-uri, --database, and --timestamp-column"
+          },
+          "--eventhouse-workspace": {
+            "type": "string",
+            "description": "Workspace ID that hosts the Eventhouse default source (defaults to --workspace)"
+          },
+          "--cluster-uri": {
+            "type": "string",
+            "description": "Kusto cluster query URI for the Eventhouse default source"
+          },
+          "--database": {
+            "type": "string",
+            "description": "KQL database name for the Eventhouse default source"
+          },
+          "--timestamp-column": {
+            "type": "string",
+            "description": "Timestamp column for `TimeSeries` bindings (Eventhouse default source)"
+          },
           "--bindings": {
             "type": "string",
             "description": "Path to a JSON binding map that overrides table/column names, selects data sources, and supplies relationship key columns. See `fabio context examples ontology`"
@@ -7302,6 +7322,26 @@
           "--lakehouse-schema": {
             "type": "string",
             "description": "Schema for the Lakehouse default-source tables (default: dbo)"
+          },
+          "--eventhouse": {
+            "type": "string",
+            "description": "Eventhouse item ID for a `KustoTable` default source (`TimeSeries`). Requires --cluster-uri, --database, and --timestamp-column"
+          },
+          "--eventhouse-workspace": {
+            "type": "string",
+            "description": "Workspace ID that hosts the Eventhouse default source (defaults to --workspace)"
+          },
+          "--cluster-uri": {
+            "type": "string",
+            "description": "Kusto cluster query URI for the Eventhouse default source"
+          },
+          "--database": {
+            "type": "string",
+            "description": "KQL database name for the Eventhouse default source"
+          },
+          "--timestamp-column": {
+            "type": "string",
+            "description": "Timestamp column for `TimeSeries` bindings (Eventhouse default source)"
           },
           "--bindings": {
             "type": "string",

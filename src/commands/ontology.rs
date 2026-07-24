@@ -180,6 +180,27 @@ pub enum OntologyCommand {
         #[arg(long)]
         lakehouse_schema: Option<String>,
 
+        /// Eventhouse item ID for a `KustoTable` default source (`TimeSeries`).
+        /// Requires --cluster-uri, --database, and --timestamp-column.
+        #[arg(long, conflicts_with = "lakehouse")]
+        eventhouse: Option<String>,
+
+        /// Workspace ID that hosts the Eventhouse default source (defaults to --workspace)
+        #[arg(long)]
+        eventhouse_workspace: Option<String>,
+
+        /// Kusto cluster query URI for the Eventhouse default source
+        #[arg(long)]
+        cluster_uri: Option<String>,
+
+        /// KQL database name for the Eventhouse default source
+        #[arg(long)]
+        database: Option<String>,
+
+        /// Timestamp column for `TimeSeries` bindings (Eventhouse default source)
+        #[arg(long)]
+        timestamp_column: Option<String>,
+
         /// Path to a JSON binding map that overrides table/column names,
         /// selects data sources, and supplies relationship key columns.
         /// See `fabio context examples ontology`.
@@ -212,6 +233,27 @@ pub enum OntologyCommand {
         /// Schema for the Lakehouse default-source tables (default: dbo)
         #[arg(long)]
         lakehouse_schema: Option<String>,
+
+        /// Eventhouse item ID for a `KustoTable` default source (`TimeSeries`).
+        /// Requires --cluster-uri, --database, and --timestamp-column.
+        #[arg(long, conflicts_with = "lakehouse")]
+        eventhouse: Option<String>,
+
+        /// Workspace ID that hosts the Eventhouse default source (defaults to --workspace)
+        #[arg(long)]
+        eventhouse_workspace: Option<String>,
+
+        /// Kusto cluster query URI for the Eventhouse default source
+        #[arg(long)]
+        cluster_uri: Option<String>,
+
+        /// KQL database name for the Eventhouse default source
+        #[arg(long)]
+        database: Option<String>,
+
+        /// Timestamp column for `TimeSeries` bindings (Eventhouse default source)
+        #[arg(long)]
+        timestamp_column: Option<String>,
 
         /// Path to a JSON binding map (table/column overrides, data sources,
         /// relationship key columns). See `fabio context examples ontology`.
@@ -324,6 +366,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
             lakehouse,
             lakehouse_workspace,
             lakehouse_schema,
+            eventhouse,
+            eventhouse_workspace,
+            cluster_uri,
+            database,
+            timestamp_column,
             bindings,
         } => {
             crate::commands::ontology_import::import_owl(
@@ -336,6 +383,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
                 lakehouse.as_deref(),
                 lakehouse_workspace.as_deref(),
                 lakehouse_schema.as_deref(),
+                eventhouse.as_deref(),
+                eventhouse_workspace.as_deref(),
+                cluster_uri.as_deref(),
+                database.as_deref(),
+                timestamp_column.as_deref(),
                 bindings.as_deref(),
             )
             .await
@@ -346,6 +398,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
             lakehouse,
             lakehouse_workspace,
             lakehouse_schema,
+            eventhouse,
+            eventhouse_workspace,
+            cluster_uri,
+            database,
+            timestamp_column,
             bindings,
         } => crate::commands::ontology_import::bind_ontology(
             cli,
@@ -355,6 +412,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
             lakehouse.as_deref(),
             lakehouse_workspace.as_deref(),
             lakehouse_schema.as_deref(),
+            eventhouse.as_deref(),
+            eventhouse_workspace.as_deref(),
+            cluster_uri.as_deref(),
+            database.as_deref(),
+            timestamp_column.as_deref(),
             bindings.as_deref(),
         )
         .await

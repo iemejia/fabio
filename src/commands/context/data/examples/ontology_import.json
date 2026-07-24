@@ -14,6 +14,7 @@
   "binding_example": {
     "command": "fabio ontology import --workspace $WS_ID --id $ONTOLOGY_ID --file clinical-supply-chain.rdf --lakehouse $LAKEHOUSE_ID --bindings bindings.json",
     "description": "Import an ontology AND bind every entity/relationship type to data-source tables in one call. Generated DataBindings and Contextualizations conform to the official Fabric schemas (item/ontology/dataBinding and contextualization). Entity DataBindings default by convention (table = lowercased class name, source column = property label); the binding map overrides those and supplies relationship key columns. Binding IDs are deterministic (UUIDv5) so re-imports update in place.",
+    "default_source_flags": "The default data source can be set entirely by flags: --lakehouse $ID (+ --lakehouse-workspace, --lakehouse-schema) for a LakehouseTable source, or --eventhouse $ID --cluster-uri $URI --database $DB --timestamp-column $COL (+ --eventhouse-workspace) for a KustoTable/Eventhouse TimeSeries source. --lakehouse and --eventhouse are mutually exclusive; mix sources per-entity via the --bindings source blocks.",
     "bindings_file": {
       "source": {
         "type": "LakehouseTable",

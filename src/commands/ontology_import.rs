@@ -32,7 +32,12 @@ pub async fn import_owl(
     output_dir: Option<&str>,
     lakehouse: Option<&str>,
     lakehouse_workspace: Option<&str>,
-    schema: Option<&str>,
+    lakehouse_schema: Option<&str>,
+    eventhouse: Option<&str>,
+    eventhouse_workspace: Option<&str>,
+    cluster_uri: Option<&str>,
+    database: Option<&str>,
+    timestamp_column: Option<&str>,
     bindings: Option<&str>,
 ) -> Result<()> {
     // Validate arguments
@@ -96,8 +101,18 @@ pub async fn import_owl(
 
     // Resolve optional Lakehouse binding context. Bindings turn a bare schema
     // import into a queryable graph by generating DataBindings/Contextualizations.
-    let binding =
-        resolve_binding_context(workspace, lakehouse, lakehouse_workspace, schema, bindings)?;
+    let binding = resolve_binding_context(
+        workspace,
+        lakehouse,
+        lakehouse_workspace,
+        lakehouse_schema,
+        eventhouse,
+        eventhouse_workspace,
+        cluster_uri,
+        database,
+        timestamp_column,
+        bindings,
+    )?;
 
     // Convert to Fabric definition parts
     let parts = generate_fabric_parts(&model, binding.as_ref())?;
@@ -950,46 +965,46 @@ impl ResolvedSource {
 /// lazily so entities/relationships can each pick their own Lakehouse/Eventhouse.
 #[derive(Debug)]
 struct BindingContext {
-    default_workspace_id: Option<String>,
-    default_item_id: Option<String>,
-    default_schema: Option<String>,
+    /// Default data source built from CLI flags (Lakehouse or Eventhouse).
+    default_source: Option<SourceSpec>,
+    /// Default `dataBindingType` (`TimeSeries` for an Eventhouse default source).
+    default_data_binding_type: Option<String>,
+    /// Default timestamp column for `TimeSeries` entity bindings.
+    default_timestamp_column: Option<String>,
     spec: BindingSpec,
 }
 
 impl BindingContext {
-    /// Merge a local source override over the global `source` and CLI-flag
-    /// defaults into a validated [`ResolvedSource`].
+    /// Merge a local source override over the global `source` and the CLI-flag
+    /// default source into a validated [`ResolvedSource`].
     fn resolve_source(&self, local: Option<&SourceSpec>) -> Result<ResolvedSource> {
         let pick = |f: &dyn Fn(&SourceSpec) -> Option<String>| -> Option<String> {
             local
                 .and_then(f)
                 .or_else(|| self.spec.source.as_ref().and_then(f))
+                .or_else(|| self.default_source.as_ref().and_then(f))
         };
 
         let source_type =
             pick(&|s| s.source_type.clone()).unwrap_or_else(|| "LakehouseTable".to_string());
-        let workspace_id = pick(&|s| s.workspace_id.clone())
-            .or_else(|| self.default_workspace_id.clone())
-            .ok_or_else(|| {
-                missing_source_field(
-                    "workspace ID",
-                    "Pass --lakehouse-workspace <WS> (or --workspace), or set source.workspaceId.",
-                )
-            })?;
-        let item_id = pick(&|s| s.item_id.clone())
-            .or_else(|| self.default_item_id.clone())
-            .ok_or_else(|| {
-                missing_source_field(
-                    "data source item ID",
-                    "Pass --lakehouse <ITEM_ID>, or set source.itemId in the binding map.",
-                )
-            })?;
+        let workspace_id = pick(&|s| s.workspace_id.clone()).ok_or_else(|| {
+            missing_source_field(
+                "workspace ID",
+                "Pass --lakehouse-workspace/--eventhouse-workspace (or --workspace), \
+                 or set source.workspaceId.",
+            )
+        })?;
+        let item_id = pick(&|s| s.item_id.clone()).ok_or_else(|| {
+            missing_source_field(
+                "data source item ID",
+                "Pass --lakehouse/--eventhouse <ITEM_ID>, or set source.itemId in the binding map.",
+            )
+        })?;
 
         match source_type.as_str() {
             "LakehouseTable" => {
-                let source_schema = pick(&|s| s.source_schema.clone())
-                    .or_else(|| self.default_schema.clone())
-                    .or_else(|| Some("dbo".to_string()));
+                let source_schema =
+                    pick(&|s| s.source_schema.clone()).or_else(|| Some("dbo".to_string()));
                 Ok(ResolvedSource::Lakehouse {
                     workspace_id,
                     item_id,
@@ -998,12 +1013,15 @@ impl BindingContext {
             }
             "KustoTable" => {
                 let cluster_uri = pick(&|s| s.cluster_uri.clone()).ok_or_else(|| {
-                    missing_source_field("clusterUri", "Set source.clusterUri for a KustoTable.")
+                    missing_source_field(
+                        "clusterUri",
+                        "Pass --cluster-uri, or set source.clusterUri for a KustoTable.",
+                    )
                 })?;
                 let database_name = pick(&|s| s.database_name.clone()).ok_or_else(|| {
                     missing_source_field(
                         "databaseName",
-                        "Set source.databaseName for a KustoTable.",
+                        "Pass --database, or set source.databaseName for a KustoTable.",
                     )
                 })?;
                 Ok(ResolvedSource::Kusto {
@@ -1033,17 +1051,32 @@ fn missing_source_field(what: &str, hint: &str) -> anyhow::Error {
 }
 
 /// Resolve an optional [`BindingContext`] from CLI flags and/or a binding-map
-/// file. Binding generation is enabled when either `--lakehouse` or `--bindings`
-/// is supplied. Coordinates resolve per source: override → map `source` → flags.
+/// file. Binding generation is enabled when a `--lakehouse`/`--eventhouse`
+/// default source or `--bindings` is supplied. Coordinates resolve per source:
+/// override → map `source` → flag default source.
+#[allow(clippy::too_many_arguments, clippy::option_if_let_else)]
 fn resolve_binding_context(
     workspace: Option<&str>,
     lakehouse: Option<&str>,
     lakehouse_workspace: Option<&str>,
-    schema: Option<&str>,
+    lakehouse_schema: Option<&str>,
+    eventhouse: Option<&str>,
+    eventhouse_workspace: Option<&str>,
+    cluster_uri: Option<&str>,
+    database: Option<&str>,
+    timestamp_column: Option<&str>,
     bindings: Option<&str>,
 ) -> Result<Option<BindingContext>> {
-    if lakehouse.is_none() && bindings.is_none() {
+    if lakehouse.is_none() && eventhouse.is_none() && bindings.is_none() {
         return Ok(None);
+    }
+    if lakehouse.is_some() && eventhouse.is_some() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "--lakehouse and --eventhouse are mutually exclusive.".to_string(),
+            "Set one default source via flags; mix sources per-entity with --bindings.",
+        )
+        .into());
     }
 
     let spec: BindingSpec = if let Some(path) = bindings {
@@ -1061,10 +1094,42 @@ fn resolve_binding_context(
         BindingSpec::default()
     };
 
+    // Build the flag-driven default source (Lakehouse or Eventhouse/Kusto).
+    let (default_source, default_data_binding_type, default_timestamp_column) =
+        if let Some(item) = lakehouse {
+            (
+                Some(SourceSpec {
+                    source_type: Some("LakehouseTable".to_string()),
+                    workspace_id: lakehouse_workspace.or(workspace).map(str::to_string),
+                    item_id: Some(item.to_string()),
+                    source_schema: lakehouse_schema.map(str::to_string),
+                    ..SourceSpec::default()
+                }),
+                None,
+                None,
+            )
+        } else if let Some(item) = eventhouse {
+            (
+                Some(SourceSpec {
+                    source_type: Some("KustoTable".to_string()),
+                    workspace_id: eventhouse_workspace.or(workspace).map(str::to_string),
+                    item_id: Some(item.to_string()),
+                    cluster_uri: cluster_uri.map(str::to_string),
+                    database_name: database.map(str::to_string),
+                    ..SourceSpec::default()
+                }),
+                // A KustoTable source is only valid with TimeSeries bindings.
+                Some("TimeSeries".to_string()),
+                timestamp_column.map(str::to_string),
+            )
+        } else {
+            (None, None, None)
+        };
+
     Ok(Some(BindingContext {
-        default_workspace_id: lakehouse_workspace.or(workspace).map(str::to_string),
-        default_item_id: lakehouse.map(str::to_string),
-        default_schema: schema.map(str::to_string),
+        default_source,
+        default_data_binding_type,
+        default_timestamp_column,
         spec,
     }))
 }
@@ -1373,6 +1438,7 @@ fn build_entity_data_binding(
 
     let data_binding_type = entity_spec
         .and_then(|e| e.data_binding_type.clone())
+        .or_else(|| ctx.default_data_binding_type.clone())
         .unwrap_or_else(|| "NonTimeSeries".to_string());
     if data_binding_type != "NonTimeSeries" && data_binding_type != "TimeSeries" {
         return Err(FabioError::with_hint(
@@ -1382,12 +1448,15 @@ fn build_entity_data_binding(
         )
         .into());
     }
-    let timestamp_column_name = entity_spec.and_then(|e| e.timestamp_column.clone());
+    let timestamp_column_name = entity_spec
+        .and_then(|e| e.timestamp_column.clone())
+        .or_else(|| ctx.default_timestamp_column.clone());
     if data_binding_type == "TimeSeries" && timestamp_column_name.is_none() {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
             format!("Entity '{entity_name}' is TimeSeries but has no timestampColumn."),
-            "Set entities.<name>.timestampColumn for TimeSeries data bindings.",
+            "Pass --timestamp-column for an Eventhouse default source, or set \
+             entities.<name>.timestampColumn in the binding map.",
         )
         .into());
     }
@@ -1539,6 +1608,11 @@ pub async fn bind_ontology(
     lakehouse: Option<&str>,
     lakehouse_workspace: Option<&str>,
     lakehouse_schema: Option<&str>,
+    eventhouse: Option<&str>,
+    eventhouse_workspace: Option<&str>,
+    cluster_uri: Option<&str>,
+    database: Option<&str>,
+    timestamp_column: Option<&str>,
     bindings: Option<&str>,
 ) -> Result<()> {
     let ctx = resolve_binding_context(
@@ -1546,13 +1620,18 @@ pub async fn bind_ontology(
         lakehouse,
         lakehouse_workspace,
         lakehouse_schema,
+        eventhouse,
+        eventhouse_workspace,
+        cluster_uri,
+        database,
+        timestamp_column,
         bindings,
     )?
     .ok_or_else(|| {
         FabioError::with_hint(
             ErrorCode::InvalidInput,
             "Nothing to bind: no data source provided.".to_string(),
-            "Pass --lakehouse <ITEM_ID> and/or --bindings <map.json>.",
+            "Pass --lakehouse/--eventhouse <ITEM_ID> and/or --bindings <map.json>.",
         )
     })?;
 
@@ -2252,9 +2331,14 @@ mod tests {
 
     fn lakehouse_ctx(spec: BindingSpec) -> BindingContext {
         BindingContext {
-            default_workspace_id: Some(WS.to_string()),
-            default_item_id: Some(LH.to_string()),
-            default_schema: None,
+            default_source: Some(SourceSpec {
+                source_type: Some("LakehouseTable".to_string()),
+                workspace_id: Some(WS.to_string()),
+                item_id: Some(LH.to_string()),
+                ..SourceSpec::default()
+            }),
+            default_data_binding_type: None,
+            default_timestamp_column: None,
             spec,
         }
     }
@@ -2653,19 +2737,150 @@ mod tests {
     #[test]
     fn resolve_binding_context_none_when_unset() {
         assert!(
-            resolve_binding_context(Some("ws"), None, None, None, None)
-                .unwrap()
-                .is_none()
+            resolve_binding_context(
+                Some("ws"),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None
+            )
+            .unwrap()
+            .is_none()
         );
     }
 
     #[test]
     fn resolve_binding_context_defaults_from_flags() {
-        let ctx = resolve_binding_context(Some("ws-flag"), Some("lh-flag"), None, None, None)
-            .unwrap()
-            .unwrap();
-        assert_eq!(ctx.default_item_id.as_deref(), Some("lh-flag"));
-        assert_eq!(ctx.default_workspace_id.as_deref(), Some("ws-flag"));
+        let ctx = resolve_binding_context(
+            Some("ws-flag"),
+            Some("lh-flag"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap()
+        .unwrap();
+        let src = ctx.default_source.unwrap();
+        assert_eq!(src.item_id.as_deref(), Some("lh-flag"));
+        assert_eq!(src.workspace_id.as_deref(), Some("ws-flag"));
+        assert_eq!(src.source_type.as_deref(), Some("LakehouseTable"));
+    }
+
+    #[test]
+    fn resolve_binding_context_eventhouse_flags() {
+        let ctx = resolve_binding_context(
+            Some("ws"),
+            None,
+            None,
+            None,
+            Some("eh-id"),
+            Some("eh-ws"),
+            Some("https://c.kusto.windows.net"),
+            Some("telemetry"),
+            Some("ts"),
+            None,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(ctx.default_data_binding_type.as_deref(), Some("TimeSeries"));
+        assert_eq!(ctx.default_timestamp_column.as_deref(), Some("ts"));
+        match ctx.resolve_source(None).unwrap() {
+            ResolvedSource::Kusto {
+                workspace_id,
+                item_id,
+                cluster_uri,
+                database_name,
+            } => {
+                assert_eq!(workspace_id, "eh-ws");
+                assert_eq!(item_id, "eh-id");
+                assert_eq!(cluster_uri, "https://c.kusto.windows.net");
+                assert_eq!(database_name, "telemetry");
+            }
+            ResolvedSource::Lakehouse { .. } => panic!("expected Kusto"),
+        }
+    }
+
+    #[test]
+    fn resolve_binding_context_lakehouse_eventhouse_conflict() {
+        let err = resolve_binding_context(
+            Some("ws"),
+            Some("lh"),
+            None,
+            None,
+            Some("eh"),
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("mutually exclusive"), "{err}");
+    }
+
+    #[test]
+    fn eventhouse_default_source_generates_timeseries_binding() {
+        // Flag-built Eventhouse default source → all entities are TimeSeries and
+        // bind to a KustoTable source; output must validate against the schema.
+        let ctx = resolve_binding_context(
+            Some("ws"),
+            None,
+            None,
+            None,
+            Some("22222222-2222-4222-8222-222222222222"),
+            None,
+            Some("https://c.kusto.windows.net"),
+            Some("telemetry"),
+            Some("reading_ts"),
+            None,
+        )
+        .unwrap()
+        .unwrap();
+        let parts = generate_fabric_parts(&binding_model(), Some(&ctx)).unwrap();
+        let v = payload(find_part(&parts, "EntityTypes/8880000000001/DataBindings"));
+        assert_schema_valid("dataBinding", &v);
+        assert_eq!(
+            v["dataBindingConfiguration"]["dataBindingType"],
+            "TimeSeries"
+        );
+        assert_eq!(
+            v["dataBindingConfiguration"]["timestampColumnName"],
+            "reading_ts"
+        );
+        assert_eq!(
+            v["dataBindingConfiguration"]["sourceTableProperties"]["sourceType"],
+            "KustoTable"
+        );
+    }
+
+    #[test]
+    fn eventhouse_without_timestamp_errors() {
+        let ctx = resolve_binding_context(
+            Some("ws"),
+            None,
+            None,
+            None,
+            Some("eh"),
+            None,
+            Some("https://c.kusto"),
+            Some("db"),
+            None,
+            None,
+        )
+        .unwrap()
+        .unwrap();
+        let err = generate_fabric_parts(&binding_model(), Some(&ctx)).unwrap_err();
+        assert!(err.to_string().contains("timestampColumn"), "{err}");
     }
 
     #[test]
@@ -2700,9 +2915,13 @@ mod tests {
     #[test]
     fn resolve_source_missing_item_errors() {
         let ctx = BindingContext {
-            default_workspace_id: Some(WS.into()),
-            default_item_id: None,
-            default_schema: None,
+            default_source: Some(SourceSpec {
+                source_type: Some("LakehouseTable".to_string()),
+                workspace_id: Some(WS.to_string()),
+                ..SourceSpec::default()
+            }),
+            default_data_binding_type: None,
+            default_timestamp_column: None,
             spec: BindingSpec::default(),
         };
         let err = ctx.resolve_source(None).unwrap_err();
@@ -2714,8 +2933,19 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("bad.json");
         std::fs::write(&file, "{ not json").unwrap();
-        let err =
-            resolve_binding_context(Some("ws"), Some("lh"), None, None, file.to_str()).unwrap_err();
+        let err = resolve_binding_context(
+            Some("ws"),
+            Some("lh"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            file.to_str(),
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("Invalid binding map JSON"));
     }
 
