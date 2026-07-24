@@ -8,8 +8,9 @@
     "build": "npm run generate:reference && astro build",
     "preview": "astro preview",
     "generate:reference": "node scripts/generate-reference.mjs",
-    "check": "npm run generate:reference && astro check",
-    "test": "node --test scripts/generate-reference.test.mjs"
+    "check": "npm run generate:reference && astro check && npm run check:links",
+    "check:links": "node scripts/check-links.mjs",
+    "test": "node --test scripts/*.test.mjs"
   },
   "type": "module",
   "dependencies": {

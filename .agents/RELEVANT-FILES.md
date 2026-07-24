@@ -211,5 +211,6 @@
 - `.github/dependabot.yml`: Cargo + GitHub Actions dependency updates
 - `docs/`: Astro + Starlight marketing and documentation website
 - `docs/scripts/generate-reference.mjs`: Generates command reference pages from the committed agent command schema
+- `docs/scripts/check-links.mjs`: Dependency-free validator that checks internal doc links resolve to real pages (authored + generated command groups) and public assets
 - `cliff.toml`: git-cliff configuration (commit parsers, grouping, template)
 - `.github/RELEASE_TEMPLATE.md`: Release notes narrative structure template
