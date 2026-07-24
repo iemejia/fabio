@@ -4,17 +4,34 @@ import "../styles/landing.css";
 
 const base = import.meta.env.BASE_URL.endsWith("/") ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
 const link = (path: string) => `${base}${path.replace(/^\/+/, "")}`;
+
+const siteOrigin = Astro.site ?? new URL("http://localhost:4321");
+const canonicalUrl = new URL(base, siteOrigin).href;
+const ogImageUrl = new URL(link("fabio-square.png"), siteOrigin).href;
+const pageTitle = "Fabio — Microsoft Fabric, built for agents";
+const pageDescription = "Fabio is the agent-native CLI for Microsoft Fabric.";
 ---
 
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width" />
-    <meta name="description" content="Fabio is the agent-native CLI for Microsoft Fabric." />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={pageDescription} />
     <meta name="theme-color" content="#0d9488" />
     <link rel="icon" type="image/svg+xml" href={link("favicon.svg")} />
-    <title>Fabio — Microsoft Fabric, built for agents</title>
+    <link rel="canonical" href={canonicalUrl} />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Fabio" />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={pageDescription} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:image" content={ogImageUrl} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={pageDescription} />
+    <meta name="twitter:image" content={ogImageUrl} />
+    <title>{pageTitle}</title>
   </head>
   <body>
     <header class="site-header">
