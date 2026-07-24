@@ -105,6 +105,7 @@ Manage Digital Twin Builder flows
 
 ### PREFER
 - context tenant --format owl to bootstrap an ontology schema from a real workspace scan, then ontology import.
+- ontology import --lakehouse <ID> --bindings <map.json> to generate DataBindings + relationship Contextualizations in the same step, so the imported ontology is queryable rather than a bare schema.
 - Runtime introspection (context agent --group ontology|graph-model) for exact flags.
 
 ### AVOID
@@ -114,6 +115,7 @@ Manage Digital Twin Builder flows
 ## Key gotchas
 - Ontology definitions use the item-definition (base64 parts) format; fetch the template with 'fabio context schema ontology'.
 - fabio's context tenant graph can emit OWL/RDF that imports directly via 'fabio ontology import --file'.
+- OWL carries no data-binding info (workspace/lakehouse/table/column). 'ontology import' generates only the type schema unless you pass --lakehouse (+ --bindings for relationship key columns).
 
 ## Troubleshooting
 | Symptom | Fix |

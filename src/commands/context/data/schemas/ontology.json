@@ -6,8 +6,9 @@
   "definition_parts": [
     {"path": "definition.json", "description": "Root definition (usually {})"},
     {"path": "EntityTypes/<ID>/definition.json", "description": "Entity type with properties, namespace must be 'usertypes'"},
-    {"path": "EntityTypes/<ID>/DataBindings/<UUID>.json", "description": "Data binding linking entity to lakehouse table"},
-    {"path": "RelationshipTypes/<ID>/definition.json", "description": "Relationship between entity types (source/target)"}
+    {"path": "EntityTypes/<ID>/DataBindings/<UUID>.json", "description": "Data binding linking entity to a LakehouseTable (NonTimeSeries) or KustoTable/Eventhouse (TimeSeries) source"},
+    {"path": "RelationshipTypes/<ID>/definition.json", "description": "Relationship between entity types (source/target)"},
+    {"path": "RelationshipTypes/<ID>/Contextualizations/<UUID>.json", "description": "Binds relationship endpoints to a LakehouseTable via source/target key ref bindings (arrays support composite keys)"}
   ],
   "creation_body_template": {
     "displayName": "{{name}}"
@@ -21,6 +22,9 @@
   "notes": [
     "Data binding sourceType must be FIRST key in sourceTableProperties (JSON key ordering matters!)",
     "Data binding IDs must be valid UUIDs (non-UUID values are silently dropped)",
+    "Entity/relationship/property names must match ^[a-zA-Z][a-zA-Z0-9_-]{0,127}$ (no spaces)",
+    "dataBindingType is NonTimeSeries (LakehouseTable only) or TimeSeries (LakehouseTable or KustoTable, requires timestampColumnName)",
+    "Relationship contextualizations bind only to LakehouseTable; key ref bindings are arrays (composite keys)",
     "Property value types: String, Boolean, DateTime, Object, BigInt, Double",
     "Entity type required: id, namespace ('usertypes'), name, namespaceType ('Custom')",
     "getDefinition/updateDefinition are both LRO"

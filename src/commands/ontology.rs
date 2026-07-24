@@ -164,6 +164,25 @@ pub enum OntologyCommand {
         /// Export converted definition to a local directory
         #[arg(long)]
         output_dir: Option<String>,
+
+        /// Lakehouse item ID to bind entity/relationship types to. When set,
+        /// generates `DataBindings` (and `Contextualizations`, given `--bindings`)
+        /// so the imported ontology is queryable, not just a bare schema.
+        #[arg(long)]
+        lakehouse: Option<String>,
+
+        /// Workspace ID that hosts the bound Lakehouse (defaults to --workspace)
+        #[arg(long)]
+        lakehouse_workspace: Option<String>,
+
+        /// Source schema for Lakehouse table bindings (default: dbo)
+        #[arg(long)]
+        schema: Option<String>,
+
+        /// Path to a JSON binding map that overrides table/column names and
+        /// supplies relationship key columns. See `fabio context examples ontology`.
+        #[arg(long)]
+        bindings: Option<String>,
     },
     /// Export a Fabric Ontology to OWL format (RDF/XML or JSON-LD)
     ///
@@ -268,6 +287,10 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
             id,
             file,
             output_dir,
+            lakehouse,
+            lakehouse_workspace,
+            schema,
+            bindings,
         } => {
             crate::commands::ontology_import::import_owl(
                 cli,
@@ -276,6 +299,10 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
                 id.as_deref(),
                 file,
                 output_dir.as_deref(),
+                lakehouse.as_deref(),
+                lakehouse_workspace.as_deref(),
+                schema.as_deref(),
+                bindings.as_deref(),
             )
             .await
         }

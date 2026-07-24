@@ -22,7 +22,7 @@ use crate::output;
 
 // ─── Public Entry Point ──────────────────────────────────────────────────────
 
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 pub async fn import_owl(
     cli: &Cli,
     client: &FabricClient,
@@ -30,6 +30,10 @@ pub async fn import_owl(
     id: Option<&str>,
     file: &str,
     output_dir: Option<&str>,
+    lakehouse: Option<&str>,
+    lakehouse_workspace: Option<&str>,
+    schema: Option<&str>,
+    bindings: Option<&str>,
 ) -> Result<()> {
     // Validate arguments
     if workspace.is_some() && id.is_none() {
@@ -90,8 +94,18 @@ pub async fn import_owl(
         _ => parse_json_ld(&content)?,
     };
 
+    // Resolve optional Lakehouse binding context. Bindings turn a bare schema
+    // import into a queryable graph by generating DataBindings/Contextualizations.
+    let binding =
+        resolve_binding_context(workspace, lakehouse, lakehouse_workspace, schema, bindings)?;
+
     // Convert to Fabric definition parts
-    let parts = generate_fabric_parts(&model);
+    let parts = generate_fabric_parts(&model, binding.as_ref())?;
+
+    let binding_count = parts
+        .iter()
+        .filter(|p| p.path.contains("DataBindings") || p.path.contains("Contextualizations"))
+        .count();
 
     if output::dry_run_guard(
         cli,
@@ -102,6 +116,7 @@ pub async fn import_owl(
             "entity_types": model.classes.len(),
             "relationship_types": model.object_properties.len(),
             "total_properties": model.datatype_properties.len(),
+            "bindings": binding_count,
         }),
     ) {
         return Ok(());
@@ -122,6 +137,7 @@ pub async fn import_owl(
             "output_dir": output_dir,
             "entity_types": model.classes.len(),
             "relationship_types": model.object_properties.len(),
+            "bindings": binding_count,
         });
         output::render_object(cli, &obj, "status");
     }
@@ -536,10 +552,13 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
                         if in_class && !current_uri.is_empty() {
                             model.classes.push(OwlClass {
                                 uri: current_uri.clone(),
-                                label: if current_label.is_empty() {
-                                    uri_local_name(&current_uri)
-                                } else {
-                                    current_label.clone()
+                                label: {
+                                    let cleaned = clean_label(&current_label);
+                                    if cleaned.is_empty() {
+                                        uri_local_name(&current_uri)
+                                    } else {
+                                        cleaned
+                                    }
                                 },
                             });
                         }
@@ -548,10 +567,13 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
                     "DatatypeProperty" => {
                         if in_datatype_prop && !current_domain.is_empty() {
                             model.datatype_properties.push(OwlDatatypeProperty {
-                                label: if current_label.is_empty() {
-                                    uri_local_name(&current_uri)
-                                } else {
-                                    current_label.clone()
+                                label: {
+                                    let cleaned = clean_label(&current_label);
+                                    if cleaned.is_empty() {
+                                        uri_local_name(&current_uri)
+                                    } else {
+                                        cleaned
+                                    }
                                 },
                                 domain_uri: current_domain.clone(),
                                 property_type: if current_prop_type.is_empty() {
@@ -568,10 +590,13 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
                         if in_object_prop && !current_domain.is_empty() && !current_range.is_empty()
                         {
                             model.object_properties.push(OwlObjectProperty {
-                                label: if current_label.is_empty() {
-                                    uri_local_name(&current_uri)
-                                } else {
-                                    current_label.clone()
+                                label: {
+                                    let cleaned = clean_label(&current_label);
+                                    if cleaned.is_empty() {
+                                        uri_local_name(&current_uri)
+                                    } else {
+                                        cleaned
+                                    }
                                 },
                                 domain_uri: current_domain.clone(),
                                 range_uri: current_range.clone(),
@@ -619,6 +644,13 @@ fn uri_local_name(uri: &str) -> String {
         .map_or_else(|| uri.to_string(), |(_, name)| name.to_string())
 }
 
+/// Normalize an `rdfs:label`: trim and collapse internal whitespace. RDF/XML
+/// commonly indents label text, leaving leading/trailing/newline whitespace
+/// that would otherwise leak into Fabric type names and break binding lookups.
+fn clean_label(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 fn xsd_to_fabric_type(xsd_uri: &str) -> String {
     let local = uri_local_name(xsd_uri).to_lowercase();
     match local.as_str() {
@@ -661,12 +693,12 @@ fn parse_json_ld(content: &str) -> Result<OwlModel> {
     for node in graph {
         let node_type = node.get("@type").and_then(Value::as_str).unwrap_or("");
         let node_id = node.get("@id").and_then(Value::as_str).unwrap_or("");
-        let label = node
-            .get("rdfs:label")
-            .or_else(|| node.get("name"))
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string();
+        let label = clean_label(
+            node.get("rdfs:label")
+                .or_else(|| node.get("name"))
+                .and_then(Value::as_str)
+                .unwrap_or(""),
+        );
 
         match node_type {
             "owl:Class" => {
@@ -752,14 +784,418 @@ fn parse_json_ld(content: &str) -> Result<OwlModel> {
     Ok(model)
 }
 
+// ─── Lakehouse / Eventhouse Binding Model ────────────────────────────────────
+//
+// Shapes below mirror the official Fabric Ontology JSON schemas:
+//   .../item/ontology/dataBinding/1.0.0/schema.json
+//   .../item/ontology/contextualization/1.0.0/schema.json
+// A DataBinding may source from a LakehouseTable (NonTimeSeries or TimeSeries)
+// or an Eventhouse KustoTable (TimeSeries only). Relationship Contextualizations
+// bind only to LakehouseTable, with array-valued (composite) key refs.
+
+/// Deterministic namespace for binding/contextualization UUIDs so repeated
+/// imports are idempotent (stable IDs across runs → update-in-place, not dupes).
+const BINDING_NAMESPACE: uuid::Uuid = uuid::Uuid::from_bytes([
+    0xa1, 0x1c, 0x93, 0x69, 0x43, 0x95, 0x5a, 0x84, 0x94, 0x02, 0xd0, 0x38, 0xc8, 0xb0, 0xb2, 0x25,
+]);
+
+/// Optional binding map (JSON) that overrides table/column names, selects the
+/// data source (Lakehouse/Eventhouse), and supplies relationship key columns.
+#[derive(Debug, Default, serde::Deserialize)]
+struct BindingSpec {
+    /// Default data source applied to every entity/relationship unless overridden.
+    #[serde(default)]
+    source: Option<SourceSpec>,
+    #[serde(default)]
+    entities: HashMap<String, EntityBindingSpec>,
+    #[serde(default)]
+    relationships: HashMap<String, RelationshipBindingSpec>,
+}
+
+/// A data source (Lakehouse table or Eventhouse/Kusto table). Every field is
+/// optional so a global `source` and per-item overrides can be merged; missing
+/// coordinates fall back to CLI flags.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SourceSpec {
+    /// `LakehouseTable` (default) or `KustoTable`.
+    #[serde(rename = "type", default)]
+    source_type: Option<String>,
+    #[serde(default)]
+    workspace_id: Option<String>,
+    #[serde(default)]
+    item_id: Option<String>,
+    /// `LakehouseTable` only.
+    #[serde(default)]
+    source_schema: Option<String>,
+    /// `KustoTable` only.
+    #[serde(default)]
+    cluster_uri: Option<String>,
+    /// `KustoTable` only.
+    #[serde(default)]
+    database_name: Option<String>,
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EntityBindingSpec {
+    #[serde(default)]
+    table: Option<String>,
+    /// `NonTimeSeries` (default) or `TimeSeries`.
+    #[serde(default)]
+    data_binding_type: Option<String>,
+    /// Required when `dataBindingType` is `TimeSeries`.
+    #[serde(default)]
+    timestamp_column: Option<String>,
+    /// Per-entity data source override.
+    #[serde(default)]
+    source: Option<SourceSpec>,
+    /// Maps ontology property label → source column name.
+    #[serde(default)]
+    columns: HashMap<String, String>,
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RelationshipBindingSpec {
+    table: String,
+    /// Per-relationship source override (must resolve to a `LakehouseTable`).
+    #[serde(default)]
+    source: Option<SourceSpec>,
+    /// Source-side key columns, one per `entityIdParts` entry of the source entity.
+    #[serde(default)]
+    source_columns: Vec<String>,
+    /// Target-side key columns, one per `entityIdParts` entry of the target entity.
+    #[serde(default)]
+    target_columns: Vec<String>,
+}
+
+/// Fully resolved data source for a single binding.
+#[derive(Debug, Clone)]
+enum ResolvedSource {
+    Lakehouse {
+        workspace_id: String,
+        item_id: String,
+        source_schema: Option<String>,
+    },
+    Kusto {
+        workspace_id: String,
+        item_id: String,
+        cluster_uri: String,
+        database_name: String,
+    },
+}
+
+impl ResolvedSource {
+    const fn is_lakehouse(&self) -> bool {
+        matches!(self, Self::Lakehouse { .. })
+    }
+
+    fn table_properties(&self, table: String) -> SourceTableProperties {
+        match self {
+            Self::Lakehouse {
+                workspace_id,
+                item_id,
+                source_schema,
+            } => SourceTableProperties::Lakehouse(LakehouseTableProperties {
+                source_type: "LakehouseTable",
+                workspace_id: workspace_id.clone(),
+                item_id: item_id.clone(),
+                source_table_name: table,
+                source_schema: source_schema.clone(),
+            }),
+            Self::Kusto {
+                workspace_id,
+                item_id,
+                cluster_uri,
+                database_name,
+            } => SourceTableProperties::Kusto(KustoTableProperties {
+                source_type: "KustoTable",
+                workspace_id: workspace_id.clone(),
+                item_id: item_id.clone(),
+                cluster_uri: cluster_uri.clone(),
+                database_name: database_name.clone(),
+                source_table_name: table,
+            }),
+        }
+    }
+
+    /// `LakehouseTable` properties for a relationship `dataBindingTable`
+    /// (Fabric only permits `LakehouseTable` there).
+    fn lakehouse_table(&self, table: String) -> Result<LakehouseTableProperties> {
+        match self {
+            Self::Lakehouse {
+                workspace_id,
+                item_id,
+                source_schema,
+            } => Ok(LakehouseTableProperties {
+                source_type: "LakehouseTable",
+                workspace_id: workspace_id.clone(),
+                item_id: item_id.clone(),
+                source_table_name: table,
+                source_schema: source_schema.clone(),
+            }),
+            Self::Kusto { .. } => Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "Relationship contextualizations require a LakehouseTable source.".to_string(),
+                "Fabric only supports LakehouseTable for a relationship dataBindingTable; \
+                 remove the KustoTable source override on this relationship.",
+            )
+            .into()),
+        }
+    }
+}
+
+/// CLI-flag defaults plus the parsed binding map. Per-item sources are resolved
+/// lazily so entities/relationships can each pick their own Lakehouse/Eventhouse.
+#[derive(Debug)]
+struct BindingContext {
+    default_workspace_id: Option<String>,
+    default_item_id: Option<String>,
+    default_schema: Option<String>,
+    spec: BindingSpec,
+}
+
+impl BindingContext {
+    /// Merge a local source override over the global `source` and CLI-flag
+    /// defaults into a validated [`ResolvedSource`].
+    fn resolve_source(&self, local: Option<&SourceSpec>) -> Result<ResolvedSource> {
+        let pick = |f: &dyn Fn(&SourceSpec) -> Option<String>| -> Option<String> {
+            local
+                .and_then(f)
+                .or_else(|| self.spec.source.as_ref().and_then(f))
+        };
+
+        let source_type =
+            pick(&|s| s.source_type.clone()).unwrap_or_else(|| "LakehouseTable".to_string());
+        let workspace_id = pick(&|s| s.workspace_id.clone())
+            .or_else(|| self.default_workspace_id.clone())
+            .ok_or_else(|| {
+                missing_source_field(
+                    "workspace ID",
+                    "Pass --lakehouse-workspace <WS> (or --workspace), or set source.workspaceId.",
+                )
+            })?;
+        let item_id = pick(&|s| s.item_id.clone())
+            .or_else(|| self.default_item_id.clone())
+            .ok_or_else(|| {
+                missing_source_field(
+                    "data source item ID",
+                    "Pass --lakehouse <ITEM_ID>, or set source.itemId in the binding map.",
+                )
+            })?;
+
+        match source_type.as_str() {
+            "LakehouseTable" => {
+                let source_schema = pick(&|s| s.source_schema.clone())
+                    .or_else(|| self.default_schema.clone())
+                    .or_else(|| Some("dbo".to_string()));
+                Ok(ResolvedSource::Lakehouse {
+                    workspace_id,
+                    item_id,
+                    source_schema,
+                })
+            }
+            "KustoTable" => {
+                let cluster_uri = pick(&|s| s.cluster_uri.clone()).ok_or_else(|| {
+                    missing_source_field("clusterUri", "Set source.clusterUri for a KustoTable.")
+                })?;
+                let database_name = pick(&|s| s.database_name.clone()).ok_or_else(|| {
+                    missing_source_field(
+                        "databaseName",
+                        "Set source.databaseName for a KustoTable.",
+                    )
+                })?;
+                Ok(ResolvedSource::Kusto {
+                    workspace_id,
+                    item_id,
+                    cluster_uri,
+                    database_name,
+                })
+            }
+            other => Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Unknown data source type '{other}'."),
+                "Supported source types: LakehouseTable, KustoTable.",
+            )
+            .into()),
+        }
+    }
+}
+
+fn missing_source_field(what: &str, hint: &str) -> anyhow::Error {
+    FabioError::with_hint(
+        ErrorCode::InvalidInput,
+        format!("A {what} is required to generate data bindings."),
+        hint.to_string(),
+    )
+    .into()
+}
+
+/// Resolve an optional [`BindingContext`] from CLI flags and/or a binding-map
+/// file. Binding generation is enabled when either `--lakehouse` or `--bindings`
+/// is supplied. Coordinates resolve per source: override → map `source` → flags.
+fn resolve_binding_context(
+    workspace: Option<&str>,
+    lakehouse: Option<&str>,
+    lakehouse_workspace: Option<&str>,
+    schema: Option<&str>,
+    bindings: Option<&str>,
+) -> Result<Option<BindingContext>> {
+    if lakehouse.is_none() && bindings.is_none() {
+        return Ok(None);
+    }
+
+    let spec: BindingSpec = if let Some(path) = bindings {
+        let raw = fs::read_to_string(path)
+            .map_err(|e| anyhow::anyhow!("Failed to read binding map '{path}': {e}"))?;
+        serde_json::from_str(&raw).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid binding map JSON in '{path}': {e}"),
+                "Expected {\"entities\":{...},\"relationships\":{...}}. \
+                 See: fabio context examples ontology",
+            )
+        })?
+    } else {
+        BindingSpec::default()
+    };
+
+    Ok(Some(BindingContext {
+        default_workspace_id: lakehouse_workspace.or(workspace).map(str::to_string),
+        default_item_id: lakehouse.map(str::to_string),
+        default_schema: schema.map(str::to_string),
+        spec,
+    }))
+}
+
+// ─── Order-safe binding serialization ────────────────────────────────────────
+//
+// Production builds do NOT enable serde_json's `preserve_order` feature, so
+// `serde_json::Value` maps serialize keys alphabetically. The Fabric Ontology
+// API deserializes `sourceTableProperties` with an ordered, discriminator-first
+// reader — `sourceType` MUST be the first key. Struct field order is always
+// preserved by serde regardless of the map feature, and an untagged enum
+// serializes as its inner struct, so modelling the payloads as structs
+// guarantees correct ordering on every build (never round-trip through Value).
+
+#[derive(serde::Serialize)]
+#[serde(untagged)]
+enum SourceTableProperties {
+    Lakehouse(LakehouseTableProperties),
+    Kusto(KustoTableProperties),
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LakehouseTableProperties {
+    source_type: &'static str,
+    workspace_id: String,
+    item_id: String,
+    source_table_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_schema: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct KustoTableProperties {
+    source_type: &'static str,
+    workspace_id: String,
+    item_id: String,
+    cluster_uri: String,
+    database_name: String,
+    source_table_name: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PropertyBinding {
+    source_column_name: String,
+    target_property_id: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DataBindingConfiguration {
+    data_binding_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    timestamp_column_name: Option<String>,
+    property_bindings: Vec<PropertyBinding>,
+    source_table_properties: SourceTableProperties,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DataBinding {
+    id: String,
+    data_binding_configuration: DataBindingConfiguration,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct KeyRefBinding {
+    source_column_name: String,
+    target_property_id: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Contextualization {
+    id: String,
+    data_binding_table: LakehouseTableProperties,
+    source_key_ref_bindings: Vec<KeyRefBinding>,
+    target_key_ref_bindings: Vec<KeyRefBinding>,
+}
+
+/// Look up an entity binding by exact class label, then by URI local name.
+fn entity_binding<'a>(spec: &'a BindingSpec, class: &OwlClass) -> Option<&'a EntityBindingSpec> {
+    spec.entities
+        .get(&class.label)
+        .or_else(|| spec.entities.get(&uri_local_name(&class.uri)))
+}
+
+/// Sanitize a label into a Fabric type/property name matching the schema
+/// pattern `^[a-zA-Z][a-zA-Z0-9_-]{0,127}$` (e.g. "has site" → "`has_site`").
+fn sanitize_name(label: &str) -> String {
+    let mut name = String::new();
+    let mut prev_us = false;
+    for ch in label.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+            name.push(ch);
+            prev_us = false;
+        } else if !prev_us {
+            name.push('_');
+            prev_us = true;
+        }
+    }
+    let trimmed = name.trim_matches(|c| c == '_' || c == '-').to_string();
+    let mut name = if trimmed
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic())
+    {
+        trimmed
+    } else {
+        format!("type_{trimmed}")
+    };
+    name.truncate(128);
+    name
+}
+
 // ─── Fabric Format Generator ─────────────────────────────────────────────────
 
+#[derive(Debug)]
 struct FabricPart {
     path: String,
     content: String,
 }
 
-fn generate_fabric_parts(model: &OwlModel) -> Vec<FabricPart> {
+#[allow(clippy::too_many_lines)]
+fn generate_fabric_parts(
+    model: &OwlModel,
+    binding: Option<&BindingContext>,
+) -> Result<Vec<FabricPart>> {
     let mut parts = Vec::new();
 
     // Root definition.json
@@ -775,6 +1211,9 @@ fn generate_fabric_parts(model: &OwlModel) -> Vec<FabricPart> {
         class_ids.insert(class.uri.clone(), id);
     }
 
+    // Per-class identifier property ids (full entityIdParts) for contextualizations.
+    let mut identifier_ids: HashMap<String, Vec<String>> = HashMap::new();
+
     // Generate EntityTypes
     for class in &model.classes {
         let type_id = class_ids.get(&class.uri).unwrap();
@@ -783,6 +1222,10 @@ fn generate_fabric_parts(model: &OwlModel) -> Vec<FabricPart> {
         let mut properties: Vec<Value> = Vec::new();
         let mut id_parts: Vec<String> = Vec::new();
         let mut display_name_id: Option<String> = None;
+        // Ordered (source column, property id) pairs for the data binding.
+        let mut column_bindings: Vec<(String, String)> = Vec::new();
+
+        let entity_spec = binding.and_then(|b| entity_binding(&b.spec, class));
 
         for (pi, prop) in model
             .datatype_properties
@@ -793,9 +1236,15 @@ fn generate_fabric_parts(model: &OwlModel) -> Vec<FabricPart> {
             let prop_id = format!("{type_id}{:02}", pi + 1);
             properties.push(serde_json::json!({
                 "id": prop_id,
-                "name": prop.label,
+                "name": sanitize_name(&prop.label),
                 "valueType": prop.property_type,
             }));
+
+            // Source column defaults to the property label; overridable per binding map.
+            let source_column = entity_spec
+                .and_then(|e| e.columns.get(&prop.label).cloned())
+                .unwrap_or_else(|| prop.label.clone());
+            column_bindings.push((source_column, prop_id.clone()));
 
             if prop.is_identifier {
                 id_parts.push(prop_id.clone());
@@ -814,11 +1263,13 @@ fn generate_fabric_parts(model: &OwlModel) -> Vec<FabricPart> {
             id_parts.push(pid.to_string());
         }
 
+        identifier_ids.insert(class.uri.clone(), id_parts.clone());
+
         let entity_def = serde_json::json!({
             "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/ontology/entityType/1.0.0/schema.json",
             "id": type_id,
             "namespace": "usertypes",
-            "name": class.label,
+            "name": sanitize_name(&class.label),
             "namespaceType": "Custom",
             "visibility": "Visible",
             "displayNamePropertyId": display_name_id.as_deref().unwrap_or(""),
@@ -830,6 +1281,75 @@ fn generate_fabric_parts(model: &OwlModel) -> Vec<FabricPart> {
             path: format!("EntityTypes/{type_id}/definition.json"),
             content: serde_json::to_string_pretty(&entity_def).unwrap_or_default(),
         });
+
+        // Emit a DataBinding when a data source is configured.
+        if let Some(ctx) = binding {
+            let table = entity_spec
+                .and_then(|e| e.table.clone())
+                .unwrap_or_else(|| class.label.to_lowercase());
+
+            let data_binding_type = entity_spec
+                .and_then(|e| e.data_binding_type.clone())
+                .unwrap_or_else(|| "NonTimeSeries".to_string());
+            if data_binding_type != "NonTimeSeries" && data_binding_type != "TimeSeries" {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!(
+                        "Entity '{}' has invalid dataBindingType '{data_binding_type}'.",
+                        class.label
+                    ),
+                    "dataBindingType must be 'NonTimeSeries' or 'TimeSeries'.",
+                )
+                .into());
+            }
+            let timestamp_column_name = entity_spec.and_then(|e| e.timestamp_column.clone());
+            if data_binding_type == "TimeSeries" && timestamp_column_name.is_none() {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!(
+                        "Entity '{}' is TimeSeries but has no timestampColumn.",
+                        class.label
+                    ),
+                    "Set entities.<name>.timestampColumn for TimeSeries data bindings.",
+                )
+                .into());
+            }
+
+            let source = ctx.resolve_source(entity_spec.and_then(|e| e.source.as_ref()))?;
+            if !source.is_lakehouse() && data_binding_type == "NonTimeSeries" {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!(
+                        "Entity '{}' uses a KustoTable source with NonTimeSeries.",
+                        class.label
+                    ),
+                    "Fabric permits KustoTable only with TimeSeries; set dataBindingType to \
+                     'TimeSeries' or use a LakehouseTable source.",
+                )
+                .into());
+            }
+
+            let binding_uuid = deterministic_uuid("binding", &class.label);
+            let data_binding = DataBinding {
+                id: binding_uuid.clone(),
+                data_binding_configuration: DataBindingConfiguration {
+                    data_binding_type,
+                    timestamp_column_name,
+                    property_bindings: column_bindings
+                        .into_iter()
+                        .map(|(col, pid)| PropertyBinding {
+                            source_column_name: col,
+                            target_property_id: pid,
+                        })
+                        .collect(),
+                    source_table_properties: source.table_properties(table),
+                },
+            };
+            parts.push(FabricPart {
+                path: format!("EntityTypes/{type_id}/DataBindings/{binding_uuid}.json"),
+                content: serde_json::to_string_pretty(&data_binding).unwrap_or_default(),
+            });
+        }
     }
 
     // Generate RelationshipTypes
@@ -847,7 +1367,7 @@ fn generate_fabric_parts(model: &OwlModel) -> Vec<FabricPart> {
             "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/ontology/relationshipType/1.0.0/schema.json",
             "id": rel_id,
             "namespace": "usertypes",
-            "name": rel.label,
+            "name": sanitize_name(&rel.label),
             "namespaceType": "Custom",
             "source": {"entityTypeId": source_id},
             "target": {"entityTypeId": target_id},
@@ -857,9 +1377,92 @@ fn generate_fabric_parts(model: &OwlModel) -> Vec<FabricPart> {
             path: format!("RelationshipTypes/{rel_id}/definition.json"),
             content: serde_json::to_string_pretty(&rel_def).unwrap_or_default(),
         });
+
+        // Emit a Contextualization when the binding map describes this relationship.
+        // Relationship key columns cannot be inferred from OWL, so we only bind
+        // relationships explicitly listed in --bindings.
+        if let Some(ctx) = binding {
+            let Some(rel_spec) = ctx.spec.relationships.get(&rel.label) else {
+                if !ctx.spec.relationships.is_empty() {
+                    eprintln!(
+                        "[ontology import] No binding map entry for relationship '{}'; \
+                         emitting type without a contextualization.",
+                        rel.label
+                    );
+                }
+                continue;
+            };
+            let (Some(source_parts), Some(target_parts)) = (
+                identifier_ids.get(&rel.domain_uri),
+                identifier_ids.get(&rel.range_uri),
+            ) else {
+                continue;
+            };
+
+            let source_refs =
+                zip_key_refs(&rel.label, "source", &rel_spec.source_columns, source_parts)?;
+            let target_refs =
+                zip_key_refs(&rel.label, "target", &rel_spec.target_columns, target_parts)?;
+
+            let source = ctx.resolve_source(rel_spec.source.as_ref())?;
+            let data_binding_table = source.lakehouse_table(rel_spec.table.clone())?;
+
+            let ctx_uuid = deterministic_uuid("contextualization", &rel.label);
+            let contextualization = Contextualization {
+                id: ctx_uuid.clone(),
+                data_binding_table,
+                source_key_ref_bindings: source_refs,
+                target_key_ref_bindings: target_refs,
+            };
+            parts.push(FabricPart {
+                path: format!("RelationshipTypes/{rel_id}/Contextualizations/{ctx_uuid}.json"),
+                content: serde_json::to_string_pretty(&contextualization).unwrap_or_default(),
+            });
+        }
     }
 
-    parts
+    Ok(parts)
+}
+
+/// Zip relationship key columns against an entity's `entityIdParts`, producing
+/// one [`KeyRefBinding`] per identifier part. Arities must match: a composite
+/// identifier needs one column per part.
+fn zip_key_refs(
+    relationship: &str,
+    end: &str,
+    columns: &[String],
+    id_parts: &[String],
+) -> Result<Vec<KeyRefBinding>> {
+    if columns.len() != id_parts.len() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!(
+                "Relationship '{relationship}' {end} has {} key column(s) but the {end} entity \
+                 has {} identifier part(s).",
+                columns.len(),
+                id_parts.len()
+            ),
+            format!(
+                "Provide exactly {} {end}Column(s), one per entityIdParts entry, in the binding map.",
+                id_parts.len()
+            ),
+        )
+        .into());
+    }
+    Ok(columns
+        .iter()
+        .zip(id_parts.iter())
+        .map(|(col, pid)| KeyRefBinding {
+            source_column_name: col.clone(),
+            target_property_id: pid.clone(),
+        })
+        .collect())
+}
+
+/// Deterministic UUID v5 keyed by (kind, name) so re-imports keep stable
+/// binding IDs. Fabric silently drops non-UUID data-binding IDs.
+fn deterministic_uuid(kind: &str, name: &str) -> String {
+    uuid::Uuid::new_v5(&BINDING_NAMESPACE, format!("{kind}:{name}").as_bytes()).to_string()
 }
 
 // ─── Directory Export ────────────────────────────────────────────────────────
@@ -1120,7 +1723,7 @@ mod tests {
                 range_uri: "http://ex.org/B".to_string(),
             }],
         };
-        let parts = generate_fabric_parts(&model);
+        let parts = generate_fabric_parts(&model, None).unwrap();
         // root + 2 entities + 1 relationship = 4 parts
         assert_eq!(parts.len(), 4);
         assert_eq!(parts[0].path, "definition.json");
@@ -1229,5 +1832,482 @@ mod tests {
         assert_eq!(fabric_type_to_xsd("Boolean"), "boolean");
         assert_eq!(fabric_type_to_xsd("DateTime"), "dateTime");
         assert_eq!(fabric_type_to_xsd("Unknown"), "string");
+    }
+
+    // -----------------------------------------------------------------------
+    // Lakehouse / Eventhouse binding generation (validated against the
+    // official Fabric Ontology JSON schemas under tests/fixtures/).
+    // -----------------------------------------------------------------------
+
+    const WS: &str = "11111111-1111-4111-8111-111111111111";
+    const LH: &str = "22222222-2222-4222-8222-222222222222";
+
+    fn lakehouse_ctx(spec: BindingSpec) -> BindingContext {
+        BindingContext {
+            default_workspace_id: Some(WS.to_string()),
+            default_item_id: Some(LH.to_string()),
+            default_schema: None,
+            spec,
+        }
+    }
+
+    /// Study(studyId id, studyName) --hasSite--> Site(siteId id).
+    fn binding_model() -> OwlModel {
+        OwlModel {
+            classes: vec![
+                OwlClass {
+                    uri: "http://ex.org/Study".into(),
+                    label: "Study".into(),
+                },
+                OwlClass {
+                    uri: "http://ex.org/Site".into(),
+                    label: "Site".into(),
+                },
+            ],
+            datatype_properties: vec![
+                OwlDatatypeProperty {
+                    label: "studyId".into(),
+                    domain_uri: "http://ex.org/Study".into(),
+                    property_type: "String".into(),
+                    is_identifier: true,
+                },
+                OwlDatatypeProperty {
+                    label: "studyName".into(),
+                    domain_uri: "http://ex.org/Study".into(),
+                    property_type: "String".into(),
+                    is_identifier: false,
+                },
+                OwlDatatypeProperty {
+                    label: "siteId".into(),
+                    domain_uri: "http://ex.org/Site".into(),
+                    property_type: "String".into(),
+                    is_identifier: true,
+                },
+            ],
+            object_properties: vec![OwlObjectProperty {
+                label: "has site".into(),
+                domain_uri: "http://ex.org/Study".into(),
+                range_uri: "http://ex.org/Site".into(),
+            }],
+        }
+    }
+
+    fn find_part<'a>(parts: &'a [FabricPart], needle: &str) -> &'a FabricPart {
+        parts
+            .iter()
+            .find(|p| p.path.contains(needle))
+            .unwrap_or_else(|| {
+                let all: Vec<&str> = parts.iter().map(|p| p.path.as_str()).collect();
+                panic!("no part containing '{needle}'; have: {all:?}")
+            })
+    }
+
+    fn payload(part: &FabricPart) -> Value {
+        serde_json::from_str(&part.content).expect("part content is JSON")
+    }
+
+    /// Validate an instance against a vendored official schema.
+    fn assert_schema_valid(schema_name: &str, instance: &Value) {
+        let path = format!(
+            "{}/tests/fixtures/ontology-schemas/{schema_name}.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let schema: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let validator = jsonschema::validator_for(&schema).expect("schema compiles");
+        let errors: Vec<String> = validator
+            .iter_errors(instance)
+            .map(|e| e.to_string())
+            .collect();
+        assert!(
+            errors.is_empty(),
+            "{schema_name} validation failed: {errors:#?}\ninstance:\n{}",
+            serde_json::to_string_pretty(instance).unwrap()
+        );
+    }
+
+    #[test]
+    fn generated_types_and_bindings_match_official_schemas() {
+        let spec: BindingSpec = serde_json::from_str(
+            r#"{"relationships":{"has site":{"table":"site","sourceColumns":["study_id"],"targetColumns":["siteId"]}}}"#,
+        ).unwrap();
+        let parts = generate_fabric_parts(&binding_model(), Some(&lakehouse_ctx(spec))).unwrap();
+
+        assert_schema_valid(
+            "entityType",
+            &payload(find_part(
+                &parts,
+                "EntityTypes/8880000000001/definition.json",
+            )),
+        );
+        assert_schema_valid(
+            "dataBinding",
+            &payload(find_part(&parts, "EntityTypes/8880000000001/DataBindings")),
+        );
+        assert_schema_valid(
+            "relationshipType",
+            &payload(find_part(
+                &parts,
+                "RelationshipTypes/9990000000001/definition.json",
+            )),
+        );
+        assert_schema_valid(
+            "contextualization",
+            &payload(find_part(
+                &parts,
+                "RelationshipTypes/9990000000001/Contextualizations",
+            )),
+        );
+    }
+
+    #[test]
+    fn convention_defaults_lakehouse_table_and_columns() {
+        let parts = generate_fabric_parts(
+            &binding_model(),
+            Some(&lakehouse_ctx(BindingSpec::default())),
+        )
+        .unwrap();
+        let v = payload(find_part(&parts, "EntityTypes/8880000000001/DataBindings"));
+        let stp = &v["dataBindingConfiguration"]["sourceTableProperties"];
+        assert_eq!(stp["sourceType"], "LakehouseTable");
+        assert_eq!(stp["sourceTableName"], "study");
+        assert_eq!(stp["sourceSchema"], "dbo");
+        assert_eq!(stp["workspaceId"], WS);
+        assert_eq!(
+            v["dataBindingConfiguration"]["dataBindingType"],
+            "NonTimeSeries"
+        );
+        assert_eq!(
+            v["dataBindingConfiguration"]["propertyBindings"][0]["sourceColumnName"],
+            "studyId"
+        );
+    }
+
+    #[test]
+    fn binding_map_overrides_table_and_columns() {
+        let spec: BindingSpec = serde_json::from_str(
+            r#"{"entities":{"Study":{"table":"study_dim","source":{"sourceSchema":"silver"},"columns":{"studyId":"study_key"}}}}"#,
+        ).unwrap();
+        let parts = generate_fabric_parts(&binding_model(), Some(&lakehouse_ctx(spec))).unwrap();
+        let v = payload(find_part(&parts, "EntityTypes/8880000000001/DataBindings"));
+        let stp = &v["dataBindingConfiguration"]["sourceTableProperties"];
+        assert_eq!(stp["sourceTableName"], "study_dim");
+        assert_eq!(stp["sourceSchema"], "silver");
+        assert_eq!(
+            v["dataBindingConfiguration"]["propertyBindings"][0]["sourceColumnName"],
+            "study_key"
+        );
+    }
+
+    #[test]
+    fn source_type_is_serialized_first() {
+        let parts = generate_fabric_parts(
+            &binding_model(),
+            Some(&lakehouse_ctx(BindingSpec::default())),
+        )
+        .unwrap();
+        let db = find_part(&parts, "EntityTypes/8880000000001/DataBindings");
+        let st = db
+            .content
+            .find("\"sourceType\"")
+            .expect("sourceType present");
+        for other in ["workspaceId", "itemId", "sourceTableName", "sourceSchema"] {
+            let pos = db
+                .content
+                .find(&format!("\"{other}\""))
+                .unwrap_or_else(|| panic!("{other} present"));
+            assert!(st < pos, "sourceType must precede {other}");
+        }
+    }
+
+    #[test]
+    fn relationship_name_is_sanitized() {
+        let parts = generate_fabric_parts(
+            &binding_model(),
+            Some(&lakehouse_ctx(BindingSpec::default())),
+        )
+        .unwrap();
+        let v = payload(find_part(
+            &parts,
+            "RelationshipTypes/9990000000001/definition.json",
+        ));
+        assert_eq!(v["name"], "has_site");
+    }
+
+    #[test]
+    fn single_key_contextualization_maps_endpoint_identifiers() {
+        let spec: BindingSpec = serde_json::from_str(
+            r#"{"relationships":{"has site":{"table":"site","sourceColumns":["study_id"],"targetColumns":["siteId"]}}}"#,
+        ).unwrap();
+        let parts = generate_fabric_parts(&binding_model(), Some(&lakehouse_ctx(spec))).unwrap();
+        let v = payload(find_part(
+            &parts,
+            "RelationshipTypes/9990000000001/Contextualizations",
+        ));
+        assert_eq!(v["dataBindingTable"]["sourceTableName"], "site");
+        assert_eq!(v["dataBindingTable"]["sourceType"], "LakehouseTable");
+        assert_eq!(v["sourceKeyRefBindings"][0]["sourceColumnName"], "study_id");
+        assert_eq!(
+            v["sourceKeyRefBindings"][0]["targetPropertyId"],
+            "888000000000101"
+        );
+        assert_eq!(v["targetKeyRefBindings"][0]["sourceColumnName"], "siteId");
+        assert_eq!(
+            v["targetKeyRefBindings"][0]["targetPropertyId"],
+            "888000000000201"
+        );
+    }
+
+    /// A(a1,a2 composite id) --linked--> B(b1 id).
+    fn composite_model() -> OwlModel {
+        OwlModel {
+            classes: vec![
+                OwlClass {
+                    uri: "http://ex.org/A".into(),
+                    label: "A".into(),
+                },
+                OwlClass {
+                    uri: "http://ex.org/B".into(),
+                    label: "B".into(),
+                },
+            ],
+            datatype_properties: vec![
+                OwlDatatypeProperty {
+                    label: "a1".into(),
+                    domain_uri: "http://ex.org/A".into(),
+                    property_type: "String".into(),
+                    is_identifier: true,
+                },
+                OwlDatatypeProperty {
+                    label: "a2".into(),
+                    domain_uri: "http://ex.org/A".into(),
+                    property_type: "String".into(),
+                    is_identifier: true,
+                },
+                OwlDatatypeProperty {
+                    label: "b1".into(),
+                    domain_uri: "http://ex.org/B".into(),
+                    property_type: "String".into(),
+                    is_identifier: true,
+                },
+            ],
+            object_properties: vec![OwlObjectProperty {
+                label: "linked".into(),
+                domain_uri: "http://ex.org/A".into(),
+                range_uri: "http://ex.org/B".into(),
+            }],
+        }
+    }
+
+    #[test]
+    fn composite_key_contextualization() {
+        let spec: BindingSpec = serde_json::from_str(
+            r#"{"relationships":{"linked":{"table":"link","sourceColumns":["a1_fk","a2_fk"],"targetColumns":["b1_fk"]}}}"#,
+        ).unwrap();
+        let parts = generate_fabric_parts(&composite_model(), Some(&lakehouse_ctx(spec))).unwrap();
+        let v = payload(find_part(&parts, "Contextualizations"));
+        assert_schema_valid("contextualization", &v);
+        assert_eq!(v["sourceKeyRefBindings"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            v["sourceKeyRefBindings"][0]["targetPropertyId"],
+            "888000000000101"
+        );
+        assert_eq!(
+            v["sourceKeyRefBindings"][1]["targetPropertyId"],
+            "888000000000102"
+        );
+        assert_eq!(v["targetKeyRefBindings"].as_array().unwrap().len(), 1);
+        assert_eq!(v["targetKeyRefBindings"][0]["sourceColumnName"], "b1_fk");
+    }
+
+    #[test]
+    fn composite_key_arity_mismatch_errors() {
+        let spec: BindingSpec = serde_json::from_str(
+            r#"{"relationships":{"linked":{"table":"link","sourceColumns":["only_one"],"targetColumns":["b1_fk"]}}}"#,
+        ).unwrap();
+        let err =
+            generate_fabric_parts(&composite_model(), Some(&lakehouse_ctx(spec))).unwrap_err();
+        assert!(err.to_string().contains("key column"), "{err}");
+    }
+
+    #[test]
+    fn timeseries_lakehouse_binding() {
+        let spec: BindingSpec = serde_json::from_str(
+            r#"{"entities":{"Study":{"dataBindingType":"TimeSeries","timestampColumn":"ts"}}}"#,
+        )
+        .unwrap();
+        let parts = generate_fabric_parts(&binding_model(), Some(&lakehouse_ctx(spec))).unwrap();
+        let v = payload(find_part(&parts, "EntityTypes/8880000000001/DataBindings"));
+        assert_schema_valid("dataBinding", &v);
+        assert_eq!(
+            v["dataBindingConfiguration"]["dataBindingType"],
+            "TimeSeries"
+        );
+        assert_eq!(v["dataBindingConfiguration"]["timestampColumnName"], "ts");
+    }
+
+    #[test]
+    fn timeseries_requires_timestamp() {
+        let spec: BindingSpec =
+            serde_json::from_str(r#"{"entities":{"Study":{"dataBindingType":"TimeSeries"}}}"#)
+                .unwrap();
+        let err = generate_fabric_parts(&binding_model(), Some(&lakehouse_ctx(spec))).unwrap_err();
+        assert!(err.to_string().contains("timestampColumn"), "{err}");
+    }
+
+    #[test]
+    fn kusto_source_requires_timeseries() {
+        let spec: BindingSpec = serde_json::from_str(
+            r#"{"entities":{"Study":{"source":{"type":"KustoTable","clusterUri":"https://x.kusto","databaseName":"db"}}}}"#,
+        ).unwrap();
+        let err = generate_fabric_parts(&binding_model(), Some(&lakehouse_ctx(spec))).unwrap_err();
+        assert!(err.to_string().contains("KustoTable"), "{err}");
+    }
+
+    #[test]
+    fn kusto_timeseries_binding_matches_schema() {
+        let spec: BindingSpec = serde_json::from_str(
+            r#"{"entities":{"Study":{"dataBindingType":"TimeSeries","timestampColumn":"ts","source":{"type":"KustoTable","clusterUri":"https://x.kusto.windows.net","databaseName":"telemetry"}}}}"#,
+        ).unwrap();
+        let parts = generate_fabric_parts(&binding_model(), Some(&lakehouse_ctx(spec))).unwrap();
+        let v = payload(find_part(&parts, "EntityTypes/8880000000001/DataBindings"));
+        assert_schema_valid("dataBinding", &v);
+        let stp = &v["dataBindingConfiguration"]["sourceTableProperties"];
+        assert_eq!(stp["sourceType"], "KustoTable");
+        assert_eq!(stp["clusterUri"], "https://x.kusto.windows.net");
+        assert_eq!(stp["databaseName"], "telemetry");
+        // sourceType must remain the first key for the Kusto variant too.
+        let content = &find_part(&parts, "DataBindings").content;
+        let st = content.find("\"sourceType\"").unwrap();
+        assert!(st < content.find("\"clusterUri\"").unwrap());
+    }
+
+    #[test]
+    fn kusto_contextualization_rejected() {
+        let spec: BindingSpec = serde_json::from_str(
+            r#"{"relationships":{"has site":{"table":"site","sourceColumns":["study_id"],"targetColumns":["siteId"],"source":{"type":"KustoTable","clusterUri":"https://x","databaseName":"db"}}}}"#,
+        ).unwrap();
+        let err = generate_fabric_parts(&binding_model(), Some(&lakehouse_ctx(spec))).unwrap_err();
+        assert!(err.to_string().contains("LakehouseTable"), "{err}");
+    }
+
+    #[test]
+    fn relationship_without_binding_emits_type_only() {
+        let spec: BindingSpec = serde_json::from_str(
+            r#"{"relationships":{"other":{"table":"t","sourceColumns":["a"],"targetColumns":["b"]}}}"#,
+        ).unwrap();
+        let parts = generate_fabric_parts(&binding_model(), Some(&lakehouse_ctx(spec))).unwrap();
+        assert!(
+            parts
+                .iter()
+                .any(|p| p.path == "RelationshipTypes/9990000000001/definition.json")
+        );
+        assert!(
+            !parts
+                .iter()
+                .any(|p| p.path.contains("9990000000001/Contextualizations"))
+        );
+    }
+
+    #[test]
+    fn no_binding_context_emits_schema_only() {
+        let parts = generate_fabric_parts(&binding_model(), None).unwrap();
+        assert!(!parts.iter().any(|p| p.path.contains("DataBindings")));
+        assert!(!parts.iter().any(|p| p.path.contains("Contextualizations")));
+    }
+
+    #[test]
+    fn sanitize_name_matches_schema_pattern() {
+        assert_eq!(sanitize_name("has site"), "has_site");
+        assert_eq!(
+            sanitize_name("drives  manufacturing "),
+            "drives_manufacturing"
+        );
+        assert_eq!(sanitize_name("Study"), "Study");
+        assert_eq!(sanitize_name("123bad"), "type_123bad");
+        let re = regex::Regex::new(r"^[a-zA-Z][a-zA-Z0-9_-]{0,127}$").unwrap();
+        for label in ["has site", "drives  manufacturing", "9lives", "  spaced  "] {
+            assert!(re.is_match(&sanitize_name(label)), "label {label:?}");
+        }
+    }
+
+    #[test]
+    fn deterministic_uuid_stable_and_valid() {
+        let a = deterministic_uuid("binding", "Study");
+        assert_eq!(a, deterministic_uuid("binding", "Study"));
+        assert_ne!(a, deterministic_uuid("binding", "Site"));
+        let segs: Vec<&str> = a.split('-').collect();
+        assert_eq!(
+            segs.iter().map(|s| s.len()).collect::<Vec<_>>(),
+            vec![8, 4, 4, 4, 12]
+        );
+    }
+
+    #[test]
+    fn resolve_binding_context_none_when_unset() {
+        assert!(
+            resolve_binding_context(Some("ws"), None, None, None, None)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn resolve_binding_context_defaults_from_flags() {
+        let ctx = resolve_binding_context(Some("ws-flag"), Some("lh-flag"), None, None, None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(ctx.default_item_id.as_deref(), Some("lh-flag"));
+        assert_eq!(ctx.default_workspace_id.as_deref(), Some("ws-flag"));
+    }
+
+    #[test]
+    fn resolve_source_precedence_and_defaults() {
+        let ctx = lakehouse_ctx(BindingSpec::default());
+        match ctx.resolve_source(None).unwrap() {
+            ResolvedSource::Lakehouse {
+                workspace_id,
+                source_schema,
+                ..
+            } => {
+                assert_eq!(workspace_id, WS);
+                assert_eq!(source_schema.as_deref(), Some("dbo"));
+            }
+            ResolvedSource::Kusto { .. } => panic!("expected Lakehouse"),
+        }
+        let local: SourceSpec =
+            serde_json::from_str(r#"{"workspaceId":"ws-override","sourceSchema":"gold"}"#).unwrap();
+        match ctx.resolve_source(Some(&local)).unwrap() {
+            ResolvedSource::Lakehouse {
+                workspace_id,
+                source_schema,
+                ..
+            } => {
+                assert_eq!(workspace_id, "ws-override");
+                assert_eq!(source_schema.as_deref(), Some("gold"));
+            }
+            ResolvedSource::Kusto { .. } => panic!("expected Lakehouse"),
+        }
+    }
+
+    #[test]
+    fn resolve_source_missing_item_errors() {
+        let ctx = BindingContext {
+            default_workspace_id: Some(WS.into()),
+            default_item_id: None,
+            default_schema: None,
+            spec: BindingSpec::default(),
+        };
+        let err = ctx.resolve_source(None).unwrap_err();
+        assert!(err.to_string().contains("item ID"), "{err}");
+    }
+
+    #[test]
+    fn resolve_binding_context_invalid_json_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("bad.json");
+        std::fs::write(&file, "{ not json").unwrap();
+        let err =
+            resolve_binding_context(Some("ws"), Some("lh"), None, None, file.to_str()).unwrap_err();
+        assert!(err.to_string().contains("Invalid binding map JSON"));
     }
 }
