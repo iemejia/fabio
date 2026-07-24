@@ -133,7 +133,12 @@ pub(super) async fn add_datasource(
             "fabricItemType": resolved_type,
         })
     } else {
-        let mut r = resp;
+        // The staging POST response returns the datasource object with PascalCase
+        // keys (FabricItemType, Id, DisplayName, ItemReference), unlike the
+        // camelCase used by list-datasources, fabio's empty-LRO fallback above,
+        // and every documented example. Normalize so the output contract is
+        // stable regardless of LRO timing — agents always read `data.fabricItemType`.
+        let mut r = camel_case_keys(resp);
         if let Some(obj) = r.as_object_mut() {
             obj.insert("status".to_string(), Value::from("datasource_added"));
         }
@@ -141,6 +146,33 @@ pub(super) async fn add_datasource(
     };
     output::render_object(cli, &result, "status");
     Ok(())
+}
+
+/// Recursively lower-case the first character of every object key.
+///
+/// The Fabric data-agent staging `POST .../datasources` response uses `PascalCase`
+/// keys while the rest of the API (and fabio's output contract) is camelCase.
+/// This makes the two agree without dropping any server-provided fields. Keys
+/// already in camelCase are unchanged (lower-casing an already-lowercase initial
+/// is a no-op), so it is safe to apply to mixed payloads.
+fn camel_case_keys(value: Value) -> Value {
+    match value {
+        Value::Object(map) => Value::Object(
+            map.into_iter()
+                .map(|(k, v)| (lower_first(&k), camel_case_keys(v)))
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.into_iter().map(camel_case_keys).collect()),
+        other => other,
+    }
+}
+
+/// Lower-case only the first character of a key (ASCII), leaving the rest intact.
+fn lower_first(key: &str) -> String {
+    let mut chars = key.chars();
+    chars.next().map_or_else(String::new, |first| {
+        first.to_ascii_lowercase().to_string() + chars.as_str()
+    })
 }
 
 /// Remove a data source from the agent.
@@ -514,6 +546,45 @@ async fn resolve_artifact(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use serde_json::json;
+
     // Integration tests in tests/e2e_dataagent.rs cover the full flow.
     // Unit tests for `resolve_artifact` and other async helpers require mocking.
+
+    #[test]
+    fn camel_case_keys_normalizes_pascal_top_level() {
+        let server = json!({
+            "Id": "abc",
+            "DisplayName": "MyOntology",
+            "FabricItemType": "Ontology",
+            "Type": "FabricItem"
+        });
+        let got = camel_case_keys(server);
+        assert_eq!(got["id"], "abc");
+        assert_eq!(got["displayName"], "MyOntology");
+        assert_eq!(got["fabricItemType"], "Ontology");
+        assert_eq!(got["type"], "FabricItem");
+        // The PascalCase keys must be gone (stable contract).
+        assert!(got.get("FabricItemType").is_none());
+    }
+
+    #[test]
+    fn camel_case_keys_recurses_into_nested_objects_and_arrays() {
+        let server = json!({
+            "ItemReference": {"ItemId": "i1", "WorkspaceId": "w1"},
+            "Elements": [{"IsSelected": true}]
+        });
+        let got = camel_case_keys(server);
+        assert_eq!(got["itemReference"]["itemId"], "i1");
+        assert_eq!(got["itemReference"]["workspaceId"], "w1");
+        assert_eq!(got["elements"][0]["isSelected"], true);
+    }
+
+    #[test]
+    fn camel_case_keys_leaves_camel_case_untouched() {
+        let already = json!({"fabricItemType": "Lakehouse", "id": "x"});
+        let got = camel_case_keys(already.clone());
+        assert_eq!(got, already);
+    }
 }

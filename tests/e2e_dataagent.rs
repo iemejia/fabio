@@ -2865,7 +2865,7 @@ fn dataagent_ground_on_ontology_and_select_elements() {
             .success(),
     );
     assert_eq!(
-        extract_data(&ds)["FabricItemType"],
+        extract_data(&ds)["fabricItemType"],
         "Ontology",
         "grounded on the ontology: {ds}"
     );
