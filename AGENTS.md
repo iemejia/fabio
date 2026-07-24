@@ -236,6 +236,7 @@ cargo test agent_schema_covers
 |------|---------------|------------|-------------------|
 | `src/commands/context/data/agent/commands.json` | clap metadata | `agent_schema_covers_all_groups`, `agent_schema_covers_all_subcommands` | New command/subcommand/flag added |
 | `.agents/skills/fabio-*/SKILL.md` (13 intent-scoped sub-skills) | `data/skills/*.json` (authored judgment) + `commands.json` (command index) | `subskills_match_generated` | New command/subcommand added, or a `data/skills/*.json` family edited |
+| `docs/src/content/docs/reference/commands/*.md` | `commands.json` via `docs/scripts/generate-reference.mjs` | none needed — gitignored and rebuilt on every `npm run build`/`dev`/`check` | Automatically on each docs build; never commit or hand-edit (the directory is gitignored) |
 
 ### How Drift Detection Works
 
@@ -320,6 +321,12 @@ When adding new features, commands, or discovering API behaviors, you MUST updat
    - Update feature descriptions if capabilities have expanded.
    - Update installation or usage instructions if relevant.
    - GitHub Actions examples and agent safety documentation live here.
+
+4. **Documentation website (`docs/`)** — Keep the published site in sync:
+   - **Command reference is automatic**: the per-group pages under `docs/src/content/docs/reference/commands/` are regenerated from `commands.json` on every build (`generate-reference.mjs`). After a command/flag change, just regenerate `commands.json` (see Auto-Generated Files) — the reference follows. Do NOT hand-edit those pages (gitignored).
+   - **Hand-authored pages CAN drift**: the tutorial, how-to guides, explanation pages, and `reference/global-flags.md` are authored by hand. If a change affects a global flag, an install method, an auth flow, or a documented workflow, update the relevant page — the auto-generated reference will NOT cover it. (Example: adding a global flag requires editing both `global_flags()` in `agent.rs` AND `docs/.../reference/global-flags.md`.)
+   - **Validate before committing**: run `npm run check` in `docs/` (type-check + internal link validation via `check-links.mjs`) so a link to a renamed/removed page or command group fails fast.
+   - See the **Documentation Website (MANDATORY)** section for build/deploy details.
 
 **Rules:**
 - Documentation updates are part of the feature — do NOT commit code without corresponding doc updates.
@@ -571,6 +578,87 @@ The full list of source files, test files, and config files is maintained in:
 **File:** `.agents/RELEVANT-FILES.md`
 
 Reference this file when looking up specific source locations or adding new files to the documentation.
+
+## Documentation Website (MANDATORY)
+
+The user-facing documentation site lives in `docs/` — an [Astro](https://astro.build) + [Starlight](https://starlight.astro.build) static site organized with the [Diátaxis](https://diataxis.fr) framework (Tutorials / How-to guides / Explanation / Reference). It is published to GitHub Pages at `https://iemejia.github.io/fabio/`. Full-text search is provided by Pagefind (built in).
+
+### Structure
+
+```
+docs/
+├── astro.config.mjs        — Starlight config: sidebar, base path, plugins
+├── package.json            — npm scripts + pinned deps (exact versions, no ^)
+├── scripts/
+│   ├── generate-reference.mjs   — generates reference/commands/*.md from commands.json
+│   ├── check-links.mjs          — dependency-free internal link validator
+│   └── *.test.mjs               — node:test unit tests for the scripts
+├── public/                 — static assets (favicon, images) served at site root
+└── src/
+    ├── pages/index.astro   — hand-authored landing page (own <html>, not Starlight)
+    ├── styles/             — landing + docs CSS
+    └── content/docs/
+        ├── getting-started.md          — Tutorial
+        ├── guides/*.md                 — How-to guides
+        ├── explanation/*.md            — Explanation
+        └── reference/
+            ├── index.md, global-flags.md  — hand-authored reference
+            └── commands/*.md              — GENERATED (gitignored), never edit
+```
+
+### Local development
+
+All commands run from `docs/`:
+
+```bash
+npm install                 # first time
+npm run dev                 # generate reference + start dev server
+npm run build               # generate reference + production build to dist/
+npm run check               # generate reference + astro type-check + internal link check
+npm run check:links         # internal link validation only (check-links.mjs)
+npm test                    # node:test unit tests for the generator + link checker
+```
+
+Requires Node 22.12+ (CI uses Node 24). `npm run build`/`dev`/`check` all run `generate:reference` first, so the reference is always fresh.
+
+### Generated vs. authored (critical)
+
+- **Generated (never hand-edit)**: `src/content/docs/reference/commands/*.md` — one page per command group, produced by `generate-reference.mjs` from `src/commands/context/data/agent/commands.json`. The directory is **gitignored** and rebuilt on every build. To change the reference, change the CLI (then regenerate `commands.json`) — see **Auto-Generated Files (MANDATORY)**.
+- **Authored (hand-maintained, CAN drift)**: the tutorial, guides, explanation pages, `reference/index.md`, `reference/global-flags.md`, the landing page, and styles. These must be updated by hand when the CLI surface they describe changes (e.g. a new global flag → update `reference/global-flags.md`).
+
+### Build validation
+
+`npm run check` (also run in CI) enforces two gates:
+1. `astro check` — TypeScript/Astro diagnostics.
+2. `check-links.mjs` — validates every internal link in authored pages and the landing page resolves to a real route (authored page, generated command group from `commands.json`, or public asset). No network calls, no server — deterministic and cross-platform.
+
+### Deployment
+
+`.github/workflows/docs.yml` builds on every push/PR that touches `docs/**`, `commands.json`, or the workflow, and deploys to GitHub Pages **only on push to `main`**:
+- **build job** (`docs-build-<ref>`, `cancel-in-progress: true`): `npm ci` → `npm test` → `npm run check` → `npm run build` → upload Pages artifact. Runs on PRs too (validation without deploy).
+- **deploy job** (`group: pages`, `cancel-in-progress: false`): serializes deploys and never cancels one mid-flight.
+- **Base path**: `astro.config.mjs` derives `site`/`base` from the auto-provided `GITHUB_REPOSITORY` env var (→ `https://iemejia.github.io` + `/fabio`). No workspace secret needed. If a custom apex domain is ever added, `BASE_PATH` must be overridden in the workflow (currently implicit).
+- **One-time prerequisite**: the repo's **Settings → Pages → Source must be set to "GitHub Actions"** (not "Deploy from a branch") or the deploy job fails.
+
+### When and how to keep it updated
+
+| Change | Action |
+|--------|--------|
+| Add/modify/remove a command, subcommand, or flag | Regenerate `commands.json` (see Auto-Generated Files). The reference pages follow automatically on the next build — no docs edit needed. |
+| Add/change a **global flag** | Update `global_flags()` in `agent.rs` AND `docs/.../reference/global-flags.md` (both are hand-maintained). |
+| Change an install method, auth flow, or documented workflow | Update the relevant authored page (`getting-started.md`, a guide, or an explanation page). |
+| Add a new authored page | Add it under the correct Diátaxis directory; sidebar auto-generates for `guides/` and `explanation/`. Run `npm run check` to validate links. |
+
+### Best practices (MANDATORY)
+
+- **Never hand-edit generated pages** (`reference/commands/*.md`) — they are gitignored and overwritten.
+- **Pin exact dependency versions** in `docs/package.json` (no `^`/`~`), matching the repo-wide freshness policy. Validate against npm before bumping.
+- **SHA-pin all GitHub Actions** in `docs.yml` with a trailing version comment (repo-wide rule).
+- **Use relative links in authored Markdown** (e.g. `../guides/agents/`), not root-absolute links — Astro does not rebase root-absolute Markdown links, so absolute links break under the `/fabio` base path. `check-links.mjs` validates relative resolution.
+- **Run `npm run check` before committing** any `docs/` change; it mirrors CI.
+- **Add unit tests** for any new/changed logic in `docs/scripts/*.mjs` (`node:test`, colocated `*.test.mjs`).
+
+A contributor-facing quickstart also lives in `docs/README.md`.
 
 ## Docker & Devcontainer
 
