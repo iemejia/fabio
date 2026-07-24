@@ -1551,12 +1551,17 @@ fn generate_fabric_parts(
                 properties.push(prop_def);
             }
 
-            binding_props.push(BindingProp {
-                id: prop_id.clone(),
-                label: prop.label.clone(),
-                is_time_series: time_series,
-                is_identifier: prop.is_identifier && !time_series && !untyped,
-            });
+            // Untyped properties (valueType Any) are not bindable — the server
+            // rejects a propertyBinding that targets one — so keep them out of
+            // the data-binding property set entirely.
+            if !untyped {
+                binding_props.push(BindingProp {
+                    id: prop_id.clone(),
+                    label: prop.label.clone(),
+                    is_time_series: time_series,
+                    is_identifier: prop.is_identifier && !time_series,
+                });
+            }
 
             // Identifiers and the display name come from static (non-time-series,
             // non-untyped) properties.
@@ -4152,5 +4157,38 @@ mod tests {
             rl["resourceLinks"][0]["itemId"],
             "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
         );
+    }
+
+    #[test]
+    fn untyped_properties_are_not_bound() {
+        // valueType Any props must never appear in a DataBinding's
+        // propertyBindings (the Fabric server rejects that).
+        let rdf = r#"<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:ont="http://ex.org/">
+  <owl:Class rdf:about="http://ex.org/Thing"><rdfs:label>Thing</rdfs:label></owl:Class>
+  <owl:DatatypeProperty rdf:about="http://ex.org/thingId">
+    <rdfs:label>thingId</rdfs:label><rdfs:domain rdf:resource="http://ex.org/Thing"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <ont:isIdentifier rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</ont:isIdentifier>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="http://ex.org/payload">
+    <rdfs:label>payload</rdfs:label><rdfs:domain rdf:resource="http://ex.org/Thing"/>
+    <ont:isUntyped rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</ont:isUntyped>
+  </owl:DatatypeProperty>
+</rdf:RDF>"#;
+        let model = parse_rdf_xml(rdf);
+        let parts =
+            generate_fabric_parts(&model, Some(&lakehouse_ctx(BindingSpec::default()))).unwrap();
+        let db = payload(find_part(&parts, "EntityTypes/8880000000001/DataBindings"));
+        let cols: Vec<&str> = db["dataBindingConfiguration"]["propertyBindings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| b["sourceColumnName"].as_str().unwrap())
+            .collect();
+        assert_eq!(cols, vec!["thingId"], "untyped 'payload' must not be bound");
     }
 }
