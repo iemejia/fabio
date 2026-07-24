@@ -7295,7 +7295,10 @@
         "examples": [
           "fabio ontology import --workspace $WS --id $ONT --file cosmic-coffee.rdf",
           "fabio ontology import --workspace $WS --id $ONT --file domain-model.jsonld",
-          "fabio ontology import --file ontology.rdf --output-dir ./fabric-format/"
+          "fabio ontology import --file ontology.rdf --output-dir ./fabric-format/",
+          "fabio ontology import --workspace $WS --id $ONT --file clinical-supply-chain.rdf --lakehouse $LAKEHOUSE --bindings bindings.json",
+          "fabio ontology import --workspace $WS --id $ONT --file domain-model.rdf --lakehouse $LAKEHOUSE --lakehouse-schema sales",
+          "fabio ontology import --workspace $WS --id $ONT --file telemetry.rdf --eventhouse $EH --cluster-uri https://trd-xxxx.kusto.fabric.microsoft.com --database telemetry --timestamp-column reading_ts"
         ]
       },
       "bind": {
@@ -7349,7 +7352,12 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio ontology bind --workspace $WS --id $ONT --lakehouse $LAKEHOUSE --bindings bindings.json",
+          "fabio ontology bind --workspace $WS --id $ONT --lakehouse $LAKEHOUSE --lakehouse-schema sales",
+          "fabio ontology bind --workspace $WS --id $ONT --eventhouse $EH --cluster-uri https://trd-xxxx.kusto.fabric.microsoft.com --database telemetry --timestamp-column reading_ts --bindings bindings.json"
+        ]
       },
       "export": {
         "description": "Export a Fabric Ontology to OWL format (RDF/XML or JSON-LD)",
