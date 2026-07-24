@@ -26,3 +26,9 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
+    ignore:
+      # @astrojs/check only supports typescript ^5 || ^6. Block major 7 (the
+      # native-preview line) until @astrojs/check declares support, otherwise
+      # `npm ci` fails with ERESOLVE and the docs deploy breaks.
+      - dependency-name: "typescript"
+        versions: [">=7"]
