@@ -1007,6 +1007,30 @@ fn global_flags() -> Vec<Flag> {
             description: "Enable HTTP/LRO/auth diagnostic tracing on stderr. For debugging only — do not use in normal operation. Suppressed by --quiet.",
             default: Some("false"),
         },
+        Flag {
+            name: "--readonly",
+            kind: "bool",
+            description: "Block all mutating operations (POST/PUT/PATCH/DELETE) before network dispatch. Read-only operations (GET/HEAD) are unaffected. Use for agent safety.",
+            default: Some("false"),
+        },
+        Flag {
+            name: "--wrap-untrusted",
+            kind: "bool",
+            description: "Wrap API-returned free-text fields (displayName, description, message) with untrusted-content markers to prevent prompt injection when an agent processes fabio output.",
+            default: Some("false"),
+        },
+        Flag {
+            name: "--enable-commands",
+            kind: "string",
+            description: "Allow only these comma-separated command paths; unlisted commands are blocked. Parent paths allow children (e.g. \"workspace\" allows all workspace subcommands).",
+            default: None,
+        },
+        Flag {
+            name: "--disable-commands",
+            kind: "string",
+            description: "Block these comma-separated command paths; deny rules override allow rules (e.g. \"workspace.delete,lakehouse.delete\").",
+            default: None,
+        },
     ]
 }
 
@@ -1563,6 +1587,40 @@ mod tests {
                 missing_groups.is_empty(),
                 "commands.json is missing these command groups: {missing_groups:?}\n\
                  Run `cargo test generate_agent_schema -- --ignored` to regenerate."
+            );
+        });
+    }
+
+    /// Drift detection: the agent-facing `global_flags()` schema (emitted by
+    /// `fabio context agent`) must exactly match the global flags defined on the
+    /// clap `Cli`. Prevents the two hand-maintained surfaces from drifting.
+    #[test]
+    fn global_flags_match_clap_globals() {
+        with_large_stack(|| {
+            use clap::CommandFactory;
+            let cmd = crate::cli::Cli::command();
+
+            let clap_globals: std::collections::BTreeSet<String> = cmd
+                .get_arguments()
+                .filter(|arg| arg.is_global_set())
+                .filter_map(clap::Arg::get_long)
+                .filter(|long| *long != "help" && *long != "version")
+                .map(|long| format!("--{long}"))
+                .collect();
+
+            let documented: std::collections::BTreeSet<String> = global_flags()
+                .iter()
+                .map(|flag| flag.name.to_owned())
+                .collect();
+
+            let missing: Vec<_> = clap_globals.difference(&documented).cloned().collect();
+            let extra: Vec<_> = documented.difference(&clap_globals).cloned().collect();
+
+            assert!(
+                missing.is_empty() && extra.is_empty(),
+                "global_flags() in agent.rs is out of sync with the clap Cli global flags.\n\
+                 Missing (defined on Cli, absent from global_flags()): {missing:?}\n\
+                 Extra (in global_flags() but not a clap global): {extra:?}"
             );
         });
     }
