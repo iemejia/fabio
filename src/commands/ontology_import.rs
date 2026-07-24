@@ -458,6 +458,7 @@ pub fn serialize_rdf_xml_from_model(builder: &OwlModelBuilder) -> String {
                 range_uri: range.clone(),
             })
             .collect(),
+        ..OwlModel::default()
     };
     serialize_to_rdf_xml(&model)
 }
@@ -469,6 +470,8 @@ struct OwlModel {
     classes: Vec<OwlClass>,
     datatype_properties: Vec<OwlDatatypeProperty>,
     object_properties: Vec<OwlObjectProperty>,
+    /// class URI → super-class URI (from `rdfs:subClassOf`), for `baseEntityTypeId`.
+    subclass_of: HashMap<String, String>,
 }
 
 #[derive(Debug)]
@@ -509,6 +512,7 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
     let mut current_range = String::new();
     let mut current_prop_type = String::new();
     let mut current_is_id = false;
+    let mut current_super_class = String::new();
     let mut reading_label = false;
     let mut reading_prop_type = false;
     let mut reading_is_id = false;
@@ -527,6 +531,7 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
                         in_class = true;
                         current_uri = extract_rdf_about(e);
                         current_label.clear();
+                        current_super_class.clear();
                     }
                     "DatatypeProperty" => {
                         in_datatype_prop = true;
@@ -547,6 +552,11 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
                     "label" => reading_label = true,
                     "propertyType" => reading_prop_type = true,
                     "isIdentifier" => reading_is_id = true,
+                    "subClassOf" => {
+                        if in_class {
+                            current_super_class = extract_rdf_resource(e);
+                        }
+                    }
                     "domain" => {
                         if in_datatype_prop || in_object_prop {
                             current_domain = extract_rdf_resource(e);
@@ -575,6 +585,11 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
                 match local_name.as_str() {
                     "Class" => {
                         if in_class && !current_uri.is_empty() {
+                            if !current_super_class.is_empty() {
+                                model
+                                    .subclass_of
+                                    .insert(current_uri.clone(), current_super_class.clone());
+                            }
                             model.classes.push(OwlClass {
                                 uri: current_uri.clone(),
                                 label: {
@@ -702,6 +717,7 @@ fn playground_type_to_fabric(prop_type: &str) -> String {
 
 // ─── JSON-LD Parser ──────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_lines)]
 fn parse_json_ld(content: &str) -> Result<OwlModel> {
     let root: Value = serde_json::from_str(content)?;
 
@@ -727,6 +743,15 @@ fn parse_json_ld(content: &str) -> Result<OwlModel> {
 
         match node_type {
             "owl:Class" => {
+                if let Some(sup) = node
+                    .get("rdfs:subClassOf")
+                    .and_then(|d| d.get("@id").and_then(Value::as_str).or_else(|| d.as_str()))
+                    && !sup.is_empty()
+                {
+                    model
+                        .subclass_of
+                        .insert(node_id.to_string(), sup.to_string());
+                }
                 model.classes.push(OwlClass {
                     uri: node_id.to_string(),
                     label: if label.is_empty() {
@@ -878,6 +903,12 @@ struct EntityBindingSpec {
     /// Maps ontology property label → source column name.
     #[serde(default)]
     columns: HashMap<String, String>,
+    /// Property labels to model as time-series (emitted under `timeseriesProperties`).
+    #[serde(default)]
+    timeseries_properties: Vec<String>,
+    /// Base entity type name for inheritance (overrides `rdfs:subClassOf`).
+    #[serde(default)]
+    base_entity_type: Option<String>,
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -1289,18 +1320,40 @@ fn generate_fabric_parts(
     // Per-class identifier property ids (full entityIdParts) for contextualizations.
     let mut identifier_ids: HashMap<String, Vec<String>> = HashMap::new();
 
+    // Sanitized class name → type id (for binding-map baseEntityType overrides).
+    let class_id_by_name: HashMap<String, String> = model
+        .classes
+        .iter()
+        .filter_map(|c| {
+            class_ids
+                .get(&c.uri)
+                .map(|id| (sanitize_name(&c.label), id.clone()))
+        })
+        .collect();
+
     // Generate EntityTypes
     for class in &model.classes {
         let type_id = class_ids.get(&class.uri).unwrap();
 
-        // Collect properties for this class
+        let entity_spec = binding.and_then(|b| entity_binding(&b.spec, class));
+
+        // A property is time-series when the binding map lists it under
+        // entities.<name>.timeseriesProperties.
+        let is_time_series = |label: &str| -> bool {
+            entity_spec.is_some_and(|e| {
+                e.timeseries_properties
+                    .iter()
+                    .any(|t| t == label || sanitize_name(t) == sanitize_name(label))
+            })
+        };
+
+        // Collect properties for this class, split into static vs time-series.
         let mut properties: Vec<Value> = Vec::new();
+        let mut timeseries_properties: Vec<Value> = Vec::new();
         let mut id_parts: Vec<String> = Vec::new();
         let mut display_name_id: Option<String> = None;
         // Ordered (source column, property id) pairs for the data binding.
         let mut column_bindings: Vec<(String, String)> = Vec::new();
-
-        let entity_spec = binding.and_then(|b| entity_binding(&b.spec, class));
 
         for (pi, prop) in model
             .datatype_properties
@@ -1309,11 +1362,19 @@ fn generate_fabric_parts(
             .enumerate()
         {
             let prop_id = format!("{type_id}{:02}", pi + 1);
-            properties.push(serde_json::json!({
+            let time_series = is_time_series(&prop.label);
+            let prop_def = serde_json::json!({
                 "id": prop_id,
                 "name": sanitize_name(&prop.label),
+                "redefines": Value::Null,
+                "baseTypeNamespaceType": Value::Null,
                 "valueType": prop.property_type,
-            }));
+            });
+            if time_series {
+                timeseries_properties.push(prop_def);
+            } else {
+                properties.push(prop_def);
+            }
 
             // Source column defaults to the property label; overridable per binding map.
             let source_column = entity_spec
@@ -1321,16 +1382,16 @@ fn generate_fabric_parts(
                 .unwrap_or_else(|| prop.label.clone());
             column_bindings.push((source_column, prop_id.clone()));
 
-            if prop.is_identifier {
+            // Identifiers and the display name come from static (non-time-series) props.
+            if prop.is_identifier && !time_series {
                 id_parts.push(prop_id.clone());
             }
-            // Use first string property as display name if no identifier found
-            if display_name_id.is_none() && prop.property_type == "String" {
+            if display_name_id.is_none() && !time_series && prop.property_type == "String" {
                 display_name_id = Some(prop_id.clone());
             }
         }
 
-        // If no identifier was marked, use first property
+        // If no identifier was marked, use the first static property
         if id_parts.is_empty()
             && let Some(first) = properties.first()
             && let Some(pid) = first.get("id").and_then(Value::as_str)
@@ -1340,10 +1401,22 @@ fn generate_fabric_parts(
 
         identifier_ids.insert(class.uri.clone(), id_parts.clone());
 
-        let entity_def = serde_json::json!({
+        // baseEntityTypeId from rdfs:subClassOf, overridable by binding-map baseEntityType.
+        let base_entity_type_id = entity_spec
+            .and_then(|e| e.base_entity_type.as_deref())
+            .and_then(|n| class_id_by_name.get(&sanitize_name(n)).cloned())
+            .or_else(|| {
+                model
+                    .subclass_of
+                    .get(&class.uri)
+                    .and_then(|sup| class_ids.get(sup).cloned())
+            });
+
+        let mut entity_def = serde_json::json!({
             "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/ontology/entityType/1.0.0/schema.json",
             "id": type_id,
             "namespace": "usertypes",
+            "baseEntityTypeId": base_entity_type_id,
             "name": sanitize_name(&class.label),
             "namespaceType": "Custom",
             "visibility": "Visible",
@@ -1351,6 +1424,9 @@ fn generate_fabric_parts(
             "entityIdParts": id_parts,
             "properties": properties,
         });
+        if !timeseries_properties.is_empty() {
+            entity_def["timeseriesProperties"] = Value::from(timeseries_properties.clone());
+        }
 
         parts.push(FabricPart {
             path: format!("EntityTypes/{type_id}/definition.json"),
@@ -1366,6 +1442,7 @@ fn generate_fabric_parts(
                 &class.label.to_lowercase(),
                 column_bindings,
                 entity_spec,
+                !timeseries_properties.is_empty(),
             )?);
         }
     }
@@ -1441,6 +1518,7 @@ fn build_entity_data_binding(
     default_table: &str,
     column_bindings: Vec<(String, String)>,
     entity_spec: Option<&EntityBindingSpec>,
+    has_timeseries: bool,
 ) -> Result<FabricPart> {
     let table = entity_spec
         .and_then(|e| e.table.clone())
@@ -1449,12 +1527,22 @@ fn build_entity_data_binding(
     let data_binding_type = entity_spec
         .and_then(|e| e.data_binding_type.clone())
         .or_else(|| ctx.default_data_binding_type.clone())
+        .or_else(|| has_timeseries.then(|| "TimeSeries".to_string()))
         .unwrap_or_else(|| "NonTimeSeries".to_string());
     if data_binding_type != "NonTimeSeries" && data_binding_type != "TimeSeries" {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
             format!("Entity '{entity_name}' has invalid dataBindingType '{data_binding_type}'."),
             "dataBindingType must be 'NonTimeSeries' or 'TimeSeries'.",
+        )
+        .into());
+    }
+    if has_timeseries && data_binding_type != "TimeSeries" {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Entity '{entity_name}' has timeseriesProperties but a NonTimeSeries binding."),
+            "Time-series properties require a TimeSeries data binding; set \
+             entities.<name>.dataBindingType to 'TimeSeries' (and a timestampColumn).",
         )
         .into());
     }
@@ -1856,6 +1944,7 @@ fn generate_bindings_for_live(
             &entity.name.to_lowercase(),
             column_bindings,
             entity_spec,
+            false,
         )?);
         bound_entities.insert(entity.id.clone());
     }
@@ -2220,6 +2309,7 @@ mod tests {
     #[test]
     fn test_generate_fabric_parts() {
         let model = OwlModel {
+            subclass_of: std::collections::HashMap::new(),
             classes: vec![
                 OwlClass {
                     uri: "http://ex.org/A".to_string(),
@@ -2280,6 +2370,7 @@ mod tests {
     #[test]
     fn test_serialize_to_rdf_xml() {
         let model = OwlModel {
+            subclass_of: std::collections::HashMap::new(),
             classes: vec![OwlClass {
                 uri: "http://ex.org/Thing".to_string(),
                 label: "Thing".to_string(),
@@ -2303,6 +2394,7 @@ mod tests {
     #[test]
     fn test_serialize_to_jsonld() {
         let model = OwlModel {
+            subclass_of: std::collections::HashMap::new(),
             classes: vec![
                 OwlClass {
                     uri: "http://ex.org/A".to_string(),
@@ -2378,6 +2470,7 @@ mod tests {
     /// Study(studyId id, studyName) --hasSite--> Site(siteId id).
     fn binding_model() -> OwlModel {
         OwlModel {
+            subclass_of: std::collections::HashMap::new(),
             classes: vec![
                 OwlClass {
                     uri: "http://ex.org/Study".into(),
@@ -2584,6 +2677,7 @@ mod tests {
     /// A(a1,a2 composite id) --linked--> B(b1 id).
     fn composite_model() -> OwlModel {
         OwlModel {
+            subclass_of: std::collections::HashMap::new(),
             classes: vec![
                 OwlClass {
                     uri: "http://ex.org/A".into(),
@@ -3157,5 +3251,171 @@ mod tests {
         assert!(name_matches("has_site", "has_site"));
         assert!(name_matches("has site", "has_site"));
         assert!(!name_matches("has site", "site"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Inheritance (rdfs:subClassOf -> baseEntityTypeId) and timeseriesProperties
+    // -----------------------------------------------------------------------
+
+    const SUBCLASS_RDF: &str = r#"<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:ont="http://ex.org/">
+  <owl:Class rdf:about="http://ex.org/Asset">
+    <rdfs:label>Asset</rdfs:label>
+  </owl:Class>
+  <owl:DatatypeProperty rdf:about="http://ex.org/assetId">
+    <rdfs:label>assetId</rdfs:label>
+    <rdfs:domain rdf:resource="http://ex.org/Asset"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <ont:isIdentifier rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</ont:isIdentifier>
+  </owl:DatatypeProperty>
+  <owl:Class rdf:about="http://ex.org/Pump">
+    <rdfs:label>Pump</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://ex.org/Asset"/>
+  </owl:Class>
+  <owl:DatatypeProperty rdf:about="http://ex.org/pumpId">
+    <rdfs:label>pumpId</rdfs:label>
+    <rdfs:domain rdf:resource="http://ex.org/Pump"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <ont:isIdentifier rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</ont:isIdentifier>
+  </owl:DatatypeProperty>
+</rdf:RDF>"#;
+
+    #[test]
+    fn parse_rdf_xml_reads_subclass_of() {
+        let model = parse_rdf_xml(SUBCLASS_RDF);
+        assert_eq!(
+            model
+                .subclass_of
+                .get("http://ex.org/Pump")
+                .map(String::as_str),
+            Some("http://ex.org/Asset")
+        );
+        assert!(!model.subclass_of.contains_key("http://ex.org/Asset"));
+    }
+
+    #[test]
+    fn subclass_of_sets_base_entity_type_id_and_validates() {
+        let model = parse_rdf_xml(SUBCLASS_RDF);
+        let parts = generate_fabric_parts(&model, None).unwrap();
+        // Asset is class 1, Pump class 2 (document order).
+        let asset = payload(find_part(
+            &parts,
+            "EntityTypes/8880000000001/definition.json",
+        ));
+        let pump = payload(find_part(
+            &parts,
+            "EntityTypes/8880000000002/definition.json",
+        ));
+        assert_schema_valid("entityType", &asset);
+        assert_schema_valid("entityType", &pump);
+        assert_eq!(asset["name"], "Asset");
+        assert!(
+            asset["baseEntityTypeId"].is_null(),
+            "Asset has no super-class"
+        );
+        assert_eq!(pump["name"], "Pump");
+        assert_eq!(
+            pump["baseEntityTypeId"], "8880000000001",
+            "Pump inherits Asset"
+        );
+    }
+
+    #[test]
+    fn binding_map_base_entity_type_overrides_subclass() {
+        // No OWL subClassOf; the binding map declares the base type by name.
+        let model = binding_model(); // Study, Site
+        let spec: BindingSpec =
+            serde_json::from_str(r#"{"entities":{"Site":{"baseEntityType":"Study"}}}"#).unwrap();
+        let parts = generate_fabric_parts(&model, Some(&lakehouse_ctx(spec))).unwrap();
+        let site = payload(find_part(
+            &parts,
+            "EntityTypes/8880000000002/definition.json",
+        ));
+        assert_eq!(site["name"], "Site");
+        assert_eq!(site["baseEntityTypeId"], "8880000000001"); // Study's id
+    }
+
+    /// Sensor(sensorId id String; ts `DateTime`; temp Double).
+    fn sensor_model() -> OwlModel {
+        OwlModel {
+            classes: vec![OwlClass {
+                uri: "http://ex.org/Sensor".into(),
+                label: "Sensor".into(),
+            }],
+            datatype_properties: vec![
+                OwlDatatypeProperty {
+                    label: "sensorId".into(),
+                    domain_uri: "http://ex.org/Sensor".into(),
+                    property_type: "String".into(),
+                    is_identifier: true,
+                },
+                OwlDatatypeProperty {
+                    label: "ts".into(),
+                    domain_uri: "http://ex.org/Sensor".into(),
+                    property_type: "DateTime".into(),
+                    is_identifier: false,
+                },
+                OwlDatatypeProperty {
+                    label: "temp".into(),
+                    domain_uri: "http://ex.org/Sensor".into(),
+                    property_type: "Double".into(),
+                    is_identifier: false,
+                },
+            ],
+            object_properties: vec![],
+            ..OwlModel::default()
+        }
+    }
+
+    #[test]
+    fn timeseries_properties_are_split_and_schema_valid() {
+        let spec: BindingSpec = serde_json::from_str(
+            r#"{"entities":{"Sensor":{"dataBindingType":"TimeSeries","timestampColumn":"ts","timeseriesProperties":["ts","temp"]}}}"#,
+        ).unwrap();
+        let parts = generate_fabric_parts(&sensor_model(), Some(&lakehouse_ctx(spec))).unwrap();
+
+        let def = payload(find_part(
+            &parts,
+            "EntityTypes/8880000000001/definition.json",
+        ));
+        assert_schema_valid("entityType", &def);
+        // Static props: only sensorId. Time-series props: ts, temp.
+        let props: Vec<&str> = def["properties"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(props, vec!["sensorId"]);
+        let ts_props: Vec<&str> = def["timeseriesProperties"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(ts_props, vec!["ts", "temp"]);
+        // Identifier is the static property.
+        assert_eq!(def["entityIdParts"][0], "888000000000101");
+
+        // The data binding is TimeSeries and validates.
+        let db = payload(find_part(&parts, "EntityTypes/8880000000001/DataBindings"));
+        assert_schema_valid("dataBinding", &db);
+        assert_eq!(
+            db["dataBindingConfiguration"]["dataBindingType"],
+            "TimeSeries"
+        );
+    }
+
+    #[test]
+    fn timeseries_properties_require_timeseries_binding() {
+        // Marked time-series props but a NonTimeSeries binding -> error.
+        let spec: BindingSpec = serde_json::from_str(
+            r#"{"entities":{"Sensor":{"dataBindingType":"NonTimeSeries","timeseriesProperties":["temp"]}}}"#,
+        ).unwrap();
+        let err = generate_fabric_parts(&sensor_model(), Some(&lakehouse_ctx(spec))).unwrap_err();
+        assert!(err.to_string().contains("timeseriesProperties"), "{err}");
     }
 }

@@ -10,7 +10,7 @@
       "bindings": 0
     }
   },
-  "notes": "Detects format from file extension (.rdf/.owl → RDF/XML, .jsonld/.json → JSON-LD) or content sniffing. Use --output-dir instead of --workspace/--id for local export only (no API call). Supports owl:Class → EntityType, owl:DatatypeProperty → properties, owl:ObjectProperty → RelationshipType, ont:isIdentifier → entityIdParts. Type/property/relationship names are sanitized to the schema pattern ^[a-zA-Z][a-zA-Z0-9_-]{0,127}$ (e.g. 'has site' → 'has_site'). By default this generates only the type schema; add --lakehouse (and optionally --bindings) to also generate DataBindings and relationship Contextualizations so the ontology is queryable.",
+  "notes": "Detects format from file extension (.rdf/.owl → RDF/XML, .jsonld/.json → JSON-LD) or content sniffing. Use --output-dir instead of --workspace/--id for local export only (no API call). Supports owl:Class → EntityType, owl:DatatypeProperty → properties, owl:ObjectProperty → RelationshipType, ont:isIdentifier → entityIdParts, rdfs:subClassOf → baseEntityTypeId (entity type inheritance). Type/property/relationship names are sanitized to the schema pattern ^[a-zA-Z][a-zA-Z0-9_-]{0,127}$ (e.g. 'has site' → 'has_site'). By default this generates only the type schema; add --lakehouse (and optionally --bindings) to also generate DataBindings and relationship Contextualizations so the ontology is queryable.",
   "binding_example": {
     "command": "fabio ontology import --workspace $WS_ID --id $ONTOLOGY_ID --file clinical-supply-chain.rdf --lakehouse $LAKEHOUSE_ID --bindings bindings.json",
     "description": "Import an ontology AND bind every entity/relationship type to data-source tables in one call. Generated DataBindings and Contextualizations conform to the official Fabric schemas (item/ontology/dataBinding and contextualization). Entity DataBindings default by convention (table = lowercased class name, source column = property label); the binding map overrides those and supplies relationship key columns. Binding IDs are deterministic (UUIDv5) so re-imports update in place.",
@@ -24,13 +24,13 @@
       },
       "entities": {
         "Study": {"table": "study", "columns": {"studyId": "study_id"}},
-        "Sensor": {"dataBindingType": "TimeSeries", "timestampColumn": "reading_ts", "source": {"type": "KustoTable", "itemId": "<eventhouse-id>", "clusterUri": "https://x.kusto.windows.net", "databaseName": "telemetry"}}
+        "Sensor": {"baseEntityType": "Asset", "dataBindingType": "TimeSeries", "timestampColumn": "reading_ts", "timeseriesProperties": ["temperature", "reading_ts"], "source": {"type": "KustoTable", "itemId": "<eventhouse-id>", "clusterUri": "https://x.kusto.windows.net", "databaseName": "telemetry"}}
       },
       "relationships": {
         "has site": {"table": "site", "sourceColumns": ["study_id"], "targetColumns": ["siteId"]}
       }
     },
-    "notes": "sourceColumns/targetColumns are arrays: one column per entityIdParts entry, so composite keys are supported. dataBindingType is 'NonTimeSeries' (default, LakehouseTable only) or 'TimeSeries' (LakehouseTable or KustoTable/Eventhouse, requires timestampColumn). Relationship Contextualizations must use a LakehouseTable source. Generated DataBindings force sourceType as the first key in sourceTableProperties, as the Fabric API requires. Relationships absent from the map emit a type with no contextualization (a warning is printed)."
+    "notes": "sourceColumns/targetColumns are arrays: one column per entityIdParts entry, so composite keys are supported. dataBindingType is 'NonTimeSeries' (default, LakehouseTable only) or 'TimeSeries' (LakehouseTable or KustoTable/Eventhouse, requires timestampColumn). Properties listed in entities.<name>.timeseriesProperties are emitted under the entity's timeseriesProperties (and force a TimeSeries binding); the rest stay static properties. entities.<name>.baseEntityType names the parent entity type (overrides rdfs:subClassOf). Relationship Contextualizations must use a LakehouseTable source. Generated DataBindings force sourceType as the first key in sourceTableProperties, as the Fabric API requires. Relationships absent from the map emit a type with no contextualization (a warning is printed)."
   },
   "query_examples": [
     {"query": "data.entity_types", "description": "Count of imported entity types."},
