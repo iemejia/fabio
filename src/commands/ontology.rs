@@ -698,6 +698,8 @@ async fn update_definition(
 
     let body = serde_json::json!({"definition": def});
 
+    ensure_platform_when_updating_metadata(&def, update_metadata)?;
+
     let path = if update_metadata {
         format!("/workspaces/{workspace}/ontologies/{id}/updateDefinition?updateMetadata=True")
     } else {
@@ -708,6 +710,41 @@ async fn update_definition(
 
     output::render_object(cli, &data, "status");
     Ok(())
+}
+
+/// Fail fast when `--update-metadata` is requested but the definition has no
+/// `.platform` part. Fabric requires a `.platform` part (it carries the item's
+/// display name, description, and type) to honor `updateMetadata=true`, and
+/// otherwise rejects the whole upload with `InvalidInput: UpdateMetadata is true
+/// but .platform file was not provided`. That error is only visible after the
+/// (potentially large) definition is uploaded and the LRO runs, so we check
+/// locally first and return an actionable hint instead — notably, an
+/// `ontology import`-generated directory never contains a `.platform`.
+fn ensure_platform_when_updating_metadata(def: &Value, update_metadata: bool) -> Result<()> {
+    if !update_metadata {
+        return Ok(());
+    }
+    let has_platform = def
+        .get("parts")
+        .and_then(Value::as_array)
+        .is_some_and(|parts| {
+            parts
+                .iter()
+                .any(|p| p.get("path").and_then(Value::as_str) == Some(".platform"))
+        });
+    if has_platform {
+        return Ok(());
+    }
+    Err(FabioError::with_hint(
+        ErrorCode::InvalidInput,
+        "--update-metadata requires a .platform part in the definition, but none was found",
+        "Fabric rejects updateMetadata=true unless the definition includes a .platform part \
+         (it carries the item's display name, description, and type). Add a .platform file to the \
+         definition directory, or drop --update-metadata to replace only the definition parts. \
+         Note: `fabio ontology import` does not generate a .platform, so an import-generated \
+         directory must be updated without --update-metadata.",
+    )
+    .into())
 }
 
 /// Build a Fabric definition payload from a raw RDF file.
@@ -1631,6 +1668,41 @@ GRAPH :EventGraph {
         let input = br#"{"dataBindingConfiguration":{"dataBindingType":"NonTimeSeries"}}"#;
         let result = normalize_data_binding(input);
         assert!(result.is_ok());
+    }
+
+    // -----------------------------------------------------------------------
+    // Tests for ensure_platform_when_updating_metadata
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn platform_check_skipped_when_metadata_not_requested() {
+        // Without --update-metadata, a missing .platform is fine.
+        let def = serde_json::json!({"parts": [{"path": "definition.json"}]});
+        assert!(ensure_platform_when_updating_metadata(&def, false).is_ok());
+    }
+
+    #[test]
+    fn platform_check_passes_when_platform_present() {
+        let def = serde_json::json!({"parts": [
+            {"path": "definition.json"},
+            {"path": ".platform"},
+        ]});
+        assert!(ensure_platform_when_updating_metadata(&def, true).is_ok());
+    }
+
+    #[test]
+    fn platform_check_fails_fast_without_platform() {
+        // The import-generated shape: no .platform part.
+        let def = serde_json::json!({"parts": [
+            {"path": "definition.json"},
+            {"path": "EntityTypes/8880000000001/definition.json"},
+        ]});
+        let err = ensure_platform_when_updating_metadata(&def, true).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains(".platform"),
+            "error should mention .platform: {msg}"
+        );
     }
 
     // -----------------------------------------------------------------------
