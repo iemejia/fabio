@@ -304,7 +304,15 @@ pub enum AdminCommand {
     // ── Domains ──────────────────────────────────────────────────────────
     /// List domains (admin view)
     #[command(display_order = 50)]
-    ListDomains,
+    ListDomains {
+        /// Only return domains with workspaces assigned that contain one or more items the user has at least read access to
+        #[arg(long)]
+        non_empty_only: bool,
+
+        /// Only return domains that have at least one workspace assigned to them, or to any of their subdomains
+        #[arg(long)]
+        with_assigned_workspaces_only: bool,
+    },
     /// Create a domain
     #[command(display_order = 51)]
     CreateDomain {
@@ -608,7 +616,13 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &AdminCommand) -
             items::bulk_remove_sharing_links(cli, client, file.as_deref(), content.as_deref()).await
         }
         // Domains
-        AdminCommand::ListDomains => domains::list_domains(cli, client).await,
+        AdminCommand::ListDomains {
+            non_empty_only,
+            with_assigned_workspaces_only,
+        } => {
+            domains::list_domains(cli, client, *non_empty_only, *with_assigned_workspaces_only)
+                .await
+        }
         AdminCommand::CreateDomain {
             name,
             description,

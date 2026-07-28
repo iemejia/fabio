@@ -1463,6 +1463,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **`bulk-set-labels` requires Microsoft Purview**: Returns "Label is not assigned to user" when Purview sensitivity labels are not configured in the tenant. Requires M365 E5 licensing + Purview label policy.
 - **`revoke-external-data-share`**: Returns NOT_FOUND for non-existent share IDs. Endpoint: `POST /admin/workspaces/{ws}/items/{item}/externalDataShares/{share}/revoke`.
 - **`list-external-data-shares` requires tenant setting**: Only works after enabling "External data sharing" (`AllowExternalDataSharingSwitch`) in tenant admin settings. Returns FORBIDDEN otherwise.
+- **`list-domains` gained `withAssignedWorkspacesOnly` filter (July 2026 spec update)**: `GET /admin/domains?preview=false` now accepts a second boolean query parameter, `withAssignedWorkspacesOnly` (default `false`), alongside the existing `nonEmptyOnly`. `withAssignedWorkspacesOnly=true` returns only domains that have at least one workspace assigned to them or to any subdomain (a superset condition vs. `nonEmptyOnly`, which additionally requires the caller to have read access to an item in one of those workspaces). `fabio admin list-domains` now supports both `--non-empty-only` and `--with-assigned-workspaces-only` boolean flags (previously neither filter was exposed); both are query-string append-only and default to omitted (server default `false`) when not passed.
 
 ## Power BI REST API Integration Behaviors Discovered
 - **Single token for both APIs**: The Fabric token (`https://api.fabric.microsoft.com/.default` scope) is accepted by both `api.fabric.microsoft.com` and `api.powerbi.com`. No separate Power BI scope is needed.
@@ -1977,6 +1978,7 @@ Git commands are run with CWD set to source directory. Returns `None` entirely i
 - **getDefinition/updateDefinition are LRO**: Both use standard Fabric LRO polling pattern.
 - **Added to DEPLOY_ORDER**: Positioned after visualization items.
 - **`format` field and part path renamed (July 2026 spec update)**: `OrgAppPublicDefinition.format` is no longer a constrained enum (`OrgAppV1` value + `x-ms-enum` removed) — it's now a free-form string. The create/get/update examples also changed the part path from `OrgAppV1.json` to `definition.json`. No fabio code change needed: `org_app.rs` already builds `update-definition` requests with `path: "definition.json"` and never hardcoded a `format` field.
+- **Service principal / managed identity support added (July 2026 spec update)**: All OrgApp endpoints (list, create, get, update, delete, getDefinition, updateDefinition) now document `Service principal and Managed identities` support as `Yes` (previously `No`, user-only). No fabio code change needed — fabio's auth layer already supports service-principal tokens uniformly for every command; this was purely a permissions/documentation update on the Fabric side.
 
 ## OrgAppAudience API Behaviors Discovered
 - **Item type**: `OrgAppAudience` (audience targeting for Organizational Apps).
@@ -1986,6 +1988,7 @@ Git commands are run with CWD set to source directory. Returns `None` entirely i
 - **getDefinition/updateDefinition are LRO**: Both use standard Fabric LRO polling pattern.
 - **Added to DEPLOY_ORDER**: Positioned after OrgApp (dependent item).
 - **`format` field and part path renamed (July 2026 spec update)**: Same change as `OrgApp` — `OrgAppAudiencePublicDefinition.format` (previously the `OrgAppAudienceV1` enum) is now a free-form string, and the `CreateOrgAppAudience` example changed the part path from `OrgAppAudienceV1.json` to `definition.json` (the `"format": "OrgAppAudienceV1"` field was also dropped). No fabio code change needed: `org_app_audience.rs` never sets a `format` field and already uses `definition.json` as the part path.
+- **Service principal / managed identity support added (July 2026 spec update)**: All OrgAppAudience endpoints (list, create, get, update, delete, getDefinition, updateDefinition) now document `Service principal and Managed identities` support as `Yes` (previously `No`, user-only). No fabio code change needed — same rationale as OrgApp above.
 
 ## Copy Job Reset API Behaviors Discovered
 - **Reset endpoint**: `POST /workspaces/{ws}/copyJobs/{id}/resetCopyJob` resets copy job entities to allow re-copying.
