@@ -1954,3 +1954,27 @@ tests:
         value: |
           output.includes('lakehouse')
         metric: mlv-uses-lakehouse-group
+
+  - description: "Operations agent: start an operations agent"
+    vars:
+      user_query: "Start my Fabric operations agent so it begins monitoring my eventhouse"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('operations-agent start')
+        metric: opsagent-start-command
+      - type: llm-rubric
+        value: "The response uses 'fabio operations-agent start' (with --workspace and --id) to activate the agent. It does NOT tell the user to hand-edit the definition JSON's shouldRun flag manually — fabio flips shouldRun for them."
+        metric: opsagent-start-routing
+
+  - description: "Operations agent: stop / check status"
+    vars:
+      user_query: "Is my Fabric operations agent currently running, and how do I stop it?"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('operations-agent status') && output.includes('operations-agent stop')
+        metric: opsagent-status-stop-commands
+      - type: llm-rubric
+        value: "The response explains 'fabio operations-agent status' reports whether the agent is running (shouldRun) and 'fabio operations-agent stop' deactivates it. Bonus if it notes an agent only runs once it has a configured data source and playbook."
+        metric: opsagent-status-stop-routing

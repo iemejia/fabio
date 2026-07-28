@@ -13679,6 +13679,60 @@
         "mutates": true,
         "returns": "void",
         "async": true
+      },
+      "start": {
+        "description": "Start the operations agent so it evaluates its rules (sets shouldRun=true)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Operations agent ID"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "async": true
+      },
+      "stop": {
+        "description": "Stop the operations agent so it stops evaluating its rules (sets shouldRun=false)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Operations agent ID"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "async": true
+      },
+      "status": {
+        "description": "Show whether the operations agent is running (reads shouldRun from its definition)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Operations agent ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "async": true
       }
     }
   },

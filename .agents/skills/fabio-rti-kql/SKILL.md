@@ -1,7 +1,7 @@
 ---
 name: fabio-rti-kql
 description: >-
-  Intent-scoped fabio skill for Fabric Real-Time Intelligence: eventhouses, KQL databases (schema, ingest, query, monitoring), KQL querysets/dashboards, eventstreams (streaming topologies), reflex/activator triggers, and natural-language-to-KQL. Use for streaming ingestion, time-series analytics, and event-driven alerts. Triggers: "eventhouse", "kql", "kusto", "kql database", "ingest events", "eventstream", "streaming", "reflex", "activator", "nl to kql", "real-time".
+  Intent-scoped fabio skill for Fabric Real-Time Intelligence: eventhouses, KQL databases (schema, ingest, query, monitoring), KQL querysets/dashboards, eventstreams (streaming topologies), reflex/activator triggers, operations agents (AI monitoring), and natural-language-to-KQL. Use for streaming ingestion, time-series analytics, and event-driven alerts. Triggers: "eventhouse", "kql", "kusto", "kql database", "ingest events", "eventstream", "streaming", "reflex", "activator", "operations agent", "nl to kql", "real-time".
 license: MIT
 ---
 
@@ -16,6 +16,7 @@ license: MIT
 - KQL schema discovery (list-entities), ingestion, querying, and query monitoring (running/journal/completed).
 - Building eventstream topologies (sources, destinations, connection strings).
 - Creating reflex/activator triggers for event-driven alerts.
+- Authoring AI operations agents that monitor an eventhouse/ontology and recommend actions (operations-agent create/update-definition/start/stop/status).
 - Translating natural language to KQL (rti nl-to-kql).
 
 ## When NOT to use (route elsewhere)
@@ -162,6 +163,22 @@ Manage event schema sets (real-time intelligence)
 | `fabio event-schema-set update` | yes | Update event schema set properties |
 | `fabio event-schema-set update-definition` | yes | Update the definition of a event schema set |
 
+### fabio operations-agent
+Manage operations agents (AI-powered operations)
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio operations-agent create` | yes | Create a new operations agent |
+| `fabio operations-agent delete` | yes | Delete a operations agent |
+| `fabio operations-agent get-definition` | no | Get the definition of a operations agent |
+| `fabio operations-agent list` | no | List operations agents in a workspace |
+| `fabio operations-agent show` | no | Show details of a operations agent |
+| `fabio operations-agent start` | yes | Start the operations agent so it evaluates its rules (sets shouldRun=true) |
+| `fabio operations-agent status` | no | Show whether the operations agent is running (reads shouldRun from its definition) |
+| `fabio operations-agent stop` | yes | Stop the operations agent so it stops evaluating its rules (sets shouldRun=false) |
+| `fabio operations-agent update` | yes | Update operations agent properties |
+| `fabio operations-agent update-definition` | yes | Update the definition of a operations agent |
+
 ## Must / Prefer / Avoid
 ### MUST
 - Create the eventhouse first; kql-database create requires --eventhouse-id.
@@ -181,6 +198,7 @@ Manage event schema sets (real-time intelligence)
 ## Key gotchas
 - KQL Queryset definitions use RealTimeQueryset.json (NOT RawQueryset.kql).
 - KQL queries use a separate auth scope ({kusto_uri}/.default), not the standard Fabric scope (fabio handles this).
+- Operations agents have no dedicated start/stop endpoint: activation is the shouldRun flag inside Configurations.json. Use operations-agent start/stop/status (fabio flips the flag for you) instead of hand-editing the definition.
 
 ## Troubleshooting
 | Symptom | Fix |
@@ -189,6 +207,7 @@ Manage event schema sets (real-time intelligence)
 | Query returns 'table not found' | Run kql-database list-entities to confirm the exact table name and casing. |
 | A .create command has no effect via query | Management commands must go through kql-database manage, which routes to the mgmt endpoint. |
 | AUTH errors on KQL queries | KQL uses a separate token scope ({kusto_uri}/.default); re-run fabio auth login if the cached token lacks it. |
+| Operations agent isn't evaluating rules / not sending alerts | Run operations-agent status to check shouldRun; start it with operations-agent start (Fabric evaluates rules every 5 minutes only while running). |
 
 ## Safety
 - Reflex/activator triggers can take automated actions — confirm the rule, threshold, and action with the user before creating.

@@ -1,13 +1,14 @@
 {
   "family": "rti-kql",
   "title": "Real-Time Intelligence — Eventhouse, KQL, Eventstream, Activator",
-  "description": "Intent-scoped fabio skill for Fabric Real-Time Intelligence: eventhouses, KQL databases (schema, ingest, query, monitoring), KQL querysets/dashboards, eventstreams (streaming topologies), reflex/activator triggers, and natural-language-to-KQL. Use for streaming ingestion, time-series analytics, and event-driven alerts. Triggers: \"eventhouse\", \"kql\", \"kusto\", \"kql database\", \"ingest events\", \"eventstream\", \"streaming\", \"reflex\", \"activator\", \"nl to kql\", \"real-time\".",
-  "command_groups": ["eventhouse", "kql-database", "kql-queryset", "kql-dashboard", "eventstream", "reflex", "rti", "event-schema-set"],
+  "description": "Intent-scoped fabio skill for Fabric Real-Time Intelligence: eventhouses, KQL databases (schema, ingest, query, monitoring), KQL querysets/dashboards, eventstreams (streaming topologies), reflex/activator triggers, operations agents (AI monitoring), and natural-language-to-KQL. Use for streaming ingestion, time-series analytics, and event-driven alerts. Triggers: \"eventhouse\", \"kql\", \"kusto\", \"kql database\", \"ingest events\", \"eventstream\", \"streaming\", \"reflex\", \"activator\", \"operations agent\", \"nl to kql\", \"real-time\".",
+  "command_groups": ["eventhouse", "kql-database", "kql-queryset", "kql-dashboard", "eventstream", "reflex", "rti", "event-schema-set", "operations-agent"],
   "when_to_use": [
     "Creating an eventhouse and KQL databases inside it.",
     "KQL schema discovery (list-entities), ingestion, querying, and query monitoring (running/journal/completed).",
     "Building eventstream topologies (sources, destinations, connection strings).",
     "Creating reflex/activator triggers for event-driven alerts.",
+    "Authoring AI operations agents that monitor an eventhouse/ontology and recommend actions (operations-agent create/update-definition/start/stop/status).",
     "Translating natural language to KQL (rti nl-to-kql)."
   ],
   "when_not_to_use": [
@@ -17,7 +18,8 @@
   ],
   "key_gotchas": [
     "KQL Queryset definitions use RealTimeQueryset.json (NOT RawQueryset.kql).",
-    "KQL queries use a separate auth scope ({kusto_uri}/.default), not the standard Fabric scope (fabio handles this)."
+    "KQL queries use a separate auth scope ({kusto_uri}/.default), not the standard Fabric scope (fabio handles this).",
+    "Operations agents have no dedicated start/stop endpoint: activation is the shouldRun flag inside Configurations.json. Use operations-agent start/stop/status (fabio flips the flag for you) instead of hand-editing the definition."
   ],
   "safety": [
     "Reflex/activator triggers can take automated actions — confirm the rule, threshold, and action with the user before creating.",
@@ -42,7 +44,8 @@
     {"symptom": "kql-database create fails", "fix": "Pass --eventhouse-id of an existing eventhouse; the KQL DB must live inside one."},
     {"symptom": "Query returns 'table not found'", "fix": "Run kql-database list-entities to confirm the exact table name and casing."},
     {"symptom": "A .create command has no effect via query", "fix": "Management commands must go through kql-database manage, which routes to the mgmt endpoint."},
-    {"symptom": "AUTH errors on KQL queries", "fix": "KQL uses a separate token scope ({kusto_uri}/.default); re-run fabio auth login if the cached token lacks it."}
+    {"symptom": "AUTH errors on KQL queries", "fix": "KQL uses a separate token scope ({kusto_uri}/.default); re-run fabio auth login if the cached token lacks it."},
+    {"symptom": "Operations agent isn't evaluating rules / not sending alerts", "fix": "Run operations-agent status to check shouldRun; start it with operations-agent start (Fabric evaluates rules every 5 minutes only while running)."}
   ],
   "shared_references": ["throttling", "pagination", "lro"],
   "see_also": [
