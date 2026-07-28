@@ -416,8 +416,23 @@
       },
       "list-domains": {
         "description": "List domains (admin view)",
+        "flags": {
+          "--non-empty-only": {
+            "type": "bool",
+            "description": "Only return domains with workspaces assigned that contain one or more items the user has at least read access to"
+          },
+          "--with-assigned-workspaces-only": {
+            "type": "bool",
+            "description": "Only return domains that have at least one workspace assigned to them, or to any of their subdomains"
+          }
+        },
         "mutates": false,
-        "returns": "list"
+        "returns": "list",
+        "examples": [
+          "fabio admin list-domains",
+          "fabio admin list-domains --with-assigned-workspaces-only",
+          "fabio admin list-domains --non-empty-only --with-assigned-workspaces-only"
+        ]
       },
       "create-domain": {
         "description": "Create a domain",

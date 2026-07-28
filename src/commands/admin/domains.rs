@@ -8,14 +8,27 @@ use crate::output;
 
 use super::read_body;
 
-pub(super) async fn list_domains(cli: &Cli, client: &FabricClient) -> Result<()> {
+pub(super) async fn list_domains(
+    cli: &Cli,
+    client: &FabricClient,
+    non_empty_only: bool,
+    with_assigned_workspaces_only: bool,
+) -> Result<()> {
+    let mut url = "/admin/domains".to_string();
+    let mut params: Vec<&str> = Vec::new();
+    if non_empty_only {
+        params.push("nonEmptyOnly=true");
+    }
+    if with_assigned_workspaces_only {
+        params.push("withAssignedWorkspacesOnly=true");
+    }
+    if !params.is_empty() {
+        url.push('?');
+        url.push_str(&params.join("&"));
+    }
+
     let resp = client
-        .get_list(
-            "/admin/domains",
-            "domains",
-            cli.all,
-            cli.continuation_token.as_deref(),
-        )
+        .get_list(&url, "domains", cli.all, cli.continuation_token.as_deref())
         .await?;
 
     output::render_list_with_token(

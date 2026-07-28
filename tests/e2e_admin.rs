@@ -349,6 +349,25 @@ fn admin_list_domains() {
     }
 }
 
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_list_domains_with_filters() {
+    let output = fabio()
+        .args([
+            "admin",
+            "list-domains",
+            "--non-empty-only",
+            "--with-assigned-workspaces-only",
+        ])
+        .output()
+        .unwrap();
+
+    if let Some(json) = assert_admin_output(&output) {
+        assert_list_envelope(&json);
+    }
+}
+
 // ─── Tier 1: Tag Lifecycle (create → list → update → delete) ────────────────
 // Tags can be cleanly created and deleted. This exercises the full lifecycle
 // while seeding data for `list-tags` to be meaningfully non-empty.
