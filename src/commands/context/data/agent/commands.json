@@ -8836,6 +8836,37 @@
         },
         "mutates": true,
         "returns": "object"
+      },
+      "export": {
+        "description": "Export (render) the Power BI report to a file (PDF, PPTX, PNG)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID (Power BI group ID)"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Report ID"
+          },
+          "--format": {
+            "type": "string",
+            "description": "Output file format (PDF, PPTX, PNG)"
+          },
+          "--out": {
+            "type": "string",
+            "required": true,
+            "description": "Destination file path to write the exported report to"
+          },
+          "--timeout": {
+            "type": "string",
+            "description": "Maximum seconds to wait for the export job to complete"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "async": true
       }
     }
   },
@@ -15549,6 +15580,41 @@
         },
         "mutates": true,
         "returns": "void",
+        "async": true
+      },
+      "export": {
+        "description": "Export (render) the paginated report to a file (PDF, PPTX, XLSX, DOCX, CSV, IMAGE, ...)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Paginated report ID"
+          },
+          "--format": {
+            "type": "string",
+            "description": "Output file format (PDF, PPTX, XLSX, DOCX, CSV, XML, MHTML, IMAGE, ACCESSIBLEPDF)"
+          },
+          "--out": {
+            "type": "string",
+            "required": true,
+            "description": "Destination file path to write the exported report to"
+          },
+          "--parameter": {
+            "type": "string",
+            "description": "Report parameter as name=value (repeatable)"
+          },
+          "--timeout": {
+            "type": "string",
+            "description": "Maximum seconds to wait for the export job to complete"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
         "async": true
       }
     }

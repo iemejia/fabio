@@ -189,3 +189,53 @@ fn report_publish_to_web_existing_report() {
         // This is acceptable - the test documents the behavior
     }
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn report_export_dry_run() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "report",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--format",
+            "PDF",
+            "--out",
+            "/tmp/fabio_report_export.pdf",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "report export");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn report_export_rejects_paginated_only_format() {
+    let cfg = TestConfig::from_env();
+    // CSV is a paginated-only format; it must be rejected for a Power BI report.
+    fabio()
+        .args([
+            "report",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--format",
+            "CSV",
+            "--out",
+            "/tmp/fabio_report_export.csv",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Unsupported export format"));
+}

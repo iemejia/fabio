@@ -59,6 +59,7 @@ pub mod operations_agent;
 pub mod org_app;
 pub mod org_app_audience;
 pub mod paginated_report;
+pub mod powerbi_export;
 pub mod profile;
 pub mod reflex;
 pub mod report;

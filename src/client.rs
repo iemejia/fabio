@@ -2171,6 +2171,43 @@ impl FabricClient {
         Ok(resp.bytes().await?.to_vec())
     }
 
+    /// GET raw bytes from the Power BI REST API (for downloading exported files).
+    pub async fn get_powerbi_bytes(&self, path: &str) -> Result<Vec<u8>> {
+        let token = self.require_auth().await?;
+        let url = format!("{}{path}", *POWERBI_BASE_URL);
+
+        verbose::trace_request("GET", &url, None);
+        let start = std::time::Instant::now();
+        let resp = self
+            .http
+            .get(&url)
+            .header(AUTHORIZATION, &token)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
+
+        let resp = if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            self.http
+                .get(&url)
+                .header(AUTHORIZATION, &token)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?
+        } else {
+            resp
+        };
+
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(FabioError::from_status(status, text).into());
+        }
+        Ok(resp.bytes().await?.to_vec())
+    }
+
     /// POST multipart form-data to Power BI REST API (for PBIX import).
     /// `path` should include query parameters (e.g., `?datasetDisplayName=...`).
     pub async fn post_powerbi_multipart(

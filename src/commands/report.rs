@@ -149,6 +149,30 @@ pub enum ReportCommand {
         #[arg(long)]
         id: String,
     },
+
+    /// Export (render) the Power BI report to a file (PDF, PPTX, PNG)
+    #[command(display_order = 11)]
+    Export {
+        /// Workspace ID (Power BI group ID)
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Report ID
+        #[arg(long)]
+        id: String,
+
+        /// Output file format (PDF, PPTX, PNG)
+        #[arg(long, default_value = "PDF")]
+        format: String,
+
+        /// Destination file path to write the exported report to
+        #[arg(long)]
+        out: String,
+
+        /// Maximum seconds to wait for the export job to complete
+        #[arg(long, default_value = "300")]
+        timeout: u64,
+    },
 }
 
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) -> Result<()> {
@@ -209,6 +233,26 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) 
         } => update_definition(cli, client, workspace, id, file, report_json.as_deref()).await,
         ReportCommand::PublishToWeb { workspace, id } => {
             publish_to_web(cli, client, workspace, id).await
+        }
+        ReportCommand::Export {
+            workspace,
+            id,
+            format,
+            out,
+            timeout,
+        } => {
+            crate::commands::powerbi_export::export(
+                cli,
+                client,
+                workspace,
+                id,
+                format,
+                &[],
+                out,
+                *timeout,
+                crate::commands::powerbi_export::ReportKind::PowerBi,
+            )
+            .await
         }
     }
 }

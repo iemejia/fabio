@@ -1,4 +1,5 @@
 use assert_cmd::Command;
+use predicates::prelude::*;
 use serial_test::serial;
 
 mod common;
@@ -199,4 +200,82 @@ fn paginated_report_create_show_delete_lifecycle() {
         ])
         .assert()
         .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn paginated_report_export_dry_run() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "paginated-report",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--format",
+            "PDF",
+            "--out",
+            "/tmp/fabio_pr_export.pdf",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "paginated-report export");
+    assert_eq!(json["data"]["details"]["format"], "PDF");
+}
+
+// A Power-BI-only format (PNG) must be rejected for a paginated report... actually
+// PNG-as-IMAGE differs; here we assert a clearly-invalid format is rejected with an
+// enumerated hint (offline validation, no tenant call needed beyond arg parsing).
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn paginated_report_export_rejects_unknown_format() {
+    let cfg = TestConfig::from_env();
+    fabio()
+        .args([
+            "paginated-report",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--format",
+            "TXT",
+            "--out",
+            "/tmp/fabio_pr_export.txt",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Unsupported export format"));
+}
+
+// Live plumbing: exercising ExportTo against a non-existent report must reach the
+// Power BI API and return a clean not-found error (validates auth, URL, error path).
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn paginated_report_export_plumbing_not_found() {
+    let cfg = TestConfig::from_env();
+    fabio()
+        .args([
+            "paginated-report",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--format",
+            "PDF",
+            "--out",
+            "/tmp/fabio_pr_export.pdf",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("PowerBIEntityNotFound"));
 }

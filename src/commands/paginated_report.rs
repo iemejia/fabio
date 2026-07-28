@@ -131,6 +131,33 @@ pub enum PaginatedReportCommand {
         #[arg(long)]
         update_metadata: bool,
     },
+    /// Export (render) the paginated report to a file (PDF, PPTX, XLSX, DOCX, CSV, IMAGE, ...)
+    #[command(display_order = 8)]
+    Export {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Paginated report ID
+        #[arg(long)]
+        id: String,
+
+        /// Output file format (PDF, PPTX, XLSX, DOCX, CSV, XML, MHTML, IMAGE, ACCESSIBLEPDF)
+        #[arg(long, default_value = "PDF")]
+        format: String,
+
+        /// Destination file path to write the exported report to
+        #[arg(long)]
+        out: String,
+
+        /// Report parameter as name=value (repeatable)
+        #[arg(long = "parameter")]
+        parameters: Vec<String>,
+
+        /// Maximum seconds to wait for the export job to complete
+        #[arg(long, default_value = "300")]
+        timeout: u64,
+    },
 }
 
 pub async fn execute(
@@ -202,6 +229,27 @@ pub async fn execute(
                 file.as_deref(),
                 content.as_deref(),
                 *update_metadata,
+            )
+            .await
+        }
+        PaginatedReportCommand::Export {
+            workspace,
+            id,
+            format,
+            out,
+            parameters,
+            timeout,
+        } => {
+            crate::commands::powerbi_export::export(
+                cli,
+                client,
+                workspace,
+                id,
+                format,
+                parameters,
+                out,
+                *timeout,
+                crate::commands::powerbi_export::ReportKind::Paginated,
             )
             .await
         }

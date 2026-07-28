@@ -63,6 +63,7 @@ Manage reports (Power BI)
 |---|---|---|
 | `fabio report create` | yes | Create a new report from a definition file |
 | `fabio report delete` | yes | Delete a report |
+| `fabio report export` | no | Export (render) the Power BI report to a file (PDF, PPTX, PNG) |
 | `fabio report get-definition` | no | Get the definition of a report |
 | `fabio report list` | no | List reports in a workspace |
 | `fabio report publish-to-web` | yes | Publish a report to the web (generates a publicly accessible embed URL) |
@@ -77,6 +78,7 @@ Manage paginated reports
 |---|---|---|
 | `fabio paginated-report create` | yes | Create a paginated report in the specified workspace (requires an RDL definition file) |
 | `fabio paginated-report delete` | yes | Delete a paginated report |
+| `fabio paginated-report export` | no | Export (render) the paginated report to a file (PDF, PPTX, XLSX, DOCX, CSV, IMAGE, ...) |
 | `fabio paginated-report get-definition` | no | Get the public definition of a paginated report (returns the .rdl file encoded in base64) |
 | `fabio paginated-report list` | no | List paginated reports in a workspace |
 | `fabio paginated-report show` | no | Show details of a paginated report |
