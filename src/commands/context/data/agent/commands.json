@@ -12091,6 +12091,70 @@
         "mutates": true,
         "returns": "void",
         "destructive": true
+      },
+      "list-runs": {
+        "description": "List runs in an experiment (`MLflow` tracking: parameters, metrics, status)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "ML experiment ID"
+          },
+          "--filter": {
+            "type": "string",
+            "description": "`MLflow` filter expression (e.g. \"metrics.accuracy > 0.9 and status = 'FINISHED'\")"
+          },
+          "--order-by": {
+            "type": "string",
+            "description": "Order-by expression (e.g. `start_time DESC`, `metrics.accuracy DESC`)"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "get-run": {
+        "description": "Show details of a single run (info, parameters, metrics, tags)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--run-id": {
+            "type": "string",
+            "required": true,
+            "description": "`MLflow` run ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "get-metric-history": {
+        "description": "Get the logged history of a single metric across a run's steps",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--run-id": {
+            "type": "string",
+            "required": true,
+            "description": "`MLflow` run ID"
+          },
+          "--metric": {
+            "type": "string",
+            "required": true,
+            "description": "Metric key (e.g. \"accuracy\", \"loss\")"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
       }
     }
   },

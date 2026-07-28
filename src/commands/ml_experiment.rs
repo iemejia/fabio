@@ -83,6 +83,51 @@ pub enum MlExperimentCommand {
         #[arg(long)]
         hard_delete: bool,
     },
+    /// List runs in an experiment (`MLflow` tracking: parameters, metrics, status)
+    #[command(display_order = 6)]
+    ListRuns {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// ML experiment ID
+        #[arg(long)]
+        id: String,
+
+        /// `MLflow` filter expression (e.g. "metrics.accuracy > 0.9 and status = 'FINISHED'")
+        #[arg(long)]
+        filter: Option<String>,
+
+        /// Order-by expression (e.g. `start_time DESC`, `metrics.accuracy DESC`)
+        #[arg(long)]
+        order_by: Option<String>,
+    },
+    /// Show details of a single run (info, parameters, metrics, tags)
+    #[command(display_order = 7)]
+    GetRun {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// `MLflow` run ID
+        #[arg(long)]
+        run_id: String,
+    },
+    /// Get the logged history of a single metric across a run's steps
+    #[command(display_order = 8)]
+    GetMetricHistory {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// `MLflow` run ID
+        #[arg(long)]
+        run_id: String,
+
+        /// Metric key (e.g. "accuracy", "loss")
+        #[arg(long)]
+        metric: String,
+    },
 }
 
 pub async fn execute(
@@ -130,6 +175,30 @@ pub async fn execute(
             id,
             hard_delete,
         } => delete(cli, client, workspace, id, *hard_delete).await,
+        MlExperimentCommand::ListRuns {
+            workspace,
+            id,
+            filter,
+            order_by,
+        } => {
+            list_runs(
+                cli,
+                client,
+                workspace,
+                id,
+                filter.as_deref(),
+                order_by.as_deref(),
+            )
+            .await
+        }
+        MlExperimentCommand::GetRun { workspace, run_id } => {
+            get_run(cli, client, workspace, run_id).await
+        }
+        MlExperimentCommand::GetMetricHistory {
+            workspace,
+            run_id,
+            metric,
+        } => get_metric_history(cli, client, workspace, run_id, metric).await,
     }
 }
 
@@ -326,4 +395,155 @@ async fn delete(
     let obj = serde_json::json!({ "id": id, "status": "deleted" });
     output::render_object(cli, &obj, "status");
     Ok(())
+}
+
+// ─── MLflow run tracking ─────────────────────────────────────────────────────
+//
+// Fabric hosts a per-workspace MLflow tracking server. Its REST API lives under
+// `/workspaces/{ws}/mlflow/api/2.0/mlflow/...` and accepts the standard Fabric
+// bearer token. The experiment's item ID doubles as the MLflow experiment_id.
+
+/// Base path of the Fabric-hosted `MLflow` REST API for a workspace.
+fn mlflow_base(workspace: &str) -> String {
+    format!("/workspaces/{workspace}/mlflow/api/2.0/mlflow")
+}
+
+/// Build the `runs/search` request body. Pure — unit-tested.
+fn build_search_body(
+    experiment_id: &str,
+    max_results: Option<usize>,
+    filter: Option<&str>,
+    order_by: Option<&str>,
+) -> Value {
+    let mut body = serde_json::json!({ "experiment_ids": [experiment_id] });
+    if let Some(n) = max_results {
+        body["max_results"] = Value::from(n);
+    }
+    if let Some(f) = filter {
+        body["filter"] = Value::from(f);
+    }
+    if let Some(o) = order_by {
+        body["order_by"] = serde_json::json!([o]);
+    }
+    body
+}
+
+async fn list_runs(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    filter: Option<&str>,
+    order_by: Option<&str>,
+) -> Result<()> {
+    let search_body = build_search_body(id, cli.limit, filter, order_by);
+    let data = client
+        .post(
+            &format!("{}/runs/search", mlflow_base(workspace)),
+            &search_body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "ml-experiment list-runs", "Viewer"))?;
+
+    let runs = data
+        .get("runs")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let token = data
+        .get("next_page_token")
+        .and_then(Value::as_str)
+        .filter(|t| !t.is_empty());
+    output::render_list_with_token(
+        cli,
+        &runs,
+        &[
+            "info.run_id",
+            "info.run_name",
+            "info.status",
+            "info.start_time",
+        ],
+        &["RUN ID", "NAME", "STATUS", "START TIME"],
+        "info.run_id",
+        token,
+    );
+    Ok(())
+}
+
+async fn get_run(cli: &Cli, client: &FabricClient, workspace: &str, run_id: &str) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "{}/runs/get?run_id={run_id}",
+            mlflow_base(workspace)
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "ml-experiment get-run", "Viewer"))?;
+    // Unwrap the `{ "run": {...} }` envelope for a cleaner object.
+    let run = data.get("run").cloned().unwrap_or(data);
+    output::render_object(cli, &run, "info.run_id");
+    Ok(())
+}
+
+async fn get_metric_history(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    run_id: &str,
+    metric: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "{}/metrics/get-history?run_id={run_id}&metric_key={metric}",
+            mlflow_base(workspace)
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "ml-experiment get-metric-history", "Viewer"))?;
+    let metrics = data
+        .get("metrics")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    output::render_list_with_token(
+        cli,
+        &metrics,
+        &["key", "value", "step", "timestamp"],
+        &["METRIC", "VALUE", "STEP", "TIMESTAMP"],
+        "value",
+        None,
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mlflow_base_path() {
+        assert_eq!(
+            mlflow_base("ws-1"),
+            "/workspaces/ws-1/mlflow/api/2.0/mlflow"
+        );
+    }
+
+    #[test]
+    fn build_search_body_minimal() {
+        let body = build_search_body("exp-1", None, None, None);
+        assert_eq!(body, serde_json::json!({ "experiment_ids": ["exp-1"] }));
+    }
+
+    #[test]
+    fn build_search_body_full() {
+        let body = build_search_body(
+            "exp-1",
+            Some(5),
+            Some("metrics.acc > 0.9"),
+            Some("start_time DESC"),
+        );
+        assert_eq!(body["experiment_ids"][0], "exp-1");
+        assert_eq!(body["max_results"], 5);
+        assert_eq!(body["filter"], "metrics.acc > 0.9");
+        assert_eq!(body["order_by"][0], "start_time DESC");
+    }
 }

@@ -33,7 +33,10 @@ Manage ML experiments (data science)
 |---|---|---|
 | `fabio ml-experiment create` | yes | Create a new ML experiment |
 | `fabio ml-experiment delete` | yes | Delete an ML experiment |
+| `fabio ml-experiment get-metric-history` | no | Get the logged history of a single metric across a run's steps |
+| `fabio ml-experiment get-run` | no | Show details of a single run (info, parameters, metrics, tags) |
 | `fabio ml-experiment list` | no | List ML experiments in a workspace |
+| `fabio ml-experiment list-runs` | no | List runs in an experiment (`MLflow` tracking: parameters, metrics, status) |
 | `fabio ml-experiment show` | no | Show details of an ML experiment |
 | `fabio ml-experiment update` | yes | Update ML experiment properties (name and/or description) |
 

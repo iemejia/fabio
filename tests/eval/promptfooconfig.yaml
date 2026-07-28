@@ -2014,3 +2014,15 @@ tests:
       - type: icontains
         value: "--format"
         metric: report-export-format-flag
+
+  - description: "ML experiment: list runs with metrics"
+    vars:
+      user_query: "Show me the runs and their metrics for my Fabric ML experiment"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('ml-experiment list-runs')
+        metric: ml-experiment-list-runs-command
+      - type: llm-rubric
+        value: "The response uses 'fabio ml-experiment list-runs' (with --workspace and --id) to list the experiment's MLflow runs. It may also mention get-run or get-metric-history for details. It does not claim fabio cannot access runs."
+        metric: ml-experiment-runs-routing
