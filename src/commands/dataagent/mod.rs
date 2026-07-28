@@ -116,6 +116,17 @@ pub enum DataAgentCommand {
         timeout: u64,
     },
 
+    /// Print the Model Context Protocol (MCP) endpoint URL for consuming a published data agent
+    McpUrl {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+    },
+
     // ── Configuration ────────────────────────────────────────────────────
     /// Get the configuration of a data agent (instructions, data sources, preview runtime)
     #[command(display_order = 8)]
@@ -639,6 +650,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
         )
         .await
         .map_err(|e| enrich_forbidden(e, "data-agent query", "Viewer")),
+        DataAgentCommand::McpUrl { workspace, id } => query::mcp_url(cli, client, workspace, id)
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent mcp-url", "Viewer")),
         DataAgentCommand::GetConfig {
             workspace,
             id,

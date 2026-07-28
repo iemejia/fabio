@@ -1978,3 +1978,15 @@ tests:
       - type: llm-rubric
         value: "The response explains 'fabio operations-agent status' reports whether the agent is running (shouldRun) and 'fabio operations-agent stop' deactivates it. Bonus if it notes an agent only runs once it has a configured data source and playbook."
         metric: opsagent-status-stop-routing
+
+  - description: "Data agent: get MCP consumption endpoint URL"
+    vars:
+      user_query: "I published a Fabric data agent. How do I get its MCP endpoint URL so I can connect Claude to it?"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('data-agent mcp-url')
+        metric: dataagent-mcp-url-command
+      - type: llm-rubric
+        value: "The response uses 'fabio data-agent mcp-url' (with --workspace and --id) to obtain the Model Context Protocol endpoint URL for consuming the published data agent. It does not invent a different command or hand-write the URL without mentioning mcp-url."
+        metric: dataagent-mcp-url-routing

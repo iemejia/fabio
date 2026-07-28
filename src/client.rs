@@ -80,6 +80,16 @@ static FABRIC_BASE_URL: LazyLock<String> = LazyLock::new(|| {
     )
 });
 
+/// The resolved Fabric REST API base URL (e.g. `https://api.fabric.microsoft.com/v1`).
+///
+/// Exposed so commands can construct absolute URLs consumed by external tools
+/// (for example, a data agent's Model Context Protocol endpoint) rather than
+/// URLs called through the client itself. Honors `FABIO_FABRIC_API_ENDPOINT`.
+#[must_use]
+pub fn fabric_base_url() -> &'static str {
+    &FABRIC_BASE_URL
+}
+
 static ONELAKE_DFS_URL: LazyLock<String> = LazyLock::new(|| {
     env_or_default(
         "FABIO_ONELAKE_DFS_ENDPOINT",

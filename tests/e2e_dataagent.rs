@@ -704,6 +704,109 @@ fn dataagent_publish_lifecycle() {
         .success();
 }
 
+/// The MCP endpoint URL is the canonical runtime/consumption surface for a
+/// published data agent. Verify `data-agent mcp-url` returns the documented URL
+/// format, reports `published: false` (with a hint) for a draft agent, and flips
+/// to `published: true` after publishing.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_mcp_url_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("da_mcp");
+
+    // Create a fresh (draft) data agent.
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let agent_id = extract_data(&json)["id"].as_str().unwrap().to_string();
+
+    let expected_url = format!(
+        "https://api.fabric.microsoft.com/v1/mcp/workspaces/{}/dataagents/{}/agent",
+        cfg.source_workspace, agent_id
+    );
+
+    // Before publish: URL is emitted, published is false, and a hint is present.
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "mcp-url",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["mcpUrl"], expected_url);
+    assert_eq!(data["published"], false);
+    assert!(
+        data["hint"]
+            .as_str()
+            .unwrap()
+            .contains("data-agent publish"),
+        "expected publish hint, got: {}",
+        data["hint"]
+    );
+
+    // Publish the agent (definition-based publish is the official path).
+    fabio()
+        .args([
+            "data-agent",
+            "publish",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    // After publish: same URL, published is true, no hint.
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "mcp-url",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["mcpUrl"], expected_url);
+    assert_eq!(data["published"], true);
+    assert!(data["hint"].is_null());
+
+    // Cleanup.
+    fabio()
+        .args([
+            "data-agent",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .assert()
+        .success();
+}
+
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]

@@ -77,6 +77,56 @@ pub(super) async fn query(
     Ok(())
 }
 
+/// Build the Model Context Protocol (MCP) endpoint URL for a data agent.
+///
+/// This is the canonical runtime/consumption surface for a *published* data
+/// agent: external MCP clients (Claude, Copilot Studio, Azure AI Foundry, custom
+/// tools) connect to it to ask questions. Format (per the Fabric data agent SDK):
+/// `{base}/mcp/workspaces/{workspace}/dataagents/{id}/agent`. Pure for testing.
+fn build_mcp_url(base: &str, workspace: &str, id: &str) -> String {
+    let base = base.trim_end_matches('/');
+    format!("{base}/mcp/workspaces/{workspace}/dataagents/{id}/agent")
+}
+
+/// Print the MCP endpoint URL used to consume a published data agent.
+///
+/// The URL is constructed deterministically; a best-effort published-state check
+/// annotates whether the endpoint is live yet (it only works after publishing).
+pub(super) async fn mcp_url(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let url = build_mcp_url(client::fabric_base_url(), workspace, id);
+    let published = is_published(client, workspace, id).await;
+
+    let mut result = serde_json::json!({
+        "id": id,
+        "mcpUrl": url,
+        "published": published,
+    });
+    if !published {
+        result["hint"] = Value::from(format!(
+            "The MCP endpoint only works after the agent is published. Publish it with: fabio data-agent publish --workspace {workspace} --id {id}"
+        ));
+    }
+    output::render_object(cli, &result, "mcpUrl");
+    Ok(())
+}
+
+/// Best-effort check of whether a data agent is published.
+///
+/// The published-stage settings endpoint (`GET /dataAgents/{id}/settings`)
+/// returns `200` for a published agent and `404 DataAgentNotPublished` for a
+/// draft one, so a successful GET is a reliable "published" signal.
+async fn is_published(client: &FabricClient, workspace: &str, id: &str) -> bool {
+    client
+        .get(&format!("/workspaces/{workspace}/dataAgents/{id}/settings"))
+        .await
+        .is_ok()
+}
+
 /// Get the published URL of a data agent.
 ///
 /// Strategy:
@@ -754,4 +804,36 @@ fn enrich_query_error(
 
     // Default: return error without hint
     FabioError::from_status(status, message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_mcp_url_matches_documented_format() {
+        let url = build_mcp_url("https://api.fabric.microsoft.com/v1", "ws-123", "agent-456");
+        assert_eq!(
+            url,
+            "https://api.fabric.microsoft.com/v1/mcp/workspaces/ws-123/dataagents/agent-456/agent"
+        );
+    }
+
+    #[test]
+    fn build_mcp_url_trims_trailing_slash_on_base() {
+        let url = build_mcp_url("https://api.fabric.microsoft.com/v1/", "w", "a");
+        assert_eq!(
+            url,
+            "https://api.fabric.microsoft.com/v1/mcp/workspaces/w/dataagents/a/agent"
+        );
+    }
+
+    #[test]
+    fn build_mcp_url_honors_custom_base() {
+        let url = build_mcp_url("https://example.test/v1", "w", "a");
+        assert_eq!(
+            url,
+            "https://example.test/v1/mcp/workspaces/w/dataagents/a/agent"
+        );
+    }
 }

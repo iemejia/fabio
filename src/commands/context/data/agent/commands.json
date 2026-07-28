@@ -6363,6 +6363,23 @@
           "fabio data-agent query --workspace $WS --id $DA --prompt \"Complex query...\" --timeout 600 --show-steps"
         ]
       },
+      "mcp-url": {
+        "description": "Print the Model Context Protocol (MCP) endpoint URL for consuming a published data agent",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Data agent ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
       "get-config": {
         "description": "Get the configuration of a data agent (instructions, data sources, preview runtime)",
         "flags": {
