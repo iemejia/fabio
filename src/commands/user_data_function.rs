@@ -107,6 +107,29 @@ pub enum UserDataFunctionCommand {
         #[arg(long)]
         content: Option<String>,
     },
+    /// Invoke a published function via its public REST endpoint
+    ///
+    /// The function URL is obtained from the Fabric portal (open the item in Run-only
+    /// mode → Functions explorer → "Copy Function URL"; public access must be enabled).
+    /// There is no public API to discover this URL, so it must be provided via --url.
+    #[command(display_order = 8)]
+    Invoke {
+        /// Public function URL (from the portal; must be an *.fabric.microsoft.com HTTPS URL)
+        #[arg(long)]
+        url: String,
+
+        /// Function input as name=value (repeatable). Values are sent as JSON strings.
+        #[arg(long = "parameter")]
+        parameters: Vec<String>,
+
+        /// Raw JSON request body (overrides --parameter). E.g. `{"name":"John","count":3}`
+        #[arg(long)]
+        body: Option<String>,
+
+        /// Maximum seconds to wait for the function to respond
+        #[arg(long, default_value = "230")]
+        timeout: u64,
+    },
 }
 
 pub async fn execute(
@@ -175,6 +198,12 @@ pub async fn execute(
             )
             .await
         }
+        UserDataFunctionCommand::Invoke {
+            url,
+            parameters,
+            body,
+            timeout,
+        } => invoke(cli, client, url, parameters, body.as_deref(), *timeout).await,
     }
 }
 
@@ -426,4 +455,146 @@ async fn update_definition(
         output::render_object(cli, &data, "id");
     }
     Ok(())
+}
+
+/// Build the JSON request body for a function invocation. Pure — unit-tested.
+///
+/// Precedence: `--body` (raw JSON) wins; otherwise `name=value` parameters are
+/// assembled into a JSON object (values are sent as strings); otherwise `{}`.
+fn build_invoke_body(params: &[String], body: Option<&str>) -> Result<Value> {
+    if let Some(raw) = body {
+        return serde_json::from_str::<Value>(raw).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("--body is not valid JSON: {e}"),
+                "Provide a JSON object, e.g. --body '{\"name\":\"John\"}'".to_string(),
+            )
+            .into()
+        });
+    }
+    let mut obj = serde_json::Map::new();
+    for p in params {
+        let (k, v) = p
+            .split_once('=')
+            .filter(|(k, _)| !k.is_empty())
+            .ok_or_else(|| {
+                FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!("Invalid parameter '{p}'"),
+                    "Parameters must be name=value, e.g. --parameter name=John".to_string(),
+                )
+            })?;
+        obj.insert(k.to_string(), Value::from(v));
+    }
+    Ok(Value::Object(obj))
+}
+
+/// Invoke a published user data function via its public REST endpoint.
+///
+/// Fabric exposes no public API to invoke a function or to discover its URL, so
+/// the caller supplies the portal-provided `--url`. fabio attaches the Fabric
+/// bearer token and POSTs the parameter body, then renders the standard
+/// `{functionName, invocationId, status, output, errors}` response.
+async fn invoke(
+    cli: &Cli,
+    client: &FabricClient,
+    url: &str,
+    parameters: &[String],
+    body: Option<&str>,
+    timeout: u64,
+) -> Result<()> {
+    // Validate the URL targets a trusted Microsoft domain before attaching a token.
+    crate::client::validate_trusted_url(url, "--url")?;
+    let request_body = build_invoke_body(parameters, body)?;
+
+    if output::dry_run_guard(
+        cli,
+        "user-data-function invoke",
+        &serde_json::json!({ "url": url, "body": request_body }),
+    ) {
+        return Ok(());
+    }
+
+    let token = client.require_auth().await?;
+    let http = crate::client::http_client_builder()
+        .timeout(std::time::Duration::from_secs(timeout))
+        .build()
+        .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+    let resp = http
+        .post(url)
+        .header("Authorization", &token)
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::NetworkError,
+                format!("Failed to reach the function endpoint: {e}"),
+                "Verify the function URL from the portal (Run-only mode → Copy Function URL) and that public access is enabled.".to_string(),
+            )
+        })?;
+
+    let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(FabioError::with_hint(
+            crate::errors::FabioError::from_status(status.as_u16(), text.clone()).code,
+            format!("Function invocation failed (HTTP {}): {text}", status.as_u16()),
+            "422 = a UserThrownError in the function; 400 = bad/missing parameters or public access disabled; 401/403 = auth/permission.".to_string(),
+        )
+        .into());
+    }
+
+    // Successful HTTP: render the function's structured response. The `status`
+    // field (Succeeded/Failed/BadRequest/Timeout/ResponseTooLarge) reports the
+    // function-level outcome; agents inspect it.
+    let parsed: Value =
+        serde_json::from_str(&text).unwrap_or_else(|_| serde_json::json!({ "output": text }));
+    output::render_object(cli, &parsed, "output");
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_invoke_body_from_parameters() {
+        let params = vec!["name=John".to_string(), "city=Paris".to_string()];
+        let body = build_invoke_body(&params, None).unwrap();
+        assert_eq!(body, serde_json::json!({ "name": "John", "city": "Paris" }));
+    }
+
+    #[test]
+    fn build_invoke_body_value_may_contain_equals() {
+        let params = vec!["expr=a=b".to_string()];
+        let body = build_invoke_body(&params, None).unwrap();
+        assert_eq!(body["expr"], "a=b");
+    }
+
+    #[test]
+    fn build_invoke_body_empty_is_object() {
+        let body = build_invoke_body(&[], None).unwrap();
+        assert_eq!(body, serde_json::json!({}));
+    }
+
+    #[test]
+    fn build_invoke_body_raw_json_overrides() {
+        let params = vec!["name=Ignored".to_string()];
+        let body = build_invoke_body(&params, Some(r#"{"name":"John","count":3}"#)).unwrap();
+        assert_eq!(body, serde_json::json!({ "name": "John", "count": 3 }));
+    }
+
+    #[test]
+    fn build_invoke_body_rejects_bad_json() {
+        assert!(build_invoke_body(&[], Some("not json")).is_err());
+    }
+
+    #[test]
+    fn build_invoke_body_rejects_bad_parameter() {
+        assert!(build_invoke_body(&["noequals".to_string()], None).is_err());
+        assert!(build_invoke_body(&["=value".to_string()], None).is_err());
+    }
 }

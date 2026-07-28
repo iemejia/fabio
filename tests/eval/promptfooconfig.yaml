@@ -2026,3 +2026,15 @@ tests:
       - type: llm-rubric
         value: "The response uses 'fabio ml-experiment list-runs' (with --workspace and --id) to list the experiment's MLflow runs. It may also mention get-run or get-metric-history for details. It does not claim fabio cannot access runs."
         metric: ml-experiment-runs-routing
+
+  - description: "User data function: invoke via public URL"
+    vars:
+      user_query: "Invoke my published Fabric user data function at its URL with the parameter name=John"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('user-data-function invoke')
+        metric: udf-invoke-command
+      - type: llm-rubric
+        value: "The response uses 'fabio user-data-function invoke' with --url (the function's public URL) and passes the parameter (via --parameter name=John or --body). It does not invent a non-existent invoke API."
+        metric: udf-invoke-routing

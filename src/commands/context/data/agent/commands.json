@@ -14160,6 +14160,30 @@
         "mutates": true,
         "returns": "void",
         "async": true
+      },
+      "invoke": {
+        "description": "Invoke a published function via its public REST endpoint",
+        "flags": {
+          "--url": {
+            "type": "string",
+            "required": true,
+            "description": "Public function URL (from the portal; must be an *.fabric.microsoft.com HTTPS URL)"
+          },
+          "--parameter": {
+            "type": "string",
+            "description": "Function input as name=value (repeatable). Values are sent as JSON strings"
+          },
+          "--body": {
+            "type": "string",
+            "description": "Raw JSON request body (overrides --parameter). E.g. `{\"name\":\"John\",\"count\":3}`"
+          },
+          "--timeout": {
+            "type": "string",
+            "description": "Maximum seconds to wait for the function to respond"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
       }
     }
   },
