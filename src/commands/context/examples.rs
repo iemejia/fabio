@@ -101,6 +101,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/lakehouse_list_tables.json"),
     ),
     (
+        "lakehouse/create-shortcut",
+        include_str!("data/examples/lakehouse_create_shortcut.json"),
+    ),
+    (
         "workspace/get-inbound-external-data-shares-policy",
         include_str!("data/examples/workspace_get_inbound_external_data_shares_policy.json"),
     ),

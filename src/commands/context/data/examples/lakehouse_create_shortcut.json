@@ -1,0 +1,19 @@
+{
+  "command": "fabio lakehouse create-shortcut --workspace $WS --id $LH --name sales_ext --path Tables --target-type AdlsGen2 --location https://acct.dfs.core.windows.net/container --subpath /sales --connection-id $CONN",
+  "description": "Creates a OneLake shortcut. The target is described with TYPED flags per target type (--connection-id, --location, --subpath, --bucket, --target-workspace/--target-item/--target-path, --environment-domain, --delta-lake-folder, --update-sensitivity) — fabio validates the required fields for the chosen --target-type. A raw --target JSON escape hatch is still accepted and overrides the typed flags.",
+  "response": {
+    "data": {
+      "name": "sales_ext",
+      "path": "Tables",
+      "target": {
+        "type": "AdlsGen2",
+        "adlsGen2": {"location": "https://acct.dfs.core.windows.net/container", "subpath": "/sales", "connectionId": "$CONN"}
+      }
+    }
+  },
+  "notes": "Valid --target-type values (aliases accepted, any case): OneLake, AdlsGen2 (adls), AmazonS3 (s3), AzureBlobStorage (blob), GoogleCloudStorage (gcs), S3Compatible, Dataverse, ExternalDataShare (eds), OneDriveSharePoint (sharepoint). Required typed flags per type: OneLake -> --target-workspace/--target-item/--target-path; AdlsGen2/AmazonS3/AzureBlobStorage/GoogleCloudStorage -> --location + --connection-id (+ optional --subpath); S3Compatible -> --location + --connection-id + --bucket; Dataverse -> --connection-id + --environment-domain (+ --delta-lake-folder); ExternalDataShare -> --connection-id; OneDriveSharePoint -> --location + --connection-id (+ --update-sensitivity). An unknown --target-type fails with INVALID_INPUT and enumerates the valid values. List with `fabio lakehouse list-shortcuts` (hides DW-managed shortcuts unless --include-managed).",
+  "query_examples": [
+    {"query": "data.name", "description": "The created shortcut name."},
+    {"query": "data.target.type", "description": "The target discriminator echoed back by the API."}
+  ]
+}

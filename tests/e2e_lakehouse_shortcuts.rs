@@ -332,3 +332,140 @@ fn lakehouse_create_shortcut_with_conflict_policy() {
         .assert()
         .success();
 }
+
+#[test]
+fn lakehouse_create_shortcut_unknown_target_type_errors() {
+    // Fails before any network call: the target type is validated first.
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "create-shortcut",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--name",
+            "x",
+            "--path",
+            "Files",
+            "--target-type",
+            "dropbox",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("INVALID_INPUT") && stderr.contains("Unknown shortcut target type"),
+        "unknown target type should be rejected with an enum hint: {stderr}"
+    );
+    assert!(
+        stderr.contains("OneDriveSharePoint"),
+        "hint should enumerate valid target types: {stderr}"
+    );
+}
+
+#[test]
+fn lakehouse_create_shortcut_typed_missing_required_flag_errors() {
+    // adlsGen2 needs --location and --connection-id; omitting --connection-id
+    // must fail fast with a targeted hint (before any network call).
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "create-shortcut",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--name",
+            "x",
+            "--path",
+            "Files",
+            "--target-type",
+            "AdlsGen2",
+            "--location",
+            "https://acct.dfs.core.windows.net/container",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("--connection-id") && stderr.contains("adlsGen2"),
+        "missing --connection-id should be reported for adlsGen2: {stderr}"
+    );
+}
+
+/// Live lifecycle for the typed `OneLake` target + list-shortcuts. Creates a
+/// shortcut using the typed flags (not raw JSON), verifies it appears in
+/// list-shortcuts, then deletes it.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_typed_onelake_shortcut_and_list() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("sc_typed");
+
+    // Create via typed OneLake flags.
+    fabio()
+        .args([
+            "lakehouse",
+            "create-shortcut",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &cfg.dest_lakehouse,
+            "--name",
+            &name,
+            "--path",
+            "Files",
+            "--target-type",
+            "OneLake",
+            "--target-workspace",
+            &cfg.source_workspace,
+            "--target-item",
+            &cfg.source_lakehouse,
+            "--target-path",
+            "Files",
+        ])
+        .assert()
+        .success();
+
+    // list-shortcuts must include it.
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "list-shortcuts",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &cfg.dest_lakehouse,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let found = json["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|s| s["name"] == name);
+    assert!(
+        found,
+        "created shortcut '{name}' must appear in list-shortcuts: {json}"
+    );
+
+    // Cleanup.
+    fabio()
+        .args([
+            "lakehouse",
+            "delete-shortcut",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &cfg.dest_lakehouse,
+            "--name",
+            &name,
+            "--path",
+            "Files",
+        ])
+        .assert()
+        .success();
+}

@@ -3048,6 +3048,29 @@
         "returns": "void",
         "destructive": true
       },
+      "delete-directory": {
+        "description": "Recursively delete a directory from a lakehouse (DFS; irreversible)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID"
+          },
+          "--path": {
+            "type": "string",
+            "required": true,
+            "description": "Directory path to delete (e.g. \"Files/staging\"); deletes everything under it"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
       "delete-table": {
         "description": "Delete a table from a lakehouse",
         "flags": {
@@ -3072,7 +3095,7 @@
         "destructive": true
       },
       "create-shortcut": {
-        "description": "Create a shortcut",
+        "description": "Create a shortcut (typed target flags per target type, or raw --target JSON)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -3097,12 +3120,51 @@
           "--target-type": {
             "type": "enum",
             "required": true,
-            "description": "Target type: `OneLake`, `AdlsGen2`, S3"
+            "description": "Target type: `OneLake`, `AdlsGen2`, `AmazonS3`, `AzureBlobStorage`, `GoogleCloudStorage`, `S3Compatible`, `Dataverse`, `ExternalDataShare`, `OneDriveSharePoint`"
           },
           "--target": {
             "type": "string",
-            "required": true,
-            "description": "Target body as JSON string"
+            "description": "Full target object as JSON (escape hatch; overrides the typed flags below)"
+          },
+          "--connection-id": {
+            "type": "string",
+            "description": "Connection ID (required for all cloud/external targets; optional for `OneLake`)"
+          },
+          "--location": {
+            "type": "string",
+            "description": "Storage location URL (`AdlsGen2`/`AmazonS3`/`AzureBlobStorage`/`GoogleCloudStorage`/`S3Compatible`/`OneDriveSharePoint`)"
+          },
+          "--subpath": {
+            "type": "string",
+            "description": "Subpath within the target location"
+          },
+          "--bucket": {
+            "type": "string",
+            "description": "Bucket name (`S3Compatible` only)"
+          },
+          "--target-workspace": {
+            "type": "string",
+            "description": "Target `OneLake` workspace ID (`OneLake` target)"
+          },
+          "--target-item": {
+            "type": "string",
+            "description": "Target `OneLake` item ID (`OneLake` target)"
+          },
+          "--target-path": {
+            "type": "string",
+            "description": "Target `OneLake` path, e.g. Tables/orders (`OneLake` target)"
+          },
+          "--environment-domain": {
+            "type": "string",
+            "description": "`Dataverse` environment domain (`Dataverse` target)"
+          },
+          "--delta-lake-folder": {
+            "type": "string",
+            "description": "`Dataverse` Delta Lake folder (`Dataverse` target)"
+          },
+          "--update-sensitivity": {
+            "type": "bool",
+            "description": "Update Fabric item sensitivity from source (`OneDriveSharePoint` target)"
           },
           "--conflict-policy": {
             "type": "string",
@@ -3114,6 +3176,31 @@
         "examples": [
           "fabio lakehouse create-shortcut --workspace $WS --id $LH --name \"external-data\" --path Files/ --target-type adls --location \"https://storageacct.dfs.core.windows.net/container\" --subpath \"data/2024/\""
         ]
+      },
+      "list-shortcuts": {
+        "description": "List shortcuts in an item (hides DW-managed shortcuts by default)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID"
+          },
+          "--parent-path": {
+            "type": "string",
+            "description": "Only list shortcuts under this parent path (e.g. Tables or Files/raw)"
+          },
+          "--include-managed": {
+            "type": "bool",
+            "description": "Include DW-managed shortcuts (internal `OneLake` refs under Tables/, hidden by default)"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
       },
       "get-shortcut": {
         "description": "Get shortcut details",

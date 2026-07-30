@@ -262,6 +262,36 @@ pub(super) async fn delete_file(
     Ok(())
 }
 
+/// Recursively delete a `OneLake` directory (and everything under it).
+///
+/// This is irreversible, so it honors `--dry-run`. Uses the DFS recursive
+/// delete (`DELETE {item}/{path}?recursive=true`).
+pub(super) async fn delete_directory(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    path: &str,
+) -> Result<()> {
+    let preview = serde_json::json!({
+        "workspace": workspace,
+        "id": id,
+        "path": path,
+        "recursive": true,
+    });
+    if output::dry_run_guard(cli, "lakehouse delete-directory", &preview) {
+        return Ok(());
+    }
+    client.delete_onelake_directory(workspace, id, path).await?;
+    let result = serde_json::json!({
+        "path": path,
+        "recursive": true,
+        "status": "deleted",
+    });
+    output::render_object(cli, &result, "status");
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub(super) async fn move_file(
     cli: &Cli,

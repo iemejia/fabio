@@ -39,8 +39,9 @@ Manage lakehouses (tables, files, shortcuts)
 | `fabio lakehouse create-directory` | yes | Create a directory in a lakehouse (DFS) |
 | `fabio lakehouse create-execution-definition` | yes | Create a materialized lake view execution definition |
 | `fabio lakehouse create-materialized-views-schedule` | yes | Create a schedule for materialized lake view refresh |
-| `fabio lakehouse create-shortcut` | yes | Create a shortcut |
+| `fabio lakehouse create-shortcut` | yes | Create a shortcut (typed target flags per target type, or raw --target JSON) |
 | `fabio lakehouse delete` | yes | Delete a lakehouse |
+| `fabio lakehouse delete-directory` | yes | Recursively delete a directory from a lakehouse (DFS; irreversible) |
 | `fabio lakehouse delete-execution-definition` | yes | Delete a materialized lake view execution definition |
 | `fabio lakehouse delete-file` | yes | Delete a file from a lakehouse |
 | `fabio lakehouse delete-materialized-views-schedule` | yes | Delete a schedule for materialized lake view refresh |
@@ -64,6 +65,7 @@ Manage lakehouses (tables, files, shortcuts)
 | `fabio lakehouse list-execution-definitions` | no | List materialized lake view execution definitions for a lakehouse |
 | `fabio lakehouse list-files` | no | List files in a lakehouse |
 | `fabio lakehouse list-livy-sessions` | no | List Livy sessions for a lakehouse |
+| `fabio lakehouse list-shortcuts` | no | List shortcuts in an item (hides DW-managed shortcuts by default) |
 | `fabio lakehouse list-tables` | no | List tables in a lakehouse |
 | `fabio lakehouse load-table` | yes | Load a file (already in the lakehouse) into a Delta table |
 | `fabio lakehouse move-file` | yes | Move files between lakehouses (supports glob patterns for parallel move) |

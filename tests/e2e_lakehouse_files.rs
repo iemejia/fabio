@@ -463,3 +463,27 @@ fn lakehouse_move_file_across_workspaces() {
         .assert()
         .success();
 }
+
+#[test]
+fn lakehouse_delete_directory_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "lakehouse",
+            "delete-directory",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--path",
+            "Files/staging",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "lakehouse delete-directory");
+    assert_eq!(data["details"]["recursive"], true);
+    assert_eq!(data["details"]["path"], "Files/staging");
+}

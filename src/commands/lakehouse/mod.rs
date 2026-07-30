@@ -562,6 +562,21 @@ pub enum LakehouseCommand {
         #[arg(short, long)]
         path: String,
     },
+    /// Recursively delete a directory from a lakehouse (DFS; irreversible)
+    #[command(display_order = 30)]
+    DeleteDirectory {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Directory path to delete (e.g. "Files/staging"); deletes everything under it
+        #[arg(short, long)]
+        path: String,
+    },
     /// Delete a table from a lakehouse
     #[command(display_order = 31)]
     DeleteTable {
@@ -579,7 +594,7 @@ pub enum LakehouseCommand {
     },
 
     // ── Shortcuts ────────────────────────────────────────────────────────
-    /// Create a shortcut
+    /// Create a shortcut (typed target flags per target type, or raw --target JSON)
     #[command(display_order = 40)]
     CreateShortcut {
         /// Workspace ID
@@ -598,17 +613,76 @@ pub enum LakehouseCommand {
         #[arg(short, long)]
         path: String,
 
-        /// Target type: `OneLake`, `AdlsGen2`, S3
+        /// Target type: `OneLake`, `AdlsGen2`, `AmazonS3`, `AzureBlobStorage`, `GoogleCloudStorage`, `S3Compatible`, `Dataverse`, `ExternalDataShare`, `OneDriveSharePoint`
         #[arg(long = "target-type")]
         target_type: String,
 
-        /// Target body as JSON string
+        /// Full target object as JSON (escape hatch; overrides the typed flags below)
         #[arg(long = "target")]
-        target: String,
+        target: Option<String>,
+
+        /// Connection ID (required for all cloud/external targets; optional for `OneLake`)
+        #[arg(long = "connection-id")]
+        connection_id: Option<String>,
+
+        /// Storage location URL (`AdlsGen2`/`AmazonS3`/`AzureBlobStorage`/`GoogleCloudStorage`/`S3Compatible`/`OneDriveSharePoint`)
+        #[arg(long)]
+        location: Option<String>,
+
+        /// Subpath within the target location
+        #[arg(long)]
+        subpath: Option<String>,
+
+        /// Bucket name (`S3Compatible` only)
+        #[arg(long)]
+        bucket: Option<String>,
+
+        /// Target `OneLake` workspace ID (`OneLake` target)
+        #[arg(long = "target-workspace")]
+        target_workspace: Option<String>,
+
+        /// Target `OneLake` item ID (`OneLake` target)
+        #[arg(long = "target-item")]
+        target_item: Option<String>,
+
+        /// Target `OneLake` path, e.g. Tables/orders (`OneLake` target)
+        #[arg(long = "target-path")]
+        target_path: Option<String>,
+
+        /// `Dataverse` environment domain (`Dataverse` target)
+        #[arg(long = "environment-domain")]
+        environment_domain: Option<String>,
+
+        /// `Dataverse` Delta Lake folder (`Dataverse` target)
+        #[arg(long = "delta-lake-folder")]
+        delta_lake_folder: Option<String>,
+
+        /// Update Fabric item sensitivity from source (`OneDriveSharePoint` target)
+        #[arg(long = "update-sensitivity")]
+        update_sensitivity: bool,
 
         /// Conflict policy: Abort or `GenerateUniqueName`
         #[arg(long)]
         conflict_policy: Option<String>,
+    },
+    /// List shortcuts in an item (hides DW-managed shortcuts by default)
+    #[command(display_order = 40)]
+    ListShortcuts {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Only list shortcuts under this parent path (e.g. Tables or Files/raw)
+        #[arg(long = "parent-path")]
+        parent_path: Option<String>,
+
+        /// Include DW-managed shortcuts (internal `OneLake` refs under Tables/, hidden by default)
+        #[arg(long = "include-managed")]
+        include_managed: bool,
     },
     /// Get shortcut details
     #[command(display_order = 41)]
@@ -1323,6 +1397,13 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
         } => files::delete_file(cli, client, workspace, id, path)
             .await
             .map_err(|e| enrich_forbidden(e, "lakehouse delete-file", "Contributor")),
+        LakehouseCommand::DeleteDirectory {
+            workspace,
+            id,
+            path,
+        } => files::delete_directory(cli, client, workspace, id, path)
+            .await
+            .map_err(|e| enrich_forbidden(e, "lakehouse delete-directory", "Contributor")),
         LakehouseCommand::MoveFile {
             source_workspace,
             source_id,
@@ -1443,20 +1524,60 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             path,
             target_type,
             target,
+            connection_id,
+            location,
+            subpath,
+            bucket,
+            target_workspace,
+            target_item,
+            target_path,
+            environment_domain,
+            delta_lake_folder,
+            update_sensitivity,
             conflict_policy,
-        } => shortcuts::create_shortcut(
+        } => {
+            let flags = shortcuts::ShortcutTargetFlags {
+                connection_id: connection_id.as_deref(),
+                location: location.as_deref(),
+                subpath: subpath.as_deref(),
+                bucket: bucket.as_deref(),
+                target_workspace: target_workspace.as_deref(),
+                target_item: target_item.as_deref(),
+                target_path: target_path.as_deref(),
+                environment_domain: environment_domain.as_deref(),
+                delta_lake_folder: delta_lake_folder.as_deref(),
+                update_sensitivity: *update_sensitivity,
+            };
+            shortcuts::create_shortcut(
+                cli,
+                client,
+                workspace,
+                id,
+                name,
+                path,
+                target_type,
+                target.as_deref(),
+                &flags,
+                conflict_policy.as_deref(),
+            )
+            .await
+            .map_err(|e| enrich_forbidden(e, "lakehouse create-shortcut", "Contributor"))
+        }
+        LakehouseCommand::ListShortcuts {
+            workspace,
+            id,
+            parent_path,
+            include_managed,
+        } => shortcuts::list_shortcuts(
             cli,
             client,
             workspace,
             id,
-            name,
-            path,
-            target_type,
-            target,
-            conflict_policy.as_deref(),
+            parent_path.as_deref(),
+            *include_managed,
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "lakehouse create-shortcut", "Contributor")),
+        .map_err(|e| enrich_forbidden(e, "lakehouse list-shortcuts", "Viewer")),
         LakehouseCommand::GetShortcut {
             workspace,
             id,
