@@ -74,12 +74,21 @@ If you added new features or commands, verify:
 
 ## Step 7: Check irreversible operation safety
 
-If your change involves destructive operations:
+If your change adds or modifies a destructive operation (deletes data, overwrites
+without backup, replaces a definition, kills a session/job, or is otherwise
+irreversible), verify the FULL guardrail stack (see AGENTS.md → "Standard
+guardrail stack for a NEW destructive command"):
 
+- [ ] `--dry-run` guard via `output::dry_run_guard(cli, "<group> <cmd>", &preview)`, returning early before any mutating call
+- [ ] `--readonly` enforced (mutation routes through a client `post`/`put`/`patch`/`delete` helper that calls `guard_readonly`)
+- [ ] `"destructive": true` (and `"mutates": true`) confirmed in `commands.json` after `generate_agent_schema` — set manually for non-`delete*`-named ops (`reset`, `kill`, `prune`, `update-definition`, `--hard-delete`, `--force*`)
+- [ ] Blast-radius input guard for catastrophic inputs (empty/root path, match-all glob, missing filter) — a pure `validate_*` fn that fails before any network call, with a unit test
 - [ ] `FabioError::with_hint()` used when suggesting safety-bypass flags
 - [ ] New safety-bypass flags added to `DANGEROUS_FLAGS` in `src/agent.rs`
-- [ ] `"destructive": true/false` included in batch output if applicable
+- [ ] `"destructive": true/false` included in batch/plan output if applicable
 - [ ] Protected types added to `PROTECTED_DELETE_TYPES` if new data-bearing item type
+- [ ] e2e test for the `--dry-run` output AND for the blast-radius guard error
+- [ ] Removal verb is `delete` (never `remove`)
 
 ## Step 8: Commit
 

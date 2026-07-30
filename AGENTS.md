@@ -70,6 +70,20 @@ Fabio is agent-first. AI agents consume structured output and may automatically 
 
 7. **Never add interactive prompts** — Fabio is non-interactive (Principle 1). Do NOT add `y/N` prompts or `--auto-approve` flags. Instead, use structured output signals (`"destructive": true`, warnings, `agentNotice`) that agents can programmatically evaluate.
 
+### Standard guardrail stack for a NEW destructive command (MANDATORY checklist)
+
+ANY new command/subcommand/operation that deletes data, overwrites content without backup, permanently replaces a definition, kills a running session/job, or is otherwise irreversible MUST ship with the SAME guardrail stack the existing destructive ops use (`item delete`, `lakehouse delete-directory`/`delete-table`/`delete-file`, `deploy apply --delete-orphans`, `warehouse queries-kill`, `data-agent delete --hard-delete`, `git relation delete`, `updateDefinition`, `reset`, `prune`, …). Before you consider the feature done, verify EVERY box:
+
+- [ ] **`--dry-run` guard** — call `output::dry_run_guard(cli, "<group> <subcommand>", &preview)` and return early when it returns `true`, BEFORE any mutating network call. `preview` must describe exactly what would be affected (ids, paths, counts). Put the guard AFTER input-scope validation so a dry-run of an unsafe request still surfaces the validation error.
+- [ ] **`--readonly` enforcement** — the mutation must route through a client method that calls `guard_readonly("<METHOD>", …)` (all `post`/`put`/`patch`/`delete` client helpers do). Never bypass the client for a raw mutating request.
+- [ ] **`"destructive": true` in `commands.json`** — after `cargo test generate_agent_schema -- --ignored`, confirm the subcommand has `"destructive": true`. The generator only auto-infers this for `delete*`-named subcommands; for destructive ops with other names (`reset`, `kill`, `prune`, `update-definition`, `--hard-delete`, `--force*`, `--delete-orphans`) you MUST set it manually. Also set `"mutates": true`.
+- [ ] **Blast-radius input guard** — if a malformed/empty/wildcard input could destroy far more than intended (e.g. an empty/root path recursively deleting an entire item — see `validate_delete_directory_path`; a glob matching everything; a missing filter deleting all rows), add a pure `validate_*` function that refuses the catastrophic case with a clear `FabioError::with_hint`, and unit-test it. Fail BEFORE any network call.
+- [ ] **Safety-bypass flags** — if the operation is gated behind a bypass flag (`--force`, `--hard-delete`, `--allow-delete-types`, `--delete-orphans`, `--overwrite`, …), add the flag to `DANGEROUS_FLAGS` in `src/agent.rs` and surface it via `FabioError::with_hint()` so the `agentNotice` fires (rules 2–3 above).
+- [ ] **Tests** — an e2e test asserting the `--dry-run` output (`dry_run: true`, `would_execute`, key `details`) AND a test for the blast-radius guard error. Do NOT rely solely on live happy-path.
+- [ ] **Consistent verb** — destructive removal uses `delete` (never `remove`); see Key Decisions.
+
+When you add or change a destructive command, re-read this checklist during the Pre-Commit Self-Review and confirm each box in your own review notes. A destructive command missing any box is INCOMPLETE.
+
 ### How agent safety notices work:
 
 When ALL of the following conditions are true, the error output includes an `agentNotice` field:
