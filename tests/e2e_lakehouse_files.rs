@@ -487,3 +487,29 @@ fn lakehouse_delete_directory_dry_run() {
     assert_eq!(data["details"]["recursive"], true);
     assert_eq!(data["details"]["path"], "Files/staging");
 }
+
+#[test]
+fn lakehouse_delete_directory_rejects_root_path() {
+    // A recursive delete of the item root would wipe the whole lakehouse; it
+    // must be refused before any network call (even without --dry-run).
+    for path in ["/", ""] {
+        let assert = fabio()
+            .args([
+                "lakehouse",
+                "delete-directory",
+                "--workspace",
+                "00000000-0000-0000-0000-000000000000",
+                "--id",
+                "00000000-0000-0000-0000-000000000000",
+                "--path",
+                path,
+            ])
+            .assert()
+            .failure();
+        let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+        assert!(
+            stderr.contains("INVALID_INPUT") && stderr.contains("item root"),
+            "root path {path:?} should be refused: {stderr}"
+        );
+    }
+}

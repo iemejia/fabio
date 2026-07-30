@@ -5,6 +5,7 @@ use anyhow::Result;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
+use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
 use super::{expand_local_glob, expand_remote_glob, render_batch_result};
@@ -273,6 +274,7 @@ pub(super) async fn delete_directory(
     id: &str,
     path: &str,
 ) -> Result<()> {
+    validate_delete_directory_path(path)?;
     let preview = serde_json::json!({
         "workspace": workspace,
         "id": id,
@@ -289,6 +291,27 @@ pub(super) async fn delete_directory(
         "status": "deleted",
     });
     output::render_object(cli, &result, "status");
+    Ok(())
+}
+
+/// Reject a directory path that would resolve to the item filesystem root.
+///
+/// A recursive delete of the root (empty path, `/`, `.`, `..`) would erase the
+/// ENTIRE lakehouse (all Files and Tables), so it is blocked outright. Concrete
+/// subdirectories — including the high-level `Files` or `Tables` roots — are
+/// allowed (they are legitimate, if large, deletes guarded by `--dry-run`).
+/// Pure for unit testing.
+fn validate_delete_directory_path(path: &str) -> Result<()> {
+    let trimmed = path.trim().trim_matches('/').trim();
+    if trimmed.is_empty() || trimmed == "." || trimmed == ".." {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Refusing to recursively delete the item root (path: '{path}')"),
+            "Specify a concrete directory under the item, e.g. 'Files/staging' or 'Tables/foo'. \
+             A recursive delete of the root would erase the entire lakehouse.",
+        )
+        .into());
+    }
     Ok(())
 }
 
@@ -429,4 +452,35 @@ pub(super) async fn move_file(
     }
 
     render_batch_result(cli, &summary, "moved")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_delete_directory_path;
+
+    #[test]
+    fn delete_directory_path_rejects_root_variants() {
+        for p in ["", "   ", "/", "//", ".", "..", " / "] {
+            assert!(
+                validate_delete_directory_path(p).is_err(),
+                "path {p:?} should be rejected as root"
+            );
+        }
+    }
+
+    #[test]
+    fn delete_directory_path_allows_concrete_dirs() {
+        for p in [
+            "Files/staging",
+            "Tables/foo",
+            "Files",
+            "Tables",
+            "Files/a/b",
+        ] {
+            assert!(
+                validate_delete_directory_path(p).is_ok(),
+                "path {p:?} should be allowed"
+            );
+        }
+    }
 }
