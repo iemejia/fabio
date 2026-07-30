@@ -1964,7 +1964,13 @@ fn dataagent_advanced_management_lifecycle() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     assert_eq!(data["status"], "config_updated");
-    eprintln!("  Config updated");
+    // The preview runtime (Advanced NL2SQL for SQL sources) must be reported as
+    // enabled — this proves --enable-preview-runtime is wired to the settings API.
+    assert_eq!(
+        data["previewRuntime"], true,
+        "Expected previewRuntime=true after --enable-preview-runtime, got: {data}"
+    );
+    eprintln!("  Config updated (preview runtime enabled)");
 
     // Verify via get-config
     let assert = fabio()
@@ -1987,7 +1993,62 @@ fn dataagent_advanced_management_lifecycle() {
         instr.contains("sales data"),
         "Expected instructions to contain 'sales data', got: {instr}"
     );
-    eprintln!("  get-config verified: instructions set");
+    assert_eq!(
+        data["previewRuntime"], true,
+        "Expected get-config to report previewRuntime=true, got: {data}"
+    );
+    eprintln!("  get-config verified: instructions set, preview runtime enabled");
+
+    // ─── Toggle preview runtime back off (standard runtime / NL2SQL) ──────────
+    eprintln!("[2b/8] Disabling preview runtime...");
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "update-config",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--disable-preview-runtime",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "config_updated");
+    assert_eq!(
+        data["previewRuntime"], false,
+        "Expected previewRuntime=false after --disable-preview-runtime, got: {data}"
+    );
+
+    // Verify the standard runtime persisted and instructions were untouched.
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "get-config",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(
+        data["previewRuntime"], false,
+        "Expected get-config to report previewRuntime=false after disable, got: {data}"
+    );
+    assert!(
+        data["instructions"]
+            .as_str()
+            .unwrap_or("")
+            .contains("sales data"),
+        "Disabling preview runtime must not clear instructions, got: {data}"
+    );
+    eprintln!("  preview runtime toggle verified (enable → disable)");
 
     // ─── Add datasource ──────────────────────────────────────────────────────
     eprintln!("[3/8] Adding datasource...");
@@ -2633,6 +2694,162 @@ fn dataagent_update_config_disable_preview_runtime_dry_run() {
     let data = extract_data(&json);
     assert_eq!(data["would_execute"], "data-agent update-config");
     assert_eq!(data["details"]["disablePreviewRuntime"], true);
+}
+
+/// Focused, self-contained live test for the preview-runtime (Advanced NL2SQL
+/// for SQL sources) toggle. Independent of add-datasource so it validates the
+/// runtime wiring even where the data agent's SQL schema discovery is not
+/// available. Covers: enable → get-config reports true → disable → get-config
+/// reports false and instructions are preserved (read-modify-write).
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_preview_runtime_toggle_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("da_preview_rt");
+
+    // Create the agent.
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+    let agent_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // A fresh agent defaults to the standard runtime.
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "get-config",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    assert_eq!(
+        extract_data(&parse_json(&assert))["previewRuntime"],
+        false,
+        "new agents must default to the standard runtime"
+    );
+
+    // Enable the preview runtime AND set instructions in one call.
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "update-config",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--instructions",
+            "Route SQL questions to the sales lakehouse.",
+            "--enable-preview-runtime",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "config_updated");
+    assert_eq!(
+        data["previewRuntime"], true,
+        "update-config must echo previewRuntime=true after enable, got: {data}"
+    );
+
+    // get-config must report the preview runtime and the instructions.
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "get-config",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["previewRuntime"], true);
+    assert!(
+        data["instructions"]
+            .as_str()
+            .unwrap_or("")
+            .contains("sales lakehouse"),
+        "instructions must be set alongside the runtime, got: {data}"
+    );
+
+    // Disable the preview runtime WITHOUT touching instructions.
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "update-config",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--disable-preview-runtime",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    assert_eq!(
+        extract_data(&parse_json(&assert))["previewRuntime"],
+        false,
+        "update-config must echo previewRuntime=false after disable"
+    );
+
+    // Standard runtime persisted; instructions untouched by the toggle.
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "get-config",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["previewRuntime"], false);
+    assert!(
+        data["instructions"]
+            .as_str()
+            .unwrap_or("")
+            .contains("sales lakehouse"),
+        "disabling the runtime must not clear instructions, got: {data}"
+    );
+
+    // Cleanup.
+    fabio()
+        .args([
+            "data-agent",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
 }
 
 #[test]

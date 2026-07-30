@@ -296,6 +296,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/data_agent_list_datasources.json"),
     ),
     (
+        "data-agent/update-config",
+        include_str!("data/examples/data_agent_update_config.json"),
+    ),
+    (
         "connection/list",
         include_str!("data/examples/connection_list.json"),
     ),
