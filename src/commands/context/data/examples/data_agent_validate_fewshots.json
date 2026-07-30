@@ -1,0 +1,36 @@
+{
+  "command": "fabio data-agent validate-fewshots --workspace $WS_ID --id $AGENT_ID --datasource MyLakehouse --llm-endpoint https://<resource>.openai.azure.com --llm-key $KEY --llm-model gpt-4o",
+  "description": "Uses an external LLM judge to review a data source's few-shot examples and flag duplicates, semantic conflicts, ambiguity, low-quality examples, and likely-incorrect queries. Fabio hosts no model; the caller supplies the judge via --llm-endpoint/--llm-key/--llm-model (or FABIO_LLM_ENDPOINT/FABIO_LLM_KEY/FABIO_LLM_MODEL). Mirrors the Python SDK's few-shot validation.",
+  "response": {
+    "data": {
+      "datasource": "MyLakehouse",
+      "fewshotCount": 3,
+      "issueCount": 2,
+      "overallQuality": "poor",
+      "summary": "Contains a duplicated question mapped to conflicting queries and an incorrect SQL example.",
+      "issues": [
+        {
+          "fewshotIds": ["2e9ea2d7-...", "1afdfdcd-..."],
+          "type": "duplicate",
+          "severity": "high",
+          "explanation": "The first two examples are the same question but map to different SQL, which will confuse the model.",
+          "suggestion": "Keep a single canonical example (use SUM(revenue))."
+        },
+        {
+          "fewshotIds": ["1afdfdcd-..."],
+          "type": "incorrect_query",
+          "severity": "high",
+          "explanation": "SELECT COUNT(*) does not answer 'total revenue' — it counts rows, not the sum.",
+          "suggestion": "Replace with SELECT SUM(revenue) FROM products."
+        }
+      ],
+      "model": "gpt-4o"
+    }
+  },
+  "notes": "The LLM endpoint auto-detects flavor from the host: *.azure.com -> Azure OpenAI ({endpoint}/openai/deployments/{model}/chat/completions, api-key header); anything else -> OpenAI-compatible ({endpoint}/chat/completions, Bearer auth, model in body). For Azure, --llm-model is the DEPLOYMENT name (not the base model). Issue types: duplicate, conflict, ambiguous, low_quality, incorrect_query. --stage staging|published selects which config's few-shots to read. This is read-only: it does not modify the agent.",
+  "query_examples": [
+    {"query": "data.issueCount", "description": "How many issues the judge found (0 = clean)."},
+    {"query": "data.issues[?severity=='high']", "description": "Only the high-severity issues."},
+    {"query": "data.overallQuality", "description": "good | fair | poor."}
+  ]
+}

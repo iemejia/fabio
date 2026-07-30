@@ -157,13 +157,18 @@ pub(super) async fn publish(
     }
 
     // M365 Copilot Agent Store publishing is not available via the public REST API.
-    // The internal workload endpoint (`/metaosapppackage`) requires capacity-level
-    // routing that is not exposed. Report as unsupported if requested.
+    // The SDK implements it against the internal workload host
+    // (`{wl_host}/webapi/capacities/{cap}/workloads/ML/DataAgent/Automatic/v1/.../metaosapppackage`),
+    // which is discovered via `synapse.ml.fabric.service_discovery` inside a Fabric
+    // notebook and has no `api.fabric.microsoft.com` equivalent (every candidate
+    // public path returns 404 — verified live). Report as unsupported if requested.
     if to_m365 {
         obj["m365Status"] = Value::from("unsupported");
         obj["m365Error"] = Value::from(
-            "M365 Copilot Agent Store publishing is not available via the public Fabric REST API. \
-             Use the Fabric portal or the fabric-data-agent-sdk Python package.",
+            "M365 Copilot Agent Store publishing is not available via the public Fabric REST API \
+             (the SDK uses an internal workload-host endpoint only reachable from a Fabric \
+             notebook runtime). Publish to M365 from the Fabric portal, or use the \
+             fabric-data-agent-sdk Python package inside a notebook.",
         );
     }
 

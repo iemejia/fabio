@@ -443,6 +443,10 @@ fabio data-agent query --workspace $WS --id $AGENT --prompt "What number?" --thr
 fabio data-agent query --workspace $WS --id $AGENT --prompt "Chart revenue as CSV" --download-files ./out
 # Batch-run a question set (evaluation primitive; naive expected-match only, not an LLM judge)
 fabio data-agent evaluate --workspace $WS --id $AGENT --questions questions.json
+# LLM-powered (bring your own judge model via --llm-* or FABIO_LLM_ENDPOINT/KEY/MODEL):
+fabio data-agent validate-fewshots --workspace $WS --id $AGENT --datasource $DS \
+  --llm-endpoint https://<res>.openai.azure.com --llm-key $KEY --llm-model gpt-4o   # flag duplicate/conflicting/bad few-shots
+fabio data-agent evaluate --workspace $WS --id $AGENT --questions questions.json --llm-model gpt-4o   # grade answers (endpoint+key from env)
 ```
 
 

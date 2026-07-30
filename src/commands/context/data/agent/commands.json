@@ -6429,13 +6429,76 @@
           "--timeout": {
             "type": "string",
             "description": "Maximum wait time in seconds per question run (default: 300)"
+          },
+          "--llm-endpoint": {
+            "type": "string",
+            "description": "LLM judge endpoint to grade answers (Azure `OpenAI` resource URL or `OpenAI`-compatible base). Enables LLM grading"
+          },
+          "--llm-key": {
+            "type": "string",
+            "description": "LLM judge API key"
+          },
+          "--llm-model": {
+            "type": "string",
+            "description": "LLM judge model (Azure deployment name, or model id for `OpenAI`-compatible)"
+          },
+          "--llm-api-version": {
+            "type": "string",
+            "description": "Azure `OpenAI` API version (default: 2024-10-21)"
           }
         },
         "mutates": false,
         "returns": "object",
         "examples": [
           "fabio data-agent evaluate --workspace $WS --id $DA --questions questions.json",
-          "fabio data-agent evaluate --workspace $WS --id $DA --questions qs.csv --repeats 3 --show-steps"
+          "fabio data-agent evaluate --workspace $WS --id $DA --questions qs.csv --repeats 3 --show-steps",
+          "fabio data-agent evaluate --workspace $WS --id $DA --questions qs.json --llm-endpoint https://r.openai.azure.com --llm-key $KEY --llm-model gpt-4o"
+        ]
+      },
+      "validate-fewshots": {
+        "description": "Validate a data source's few-shot examples with an LLM (duplicates, conflicts, quality)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Data agent ID"
+          },
+          "--datasource": {
+            "type": "string",
+            "required": true,
+            "description": "Data source name or ID"
+          },
+          "--stage": {
+            "type": "string",
+            "description": "Stage to read: staging (draft) or published (live). Default: staging"
+          },
+          "--llm-endpoint": {
+            "type": "string",
+            "description": "LLM judge endpoint (Azure `OpenAI` resource URL or `OpenAI`-compatible base). Required"
+          },
+          "--llm-key": {
+            "type": "string",
+            "description": "LLM judge API key. Required"
+          },
+          "--llm-model": {
+            "type": "string",
+            "description": "LLM judge model (Azure deployment name, or model id for `OpenAI`-compatible). Required"
+          },
+          "--llm-api-version": {
+            "type": "string",
+            "description": "Azure `OpenAI` API version (default: 2024-10-21)"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio data-agent validate-fewshots --workspace $WS --id $DA --datasource MyLakehouse --llm-endpoint https://r.openai.azure.com --llm-key $KEY --llm-model gpt-4o",
+          "FABIO_LLM_ENDPOINT=https://r.openai.azure.com FABIO_LLM_KEY=$KEY FABIO_LLM_MODEL=gpt-4o fabio data-agent validate-fewshots --workspace $WS --id $DA --datasource MyLakehouse"
         ]
       },
       "mcp-url": {

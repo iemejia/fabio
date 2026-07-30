@@ -20,7 +20,16 @@ use super::query::{QueryOptions, run_assistant_query};
 use crate::cli::Cli;
 use crate::client::{self, FabricClient};
 use crate::errors::{ErrorCode, FabioError};
+use crate::llm::{LlmClient, LlmConfig};
 use crate::output;
+
+/// System prompt for the optional LLM grader (`--llm-*`).
+const GRADER_SYSTEM_PROMPT: &str = "You grade a Microsoft Fabric data agent's answer to a \
+question. You are given the question, an optional expected answer, and the agent's actual answer. \
+Decide whether the actual answer is correct. If an expected answer is provided, judge correctness \
+against it (allowing for equivalent phrasings and formatting); otherwise judge whether the actual \
+answer plausibly and completely answers the question. Respond with ONLY a JSON object, no prose: \
+{\"correct\": true|false, \"score\": 0.0-1.0, \"rationale\": \"one sentence\"}.";
 
 /// One question to evaluate, with an optional expected answer.
 struct QuestionSpec {
@@ -29,7 +38,7 @@ struct QuestionSpec {
 }
 
 /// Batch-run `questions` against a published data agent and report the answers.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub(super) async fn evaluate(
     cli: &Cli,
     client: &FabricClient,
@@ -41,10 +50,19 @@ pub(super) async fn evaluate(
     show_steps: bool,
     stage: &str,
     timeout: u64,
+    llm: &LlmConfig,
 ) -> Result<()> {
     if repeats == 0 {
         return Err(FabioError::invalid_input("--repeats must be at least 1").into());
     }
+
+    // Optional LLM grader: built once and reused. When absent, evaluation still
+    // runs and reports answers (plus the naive expected-match signal).
+    let grader = if llm.is_configured() {
+        Some(LlmClient::from_config(llm)?)
+    } else {
+        None
+    };
 
     let content = std::fs::read_to_string(questions_file).map_err(|e| {
         FabioError::with_hint(
@@ -79,6 +97,8 @@ pub(super) async fn evaluate(
     let mut results = Vec::with_capacity(specs.len());
     let mut total_runs: u64 = 0;
     let mut failed_runs: u64 = 0;
+    let mut graded_runs: u64 = 0;
+    let mut passed_runs: u64 = 0;
 
     for spec in &specs {
         let mut answers = Vec::with_capacity(repeats as usize);
@@ -97,6 +117,17 @@ pub(super) async fn evaluate(
                     let mut entry = serde_json::json!({ "answer": res.answer });
                     if let Some(steps) = res.steps {
                         entry["steps"] = steps;
+                    }
+                    // Optional LLM grade.
+                    if let Some(g) = &grader {
+                        let grade =
+                            grade_answer(g, &spec.question, spec.expected.as_deref(), &res.answer)
+                                .await;
+                        graded_runs += 1;
+                        if grade.get("correct").and_then(Value::as_bool) == Some(true) {
+                            passed_runs += 1;
+                        }
+                        entry["grade"] = grade;
                     }
                     answers.push(entry);
                 }
@@ -134,15 +165,50 @@ pub(super) async fn evaluate(
         .into());
     }
 
-    let out = serde_json::json!({
+    let mut out = serde_json::json!({
         "questionCount": specs.len(),
         "repeats": repeats,
         "runCount": total_runs,
         "failedRuns": failed_runs,
         "results": results,
     });
+    if grader.is_some() {
+        out["gradedRuns"] = Value::from(graded_runs);
+        out["passedRuns"] = Value::from(passed_runs);
+        out["passRate"] = if graded_runs > 0 {
+            #[allow(clippy::cast_precision_loss)]
+            Value::from((passed_runs as f64) / (graded_runs as f64))
+        } else {
+            Value::Null
+        };
+        out["grader"] = Value::from(llm.model.as_deref().unwrap_or(""));
+    }
     output::render_object(cli, &out, "questionCount");
     Ok(())
+}
+
+/// Grade a single answer with the LLM judge. Non-fatal: a grading failure yields
+/// a `{"error": ...}` grade object rather than aborting the evaluation.
+async fn grade_answer(
+    grader: &LlmClient,
+    question: &str,
+    expected: Option<&str>,
+    actual: &str,
+) -> Value {
+    let user = build_grade_prompt(question, expected, actual);
+    match grader.complete_json(GRADER_SYSTEM_PROMPT, &user).await {
+        Ok(v) => v,
+        Err(e) => serde_json::json!({ "error": e.to_string() }),
+    }
+}
+
+/// Build the grader user prompt from the question, optional expected, and actual.
+fn build_grade_prompt(question: &str, expected: Option<&str>, actual: &str) -> String {
+    let expected_line = expected.map_or_else(
+        || "Expected answer: (none provided — judge plausibility)".to_string(),
+        |e| format!("Expected answer: {e}"),
+    );
+    format!("Question: {question}\n{expected_line}\nActual answer: {actual}")
 }
 
 /// Parse a questions file (JSON or delimited) into question specs.
@@ -422,5 +488,20 @@ mod tests {
     #[test]
     fn normalize_collapses_whitespace_and_case() {
         assert_eq!(normalize("  Hello\t World\n"), "hello world");
+    }
+
+    #[test]
+    fn build_grade_prompt_with_expected() {
+        let p = build_grade_prompt("total?", Some("42"), "The total is 42");
+        assert!(p.contains("Question: total?"));
+        assert!(p.contains("Expected answer: 42"));
+        assert!(p.contains("Actual answer: The total is 42"));
+    }
+
+    #[test]
+    fn build_grade_prompt_without_expected() {
+        let p = build_grade_prompt("total?", None, "42");
+        assert!(p.contains("none provided"));
+        assert!(p.contains("Actual answer: 42"));
     }
 }

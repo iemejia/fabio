@@ -25,7 +25,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 | Query performance monitoring | No | Running/frequent/long-running queries, kill sessions |
 | Statistics management | No | List/show/create/update/delete user-defined statistics |
 | KQL query execution | No | KQL Database and Eventhouse queries |
-| Data Agent interaction | No | Create, configure, publish, and query Data Agents (28 subcommands: staging management API, datasource/fewshot/config CRUD, `--stage` for draft vs published, `--show-steps`) |
+| Data Agent interaction | No | Create, configure, publish, and query Data Agents (staging management API, datasource/fewshot/config CRUD, multi-turn `query` with `--thread-id`/`--keep-thread`, answer file download, `evaluate` batch runs, LLM-judged `validate-fewshots` and `evaluate --llm-*` via a bring-your-own judge model) |
 | Git integration | No | Full lifecycle: connect, status, commit, pull, switch branch |
 | Notebook run | `job run` with `--wait`/`--timeout` | Run with `--wait`, `--timeout`, `--parameters`, cancel |
 | Bulk operations | No | `item bulk-create`, `item bulk-delete` (parallel) |
@@ -58,7 +58,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 
 ### What fabio adds beyond both
 
-- **AI-native interactions** — create, configure, and query Data Agents (28 subcommands via public staging management API: datasource CRUD, few-shot management, table selection, element descriptions, `--stage` for draft vs published, reset/publish lifecycle); execute KQL for real-time intelligence, NL-to-KQL translation
+- **AI-native interactions** — create, configure, and query Data Agents (public staging management API: datasource CRUD, few-shot management, table selection, element descriptions, `--stage` for draft vs published, reset/publish lifecycle; multi-turn `query`, `evaluate` batch runs, and LLM-judged `validate-fewshots`/`evaluate --llm-*` with a bring-your-own judge model); execute KQL for real-time intelligence, NL-to-KQL translation
 - **Layered agent knowledge** — 7 orchestrator personas, 6 term disambiguations, and 13 generated intent-scoped sub-skills (see [Agent knowledge architecture](#agent-knowledge-architecture)) route agents to the right workload; every mechanical command index is generated from the CLI schema and CI-drift-checked
 - **Self-correcting error hints** — every error includes a `hint` field with the exact corrected command, valid enum values, or the logical next step so agents can retry without consulting docs
 - **Self-improving** — when new Fabric REST APIs are detected, fabio auto-implements support for new commands and item types

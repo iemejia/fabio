@@ -5,6 +5,7 @@ mod cli;
 mod client;
 mod commands;
 mod errors;
+mod llm;
 mod metrics;
 mod output;
 mod parallel;

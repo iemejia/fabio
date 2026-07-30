@@ -6,6 +6,7 @@ mod elements;
 mod evaluate;
 mod fewshots;
 mod query;
+mod validate;
 
 use anyhow::Result;
 use clap::Subcommand;
@@ -14,6 +15,7 @@ use serde_json::Value;
 use crate::cli::Cli;
 use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
+use crate::llm::LlmConfig;
 
 #[derive(Debug, Subcommand)]
 #[command(
@@ -162,6 +164,57 @@ pub enum DataAgentCommand {
         /// Maximum wait time in seconds per question run (default: 300)
         #[arg(long, default_value = "300")]
         timeout: u64,
+
+        /// LLM judge endpoint to grade answers (Azure `OpenAI` resource URL or `OpenAI`-compatible base). Enables LLM grading.
+        #[arg(long, env = "FABIO_LLM_ENDPOINT")]
+        llm_endpoint: Option<String>,
+
+        /// LLM judge API key
+        #[arg(long, env = "FABIO_LLM_KEY")]
+        llm_key: Option<String>,
+
+        /// LLM judge model (Azure deployment name, or model id for `OpenAI`-compatible)
+        #[arg(long, env = "FABIO_LLM_MODEL")]
+        llm_model: Option<String>,
+
+        /// Azure `OpenAI` API version (default: 2024-10-21)
+        #[arg(long, env = "FABIO_LLM_API_VERSION")]
+        llm_api_version: Option<String>,
+    },
+
+    /// Validate a data source's few-shot examples with an LLM (duplicates, conflicts, quality)
+    ValidateFewshots {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+
+        /// Data source name or ID
+        #[arg(long)]
+        datasource: String,
+
+        /// Stage to read: staging (draft) or published (live). Default: staging
+        #[arg(long, default_value = "staging")]
+        stage: String,
+
+        /// LLM judge endpoint (Azure `OpenAI` resource URL or `OpenAI`-compatible base). Required.
+        #[arg(long, env = "FABIO_LLM_ENDPOINT")]
+        llm_endpoint: Option<String>,
+
+        /// LLM judge API key. Required.
+        #[arg(long, env = "FABIO_LLM_KEY")]
+        llm_key: Option<String>,
+
+        /// LLM judge model (Azure deployment name, or model id for `OpenAI`-compatible). Required.
+        #[arg(long, env = "FABIO_LLM_MODEL")]
+        llm_model: Option<String>,
+
+        /// Azure `OpenAI` API version (default: 2024-10-21)
+        #[arg(long, env = "FABIO_LLM_API_VERSION")]
+        llm_api_version: Option<String>,
     },
 
     /// Print the Model Context Protocol (MCP) endpoint URL for consuming a published data agent
@@ -713,20 +766,54 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             show_steps,
             stage,
             timeout,
-        } => evaluate::evaluate(
-            cli,
-            client,
+            llm_endpoint,
+            llm_key,
+            llm_model,
+            llm_api_version,
+        } => {
+            let llm = LlmConfig {
+                endpoint: llm_endpoint.clone(),
+                key: llm_key.clone(),
+                model: llm_model.clone(),
+                api_version: llm_api_version.clone(),
+            };
+            evaluate::evaluate(
+                cli,
+                client,
+                workspace,
+                id,
+                questions,
+                published_url.as_deref(),
+                *repeats,
+                *show_steps,
+                stage,
+                *timeout,
+                &llm,
+            )
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent evaluate", "Viewer"))
+        }
+        DataAgentCommand::ValidateFewshots {
             workspace,
             id,
-            questions,
-            published_url.as_deref(),
-            *repeats,
-            *show_steps,
+            datasource,
             stage,
-            *timeout,
-        )
-        .await
-        .map_err(|e| enrich_forbidden(e, "data-agent evaluate", "Viewer")),
+            llm_endpoint,
+            llm_key,
+            llm_model,
+            llm_api_version,
+        } => {
+            let llm = LlmConfig {
+                endpoint: llm_endpoint.clone(),
+                key: llm_key.clone(),
+                model: llm_model.clone(),
+                api_version: llm_api_version.clone(),
+            };
+            validate::ensure_llm_configured(&llm)?;
+            validate::validate_fewshots(cli, client, workspace, id, datasource, stage, &llm)
+                .await
+                .map_err(|e| enrich_forbidden(e, "data-agent validate-fewshots", "Viewer"))
+        }
         DataAgentCommand::McpUrl { workspace, id } => query::mcp_url(cli, client, workspace, id)
             .await
             .map_err(|e| enrich_forbidden(e, "data-agent mcp-url", "Viewer")),

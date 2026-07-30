@@ -1604,6 +1604,72 @@ fn dataagent_evaluate_repeats_zero_fails() {
 }
 
 #[test]
+fn dataagent_validate_fewshots_requires_llm() {
+    // Without an LLM endpoint/key/model the command must fail fast (before any
+    // network call). Clear the FABIO_LLM_* env so the test is deterministic.
+    let assert = fabio()
+        .env_remove("FABIO_LLM_ENDPOINT")
+        .env_remove("FABIO_LLM_KEY")
+        .env_remove("FABIO_LLM_MODEL")
+        .args([
+            "data-agent",
+            "validate-fewshots",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--datasource",
+            "some-ds",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("INVALID_INPUT") && stderr.contains("judge model"),
+        "validate-fewshots should require an LLM: {stderr}"
+    );
+    assert!(
+        stderr.contains("--llm-endpoint"),
+        "error hint should name the LLM flags: {stderr}"
+    );
+}
+
+#[test]
+fn dataagent_evaluate_accepts_llm_flags() {
+    // The grader flags must be accepted by the parser.
+    let tmp = std::env::temp_dir().join("fabio_eval_llm_flags.json");
+    std::fs::write(&tmp, r#"["q?"]"#).unwrap();
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "evaluate",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--questions",
+            tmp.to_str().unwrap(),
+            "--llm-endpoint",
+            "https://x.openai.azure.com",
+            "--llm-key",
+            "k",
+            "--llm-model",
+            "gpt-4o",
+            "--llm-api-version",
+            "2024-10-21",
+        ])
+        .assert();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        !stderr.contains("unexpected argument") && !stderr.contains("unrecognized"),
+        "CLI should accept --llm-* flags on evaluate: {stderr}"
+    );
+    std::fs::remove_file(&tmp).ok();
+}
+
+#[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn dataagent_publish_to_m365_dry_run() {
@@ -3512,6 +3578,177 @@ fn dataagent_query_multiturn_and_evaluate_lifecycle() {
     assert!(
         data["results"][0]["match"]["exact"].is_boolean(),
         "expected a naive match signal on the result, got: {data}"
+    );
+    std::fs::remove_file(&qfile).ok();
+
+    // Cleanup.
+    fabio()
+        .args([
+            "data-agent",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+}
+
+/// Live validation of the LLM-powered features (`validate-fewshots` and
+/// `evaluate --llm-*`). Requires a live tenant AND an OpenAI-compatible judge
+/// model exposed via `FABIO_LLM_ENDPOINT`/`FABIO_LLM_KEY`/`FABIO_LLM_MODEL`;
+/// skips gracefully if the LLM env is not configured.
+#[test]
+#[ignore = "requires live Fabric tenant + FABIO_LLM_* judge model"]
+#[serial]
+fn dataagent_llm_validate_and_grade_lifecycle() {
+    let (Ok(_ep), Ok(_key), Ok(_model)) = (
+        std::env::var("FABIO_LLM_ENDPOINT"),
+        std::env::var("FABIO_LLM_KEY"),
+        std::env::var("FABIO_LLM_MODEL"),
+    ) else {
+        eprintln!("FABIO_LLM_* not set — skipping LLM feature lifecycle test");
+        return;
+    };
+
+    let cfg = TestConfig::from_env();
+    let name = unique_name("da_llm_e2e");
+
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+    let agent_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    fabio()
+        .args([
+            "data-agent",
+            "add-datasource",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--artifact",
+            &cfg.source_lakehouse,
+            "--artifact-type",
+            "Lakehouse",
+            "--lro-timeout",
+            "300",
+        ])
+        .timeout(std::time::Duration::from_mins(6))
+        .assert()
+        .success();
+
+    // Add two near-duplicate questions mapped to CONFLICTING queries — a defect
+    // the LLM judge should flag.
+    for (q, sql) in [
+        (
+            "What is total revenue?",
+            "SELECT SUM(revenue) FROM products",
+        ),
+        ("What's the total revenue?", "SELECT COUNT(*) FROM products"),
+    ] {
+        fabio()
+            .args([
+                "data-agent",
+                "add-fewshot",
+                "--workspace",
+                &cfg.source_workspace,
+                "--id",
+                &agent_id,
+                "--datasource",
+                &cfg.source_lakehouse,
+                "--question",
+                q,
+                "--sql",
+                sql,
+            ])
+            .timeout(std::time::Duration::from_mins(2))
+            .assert()
+            .success();
+    }
+
+    // validate-fewshots must find at least one issue (LLM reads FABIO_LLM_*).
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "validate-fewshots",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--datasource",
+            &cfg.source_lakehouse,
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["fewshotCount"], 2);
+    assert!(
+        data["issueCount"].as_u64().unwrap_or(0) >= 1,
+        "LLM should flag the conflicting duplicate few-shots, got: {data}"
+    );
+
+    // Publish, then evaluate with LLM grading.
+    fabio()
+        .args([
+            "data-agent",
+            "publish",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    let qfile = std::env::temp_dir().join(format!("{name}_graded.json"));
+    std::fs::write(
+        &qfile,
+        r#"[{"question":"Reply with exactly: PONG","expected":"PONG"}]"#,
+    )
+    .unwrap();
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "evaluate",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--questions",
+            qfile.to_str().unwrap(),
+            "--timeout",
+            "300",
+        ])
+        .timeout(std::time::Duration::from_mins(6))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(
+        data["gradedRuns"].as_u64().unwrap_or(0) >= 1,
+        "evaluate should report gradedRuns when FABIO_LLM_* is set, got: {data}"
+    );
+    assert!(
+        data["passRate"].is_number(),
+        "evaluate should report a numeric passRate when grading, got: {data}"
     );
     std::fs::remove_file(&qfile).ok();
 
