@@ -73,12 +73,6 @@ fn env_or_default(var: &str, default: &str) -> String {
     )
 }
 
-/// True if `s` is an `https://` URL (case-insensitive scheme). Pure.
-#[must_use]
-pub fn is_https_url(s: &str) -> bool {
-    s.trim().to_ascii_lowercase().starts_with("https://")
-}
-
 /// True if `url` is HTTPS, or plaintext HTTP to a **loopback** host
 /// (`localhost`, `127.0.0.0/8`, `::1`). Loopback traffic never leaves the
 /// machine, so it is exempt from the HTTPS-only rule — the same rationale as
@@ -4184,15 +4178,6 @@ mod tests {
     fn onelake_urls_are_https() {
         assert!(ONELAKE_DFS_URL.starts_with("https://"));
         assert!(ONELAKE_BLOB_URL.starts_with("https://"));
-    }
-
-    #[test]
-    fn is_https_url_checks_scheme() {
-        assert!(is_https_url("https://api.fabric.microsoft.com"));
-        assert!(is_https_url("HTTPS://Example.COM/path"));
-        assert!(!is_https_url("http://example.com"));
-        assert!(!is_https_url("ftp://example.com"));
-        assert!(!is_https_url("example.com"));
     }
 
     #[test]
