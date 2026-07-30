@@ -63,6 +63,18 @@ fn run() -> std::result::Result<(), i32> {
         }
     };
 
+    // Enforce HTTPS on any endpoint/scope override env vars before any network
+    // use — fabio only communicates with endpoints over TLS.
+    if let Err(e) = client::validate_endpoint_env_overrides() {
+        if let Some(fabio_err) = e.downcast_ref::<errors::FabioError>() {
+            output::render_error(fabio_err);
+            return Err(fabio_err.code.exit_code());
+        }
+        let fabio_err = errors::FabioError::new(errors::ErrorCode::InvalidInput, e.to_string());
+        output::render_error(&fabio_err);
+        return Err(fabio_err.code.exit_code());
+    }
+
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

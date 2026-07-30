@@ -73,6 +73,80 @@ fn env_or_default(var: &str, default: &str) -> String {
     )
 }
 
+/// True if `s` is an `https://` URL (case-insensitive scheme). Pure.
+#[must_use]
+pub fn is_https_url(s: &str) -> bool {
+    s.trim().to_ascii_lowercase().starts_with("https://")
+}
+
+/// True if `url` is HTTPS, or plaintext HTTP to a **loopback** host
+/// (`localhost`, `127.0.0.0/8`, `::1`). Loopback traffic never leaves the
+/// machine, so it is exempt from the HTTPS-only rule — the same rationale as
+/// the OAuth loopback redirect (RFC 8252), and needed for local mock servers
+/// and locally-hosted OpenAI-compatible model servers. Any non-loopback
+/// `http://` is rejected. Pure.
+#[must_use]
+pub fn is_secure_or_loopback(url: &str) -> bool {
+    let lower = url.trim().to_ascii_lowercase();
+    if lower.starts_with("https://") {
+        return true;
+    }
+    let Some(rest) = lower.strip_prefix("http://") else {
+        return false;
+    };
+    // Extract the host, handling bracketed IPv6 (`[::1]`).
+    let host = rest.strip_prefix('[').map_or_else(
+        || rest.split(['/', ':', '?', '#']).next().unwrap_or(""),
+        |r| r.split(']').next().unwrap_or(""),
+    );
+    host == "localhost" || host == "::1" || host.starts_with("127.")
+}
+
+/// Environment variables that override an endpoint or token-audience URL fabio
+/// talks to. Every one must be `https://` (loopback `http://` allowed) — fabio
+/// only communicates with remote endpoints over TLS, so a plaintext override to
+/// a non-loopback host is rejected at startup.
+const HTTPS_REQUIRED_ENV_VARS: &[&str] = &[
+    "FABIO_FABRIC_API_ENDPOINT",
+    "FABIO_ONELAKE_DFS_ENDPOINT",
+    "FABIO_ONELAKE_BLOB_ENDPOINT",
+    "FABIO_ONELAKE_TABLE_ENDPOINT",
+    "FABIO_ARM_ENDPOINT",
+    "FABIO_POWERBI_ENDPOINT",
+    "FABIO_FABRIC_SCOPE",
+    "FABIO_STORAGE_SCOPE",
+    "FABIO_SQL_SCOPE",
+    "FABIO_ARM_SCOPE",
+    "FABIO_GRAPH_SCOPE",
+];
+
+/// Validate that every set endpoint/scope override env var uses HTTPS.
+///
+/// Called once at startup so a misconfigured plaintext endpoint fails fast with
+/// a clear error rather than silently downgrading a request to `http://`.
+pub fn validate_endpoint_env_overrides() -> Result<()> {
+    validate_https_overrides(HTTPS_REQUIRED_ENV_VARS, |var| std::env::var(var).ok())
+}
+
+/// Pure core of [`validate_endpoint_env_overrides`] for unit testing.
+fn validate_https_overrides(vars: &[&str], lookup: impl Fn(&str) -> Option<String>) -> Result<()> {
+    for &var in vars {
+        if let Some(v) = lookup(var) {
+            let val = v.trim();
+            if !val.is_empty() && !is_secure_or_loopback(val) {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!("{var} must be an https:// URL (got: {val})"),
+                    "fabio only communicates with remote endpoints over HTTPS. Set it to an \
+                     https:// URL (plaintext http:// is allowed only for loopback/localhost).",
+                )
+                .into());
+            }
+        }
+    }
+    Ok(())
+}
+
 static FABRIC_BASE_URL: LazyLock<String> = LazyLock::new(|| {
     env_or_default(
         "FABIO_FABRIC_API_ENDPOINT",
@@ -4110,6 +4184,68 @@ mod tests {
     fn onelake_urls_are_https() {
         assert!(ONELAKE_DFS_URL.starts_with("https://"));
         assert!(ONELAKE_BLOB_URL.starts_with("https://"));
+    }
+
+    #[test]
+    fn is_https_url_checks_scheme() {
+        assert!(is_https_url("https://api.fabric.microsoft.com"));
+        assert!(is_https_url("HTTPS://Example.COM/path"));
+        assert!(!is_https_url("http://example.com"));
+        assert!(!is_https_url("ftp://example.com"));
+        assert!(!is_https_url("example.com"));
+    }
+
+    #[test]
+    fn is_secure_or_loopback_rules() {
+        // HTTPS always allowed.
+        assert!(is_secure_or_loopback("https://api.fabric.microsoft.com"));
+        // Loopback http allowed (localhost, 127.x, ::1).
+        assert!(is_secure_or_loopback("http://localhost:11434/v1"));
+        assert!(is_secure_or_loopback("http://127.0.0.1:8080"));
+        assert!(is_secure_or_loopback("http://127.5.5.5/path"));
+        assert!(is_secure_or_loopback("http://[::1]:9000/v1"));
+        // Remote http rejected.
+        assert!(!is_secure_or_loopback("http://api.evil.example.com"));
+        assert!(!is_secure_or_loopback("http://10.0.0.5"));
+        assert!(!is_secure_or_loopback("http://localhost.evil.com"));
+        assert!(!is_secure_or_loopback("ftp://localhost"));
+    }
+
+    #[test]
+    fn validate_https_overrides_accepts_https_and_unset() {
+        let vars = ["FABIO_FABRIC_API_ENDPOINT", "FABIO_ARM_SCOPE"];
+        // All unset → ok.
+        assert!(validate_https_overrides(&vars, |_| None).is_ok());
+        // Set to https → ok.
+        assert!(
+            validate_https_overrides(&vars, |v| match v {
+                "FABIO_FABRIC_API_ENDPOINT" => Some("https://host/v1".to_string()),
+                _ => None,
+            })
+            .is_ok()
+        );
+        // Loopback http → ok (local mock server).
+        assert!(
+            validate_https_overrides(&vars, |v| match v {
+                "FABIO_FABRIC_API_ENDPOINT" => Some("http://127.0.0.1:56789".to_string()),
+                _ => None,
+            })
+            .is_ok()
+        );
+        // Empty value is ignored (treated as unset).
+        assert!(validate_https_overrides(&vars, |_| Some("   ".to_string())).is_ok());
+    }
+
+    #[test]
+    fn validate_https_overrides_rejects_remote_http() {
+        let vars = ["FABIO_FABRIC_API_ENDPOINT"];
+        let err = validate_https_overrides(&vars, |_| Some("http://evil.local".to_string()))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("FABIO_FABRIC_API_ENDPOINT") && err.contains("https://"),
+            "got: {err}"
+        );
     }
 
     #[test]

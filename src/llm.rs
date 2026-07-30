@@ -57,6 +57,20 @@ impl LlmClient {
         let endpoint = non_empty(cfg.endpoint.as_deref()).ok_or_else(missing_llm_error)?;
         let key = non_empty(cfg.key.as_deref()).ok_or_else(missing_llm_error)?;
         let model = non_empty(cfg.model.as_deref()).ok_or_else(missing_llm_error)?;
+        // fabio only talks to remote endpoints over TLS — reject a plaintext
+        // endpoint (except loopback) so the LLM API key is never sent in the
+        // clear. Loopback http is allowed for locally-hosted model servers.
+        if !crate::client::is_secure_or_loopback(endpoint) {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("--llm-endpoint must be an https:// URL (got: {endpoint})"),
+                "fabio only communicates with remote LLM endpoints over HTTPS so the API key is \
+                 not sent in plaintext. Use the https:// endpoint of your Azure OpenAI / \
+                 OpenAI-compatible resource (plaintext http:// is allowed only for \
+                 loopback/localhost model servers).",
+            )
+            .into());
+        }
         let api_version = non_empty(cfg.api_version.as_deref())
             .unwrap_or(DEFAULT_LLM_API_VERSION)
             .to_string();
@@ -376,5 +390,32 @@ mod tests {
         let client = LlmClient::from_config(&cfg).unwrap();
         assert!(client.azure);
         assert_eq!(client.api_version, DEFAULT_LLM_API_VERSION);
+    }
+
+    #[test]
+    fn from_config_rejects_non_https_endpoint() {
+        // A remote (non-loopback) http endpoint must be rejected.
+        let cfg = LlmConfig {
+            endpoint: Some("http://api.evil.example.com/v1".to_string()),
+            key: Some("k".to_string()),
+            model: Some("m".to_string()),
+            api_version: None,
+        };
+        let Err(e) = LlmClient::from_config(&cfg) else {
+            panic!("expected remote http endpoint to be rejected");
+        };
+        assert!(e.to_string().contains("https://"), "got: {e}");
+    }
+
+    #[test]
+    fn from_config_allows_loopback_http_for_local_models() {
+        // Locally-hosted OpenAI-compatible servers (Ollama, LM Studio) are OK.
+        let cfg = LlmConfig {
+            endpoint: Some("http://localhost:11434/v1".to_string()),
+            key: Some("k".to_string()),
+            model: Some("m".to_string()),
+            api_version: None,
+        };
+        assert!(LlmClient::from_config(&cfg).is_ok());
     }
 }
