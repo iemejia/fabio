@@ -1,4 +1,5 @@
 use std::io;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::Result;
@@ -13,6 +14,59 @@ use crate::output;
 /// Polling interval for data agent query runs.
 const QUERY_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
+/// `OpenAI`-compatible API version used by the data agent published endpoint.
+const OPENAI_API_VERSION: &str = "2024-05-01-preview";
+
+/// Options controlling a single assistant query run.
+///
+/// Shared by `data-agent query` (single-turn or multi-turn) and
+/// `data-agent evaluate` (batch), so both drive the identical Assistants flow.
+pub(super) struct QueryOptions<'a> {
+    /// Reuse an existing thread instead of creating one (enables multi-turn).
+    pub thread_id: Option<&'a str>,
+    /// Do not delete the thread after the run (so it can be reused).
+    pub keep_thread: bool,
+    /// Include run steps (SQL queries, tool calls) in the result.
+    pub show_steps: bool,
+    /// Directory to download answer-attached files into (`None` = skip).
+    pub download_dir: Option<&'a Path>,
+}
+
+/// Validate the requested query stage.
+///
+/// Only a *published* data agent is reachable through the public Fabric API
+/// (via its `publishedUrl`). The draft/staging ("sandbox") stage lives on the
+/// internal workload host and has no public consumption endpoint, so a request
+/// to query it must fail fast rather than silently querying production.
+///
+/// When an explicit `--published-url` is supplied the stage is irrelevant (the
+/// caller pointed us at a concrete endpoint), so any value is accepted.
+fn validate_query_stage(stage: &str, has_explicit_url: bool) -> Result<()> {
+    if has_explicit_url {
+        return Ok(());
+    }
+    match stage.trim().to_ascii_lowercase().as_str() {
+        "production" | "published" | "prod" | "live" => Ok(()),
+        "sandbox" | "staging" | "draft" => Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!(
+                "Querying the '{stage}' (draft) stage is not supported via the public Fabric API"
+            ),
+            "Only a published data agent can be queried. Publish it first with: \
+             fabio data-agent publish --workspace <WS> --id <ID>, then query the default \
+             --stage production. To target a specific endpoint directly, pass --published-url.",
+        )
+        .into()),
+        other => Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid --stage value '{other}'"),
+            "Valid value: 'production' (the published agent). Draft/staging querying is not \
+             available through the public API.",
+        )
+        .into()),
+    }
+}
+
 /// Query a published data agent using the `OpenAI` Assistants protocol.
 ///
 /// The data agent exposes an `OpenAI`-compatible endpoint at its published URL.
@@ -26,9 +80,14 @@ pub(super) async fn query(
     prompt: Option<&str>,
     published_url: Option<&str>,
     verbose: bool,
-    _stage: &str,
+    stage: &str,
+    thread_id: Option<&str>,
+    keep_thread: bool,
+    download_files: Option<&str>,
     timeout: u64,
 ) -> Result<()> {
+    validate_query_stage(stage, published_url.is_some())?;
+
     // Resolve prompt text: --prompt flag or stdin
     let prompt_text = if let Some(p) = prompt {
         p.to_string()
@@ -60,18 +119,30 @@ pub(super) async fn query(
         url
     };
 
+    let download_dir = download_files.map(Path::new);
+
     // Use the OpenAI Assistants protocol against the published URL
     let token = client.require_auth().await?;
     let max_wait = Duration::from_secs(timeout);
+    let opts = QueryOptions {
+        thread_id,
+        keep_thread,
+        show_steps: verbose,
+        download_dir,
+    };
     let query_result =
-        run_assistant_query(&resolved_url, &token, &prompt_text, verbose, max_wait).await?;
+        run_assistant_query(&resolved_url, &token, &prompt_text, &opts, max_wait).await?;
 
     let mut result = serde_json::json!({
         "question": prompt_text.trim(),
         "answer": query_result.answer,
+        "threadId": query_result.thread_id,
     });
     if let Some(steps) = query_result.steps {
         result["steps"] = steps;
+    }
+    if download_dir.is_some() {
+        result["files"] = Value::Array(query_result.files);
     }
     output::render_object(cli, &result, "answer");
     Ok(())
@@ -127,6 +198,18 @@ async fn is_published(client: &FabricClient, workspace: &str, id: &str) -> bool 
         .is_ok()
 }
 
+/// Build the canonical `OpenAI`-compatible consumption URL for a published agent.
+///
+/// The public `GET /dataAgents/{id}/settings` endpoint does not return a
+/// `publishedUrl` field, so fabio constructs the well-known pattern
+/// `{base}/workspaces/{ws}/dataagents/{id}/aiassistant/openai` (note the
+/// lowercase `dataagents`), which serves the Assistants API for a *published*
+/// agent. Verified live. Pure for unit testing.
+fn build_published_url(base: &str, workspace: &str, id: &str) -> String {
+    let base = base.trim_end_matches('/');
+    format!("{base}/workspaces/{workspace}/dataagents/{id}/aiassistant/openai")
+}
+
 /// Get the published URL of a data agent.
 ///
 /// Strategy:
@@ -159,30 +242,53 @@ async fn get_published_url(client: &FabricClient, workspace: &str, id: &str) -> 
         return Ok(url.to_string());
     }
 
-    // No published URL found — the agent may not be published yet.
-    Err(FabioError::with_hint(
-        ErrorCode::ApiError,
-        "Published URL not found. The data agent may not be published yet.",
-        format!(
-            "Publish the agent with 'fabio data-agent publish', then provide the URL with --published-url. \
-             The URL pattern is: https://api.fabric.microsoft.com/v1/workspaces/{workspace}/dataagents/{id}/aiassistant/openai"
-        ),
-    )
-    .into())
+    // Last resort: construct the canonical consumption URL. The Fabric REST API
+    // does not surface a `publishedUrl`, but the well-known
+    // `.../dataagents/{id}/aiassistant/openai` endpoint serves the Assistants API
+    // for a published agent (verified live). If the agent is not actually
+    // published, the first Assistants call returns 404 with a publish hint via
+    // `enrich_query_error`.
+    Ok(build_published_url(
+        client::fabric_base_url(),
+        workspace,
+        id,
+    ))
+}
+
+/// Validate the query stage, then resolve the agent's published URL.
+///
+/// Shared by `data-agent evaluate` (and available to any consumer that must
+/// reach the published endpoint without an explicit `--published-url`). The
+/// returned URL is validated as a trusted Fabric host to prevent token
+/// exfiltration via a crafted `publishedUrl` in the agent settings.
+pub(super) async fn resolve_published_url(
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    stage: &str,
+) -> Result<String> {
+    validate_query_stage(stage, false)?;
+    let url = get_published_url(client, workspace, id).await?;
+    client::validate_trusted_url(&url, "publishedUrl (from agent settings)")?;
+    Ok(url)
 }
 
 /// Result of a data agent query, including the answer and optional execution steps.
-struct QueryResult {
-    answer: String,
-    steps: Option<Value>,
+pub(super) struct QueryResult {
+    pub answer: String,
+    /// The thread used for the run (reusable for multi-turn follow-ups).
+    pub thread_id: String,
+    pub steps: Option<Value>,
+    /// Metadata for any files downloaded from the answer (empty unless requested).
+    pub files: Vec<Value>,
 }
 
 /// Run a query against the data agent using the `OpenAI` Assistants API protocol.
-async fn run_assistant_query(
+pub(super) async fn run_assistant_query(
     base_url: &str,
     token: &str,
     question: &str,
-    verbose: bool,
+    opts: &QueryOptions<'_>,
     max_wait: Duration,
 ) -> Result<QueryResult> {
     let http = crate::client::http_client_builder()
@@ -193,9 +299,13 @@ async fn run_assistant_query(
 
     let auth_header = token;
 
-    // Step 1: Create assistant + thread
+    // Step 1: Create assistant. Reuse the caller's thread if given (multi-turn),
+    // otherwise create a fresh one.
     let assistant_id = create_assistant(&http, base_url, auth_header).await?;
-    let thread_id = create_thread(&http, base_url, auth_header).await?;
+    let (thread_id, created_thread) = match opts.thread_id {
+        Some(t) => (t.to_string(), false),
+        None => (create_thread(&http, base_url, auth_header).await?, true),
+    };
 
     // Step 2: Post message and run
     post_message(&http, base_url, auth_header, &thread_id, question).await?;
@@ -205,27 +315,40 @@ async fn run_assistant_query(
     poll_run_completion(&http, base_url, auth_header, &thread_id, &run_id, max_wait).await?;
 
     // Step 4 (optional): Retrieve run steps for verbose mode
-    let steps = if verbose {
+    let steps = if opts.show_steps {
         Some(retrieve_run_steps(&http, base_url, auth_header, &thread_id, &run_id).await?)
     } else {
         None
     };
 
-    // Step 5: Get response
-    let response_text = retrieve_response(&http, base_url, auth_header, &thread_id).await?;
+    // Step 5: Get the assistant messages, then extract the answer text.
+    let messages = fetch_messages(&http, base_url, auth_header, &thread_id).await?;
+    let response_text = extract_answer(&messages);
 
-    // Step 6: Clean up thread (best effort)
-    let _ = http
-        .delete(format!(
-            "{base_url}/threads/{thread_id}?api-version=2024-05-01-preview"
-        ))
-        .header("Authorization", auth_header)
-        .send()
-        .await;
+    // Step 5b (optional): Download any files the answer attached.
+    let files = if let Some(dir) = opts.download_dir {
+        download_answer_files(&http, base_url, auth_header, &messages, dir).await?
+    } else {
+        Vec::new()
+    };
+
+    // Step 6: Clean up the thread (best effort) — only if we created it and the
+    // caller did not ask to keep it for a follow-up turn.
+    if created_thread && !opts.keep_thread {
+        let _ = http
+            .delete(format!(
+                "{base_url}/threads/{thread_id}?api-version={OPENAI_API_VERSION}"
+            ))
+            .header("Authorization", auth_header)
+            .send()
+            .await;
+    }
 
     Ok(QueryResult {
         answer: response_text,
+        thread_id,
         steps,
+        files,
     })
 }
 
@@ -496,16 +619,16 @@ async fn poll_run_completion(
     }
 }
 
-/// Retrieve the assistant's response from the thread messages.
-async fn retrieve_response(
+/// Fetch the thread messages (ascending order) from the data agent endpoint.
+async fn fetch_messages(
     http: &reqwest::Client,
     base_url: &str,
     auth_header: &str,
     thread_id: &str,
-) -> Result<String> {
+) -> Result<Value> {
     let resp = http
         .get(format!(
-            "{base_url}/threads/{thread_id}/messages?api-version=2024-05-01-preview&order=asc"
+            "{base_url}/threads/{thread_id}/messages?api-version={OPENAI_API_VERSION}&order=asc"
         ))
         .header("Authorization", auth_header)
         .send()
@@ -525,16 +648,22 @@ async fn retrieve_response(
         .into());
     }
 
-    let messages: Value = resp.json().await.map_err(|e| {
+    resp.json().await.map_err(|e| {
         FabioError::with_hint(
             ErrorCode::ApiError,
             format!("Parse messages response: {e}"),
             "Unexpected response format. This may indicate an API version mismatch.",
         )
-    })?;
+        .into()
+    })
+}
 
-    // Extract the assistant's response (last message with role=assistant)
-    let text = messages
+/// Extract the assistant's answer text from a thread messages payload.
+///
+/// Picks the most recent `role == "assistant"` message and returns its first
+/// text content value. Pure so it can be unit-tested without a live endpoint.
+fn extract_answer(messages: &Value) -> String {
+    messages
         .get("data")
         .and_then(Value::as_array)
         .and_then(|arr| {
@@ -544,13 +673,197 @@ async fn retrieve_response(
         })
         .and_then(|m| m.get("content"))
         .and_then(Value::as_array)
-        .and_then(|content| content.first())
-        .and_then(|c| c.get("text"))
-        .and_then(|t| t.get("value"))
-        .and_then(Value::as_str)
-        .unwrap_or("(No response from data agent)");
+        .and_then(|content| {
+            content.iter().find_map(|c| {
+                c.get("text")
+                    .and_then(|t| t.get("value"))
+                    .and_then(Value::as_str)
+            })
+        })
+        .unwrap_or("(No response from data agent)")
+        .to_string()
+}
 
-    Ok(text.to_string())
+/// Extract file IDs referenced by the assistant's answer.
+///
+/// Fabric data agents can attach generated files (CSVs, images) to an answer.
+/// The `OpenAI` Assistants message shape exposes them in three places, all of
+/// which are scanned across every assistant message:
+/// - text-content annotations of type `file_path` / `file_citation`
+/// - image-content items of type `image_file`
+/// - message-level `attachments`
+///
+/// IDs are returned de-duplicated in first-seen order. Pure for unit testing.
+fn extract_file_ids(messages: &Value) -> Vec<String> {
+    let mut ids: Vec<String> = Vec::new();
+    let mut push = |id: &str| {
+        if !id.is_empty() && !ids.iter().any(|existing| existing == id) {
+            ids.push(id.to_string());
+        }
+    };
+
+    let Some(data) = messages.get("data").and_then(Value::as_array) else {
+        return ids;
+    };
+    for msg in data {
+        if msg.get("role").and_then(Value::as_str) != Some("assistant") {
+            continue;
+        }
+        // Content: text annotations + image_file items.
+        if let Some(content) = msg.get("content").and_then(Value::as_array) {
+            for item in content {
+                if let Some(fid) = item
+                    .get("image_file")
+                    .and_then(|f| f.get("file_id"))
+                    .and_then(Value::as_str)
+                {
+                    push(fid);
+                }
+                if let Some(annotations) = item
+                    .get("text")
+                    .and_then(|t| t.get("annotations"))
+                    .and_then(Value::as_array)
+                {
+                    for ann in annotations {
+                        for key in ["file_path", "file_citation"] {
+                            if let Some(fid) = ann
+                                .get(key)
+                                .and_then(|f| f.get("file_id"))
+                                .and_then(Value::as_str)
+                            {
+                                push(fid);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Message-level attachments.
+        if let Some(attachments) = msg.get("attachments").and_then(Value::as_array) {
+            for att in attachments {
+                if let Some(fid) = att.get("file_id").and_then(Value::as_str) {
+                    push(fid);
+                }
+            }
+        }
+    }
+    ids
+}
+
+/// Sanitize a server-provided filename to a safe basename for local writing.
+///
+/// Strips any directory components (defeating path traversal / absolute paths on
+/// both Unix and Windows) and falls back to `fallback` when nothing usable
+/// remains. Pure for unit testing.
+fn sanitize_filename(name: &str, fallback: &str) -> String {
+    let base = name
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or("")
+        .trim()
+        .trim_matches('.');
+    if base.is_empty() || base == "." || base == ".." {
+        fallback.to_string()
+    } else {
+        base.to_string()
+    }
+}
+
+/// Download the files attached to an answer into `dir`.
+///
+/// Best-effort per file: a failure to fetch one file is recorded in that file's
+/// entry (as an `error` field) rather than aborting the whole query, so the
+/// textual answer is always returned. Returns one metadata object per file.
+async fn download_answer_files(
+    http: &reqwest::Client,
+    base_url: &str,
+    auth_header: &str,
+    messages: &Value,
+    dir: &Path,
+) -> Result<Vec<Value>> {
+    let file_ids = extract_file_ids(messages);
+    if file_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    tokio::fs::create_dir_all(dir).await.map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!(
+                "Failed to create download directory '{}': {e}",
+                dir.display()
+            ),
+            "Provide a writable path with --download-files, or create the directory first.",
+        )
+    })?;
+
+    let mut out = Vec::with_capacity(file_ids.len());
+    for fid in file_ids {
+        out.push(download_one_file(http, base_url, auth_header, &fid, dir).await);
+    }
+    Ok(out)
+}
+
+/// Download a single file by ID; returns a metadata object (never errors).
+async fn download_one_file(
+    http: &reqwest::Client,
+    base_url: &str,
+    auth_header: &str,
+    file_id: &str,
+    dir: &Path,
+) -> Value {
+    // Resolve a friendly filename from the file metadata (best effort).
+    let filename = match http
+        .get(format!(
+            "{base_url}/files/{file_id}?api-version={OPENAI_API_VERSION}"
+        ))
+        .header("Authorization", auth_header)
+        .send()
+        .await
+    {
+        Ok(r) if r.status().is_success() => r
+            .json::<Value>()
+            .await
+            .ok()
+            .and_then(|m| m.get("filename").and_then(Value::as_str).map(String::from))
+            .map_or_else(|| file_id.to_string(), |f| sanitize_filename(&f, file_id)),
+        _ => file_id.to_string(),
+    };
+
+    let content_resp = http
+        .get(format!(
+            "{base_url}/files/{file_id}/content?api-version={OPENAI_API_VERSION}"
+        ))
+        .header("Authorization", auth_header)
+        .send()
+        .await;
+
+    let bytes = match content_resp {
+        Ok(r) if r.status().is_success() => match r.bytes().await {
+            Ok(b) => b,
+            Err(e) => {
+                return serde_json::json!({"fileId": file_id, "error": format!("read body: {e}")});
+            }
+        },
+        Ok(r) => {
+            let status = r.status().as_u16();
+            return serde_json::json!({"fileId": file_id, "error": format!("download failed with HTTP {status}")});
+        }
+        Err(e) => {
+            return serde_json::json!({"fileId": file_id, "error": format!("request failed: {e}")});
+        }
+    };
+
+    let path: PathBuf = dir.join(&filename);
+    if let Err(e) = tokio::fs::write(&path, &bytes).await {
+        return serde_json::json!({"fileId": file_id, "error": format!("write failed: {e}")});
+    }
+    serde_json::json!({
+        "fileId": file_id,
+        "filename": filename,
+        "path": path.to_string_lossy(),
+        "bytes": bytes.len(),
+    })
 }
 
 /// Retrieve the run steps to show execution details (SQL queries, tool calls, etc.).
@@ -835,5 +1148,122 @@ mod tests {
             url,
             "https://example.test/v1/mcp/workspaces/w/dataagents/a/agent"
         );
+    }
+
+    #[test]
+    fn build_published_url_matches_canonical_pattern() {
+        let url = build_published_url("https://api.fabric.microsoft.com/v1/", "ws-1", "agent-2");
+        assert_eq!(
+            url,
+            "https://api.fabric.microsoft.com/v1/workspaces/ws-1/dataagents/agent-2/aiassistant/openai"
+        );
+    }
+
+    #[test]
+    fn validate_query_stage_accepts_production_aliases() {
+        for s in ["production", "Published", "prod", "LIVE"] {
+            assert!(
+                validate_query_stage(s, false).is_ok(),
+                "stage {s} should pass"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_query_stage_rejects_draft_stages() {
+        for s in ["sandbox", "staging", "draft"] {
+            let err = validate_query_stage(s, false).unwrap_err().to_string();
+            assert!(
+                err.contains("not supported") || err.contains("draft"),
+                "stage {s} should be rejected, got: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_query_stage_rejects_unknown() {
+        assert!(validate_query_stage("banana", false).is_err());
+    }
+
+    #[test]
+    fn validate_query_stage_ignores_stage_with_explicit_url() {
+        // An explicit --published-url overrides stage semantics entirely.
+        assert!(validate_query_stage("sandbox", true).is_ok());
+        assert!(validate_query_stage("banana", true).is_ok());
+    }
+
+    #[test]
+    fn extract_answer_reads_last_assistant_text() {
+        let messages = serde_json::json!({
+            "data": [
+                {"role": "user", "content": [{"type": "text", "text": {"value": "hi"}}]},
+                {"role": "assistant", "content": [{"type": "text", "text": {"value": "first"}}]},
+                {"role": "assistant", "content": [{"type": "text", "text": {"value": "final answer"}}]}
+            ]
+        });
+        assert_eq!(extract_answer(&messages), "final answer");
+    }
+
+    #[test]
+    fn extract_answer_skips_leading_non_text_content() {
+        let messages = serde_json::json!({
+            "data": [
+                {"role": "assistant", "content": [
+                    {"type": "image_file", "image_file": {"file_id": "f1"}},
+                    {"type": "text", "text": {"value": "the chart shows growth"}}
+                ]}
+            ]
+        });
+        assert_eq!(extract_answer(&messages), "the chart shows growth");
+    }
+
+    #[test]
+    fn extract_answer_defaults_when_empty() {
+        assert_eq!(
+            extract_answer(&serde_json::json!({"data": []})),
+            "(No response from data agent)"
+        );
+    }
+
+    #[test]
+    fn extract_file_ids_collects_all_sources_deduped() {
+        let messages = serde_json::json!({
+            "data": [
+                {"role": "user", "content": [{"type": "text", "text": {"value": "make a csv"}}]},
+                {"role": "assistant",
+                 "content": [
+                    {"type": "image_file", "image_file": {"file_id": "img-1"}},
+                    {"type": "text", "text": {"value": "see file",
+                        "annotations": [
+                            {"type": "file_path", "file_path": {"file_id": "csv-1"}},
+                            {"type": "file_citation", "file_citation": {"file_id": "cite-1"}}
+                        ]}}
+                 ],
+                 "attachments": [{"file_id": "att-1"}, {"file_id": "img-1"}]
+                }
+            ]
+        });
+        assert_eq!(
+            extract_file_ids(&messages),
+            vec!["img-1", "csv-1", "cite-1", "att-1"]
+        );
+    }
+
+    #[test]
+    fn extract_file_ids_empty_when_no_files() {
+        let messages = serde_json::json!({
+            "data": [{"role": "assistant", "content": [{"type": "text", "text": {"value": "no files"}}]}]
+        });
+        assert!(extract_file_ids(&messages).is_empty());
+    }
+
+    #[test]
+    fn sanitize_filename_strips_paths_and_traversal() {
+        assert_eq!(sanitize_filename("report.csv", "fb"), "report.csv");
+        assert_eq!(sanitize_filename("../../etc/passwd", "fb"), "passwd");
+        assert_eq!(sanitize_filename("dir\\sub\\chart.png", "fb"), "chart.png");
+        assert_eq!(sanitize_filename("/abs/path/x.txt", "fb"), "x.txt");
+        assert_eq!(sanitize_filename("", "fallback-id"), "fallback-id");
+        assert_eq!(sanitize_filename("..", "fallback-id"), "fallback-id");
     }
 }

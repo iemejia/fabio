@@ -3,6 +3,7 @@ mod crud;
 mod datasources;
 mod definition;
 mod elements;
+mod evaluate;
 mod fewshots;
 mod query;
 
@@ -107,11 +108,58 @@ pub enum DataAgentCommand {
         #[arg(long)]
         show_steps: bool,
 
-        /// Agent stage to query: sandbox (draft) or production (published)
+        /// Agent stage to query: only `production` (published) is supported via the public API
         #[arg(long, default_value = "production")]
         stage: String,
 
+        /// Reuse an existing thread for a multi-turn follow-up (from a prior query's `threadId`)
+        #[arg(long)]
+        thread_id: Option<String>,
+
+        /// Keep the thread after the query (returns its `threadId` for a follow-up turn)
+        #[arg(long)]
+        keep_thread: bool,
+
+        /// Download files attached to the answer into this directory (e.g. generated CSVs/charts)
+        #[arg(long, value_name = "DIR")]
+        download_files: Option<String>,
+
         /// Maximum wait time in seconds for the query to complete (default: 300)
+        #[arg(long, default_value = "300")]
+        timeout: u64,
+    },
+
+    /// Batch-run a set of questions against a published data agent (evaluation primitive)
+    Evaluate {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+
+        /// Questions file: JSON (array of strings, or [{"question","expected"}]) or CSV/TSV with a `question` column (optional `expected`)
+        #[arg(long)]
+        questions: String,
+
+        /// Published URL (from portal Settings page after publishing the agent)
+        #[arg(long)]
+        published_url: Option<String>,
+
+        /// Number of times to run each question (default: 1)
+        #[arg(long, default_value = "1")]
+        repeats: u32,
+
+        /// Include execution details (SQL queries, tool calls, run steps) per run
+        #[arg(long)]
+        show_steps: bool,
+
+        /// Agent stage to query: only `production` (published) is supported via the public API
+        #[arg(long, default_value = "production")]
+        stage: String,
+
+        /// Maximum wait time in seconds per question run (default: 300)
         #[arg(long, default_value = "300")]
         timeout: u64,
     },
@@ -636,6 +684,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             published_url,
             show_steps,
             stage,
+            thread_id,
+            keep_thread,
+            download_files,
             timeout,
         } => query::query(
             cli,
@@ -646,10 +697,36 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             published_url.as_deref(),
             *show_steps,
             stage,
+            thread_id.as_deref(),
+            *keep_thread,
+            download_files.as_deref(),
             *timeout,
         )
         .await
         .map_err(|e| enrich_forbidden(e, "data-agent query", "Viewer")),
+        DataAgentCommand::Evaluate {
+            workspace,
+            id,
+            questions,
+            published_url,
+            repeats,
+            show_steps,
+            stage,
+            timeout,
+        } => evaluate::evaluate(
+            cli,
+            client,
+            workspace,
+            id,
+            questions,
+            published_url.as_deref(),
+            *repeats,
+            *show_steps,
+            stage,
+            *timeout,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "data-agent evaluate", "Viewer")),
         DataAgentCommand::McpUrl { workspace, id } => query::mcp_url(cli, client, workspace, id)
             .await
             .map_err(|e| enrich_forbidden(e, "data-agent mcp-url", "Viewer")),

@@ -1464,36 +1464,143 @@ fn dataagent_upload_fewshots_dry_run() {
 }
 
 #[test]
-#[ignore = "requires live Fabric tenant"]
-#[serial]
-fn dataagent_query_with_stage_and_timeout_flags() {
-    // Just validate the flags are accepted by the CLI parser
-    let cfg = TestConfig::from_env();
-
-    // Should accept --stage and --timeout without errors
+fn dataagent_query_stage_sandbox_is_rejected() {
+    // Querying the draft/sandbox stage is not supported via the public API and
+    // must fail fast with a clear INVALID_INPUT error — before any network call,
+    // so no live tenant is required.
     let assert = fabio()
         .args([
             "data-agent",
             "query",
             "--workspace",
-            &cfg.source_workspace,
+            "00000000-0000-0000-0000-000000000000",
             "--id",
             "00000000-0000-0000-0000-000000000000",
             "--stage",
             "sandbox",
-            "--timeout",
-            "60",
             "--prompt",
             "test query",
         ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("INVALID_INPUT") && stderr.contains("not supported"),
+        "sandbox stage should be rejected with a clear error: {stderr}"
+    );
+    assert!(
+        stderr.contains("publish"),
+        "error hint should point to publishing the agent: {stderr}"
+    );
+}
+
+#[test]
+fn dataagent_query_stage_invalid_is_rejected() {
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "query",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--stage",
+            "banana",
+            "--prompt",
+            "test query",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("INVALID_INPUT") && stderr.contains("Invalid --stage"),
+        "invalid stage should be rejected: {stderr}"
+    );
+}
+
+#[test]
+fn dataagent_query_accepts_thread_and_download_flags() {
+    // The new multi-turn / file-download flags must be accepted by the parser.
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "query",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--prompt",
+            "test",
+            "--thread-id",
+            "thread_abc",
+            "--keep-thread",
+            "--download-files",
+            "/tmp/fabio-dl-test",
+            "--published-url",
+            "https://api.fabric.microsoft.com/v1/x",
+            "--timeout",
+            "5",
+        ])
         .assert();
 
-    // Should fail with a data-agent-specific error (not a CLI parsing error)
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     assert!(
         !stderr.contains("unexpected argument") && !stderr.contains("unrecognized"),
-        "CLI should accept --stage and --timeout flags: {stderr}"
+        "CLI should accept --thread-id/--keep-thread/--download-files: {stderr}"
     );
+}
+
+#[test]
+fn dataagent_evaluate_missing_file_fails() {
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "evaluate",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--questions",
+            "/nonexistent/path/questions.json",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("INVALID_INPUT") && stderr.contains("questions file"),
+        "missing questions file should fail clearly: {stderr}"
+    );
+}
+
+#[test]
+fn dataagent_evaluate_repeats_zero_fails() {
+    let tmp = std::env::temp_dir().join("fabio_eval_q_zero.json");
+    std::fs::write(&tmp, r#"["what?"]"#).unwrap();
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "evaluate",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--questions",
+            tmp.to_str().unwrap(),
+            "--repeats",
+            "0",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("repeats") && stderr.contains("at least 1"),
+        "--repeats 0 should be rejected: {stderr}"
+    );
+    std::fs::remove_file(&tmp).ok();
 }
 
 #[test]
@@ -3223,4 +3330,202 @@ fn dataagent_ground_on_ontology_and_select_elements() {
             "--hard",
         ])
         .assert();
+}
+
+/// End-to-end live validation of the published-consumption features:
+/// constructed published-URL fallback, `threadId` in the response, multi-turn
+/// thread reuse (`--keep-thread` + `--thread-id`), and the `evaluate` batch
+/// primitive. Creates + publishes an agent, exercises the flow, then cleans up.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_query_multiturn_and_evaluate_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("da_query_e2e");
+
+    // Create the agent.
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+    let agent_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Add a lakehouse datasource so the agent has a valid config to publish.
+    fabio()
+        .args([
+            "data-agent",
+            "add-datasource",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--artifact",
+            &cfg.source_lakehouse,
+            "--artifact-type",
+            "Lakehouse",
+            "--lro-timeout",
+            "300",
+        ])
+        .timeout(std::time::Duration::from_mins(6))
+        .assert()
+        .success();
+
+    // Publish so the OpenAI-compatible consumption endpoint goes live.
+    fabio()
+        .args([
+            "data-agent",
+            "publish",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // ── Basic query: no --published-url (exercises the constructed fallback),
+    //    and the response must carry a threadId. ──────────────────────────────
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--prompt",
+            "Reply with exactly one word: ok",
+            "--timeout",
+            "300",
+        ])
+        .timeout(std::time::Duration::from_mins(6))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(
+        data["threadId"].as_str().is_some_and(|t| !t.is_empty()),
+        "query response must include a non-empty threadId, got: {data}"
+    );
+    assert!(
+        data["answer"].as_str().is_some_and(|a| !a.is_empty()),
+        "query response must include an answer, got: {data}"
+    );
+
+    // ── Multi-turn: keep a thread, then reuse it. The reused thread id must be
+    //    identical, proving the follow-up ran on the same conversation. ───────
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--prompt",
+            "Remember the number 7 for later.",
+            "--keep-thread",
+            "--timeout",
+            "300",
+        ])
+        .timeout(std::time::Duration::from_mins(6))
+        .assert()
+        .success();
+    let thread_id = extract_data(&parse_json(&assert))["threadId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(!thread_id.is_empty(), "kept thread id must be non-empty");
+
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--prompt",
+            "What number did I ask you to remember?",
+            "--thread-id",
+            &thread_id,
+            "--timeout",
+            "300",
+        ])
+        .timeout(std::time::Duration::from_mins(6))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(
+        data["threadId"].as_str(),
+        Some(thread_id.as_str()),
+        "follow-up must reuse the same thread, got: {data}"
+    );
+    assert!(
+        data["answer"].as_str().is_some_and(|a| !a.is_empty()),
+        "follow-up must return an answer, got: {data}"
+    );
+
+    // ── Evaluate: batch-run a small question set (no --published-url). ────────
+    let qfile = std::env::temp_dir().join(format!("{name}_questions.json"));
+    std::fs::write(
+        &qfile,
+        r#"[{"question":"Reply with exactly: PONG","expected":"PONG"}]"#,
+    )
+    .unwrap();
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "evaluate",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+            "--questions",
+            qfile.to_str().unwrap(),
+            "--timeout",
+            "300",
+        ])
+        .timeout(std::time::Duration::from_mins(6))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["questionCount"], 1);
+    assert_eq!(
+        data["failedRuns"], 0,
+        "evaluation run should succeed: {data}"
+    );
+    assert!(
+        data["results"][0]["match"]["exact"].is_boolean(),
+        "expected a naive match signal on the result, got: {data}"
+    );
+    std::fs::remove_file(&qfile).ok();
+
+    // Cleanup.
+    fabio()
+        .args([
+            "data-agent",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
 }

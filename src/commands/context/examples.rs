@@ -138,6 +138,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/data_agent_query.json"),
     ),
     (
+        "data-agent/evaluate",
+        include_str!("data/examples/data_agent_evaluate.json"),
+    ),
+    (
         "context/tenant",
         include_str!("data/examples/context_tenant.json"),
     ),

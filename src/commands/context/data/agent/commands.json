@@ -6361,8 +6361,20 @@
           },
           "--stage": {
             "type": "string",
-            "description": "Agent stage to query: sandbox (draft) or production (published)",
+            "description": "Agent stage to query: only `production` (published) is supported via the public API",
             "default": "production"
+          },
+          "--thread-id": {
+            "type": "string",
+            "description": "Reuse an existing thread for a multi-turn follow-up (from a prior query's `threadId`)"
+          },
+          "--keep-thread": {
+            "type": "bool",
+            "description": "Keep the thread after the query (returns its `threadId` for a follow-up turn)"
+          },
+          "--download-files": {
+            "type": "string",
+            "description": "Download files attached to the answer into this directory (e.g. generated CSVs/charts)"
           },
           "--timeout": {
             "type": "integer",
@@ -6374,8 +6386,56 @@
         "returns": "object",
         "examples": [
           "fabio data-agent query --workspace $WS --id $DA --prompt \"Who is the top customer by revenue?\"",
-          "fabio data-agent query --workspace $WS --id $DA --stage sandbox --prompt \"Test: how many orders?\"",
+          "fabio data-agent query --workspace $WS --id $DA --prompt \"Remember the number 7.\" --keep-thread",
+          "fabio data-agent query --workspace $WS --id $DA --prompt \"What number did I mention?\" --thread-id thread_abc123",
+          "fabio data-agent query --workspace $WS --id $DA --prompt \"Chart monthly revenue as a CSV\" --download-files ./out",
           "fabio data-agent query --workspace $WS --id $DA --prompt \"Complex query...\" --timeout 600 --show-steps"
+        ]
+      },
+      "evaluate": {
+        "description": "Batch-run a set of questions against a published data agent (evaluation primitive)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Data agent ID"
+          },
+          "--questions": {
+            "type": "string",
+            "required": true,
+            "description": "Questions file: JSON (array of strings, or [{\"question\",\"expected\"}]) or CSV/TSV with a `question` column (optional `expected`)"
+          },
+          "--published-url": {
+            "type": "string",
+            "description": "Published URL (from portal Settings page after publishing the agent)"
+          },
+          "--repeats": {
+            "type": "string",
+            "description": "Number of times to run each question (default: 1)"
+          },
+          "--show-steps": {
+            "type": "bool",
+            "description": "Include execution details (SQL queries, tool calls, run steps) per run"
+          },
+          "--stage": {
+            "type": "string",
+            "description": "Agent stage to query: only `production` (published) is supported via the public API"
+          },
+          "--timeout": {
+            "type": "string",
+            "description": "Maximum wait time in seconds per question run (default: 300)"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio data-agent evaluate --workspace $WS --id $DA --questions questions.json",
+          "fabio data-agent evaluate --workspace $WS --id $DA --questions qs.csv --repeats 3 --show-steps"
         ]
       },
       "mcp-url": {

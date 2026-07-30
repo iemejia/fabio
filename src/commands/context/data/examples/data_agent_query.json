@@ -1,18 +1,17 @@
 {
-  "command": "fabio data-agent query --workspace $WS_ID --id $AGENT_ID --question \"What are the top 5 products by revenue?\" --stage sandbox",
-  "description": "Queries a Data Agent with a natural language question. Returns the agent's SQL/KQL answer, explanation, and generated query.",
+  "command": "fabio data-agent query --workspace $WS_ID --id $AGENT_ID --prompt \"What are the top 5 products by revenue?\"",
+  "description": "Queries a published Data Agent with a natural language question over the OpenAI-compatible Assistants endpoint. Returns the agent's answer and the threadId used for the run (reuse it for a multi-turn follow-up). Only a published agent is queryable; the draft/staging stage has no public endpoint.",
   "response": {
     "data": {
+      "question": "What are the top 5 products by revenue?",
       "answer": "The top 5 products by revenue are: Widget Pro ($1.2M), Gadget X ($980K), SuperTool ($875K), MegaPack ($720K), BasicKit ($650K).",
-      "query": "SELECT TOP 5 ProductName, SUM(Revenue) as TotalRevenue FROM dbo.Sales GROUP BY ProductName ORDER BY TotalRevenue DESC",
-      "threadId": "thread_abc123def456",
-      "status": "completed"
+      "threadId": "thread_abc123def456"
     }
   },
-  "notes": "Use --stage sandbox (draft) or --stage production (published). The agent must have datasources configured and tables selected. Requires the agent to be published for --stage production. Use --timeout to control max wait (default: 120s).",
+  "notes": "Only --stage production (published, the default) is supported — querying a draft/sandbox agent is not available via the public Fabric API (publish first with `fabio data-agent publish`). The published consumption URL is auto-constructed; pass --published-url only to target a specific endpoint. MULTI-TURN: pass --keep-thread to retain the thread, then reuse its threadId on the next call with --thread-id to continue the conversation. FILES: pass --download-files <dir> to save any files the answer attaches (generated CSVs/charts) into <dir>; the response then includes a `files` array. Add --show-steps to include the SQL/tool-call run steps. Use --timeout to control max wait (default: 300s; Spark cold start can take minutes).",
   "query_examples": [
     {"query": "data.answer", "description": "Get the natural language answer."},
-    {"query": "data.query", "description": "Get the generated SQL/KQL query."},
-    {"query": "data.status", "description": "Check if the query completed successfully."}
+    {"query": "data.threadId", "description": "Thread id to reuse for a multi-turn follow-up (--thread-id)."},
+    {"query": "data.files[].path", "description": "Local paths of any downloaded answer files (with --download-files)."}
   ]
 }

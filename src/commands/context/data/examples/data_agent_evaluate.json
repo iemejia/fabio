@@ -1,0 +1,30 @@
+{
+  "command": "fabio data-agent evaluate --workspace $WS_ID --id $AGENT_ID --questions questions.json",
+  "description": "Batch-runs a set of questions against a published Data Agent and reports each answer. An evaluation PRIMITIVE, not a judge: it runs the questions (optionally several times with --repeats) and emits the answers. When a question carries an `expected` answer, fabio adds a naive string-match signal (match.exact / match.contains) — it deliberately does NOT do semantic/LLM grading, leaving that to the calling agent.",
+  "response": {
+    "data": {
+      "questionCount": 2,
+      "repeats": 1,
+      "runCount": 2,
+      "failedRuns": 0,
+      "results": [
+        {
+          "question": "Reply with exactly: PONG",
+          "answers": [{"answer": "PONG"}],
+          "expected": "PONG",
+          "match": {"exact": true, "contains": true, "note": "naive string comparison (case/whitespace-insensitive); not semantic grading"}
+        },
+        {
+          "question": "What is 2+2? Reply with just the number.",
+          "answers": [{"answer": "4"}]
+        }
+      ]
+    }
+  },
+  "notes": "Questions file is JSON (an array of strings, or of {\"question\",\"expected\"} objects) or CSV/TSV with a `question` column and optional `expected` column. Each question runs on its own throwaway thread (independent). --repeats N runs each question N times (answers is an array). --show-steps includes the SQL/tool-call run steps per run. Only a published agent is queryable (same rules as `query`); the published URL is auto-constructed unless --published-url is given. The command fails only if EVERY run errors; otherwise partial results are returned with failedRuns > 0.",
+  "query_examples": [
+    {"query": "data.failedRuns", "description": "How many individual runs errored (0 = all succeeded)."},
+    {"query": "data.results[?match.exact].question", "description": "Questions whose answer exactly matched the expected text (naive)."},
+    {"query": "data.results[].answers[0].answer", "description": "First answer for each question."}
+  ]
+}

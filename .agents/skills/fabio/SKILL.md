@@ -430,13 +430,21 @@ fabio report create --workspace $WS --name "Dashboard" --dataset $SM
 **Data Agent (AI-powered Q&A over lakehouse data):**
 ```bash
 fabio data-agent create --workspace $WS --name "SalesAgent"
-fabio data-agent add-datasource --workspace $WS --id $AGENT --lakehouse-id $LH   # add lakehouse as data source
-fabio data-agent select-tables --workspace $WS --id $AGENT --datasource-id $DS --tables "orders,customers"
+fabio data-agent add-datasource --workspace $WS --id $AGENT --artifact $LH --artifact-type Lakehouse   # add lakehouse as data source
+fabio data-agent select-tables --workspace $WS --id $AGENT --datasource $DS --tables "orders,customers"
 fabio data-agent update-config --workspace $WS --id $AGENT --instructions "Use total revenue, not quantity"
-fabio data-agent add-fewshot --workspace $WS --id $AGENT --question "Top products?" --sql "SELECT ..."
-fabio data-agent publish --workspace $WS --id $AGENT                              # make agent available
-fabio data-agent query --workspace $WS --id $AGENT --question "What is the most sold product?"
+fabio data-agent add-fewshot --workspace $WS --id $AGENT --datasource $DS --question "Top products?" --sql "SELECT ..."
+fabio data-agent publish --workspace $WS --id $AGENT                              # make agent available (only published agents are queryable)
+fabio data-agent query --workspace $WS --id $AGENT --prompt "What is the most sold product?"   # returns answer + threadId
+# Multi-turn: keep the thread, then reuse its threadId for a follow-up
+fabio data-agent query --workspace $WS --id $AGENT --prompt "Remember 7." --keep-thread
+fabio data-agent query --workspace $WS --id $AGENT --prompt "What number?" --thread-id thread_abc
+# Download answer-attached files (generated CSVs/charts); adds a files[] array
+fabio data-agent query --workspace $WS --id $AGENT --prompt "Chart revenue as CSV" --download-files ./out
+# Batch-run a question set (evaluation primitive; naive expected-match only, not an LLM judge)
+fabio data-agent evaluate --workspace $WS --id $AGENT --questions questions.json
 ```
+
 
 **Data Pipeline & Job Scheduling:**
 ```bash
