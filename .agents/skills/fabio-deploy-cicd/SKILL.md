@@ -115,6 +115,7 @@ Manage variable libraries (shared variables)
 - The .platform part IS sent (enables metadata propagation) but is EXCLUDED from the content hash, so idempotent skip still works.
 - --strategy: default (per-item, content-hash skip) | bulk (fast initial deploy to an empty, non-Git workspace) | sequential (debugging).
 - git relation (WorkspaceRelations, preview) manages base/branch links between workspaces as a standalone resource — distinct from 'git branch-out', which creates+connects a feature workspace in one flow.
+- Raw Power BI Desktop PBIP folders deploy directly: a '<name>.Report' / '<name>.SemanticModel' folder with NO '.platform' sidecar is discovered by folder-name suffix (Report needs definition.pbir, SemanticModel needs definition.pbism). Such items have no logicalId, so rename tracking is off (plan warns 'no logicalId') and they match deployed items by (type, name); a v2-PBIR report still rebinds to its model by name.
 
 ## Troubleshooting
 | Symptom | Fix |

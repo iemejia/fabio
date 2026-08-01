@@ -39,6 +39,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 | Capability | fabric-cicd | fabio |
 |---|---|---|
 | Source directory format | `.platform` directories | Same (100% compatible) |
+| Raw Power BI Desktop PBIP | No (requires `.platform` per item) | Deploys `<name>.Report`/`<name>.SemanticModel` folders with no `.platform` (type inferred from folder) |
 | Plan before apply | No (always pushes everything) | `plan` → review → `apply` |
 | Skip unchanged items | No (re-uploads every definition) | SHA-256 content hash (terraform-like) |
 | Rename detection | No (delete + create) | Logical ID matching (preserves item GUID) |
