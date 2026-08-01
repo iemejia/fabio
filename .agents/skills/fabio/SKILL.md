@@ -349,6 +349,11 @@ fabio lakehouse delete-execution-definition --workspace $WS --id $LH --execution
 # MLV refresh schedules: link a schedule to an execution definition
 fabio lakehouse create-materialized-views-schedule --workspace $WS --id $LH \
   --content '{"startDateTime":"2025-01-01T02:00:00","interval":1440,"enabled":true,"executionData":{"mlvExecutionDefinitionId":"'"$DEF_ID"'"}}'
+# OneLake shortcuts (list + typed create) and recursive directory delete
+fabio lakehouse list-shortcuts --workspace $WS --id $LH                       # DW-managed shortcuts hidden unless --include-managed
+fabio lakehouse create-shortcut --workspace $WS --id $LH --path Files/ext --name s3data \
+  --target-type AmazonS3 --connection-id $CONN --location "https://bucket.s3.amazonaws.com" --subpath /data
+fabio lakehouse delete-directory --workspace $WS --id $LH --path Files/tmp --dry-run   # recursive; refuses empty/root path
 ```
 
 **Warehouse & SQL:**
@@ -428,6 +433,9 @@ fabio report create --workspace $WS --name "Dashboard" --dataset $SM          # 
 # Author a full PBIR report (coding-agent path): validate a generated folder, then create the whole tree
 fabio report validate --source ./MyReport.Report                              # offline PBIR/PBIP structural + $schema checks
 fabio report create --workspace $WS --name "Sales" --definition ./MyReport.Report --dataset $SM  # full multi-page PBIR; --dataset rebinds byPath→byConnection
+# Render a (paginated) report to a file (Power BI exportToFile flow)
+fabio report export --workspace $WS --id $RID --format PDF --out report.pdf                       # PDF/PPTX/PNG
+fabio paginated-report export --workspace $WS --id $PR --format XLSX --out data.xlsx --parameter Year=2026  # PDF/XLSX/DOCX/CSV/IMAGE/...
 ```
 
 **Data Agent (AI-powered Q&A over lakehouse data):**
@@ -450,6 +458,26 @@ fabio data-agent evaluate --workspace $WS --id $AGENT --questions questions.json
 fabio data-agent validate-fewshots --workspace $WS --id $AGENT --datasource $DS \
   --llm-endpoint https://<res>.openai.azure.com --llm-key $KEY --llm-model gpt-4o   # flag duplicate/conflicting/bad few-shots
 fabio data-agent evaluate --workspace $WS --id $AGENT --questions questions.json --llm-model gpt-4o   # grade answers (endpoint+key from env)
+fabio data-agent mcp-url --workspace $WS --id $AGENT   # print the MCP consumption endpoint for a PUBLISHED agent (for Claude/Copilot Studio/Foundry)
+```
+
+**ML models & experiments (registry, versions, scoring, MLflow run tracking):**
+```bash
+fabio ml-model list-versions --workspace $WS --id $MODEL
+fabio ml-model score-version --workspace $WS --id $MODEL --version-id $V --content @input.json   # pinned-version batch scoring
+# MLflow run tracking (reads the per-workspace MLflow server, not the item API)
+fabio ml-experiment list-runs --workspace $WS --id $EXP --order-by "metrics.accuracy DESC" --limit 10
+fabio ml-experiment get-run --workspace $WS --id $EXP --run-id $RUN
+fabio ml-experiment get-metric-history --workspace $WS --id $EXP --run-id $RUN --metric-name accuracy
+```
+
+**Operations agent (RTI AI monitoring) & User Data Functions:**
+```bash
+fabio operations-agent start --workspace $WS --id $OA     # activate (flips shouldRun); status/stop available
+fabio operations-agent status --workspace $WS --id $OA    # running/stopped (Fabric evaluates rules every 5 min while running)
+# Invoke a PUBLISHED user data function via its portal-copied public URL (no REST API to discover it)
+fabio user-data-function invoke --url https://<app>.<region>.fabric.microsoft.com/.../functionName \
+  --parameter name=value --body '{"x":1}'
 ```
 
 

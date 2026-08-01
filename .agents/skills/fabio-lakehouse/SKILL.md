@@ -15,7 +15,8 @@ license: MIT
 - Creating a lakehouse or listing/inspecting its files and Delta tables.
 - Uploading files to Files/ and loading them into Delta tables.
 - Syncing files between lakehouses or from a local directory (rsync-like).
-- Creating OneLake shortcuts (ADLS Gen2, S3, Dataverse, OneLake) or managing OneLake security.
+- Creating OneLake shortcuts (typed flags for all 9 targets: OneLake, ADLS Gen2, S3, GCS, S3-compatible, Dataverse, Azure Blob, External Data Share, OneDrive/SharePoint), listing them (list-shortcuts), or managing OneLake security.
+- Deleting an arbitrary OneLake directory recursively (delete-directory), beyond just delete-table.
 - Managing Materialized Lake Views (execution definitions + refresh schedules).
 
 ## When NOT to use (route elsewhere)
@@ -121,6 +122,8 @@ Manage `OneLake` data access roles (row/column-level security)
 ## Key gotchas
 - Table file listing lists from the root to get real item-id-prefixed paths.
 - move-file within a lakehouse is an atomic O(1) rename; cross-item falls back to copy+delete automatically.
+- list-shortcuts hides DW-managed internal shortcuts (OneLake->OneLake under Tables/) by default — pass --include-managed to see them.
+- create-shortcut takes typed flags per target type (--connection-id/--location/--subpath for cloud; --target-workspace/--target-item/--target-path for OneLake; --bucket for S3); --target JSON remains a raw escape hatch.
 
 ## Troubleshooting
 | Symptom | Fix |
@@ -133,6 +136,7 @@ Manage `OneLake` data access roles (row/column-level security)
 ## Safety
 - load-table --mode Overwrite replaces the whole table — confirm with the user.
 - sync --delete removes destination files not present in source — preview without --delete first.
+- delete-directory is a recursive OneLake delete — fabio refuses an empty/root path (that would erase the entire lakehouse); confirm the exact subpath, and it is --dry-run-guarded.
 - Deleting a lakehouse is a protected, data-bearing operation — never do it without explicit user approval.
 
 ## Shared references

@@ -13,6 +13,7 @@ license: MIT
 
 ## When to use
 - Creating/evolving an ontology item (entity types, relationship types, data bindings).
+- Binding an entity to one or MULTIPLE data sources — Lakehouse Delta (--lakehouse) and/or Eventhouse KustoTable — with generated entity Documents + ResourceLinks and entity-type inheritance carried from the imported schema.
 - Managing graph models and running graph querysets.
 - Modeling IoT/operational digital twins (Digital Twin Builder models and flows).
 - Grounding an agent in a knowledge graph over Fabric data.
@@ -117,7 +118,7 @@ Manage Digital Twin Builder flows
 ## Key gotchas
 - Ontology definitions use the item-definition (base64 parts) format; fetch the template with 'fabio context schema ontology'.
 - fabio's context tenant graph can emit OWL/RDF that imports directly via 'fabio ontology import --file'.
-- OWL carries no data-binding info (workspace/lakehouse/table/column). 'ontology import' generates only the type schema unless you pass --lakehouse (+ --bindings for relationship key columns).
+- OWL carries no data-binding info (workspace/lakehouse/table/column). 'ontology import' generates only the type schema unless you pass a source: --lakehouse (Delta) or Eventhouse/KustoTable source flags (+ --bindings for relationship key columns). An entity can carry MULTIPLE data bindings, and import also emits entity Documents + ResourceLinks and preserves entity-type inheritance.
 - Untyped properties (valueType Any) are NOT bindable — they live only under entityType.untypedProperties. Putting one in a DataBinding makes updateDefinition fail with a generic ALMOperationImportFailed. fabio import excludes them automatically; hand-authored parts must too.
 - Time-series entities need a timestampColumn on their TimeSeries binding. Convention bind-all (import/bind with no per-entity timestamp) errors: 'Entity X has a TimeSeries binding but no timestampColumn'. Supply it via the --entities/bind config or use non-time-series entities.
 - updateDefinition validates all parts together; a bad reference in ANY part fails the whole push. The generic ALMOperationImportFailed's real cause is in error.errorCode + error.moreDetails (fabio surfaces both and adds a self-correction checklist).

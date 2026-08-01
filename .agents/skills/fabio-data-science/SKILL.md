@@ -13,6 +13,7 @@ license: MIT
 
 ## When to use
 - Creating/listing ML experiments to organize training runs and metrics.
+- Reading MLflow run data of an experiment (list-runs with --filter/--order-by, get-run, get-metric-history) to compare runs and inspect logged metrics.
 - Registering ML models and managing versions (list-versions, get-version, activate-version, deactivate-version).
 - Serving/scoring: get-endpoint/update-endpoint, score and score-version for batch inference.
 - Creating and configuring anomaly detectors (get-definition/update-definition).
@@ -94,6 +95,7 @@ Manage anomaly detectors
 - ML models are versioned: a model item holds multiple versions; activate-version sets the serving alias while list-versions/get-version address specific ones.
 - Scoring has two forms: score (active version) and score-version (a pinned version); endpoints are managed separately (get-endpoint/update-endpoint).
 - Anomaly detectors carry their logic in a definition part (base64) — edit via update-definition, not plain flags.
+- ml-experiment {list-runs,get-run,get-metric-history} read the per-workspace Fabric-hosted MLflow tracking server (the experiment item GUID is the MLflow experiment_id) — NOT the Fabric item API; --filter/--order-by take MLflow expressions.
 
 ## Troubleshooting
 | Symptom | Fix |
