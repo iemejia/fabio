@@ -8930,9 +8930,13 @@
             "type": "string",
             "description": "Path to report definition file (definition.pbir JSON)"
           },
+          "--definition": {
+            "type": "string",
+            "description": "Path to a full PBIR report folder (a `.Report` folder or any folder containing definition.pbir). All files are gathered recursively and sent as the report definition (PBIR enhanced or PBIR-Legacy)"
+          },
           "--dataset": {
             "type": "string",
-            "description": "Dataset/semantic model ID to bind report to (auto-generates definition.pbir)"
+            "description": "Dataset/semantic model ID to bind report to (auto-generates definition.pbir). With --definition, rebinds the folder's definition.pbir to this model by connection"
           },
           "--sensitivity-label": {
             "type": "string",
@@ -9044,6 +9048,18 @@
         "examples": [
           "fabio report update-definition --workspace $WS --id $RPT --file definition.pbir --report-json report.json"
         ]
+      },
+      "validate": {
+        "description": "Validate a Power BI report definition on disk (PBIR or PBIR-Legacy)",
+        "flags": {
+          "--source": {
+            "type": "string",
+            "required": true,
+            "description": "Path to a report folder, a definition.pbir file, or a PBIP root"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
       },
       "publish-to-web": {
         "description": "Publish a report to the web (generates a publicly accessible embed URL)",

@@ -9,6 +9,9 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
+#[path = "report_pbir.rs"]
+mod pbir;
+
 #[derive(Debug, Subcommand)]
 #[command(
     after_help = "Before creating reports, run: fabio context schema Report | fabio context workflow direct-lake-report\nReturns definition templates and step-by-step creation recipes."
@@ -48,10 +51,17 @@ pub enum ReportCommand {
         description: Option<String>,
 
         /// Path to report definition file (definition.pbir JSON)
-        #[arg(long, required_unless_present = "dataset")]
+        #[arg(long, required_unless_present_any = ["dataset", "definition"])]
         file: Option<String>,
 
-        /// Dataset/semantic model ID to bind report to (auto-generates definition.pbir)
+        /// Path to a full PBIR report folder (a `.Report` folder or any folder
+        /// containing definition.pbir). All files are gathered recursively and
+        /// sent as the report definition (PBIR enhanced or PBIR-Legacy).
+        #[arg(long)]
+        definition: Option<String>,
+
+        /// Dataset/semantic model ID to bind report to (auto-generates definition.pbir).
+        /// With --definition, rebinds the folder's definition.pbir to this model by connection.
         #[arg(long)]
         dataset: Option<String>,
 
@@ -134,6 +144,20 @@ pub enum ReportCommand {
         report_json: Option<String>,
     },
 
+    // ── Validation ───────────────────────────────────────────────────────
+    /// Validate a Power BI report definition on disk (PBIR or PBIR-Legacy).
+    ///
+    /// Offline structural + $schema checks against Microsoft's documented PBIP
+    /// report format. Accepts a `.Report` folder, a definition.pbir file, or a
+    /// PBIP root (with *.Report subfolders). Use before `report create
+    /// --definition` or `deploy` to catch missing files / bad references early.
+    #[command(display_order = 8)]
+    Validate {
+        /// Path to a report folder, a definition.pbir file, or a PBIP root
+        #[arg(long)]
+        source: String,
+    },
+
     // ── Sharing & Publishing ─────────────────────────────────────────────
     /// Publish a report to the web (generates a publicly accessible embed URL)
     ///
@@ -184,6 +208,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) 
             name,
             description,
             file,
+            definition,
             dataset,
             sensitivity_label,
         } => {
@@ -194,6 +219,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) 
                 name,
                 description.as_deref(),
                 file.as_deref(),
+                definition.as_deref(),
                 dataset.as_deref(),
                 sensitivity_label.as_deref(),
             )
@@ -231,6 +257,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) 
             file,
             report_json,
         } => update_definition(cli, client, workspace, id, file, report_json.as_deref()).await,
+        ReportCommand::Validate { source } => validate(cli, source),
         ReportCommand::PublishToWeb { workspace, id } => {
             publish_to_web(cli, client, workspace, id).await
         }
@@ -255,6 +282,35 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) 
             .await
         }
     }
+}
+
+// ─── Validation (offline PBIR/PBIP) ──────────────────────────────────────────
+
+fn validate(cli: &Cli, source: &str) -> Result<()> {
+    use anyhow::bail;
+    let results = pbir::validate(std::path::Path::new(source))?;
+    let all_valid = results.iter().all(|r| r.valid);
+    let total_errors: usize = results.iter().map(|r| r.errors.len()).sum();
+    let total_warnings: usize = results.iter().map(|r| r.warnings.len()).sum();
+
+    let out = if results.len() == 1 {
+        serde_json::json!({
+            "status": if all_valid { "valid" } else { "invalid" },
+            "report": results[0],
+        })
+    } else {
+        serde_json::json!({
+            "status": if all_valid { "valid" } else { "invalid" },
+            "reports": results,
+            "summary": { "count": results.len(), "errors": total_errors, "warnings": total_warnings },
+        })
+    };
+    output::render_object(cli, &out, "status");
+
+    if !all_valid {
+        bail!("Report validation failed with {total_errors} error(s)");
+    }
+    Ok(())
 }
 
 // ─── CRUD ────────────────────────────────────────────────────────────────────
@@ -357,7 +413,7 @@ fn build_dataset_pbir(dataset_id: &str) -> Value {
     })
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 async fn create(
     cli: &Cli,
     client: &FabricClient,
@@ -365,12 +421,55 @@ async fn create(
     name: &str,
     description: Option<&str>,
     file: Option<&str>,
+    definition: Option<&str>,
     dataset: Option<&str>,
     sensitivity_label: Option<&str>,
 ) -> Result<()> {
     let mut parts: Vec<Value> = Vec::new();
 
-    if let Some(dataset_id) = dataset {
+    if let Some(folder) = definition {
+        // Gather a full PBIR report folder (definition.pbir + report.json or
+        // definition/**). Validate first so agents get a clear structural error
+        // instead of an opaque API rejection.
+        let dir = std::path::Path::new(folder);
+        let report_dir = if dir.join("definition.pbir").exists() {
+            dir.to_path_buf()
+        } else {
+            // Allow pointing at a definition.pbir file directly.
+            if dir.is_file() && dir.file_name().and_then(|n| n.to_str()) == Some("definition.pbir")
+            {
+                dir.parent()
+                    .unwrap_or_else(|| std::path::Path::new("."))
+                    .to_path_buf()
+            } else {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!("No definition.pbir found in '{folder}'"),
+                    "Point --definition at a report folder containing definition.pbir. Validate first: fabio report validate --source <folder>".to_string(),
+                )
+                .into());
+            }
+        };
+        let validation = pbir::validate_report_folder(&report_dir);
+        if !validation.valid {
+            let first = validation
+                .errors
+                .first()
+                .map(|e| format!("{}: {} ({})", e.file, e.message, e.code))
+                .unwrap_or_default();
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid PBIR report definition: {first}"),
+                "Run 'fabio report validate --source <folder>' to see all issues.".to_string(),
+            )
+            .into());
+        }
+        parts = pbir::gather_report_parts(&report_dir)?;
+        // Optionally rebind the folder's definition.pbir to a concrete model.
+        if let Some(dataset_id) = dataset {
+            pbir::rebind_pbir_part(&mut parts, dataset_id)?;
+        }
+    } else if let Some(dataset_id) = dataset {
         // Auto-generate definition.pbir binding to the specified dataset.
         let pbir = build_dataset_pbir(dataset_id);
         let pbir_encoded = BASE64.encode(pbir.to_string().as_bytes());
@@ -415,7 +514,7 @@ async fn create(
     } else {
         return Err(FabioError::new(
             ErrorCode::InvalidInput,
-            "Provide --file or --dataset".to_string(),
+            "Provide --file, --definition, or --dataset".to_string(),
         )
         .into());
     }

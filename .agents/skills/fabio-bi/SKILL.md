@@ -70,6 +70,7 @@ Manage reports (Power BI)
 | `fabio report show` | no | Show details of a report |
 | `fabio report update` | yes | Update report properties (name and/or description) |
 | `fabio report update-definition` | yes | Update the definition of a report |
+| `fabio report validate` | no | Validate a Power BI report definition on disk (PBIR or PBIR-Legacy) |
 
 ### fabio paginated-report
 Manage paginated reports

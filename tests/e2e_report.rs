@@ -356,3 +356,136 @@ fn report_create_dataset_pbir_has_schema() {
         .assert()
         .success();
 }
+
+/// Offline (no tenant): `report validate` on a temp PBIR folder returns valid,
+/// and a broken folder exits non-zero with a `MISSING_REQUIRED` error.
+#[test]
+fn report_validate_pbir_folder_offline() {
+    use std::fs;
+    use std::io::Write;
+
+    let dir = tempfile::tempdir().unwrap();
+    let report = dir.path().join("My.Report");
+    let mk = |rel: &str, content: &str| {
+        let p = report.join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        let mut f = fs::File::create(&p).unwrap();
+        f.write_all(content.as_bytes()).unwrap();
+    };
+    mk(
+        "definition.pbir",
+        r#"{"$schema":"https://developer.microsoft.com/json-schemas/fabric/item/report/definitionProperties/2.0.0/schema.json","version":"4.0","datasetReference":{"byConnection":{"connectionString":"semanticmodelid=abc"}}}"#,
+    );
+    mk("definition/report.json", r#"{"$schema":"x"}"#);
+    mk(
+        "definition/version.json",
+        r#"{"$schema":"x","version":"4.0"}"#,
+    );
+    mk("definition/pages/pages.json", r#"{"$schema":"x"}"#);
+    mk("definition/pages/p1/page.json", r#"{"$schema":"x"}"#);
+
+    // Valid.
+    let assert = fabio()
+        .args(["report", "validate", "--source", report.to_str().unwrap()])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert_eq!(json["data"]["status"], "valid");
+    assert_eq!(json["data"]["report"]["format"], "PBIR");
+
+    // Break it: remove version.json → invalid, non-zero exit.
+    fs::remove_file(report.join("definition/version.json")).unwrap();
+    fabio()
+        .args(["report", "validate", "--source", report.to_str().unwrap()])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("validation failed"));
+}
+
+/// Live: export a report → validate the exported PBIR → create a new report from
+/// the folder (full PBIR) → render it → delete. Exercises `report validate` and
+/// `report create --definition` end-to-end against the tenant.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn report_validate_and_create_from_folder_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+
+    // Need an existing report to export. Pick the first one in the workspace.
+    let list = fabio()
+        .args(["report", "list", "--workspace", ws])
+        .assert()
+        .success();
+    let reports = parse_json(&list);
+    let Some(_first) = reports["data"].as_array().and_then(|a| a.first()) else {
+        eprintln!("no report in workspace to export; skipping");
+        return;
+    };
+
+    let dir = tempfile::tempdir().unwrap();
+    let export_dir = dir.path().join("export");
+    fabio()
+        .args([
+            "deploy",
+            "export",
+            "--workspace",
+            ws,
+            "--dir",
+            export_dir.to_str().unwrap(),
+            "--overwrite",
+            "--item-types",
+            "Report",
+        ])
+        .assert()
+        .success();
+
+    // Find a *.Report folder.
+    let report_folder = std::fs::read_dir(&export_dir)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .find(|p| {
+            p.is_dir()
+                && p.extension().is_some_and(|e| e == "Report")
+                && p.join("definition.pbir").exists()
+        })
+        .expect("an exported .Report folder");
+
+    // Validate it (must be valid).
+    let vassert = fabio()
+        .args([
+            "report",
+            "validate",
+            "--source",
+            report_folder.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&vassert)["data"]["status"], "valid");
+
+    // Create a new report from the full PBIR folder.
+    let cassert = fabio()
+        .args([
+            "report",
+            "create",
+            "--workspace",
+            ws,
+            "--name",
+            "fabio-e2e-pbir-clone",
+            "--definition",
+            report_folder.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let clone_id = parse_json(&cassert)["data"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Delete the clone.
+    fabio()
+        .args(["report", "delete", "--workspace", ws, "--id", &clone_id])
+        .assert()
+        .success();
+}

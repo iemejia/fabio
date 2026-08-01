@@ -15,18 +15,23 @@
     "type": "Report"
   },
   "flags": {
-    "--dataset": "Semantic model ID to bind (auto-generates definition.pbir + blank report.json)",
-    "--file": "Path to definition.pbir file",
-    "--report-json": "Path to report.json (PBIR-Legacy)"
+    "--dataset": "Semantic model ID to bind (auto-generates definition.pbir + blank report.json). With --definition, rebinds the folder's definition.pbir to this model by connection.",
+    "--file": "Path to a single definition.pbir file",
+    "--definition": "Path to a FULL PBIR report folder (a .Report folder or any folder containing definition.pbir). All files are gathered recursively (definition.pbir + report.json OR definition/** pages/visuals) and sent as the report definition. This is the agent-native path: generate PBIR files, validate, then create.",
+    "--report-json": "Path to report.json (PBIR-Legacy) on update-definition"
   },
   "notes": [
-    "--dataset is the simplest path: auto-generates both definition files",
+    "--dataset is the simplest path: auto-generates both definition files (a blank one-page PBIR-Legacy report)",
+    "--definition <folder> creates a full multi-page PBIR (enhanced) report from generated files — the way a coding agent should ship a real report",
+    "ALWAYS run 'fabio report validate --source <folder>' before create --definition / deploy: it checks required PBIR files, $schema presence, JSON validity, byPath vs byConnection, and version/format compatibility offline (no tenant call)",
+    "byPath (relative path to a .SemanticModel) is fine for deploy (fabio rewrites it to byConnection) but 'report create' needs byConnection — pass --dataset with --definition to rebind a byPath folder to a concrete model id",
     "definition.pbir is ALWAYS required for update-definition (even if only updating visuals)",
-    "PBIR-Legacy with prototypeQuery is REQUIRED for visuals that render data",
-    "PBIR format visuals store correctly but do NOT render data programmatically",
+    "PBIR-Legacy with prototypeQuery is REQUIRED for visuals that render data programmatically; PBIR (enhanced) is the documented, agent-editable format and becomes the only format at GA",
     "updateDefinition can switch formats (PBIR <-> PBIR-Legacy)"
   ],
   "related_commands": [
+    "fabio report validate --source <report-folder-or-pbip-root>",
+    "fabio report create --workspace <WS> --name <NAME> --definition <PBIR_FOLDER> [--dataset <MODEL_ID>]",
     "fabio report get-definition --workspace <WS> --id <ID>",
     "fabio report update-definition --workspace <WS> --id <ID> --file <PBIR> --report-json <JSON>",
     "fabio report list --workspace <WS>",
