@@ -64,7 +64,12 @@ If `git status` shows changes here, a feature landed without regenerating —
 commit them. Step 4's `cargo test` will otherwise FAIL the release: the
 `agent_schema_covers_all_groups` / `agent_schema_covers_all_subcommands` /
 `subskills_match_generated` drift tests are the safety net that blocks a
-release whose website reference would be stale. Optionally sanity-check the
+release whose website reference would be stale. A fourth gate,
+`every_command_group_has_a_knowledge_home`, blocks a release where a command
+GROUP was added without a knowledge-layer home (a `data/skills/*.json` family or
+a `data/personas/*.json` persona, or the cross-cutting allowlist) — i.e. skills
++ context must be consistent with the CLI. If it fails, add the group to the
+right family/persona and regenerate. Optionally sanity-check the
 site build locally with `npm --prefix docs run check` (needs `npm ci` in
 `docs/` first).
 

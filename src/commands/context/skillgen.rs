@@ -303,6 +303,102 @@ mod tests {
         }
     }
 
+    /// RELEASE GATE — keep skills + context consistent with the CLI.
+    ///
+    /// Every command group MUST have a knowledge-layer home: either a skill
+    /// family (`data/skills/<f>.json` `command_groups`), a persona
+    /// (`data/personas/<p>.json` `delegates_to[].command_groups`), or the
+    /// cross-cutting/meta allowlist below (those live in the root skill). This
+    /// catches a new command group added without updating the agent-facing
+    /// knowledge — the manual audit gap, now automated.
+    #[test]
+    fn every_command_group_has_a_knowledge_home() {
+        use std::collections::BTreeSet;
+
+        // Cross-cutting / meta groups documented in the ROOT skill, not a
+        // workload family. Adding a workload group here is NOT a valid fix —
+        // give it a real skill family or persona instead.
+        const CROSS_CUTTING: &[&str] = &[
+            "auth",
+            "catalog",
+            "completions",
+            "context",
+            "feedback",
+            "item",
+            "jobs",
+            "mcp",
+            "operation",
+            "profile",
+            "upgrade",
+        ];
+
+        let cmds = commands();
+        let all_groups: BTreeSet<&str> = cmds
+            .as_object()
+            .expect("commands schema is an object")
+            .iter()
+            .filter(|(_, v)| v.get("subcommands").is_some())
+            .map(|(k, _)| k.as_str())
+            .collect();
+
+        // Keep the allowlist honest: every entry must be a real command group.
+        for g in CROSS_CUTTING {
+            assert!(
+                all_groups.contains(g),
+                "CROSS_CUTTING allowlist entry '{g}' is not a real command group — remove the stale entry"
+            );
+        }
+
+        let mut covered: BTreeSet<String> = BTreeSet::new();
+
+        // Skill families.
+        for (_, content) in SKILLS {
+            let val: Value = serde_json::from_str(content).unwrap();
+            for g in val["command_groups"].as_array().into_iter().flatten() {
+                if let Some(g) = g.as_str() {
+                    covered.insert(g.to_owned());
+                }
+            }
+        }
+
+        // Personas (command_groups anywhere in the delegates_to routing table).
+        for (_, content) in super::super::personas::entries() {
+            let val: Value = serde_json::from_str(content).unwrap();
+            for entry in val["delegates_to"].as_array().into_iter().flatten() {
+                for g in entry
+                    .get("command_groups")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
+                    if let Some(g) = g.as_str() {
+                        covered.insert(g.to_owned());
+                    }
+                }
+            }
+        }
+
+        for g in CROSS_CUTTING {
+            covered.insert((*g).to_owned());
+        }
+
+        let uncovered: Vec<&str> = all_groups
+            .iter()
+            .copied()
+            .filter(|g| !covered.contains(*g))
+            .collect();
+        assert!(
+            uncovered.is_empty(),
+            "Command group(s) have no agent-knowledge home: {uncovered:?}.\n\
+             Every workload group must be listed in a skill family's `command_groups` \
+             (src/commands/context/data/skills/<family>.json) OR a persona's \
+             `delegates_to[].command_groups` (src/commands/context/data/personas/<persona>.json). \
+             A genuinely cross-cutting/meta group goes in the root skill AND the CROSS_CUTTING \
+             allowlist in this test. After editing a skill family, regenerate: \
+             cargo test generate_subskills -- --ignored"
+        );
+    }
+
     #[test]
     fn skill_family_shared_references_exist() {
         for (name, content) in SKILLS {
