@@ -332,6 +332,28 @@ async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Re
     Ok(())
 }
 
+/// Build the single-part RDL definition `parts` array.
+///
+/// The Fabric paginated-report API requires the RDL part path to equal
+/// `<displayName>.rdl`; any other path fails with `MissingDefinitionParts`.
+fn single_rdl_part(display_name: &str, payload_b64: &str) -> Value {
+    serde_json::json!([{
+        "path": format!("{display_name}.rdl"),
+        "payload": payload_b64,
+        "payloadType": "InlineBase64"
+    }])
+}
+
+/// Wrap definition `parts` into the item-definition object.
+///
+/// The paginated-report definition must NOT include a `format` field: sending
+/// `format: "PaginatedReportDefinition"` is rejected by the Fabric API with
+/// `InvalidDefinitionFormat`. The correct shape is `{ "parts": [...] }`,
+/// mirroring the working `report create` body.
+fn definition_object(parts: &Value) -> Value {
+    serde_json::json!({ "parts": parts.clone() })
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn create(
     cli: &Cli,
@@ -343,31 +365,18 @@ async fn create(
     content: Option<&str>,
     sensitivity_label: Option<&str>,
 ) -> Result<()> {
-    // Build the definition parts from file or content
+    // Build the definition parts from file or content. The single RDL part must
+    // be named `<displayName>.rdl` (see single_rdl_part).
     let parts = match (file, content) {
         (Some(path), _) => {
             let rdl_bytes = std::fs::read(path)
                 .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?;
-            let encoded = BASE64.encode(&rdl_bytes);
-            let filename = std::path::Path::new(path)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("report.rdl");
-            serde_json::json!([{
-                "path": filename,
-                "payload": encoded,
-                "payloadType": "InlineBase64"
-            }])
+            single_rdl_part(name, &BASE64.encode(&rdl_bytes))
         }
         (_, Some(c)) => {
-            // Expect inline JSON parts array or raw base64
-            serde_json::from_str::<Value>(c).unwrap_or_else(|_| {
-                serde_json::json!([{
-                    "path": "report.rdl",
-                    "payload": c,
-                    "payloadType": "InlineBase64"
-                }])
-            })
+            // A ready-made JSON parts array is honored as-is; a raw base64 string
+            // becomes a single `<displayName>.rdl` part.
+            serde_json::from_str::<Value>(c).unwrap_or_else(|_| single_rdl_part(name, c))
         }
         (None, None) => {
             return Err(FabioError::with_hint(
@@ -380,10 +389,7 @@ async fn create(
 
     let mut body = serde_json::json!({
         "displayName": name,
-        "definition": {
-            "format": "PaginatedReportDefinition",
-            "parts": parts
-        }
+        "definition": definition_object(&parts),
     });
     if let Some(desc) = description {
         body["description"] = Value::from(desc);
@@ -525,28 +531,19 @@ async fn update_definition(
     content: Option<&str>,
     update_metadata: bool,
 ) -> Result<()> {
-    let parts = match (file, content) {
+    // Read the RDL payload (no network). `explicit_parts` is Some when the
+    // caller passed a ready-made JSON parts array via --content (paths honored
+    // as-is); otherwise we synthesize a single part whose path MUST equal
+    // `<displayName>.rdl` (resolved below) or the API returns
+    // `MissingDefinitionParts`.
+    let (encoded_payload, explicit_parts): (Option<String>, Option<Value>) = match (file, content) {
         (Some(path), _) => {
             let rdl_bytes = std::fs::read(path)
                 .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?;
-            let encoded = BASE64.encode(&rdl_bytes);
-            let filename = std::path::Path::new(path)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("report.rdl");
-            serde_json::json!([{
-                "path": filename,
-                "payload": encoded,
-                "payloadType": "InlineBase64"
-            }])
+            (Some(BASE64.encode(&rdl_bytes)), None)
         }
-        (_, Some(c)) => serde_json::from_str::<Value>(c).unwrap_or_else(|_| {
-            serde_json::json!([{
-                "path": "report.rdl",
-                "payload": c,
-                "payloadType": "InlineBase64"
-            }])
-        }),
+        (_, Some(c)) => serde_json::from_str::<Value>(c)
+            .map_or_else(|_| (Some(c.to_string()), None), |v| (None, Some(v))),
         (None, None) => {
             return Err(FabioError::with_hint(
                 ErrorCode::InvalidInput,
@@ -555,13 +552,6 @@ async fn update_definition(
             ).into());
         }
     };
-
-    let body = serde_json::json!({
-        "definition": {
-            "format": "PaginatedReportDefinition",
-            "parts": parts
-        }
-    });
 
     if output::dry_run_guard(
         cli,
@@ -574,6 +564,29 @@ async fn update_definition(
     ) {
         return Ok(());
     }
+
+    // Resolve the definition parts. When synthesizing, the single .rdl part
+    // must be named after the item's current display name.
+    let parts = if let Some(parts) = explicit_parts {
+        parts
+    } else {
+        let item = client
+            .get(&format!("/workspaces/{workspace}/paginatedReports/{id}"))
+            .await
+            .map_err(|e| enrich_forbidden(e, "paginated-report update-definition", "Viewer"))?;
+        let display_name = item
+            .get("displayName")
+            .and_then(Value::as_str)
+            .unwrap_or("report");
+        single_rdl_part(display_name, &encoded_payload.unwrap_or_default())
+    };
+
+    // The definition must NOT carry a `format` field (see create()): sending
+    // `format: "PaginatedReportDefinition"` is rejected with
+    // `InvalidDefinitionFormat`.
+    let body = serde_json::json!({
+        "definition": definition_object(&parts),
+    });
 
     let url = if update_metadata {
         format!(
@@ -608,5 +621,36 @@ mod tests {
             workspace: "test".to_string(),
         };
         assert!(format!("{cmd:?}").contains("List"));
+    }
+
+    #[test]
+    fn single_rdl_part_names_path_after_display_name() {
+        // The Fabric API requires the RDL part path to equal `<displayName>.rdl`;
+        // a mismatch fails with `MissingDefinitionParts`.
+        let parts = single_rdl_part("SalesReport", "QUJD");
+        let part = &parts[0];
+        assert_eq!(part["path"], "SalesReport.rdl");
+        assert_eq!(part["payload"], "QUJD");
+        assert_eq!(part["payloadType"], "InlineBase64");
+    }
+
+    #[test]
+    fn single_rdl_part_preserves_spaces_in_display_name() {
+        let parts = single_rdl_part("Q1 Sales", "eA==");
+        assert_eq!(parts[0]["path"], "Q1 Sales.rdl");
+    }
+
+    #[test]
+    fn definition_object_omits_format_field() {
+        // Regression guard: sending `format: "PaginatedReportDefinition"` is
+        // rejected by the Fabric API with `InvalidDefinitionFormat`. The
+        // definition must be `{ "parts": [...] }` only.
+        let def = definition_object(&single_rdl_part("R", "eA=="));
+        assert!(
+            def.get("format").is_none(),
+            "definition must NOT include a `format` field"
+        );
+        assert!(def["parts"].is_array());
+        assert_eq!(def["parts"][0]["path"], "R.rdl");
     }
 }

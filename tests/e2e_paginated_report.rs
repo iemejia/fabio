@@ -154,9 +154,35 @@ fn paginated_report_create_show_delete_lifecycle() {
 
     let cfg = TestConfig::from_env();
     let dir = tempfile::tempdir().unwrap();
-    let rdl_path = dir.path().join("test.rdl");
+    // A minimal but VALID RDL (2016 schema) with a single textbox and no data
+    // source — renders without a dataset. The file is deliberately named
+    // differently from the report display name to prove the fix synthesizes the
+    // definition part path as `<displayName>.rdl` (not the file basename).
+    // Regression: the create body must NOT include a `format` field — the Fabric
+    // API rejects `format: "PaginatedReportDefinition"` with `InvalidDefinitionFormat`.
+    let rdl_path = dir.path().join("some-other-filename.rdl");
     let mut f = fs::File::create(&rdl_path).unwrap();
-    f.write_all(b"<?xml version=\"1.0\"?><Report xmlns=\"http://schemas.microsoft.com/sqlserver/reporting/2008/01/reportdefinition\" />").unwrap();
+    f.write_all(
+        br#"<?xml version="1.0" encoding="utf-8"?>
+<Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition" xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner">
+  <ReportSections>
+    <ReportSection>
+      <Body>
+        <ReportItems>
+          <Textbox Name="TextBox1">
+            <Paragraphs><Paragraph><TextRuns><TextRun><Value>Hello from fabio</Value></TextRun></TextRuns></Paragraph></Paragraphs>
+            <Top>0.1in</Top><Left>0.1in</Left><Height>0.3in</Height><Width>4in</Width>
+          </Textbox>
+        </ReportItems>
+        <Height>1in</Height>
+      </Body>
+      <Width>6.5in</Width>
+      <Page><PageHeight>11in</PageHeight><PageWidth>8.5in</PageWidth></Page>
+    </ReportSection>
+  </ReportSections>
+</Report>"#,
+    )
+    .unwrap();
 
     let assert = fabio()
         .args([
@@ -174,6 +200,7 @@ fn paginated_report_create_show_delete_lifecycle() {
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     let id = json["data"]["id"].as_str().unwrap().to_string();
+    assert_eq!(json["data"]["type"], "PaginatedReport");
 
     // Show
     fabio()
