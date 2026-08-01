@@ -377,6 +377,36 @@ pub enum SemanticModelCommand {
         #[arg(long, default_value = "10")]
         top: u32,
     },
+    /// Get execution details of a specific (enhanced) refresh by its request id
+    #[command(name = "refresh-details", display_order = 20)]
+    RefreshDetails {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Refresh request id (the `requestId` from refresh-status)
+        #[arg(long)]
+        refresh_id: String,
+    },
+    /// Cancel an in-progress enhanced refresh by its request id
+    #[command(name = "cancel-refresh", display_order = 20)]
+    CancelRefresh {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Refresh request id (the `requestId` from refresh-status) to cancel
+        #[arg(long)]
+        refresh_id: String,
+    },
     /// List upstream (lineage) datasets that this semantic model depends on
     #[command(name = "list-upstream", display_order = 21)]
     ListUpstream {
@@ -601,6 +631,16 @@ pub async fn execute(
         SemanticModelCommand::RefreshStatus { workspace, id, top } => {
             powerbi::refresh_status(cli, client, workspace, id, *top).await
         }
+        SemanticModelCommand::RefreshDetails {
+            workspace,
+            id,
+            refresh_id,
+        } => operations::refresh_details(cli, client, workspace, id, refresh_id).await,
+        SemanticModelCommand::CancelRefresh {
+            workspace,
+            id,
+            refresh_id,
+        } => operations::cancel_refresh(cli, client, workspace, id, refresh_id).await,
         SemanticModelCommand::ListUpstream { workspace, id } => {
             powerbi::list_upstream(cli, client, workspace, id).await
         }

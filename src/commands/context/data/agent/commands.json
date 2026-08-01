@@ -9665,6 +9665,51 @@
         "mutates": false,
         "returns": "object"
       },
+      "refresh-details": {
+        "description": "Get execution details of a specific (enhanced) refresh by its request id",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--refresh-id": {
+            "type": "string",
+            "required": true,
+            "description": "Refresh request id (the `requestId` from refresh-status)"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "cancel-refresh": {
+        "description": "Cancel an in-progress enhanced refresh by its request id",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--refresh-id": {
+            "type": "string",
+            "required": true,
+            "description": "Refresh request id (the `requestId` from refresh-status) to cancel"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
       "list-upstream": {
         "description": "List upstream (lineage) datasets that this semantic model depends on",
         "flags": {

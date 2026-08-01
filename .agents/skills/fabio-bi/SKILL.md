@@ -33,6 +33,7 @@ Manage semantic models (Power BI datasets)
 |---|---|---|
 | `fabio semantic-model add-user` | yes | Add a user to a semantic model |
 | `fabio semantic-model bind-connection` | yes | Bind a semantic model to a connection |
+| `fabio semantic-model cancel-refresh` | yes | Cancel an in-progress enhanced refresh by its request id |
 | `fabio semantic-model clone` | yes | Clone a semantic model to the same or different workspace |
 | `fabio semantic-model create` | yes | Create a new semantic model from a definition file (model.bim) |
 | `fabio semantic-model delete` | yes | Delete a semantic model |
@@ -51,6 +52,7 @@ Manage semantic models (Power BI datasets)
 | `fabio semantic-model list-users` | no | List users (permissions) of a semantic model |
 | `fabio semantic-model query` | no | Execute a DAX query against a semantic model |
 | `fabio semantic-model refresh` | yes | Refresh a semantic model (required to frame Direct Lake models after creation) |
+| `fabio semantic-model refresh-details` | no | Get execution details of a specific (enhanced) refresh by its request id |
 | `fabio semantic-model refresh-status` | no | Get refresh history and status for a semantic model |
 | `fabio semantic-model show` | no | Show details of a semantic model |
 | `fabio semantic-model takeover` | yes | Take over a semantic model (converts definition-managed to service-managed for portal editing) |

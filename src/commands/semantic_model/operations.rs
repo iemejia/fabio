@@ -444,6 +444,55 @@ fn build_refresh_body(
     body
 }
 
+/// Get the execution details of a specific (enhanced) refresh by its request id
+/// (from `refresh-status`). Returns object-level status, commitMode, attempts, etc.
+pub(super) async fn refresh_details(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    refresh_id: &str,
+) -> Result<()> {
+    let data = client
+        .get_powerbi(&format!(
+            "/groups/{workspace}/datasets/{id}/refreshes/{refresh_id}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model refresh-details", "Viewer"))?;
+    output::render_object(cli, &data, "status");
+    Ok(())
+}
+
+/// Cancel an in-progress enhanced refresh by its request id.
+pub(super) async fn cancel_refresh(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    refresh_id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "semantic-model cancel-refresh",
+        &serde_json::json!({ "id": id, "refreshId": refresh_id }),
+    ) {
+        return Ok(());
+    }
+    client
+        .delete_powerbi(&format!(
+            "/groups/{workspace}/datasets/{id}/refreshes/{refresh_id}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model cancel-refresh", "Contributor"))?;
+    let obj = serde_json::json!({
+        "id": id,
+        "refreshId": refresh_id,
+        "status": "cancellation_requested"
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
 pub(super) async fn takeover(
     cli: &Cli,
     client: &FabricClient,

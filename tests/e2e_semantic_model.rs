@@ -1566,3 +1566,139 @@ fn semantic_model_enhanced_refresh_dry_run_and_validation() {
         .failure()
         .stderr(predicates::str::contains("table"));
 }
+
+/// Offline: cancel-refresh is --dry-run-guarded and echoes the refresh id.
+#[test]
+fn semantic_model_cancel_refresh_dry_run() {
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "cancel-refresh",
+            "--workspace",
+            "test-ws",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--refresh-id",
+            "11111111-1111-1111-1111-111111111111",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert_eq!(json["data"]["dry_run"], true);
+    assert_eq!(
+        json["data"]["would_execute"],
+        "semantic-model cancel-refresh"
+    );
+    assert_eq!(
+        json["data"]["details"]["refreshId"],
+        "11111111-1111-1111-1111-111111111111"
+    );
+}
+
+/// Live: enhanced-refresh lifecycle — trigger a granular refresh, read its
+/// execution details (object-level status), then cancel it.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_enhanced_refresh_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+
+    // Need an existing semantic model. Pick the first one in the workspace.
+    let list = fabio()
+        .args(["semantic-model", "list", "--workspace", ws])
+        .assert()
+        .success();
+    let models = parse_json(&list);
+    let Some(model) = models["data"].as_array().and_then(|a| a.first()) else {
+        eprintln!("no semantic model in workspace; skipping");
+        return;
+    };
+    let id = model["id"].as_str().unwrap().to_string();
+
+    // Trigger a granular enhanced refresh (whole model — objects present makes it enhanced).
+    fabio()
+        .args([
+            "semantic-model",
+            "refresh",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--type",
+            "Full",
+            "--commit-mode",
+            "transactional",
+        ])
+        .assert()
+        .success();
+
+    // Find the enhanced request id from refresh-status.
+    let status = fabio()
+        .args([
+            "semantic-model",
+            "refresh-status",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--top",
+            "5",
+        ])
+        .assert()
+        .success();
+    let sj = parse_json(&status);
+    let rows = sj["data"].as_array().cloned().unwrap_or_default();
+    let Some(req_id) = rows
+        .iter()
+        .find(|r| r["refreshType"].as_str() == Some("ViaEnhancedApi"))
+        .and_then(|r| r["requestId"].as_str())
+        .map(str::to_owned)
+    else {
+        eprintln!("no ViaEnhancedApi refresh found; skipping details/cancel");
+        return;
+    };
+
+    // refresh-details returns object-level status.
+    let details = fabio()
+        .args([
+            "semantic-model",
+            "refresh-details",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--refresh-id",
+            &req_id,
+        ])
+        .assert()
+        .success();
+    let dj = parse_json(&details);
+    assert!(
+        dj["data"]["type"].is_string(),
+        "details should carry type: {dj}"
+    );
+
+    // cancel-refresh: succeeds (cancellation_requested) if still running, or a
+    // clean CONFLICT if it already completed — either proves the endpoint works.
+    let cancel = fabio()
+        .args([
+            "semantic-model",
+            "cancel-refresh",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--refresh-id",
+            &req_id,
+        ])
+        .assert();
+    let out = cancel.get_output();
+    let ok = out.status.success();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        ok || stderr.contains("cannot be cancelled") || stderr.contains("CONFLICT"),
+        "cancel should succeed or report a clean conflict; stderr: {stderr}"
+    );
+}
