@@ -2236,3 +2236,31 @@ generate/edit. fabio adds first-class support for validating and creating these.
 - Full JSON-Schema validation of PBIR files against the bundled MS schemas (current validation is structural + `$schema`-presence, not per-property schema conformance).
 - Folder-based `semantic-model create`/`update-definition` (TMDL `definition/tables/**.tmdl` tree) outside of deploy — same single-file limitation the report side just closed.
 - Report scaffolding from a compact spec (pages/visuals) — emit schema-conformant PBIR from a high-level agent description.
+
+## Analysis Services specs → fabio surface (semantic-model introspection)
+
+Fabric/Power BI Premium tabular semantic models ARE Analysis Services tabular
+models (compat level 1200+), so they inherit the AS reference specs
+(https://learn.microsoft.com/analysis-services/analysis-services-references).
+Mapping to what fabio (a REST CLI) can reach:
+
+| AS spec | Fabric relation | fabio surface |
+|---|---|---|
+| **TMSL** (`model.bim`, JSON) | semantic model definition (TMSL format, version 1.0) | `semantic-model create/update-definition --file model.bim` |
+| **TMDL** (per-object folder) | semantic model definition (version 4.0+) | `--file *.tmdl`; deploy handles `definition/` folder |
+| **DAX** | query language | `semantic-model query --dax` (Power BI `executeQueries` REST) |
+| **Schema Rowsets** (`TMSCHEMA_*`/`DISCOVER_*` DMVs) | model metadata | `semantic-model list-tables/list-columns/list-measures/list-relationships` via DAX `INFO.VIEW.*` |
+| **Power Query M** | mashup/queries | `dataflow execute-query --mashup` |
+| **XMLA / TOM / AMO / ADOMD.NET** | SOAP protocol + .NET client libs | NOT reachable from a Rust REST CLI (need an AS client); fabio uses the Power BI REST API instead |
+| **MDX** | multidimensional query | N/A — Fabric semantic models are tabular, not multidimensional |
+
+### Schema introspection via DAX `INFO.VIEW.*` (live-verified)
+- **`INFO.VIEW.TABLES()` / `COLUMNS()` / `MEASURES()` / `RELATIONSHIPS()` WORK** through the Power BI `executeQueries` endpoint (the standard `semantic-model query` path). They return readable model metadata WITHOUT fetching/parsing the TMDL/TMSL definition. Backs `semantic-model list-tables/list-columns/list-measures/list-relationships`.
+- **The raw `INFO.TABLES()` / `INFO.COLUMNS()` / etc. FAIL** over `executeQueries` (HTTP 400 `DatasetExecuteQueriesError`) — they return columns/types that the REST query serializer rejects. Always use the `INFO.VIEW.*` variants (added 2024, designed for readability).
+- Result columns come back DAX-bracketed (`[Name]`, `[StorageMode]`, …); fabio strips the brackets (`strip_bracket_keys`) so output keys are agent-friendly (`Name`, `StorageMode`). Empty results (e.g. a model with no measures/relationships) render as a clean `{"data":[],"count":0}`.
+- Rich metadata surfaced: tables (StorageMode incl. `Direct Lake`, DataCategory, IsHidden, Expression, LineageTag), columns (DataType, SummarizeBy, FormatString, SourceColumn, IsKey/IsUnique/IsNullable), measures (Expression, FormatString, DisplayFolder, State), relationships (From/To table+column, Cardinality, CrossFilteringBehavior, IsActive).
+- Pure helper `strip_bracket_keys` in `src/commands/semantic_model/operations.rs` is unit-tested; the full create→introspect(tables/columns/measures/relationships)→delete loop is live-validated in `tests/e2e_semantic_model.rs` (`semantic_model_schema_introspection_lifecycle`).
+
+### Deferred (REST-reachable but not yet implemented)
+- **Enhanced/granular refresh**: `semantic-model refresh` sends only `{type}`; the Power BI enhanced-refresh API (`POST /datasets/{id}/refreshes`) also accepts `objects` (specific tables/partitions), `commitMode`, `maxParallelism`, `retryCount`, `applyRefreshPolicy` — the TMSL `refresh` command's granular options over REST. A `--objects`/`--commit-mode` extension would map TMSL refresh semantics onto the REST API.
+- **TMSL command execution** (createOrReplace/alter/backup/restore/synchronize) and **TOM editing** require an XMLA/AS client — out of scope for a REST CLI (fabio edits definitions via the Fabric items `updateDefinition` API instead).
