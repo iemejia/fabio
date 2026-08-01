@@ -86,6 +86,13 @@ cargo audit
 
 ALL must pass with zero errors, zero warnings, and zero vulnerabilities.
 
+> This is also enforced automatically: the `release.yml` workflow runs a
+> `validate` job (fmt + clippy + full `cargo test`, including the
+> skills/context consistency gates such as `every_command_group_has_a_knowledge_home`
+> and `subskills_match_generated`) that ALL build/publish jobs `needs:`. A tag
+> whose commit fails the suite produces NO artifacts — the release hard-stops.
+> Running Step 4 locally first just avoids a failed tag build.
+
 ## Step 5: Commit Cargo.toml AND Cargo.lock Together
 
 ```bash

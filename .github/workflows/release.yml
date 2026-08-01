@@ -12,7 +12,42 @@ permissions:
   packages: write
 
 jobs:
+  # Correctness gate for the release path: a tagged release cannot proceed unless
+  # formatting, lints, and the FULL test suite pass on the exact tagged commit.
+  # This includes the skills/context consistency gates
+  # (every_command_group_has_a_knowledge_home, subskills_match_generated,
+  # agent_schema_covers_all_{groups,subcommands}) — so skills + context must be
+  # consistent with the CLI before any artifact is built or published. Runs once
+  # on Linux; these tests are platform-independent (ci.yml still covers all OSes
+  # on push/PR).
+  validate:
+    runs-on: ubuntu-latest
+    name: validate (fmt, clippy, tests)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          components: rustfmt, clippy
+      - name: Cache cargo registry
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: release-validate-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            release-validate-cargo-
+      - name: Format check
+        run: cargo fmt -- --check
+      - name: Clippy (deny warnings)
+        run: cargo clippy --tests -- -D warnings
+      - name: Test suite (incl. skills/context consistency gates)
+        run: cargo test
+
   build:
+    needs: validate
     strategy:
       fail-fast: false
       matrix:

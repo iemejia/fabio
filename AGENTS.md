@@ -155,7 +155,7 @@ cargo test
 - If you add new code, ensure it has no clippy pedantic+nursery warnings.
 - If you modify existing tests or add new tests, verify they pass.
 - Check for unused imports before committing. Clippy catches these (`unused_imports` lint), but proactively remove any `use` statements you added that are no longer needed after refactoring. Run `cargo clippy --tests -- -D warnings` and fix all `unused import` warnings — do not leave them for a follow-up commit.
-- These steps mirror the CI pipeline — if they pass locally, CI will pass. The CI release build is an additional artifact-packaging step, not a correctness gate.
+- These steps mirror the CI pipeline — if they pass locally, CI will pass. The release workflow (`release.yml`) additionally runs a `validate` job (fmt + clippy + full `cargo test`, including the skills/context consistency gates) that ALL build/publish jobs depend on, so a tagged release cannot produce artifacts unless the exact tagged commit passes the suite.
 
 ## Pre-Commit Self-Review (MANDATORY)
 
