@@ -66,10 +66,11 @@ commit them. Step 4's `cargo test` will otherwise FAIL the release: the
 `subskills_match_generated` drift tests are the safety net that blocks a
 release whose website reference would be stale. A fourth gate,
 `every_command_group_has_a_knowledge_home`, blocks a release where a command
-GROUP was added without a knowledge-layer home (a `data/skills/*.json` family or
-a `data/personas/*.json` persona, or the cross-cutting allowlist) — i.e. skills
-+ context must be consistent with the CLI. If it fails, add the group to the
-right family/persona and regenerate. Optionally sanity-check the
+GROUP was added without a skill family (`data/skills/*.json` `command_groups`) or
+the cross-cutting allowlist — i.e. some subcommands would have no generated
+sub-skill command table, so skills + context would be inconsistent with the CLI
+down to the subcommand level. If it fails, add the group to the right family and
+regenerate. Optionally sanity-check the
 site build locally with `npm --prefix docs run check` (needs `npm ci` in
 `docs/` first).
 

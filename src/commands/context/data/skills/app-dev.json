@@ -1,0 +1,60 @@
+{
+  "family": "app-dev",
+  "title": "Application Development — data agents, data APIs, functions, org apps",
+  "description": "Intent-scoped fabio skill for building application and API workloads on Microsoft Fabric: AI data agents (natural-language Q&A over data), GraphQL data APIs, User Data Functions (serverless), app backends (Power Apps), Cosmos DB databases (NoSQL OLTP), and Organizational Apps for distribution. Use to expose, query, and package Fabric data as apps/APIs/agents. Triggers: \"data agent\", \"graphql api\", \"user data function\", \"serverless function\", \"app backend\", \"power app\", \"cosmos db\", \"organizational app\", \"publish app\", \"nl q&a\".",
+  "command_groups": ["data-agent", "graphql-api", "user-data-function", "app-backend", "cosmos-db-database", "org-app", "org-app-audience"],
+  "when_to_use": [
+    "Building an AI Data Agent for natural-language Q&A over lakehouse/warehouse data (add datasources, select tables, few-shots, publish, query).",
+    "Exposing Fabric data over a GraphQL API item.",
+    "Authoring/invoking serverless User Data Functions (invoke a published function via its public URL).",
+    "Backing a Power App / data app (app-backend) or a transactional Cosmos DB (NoSQL).",
+    "Packaging and distributing items as an Organizational App with audiences (org-app / org-app-audience)."
+  ],
+  "when_not_to_use": [
+    "Building/transforming the underlying data (lakehouse/warehouse/pipelines) -> use fabio-data-engineering / fabio-lakehouse.",
+    "Relational OLTP (SQL Database) or T-SQL analytics -> use fabio-warehouse-sql.",
+    "Reports / semantic models -> use fabio-bi.",
+    "Real-time operations agents (RTI monitoring) -> use fabio-rti-kql (operations-agent lives there)."
+  ],
+  "must": [
+    "Wire an API/function/agent to a data store that ALREADY exists and is populated.",
+    "For a Data Agent, configure datasources + select-tables (+ few-shots) BEFORE publish — only a published agent is queryable.",
+    "Invoke a User Data Function only after it is published; pass its portal-copied public URL to 'user-data-function invoke --url'."
+  ],
+  "prefer": [
+    "A Data Agent for NL Q&A over Fabric data instead of hand-building query logic; ground it on a lakehouse/warehouse/ontology via add-datasource.",
+    "Multi-turn Data Agent conversations by reusing the returned threadId (--thread-id/--keep-thread); evaluate answers with 'data-agent evaluate' (add --llm-* for a judge model).",
+    "GraphQL API / User Data Functions over bespoke external services when the data lives in Fabric.",
+    "Runtime introspection (context agent --group data-agent|graphql-api|user-data-function) for exact flags."
+  ],
+  "avoid": [
+    "Exposing an API/agent over a store that is not yet populated.",
+    "Publishing a Data Agent before validating its answers (data-agent evaluate / validate-fewshots).",
+    "Assuming a User Data Function is REST-discoverable — Fabric exposes no API to list/invoke it; the public URL is copied from the portal."
+  ],
+  "key_gotchas": [
+    "Only a PUBLISHED Data Agent is queryable; 'data-agent query' builds the consumption URL ({fabricBase}/workspaces/{ws}/dataagents/{id}/aiassistant/openai) when --published-url is omitted. 'data-agent mcp-url' prints the MCP endpoint for external MCP clients.",
+    "Data Agent preview runtime (Advanced NL2SQL) is toggled via 'update-config --enable-preview-runtime'; a published agent's runtime is fixed at publish time (republish to change).",
+    "'user-data-function invoke' needs a PUBLISHED function with public access enabled in the portal; fabio SSRF-guards the URL (HTTPS + trusted Microsoft host) and attaches the Fabric bearer token.",
+    "Cosmos DB and SQL Database backends require F4+ capacity.",
+    "app-backend has aliases (rayfin-app, data-app); org-app distribution pairs org-app with org-app-audience."
+  ],
+  "troubleshooting": [
+    {"symptom": "data-agent query returns an error / not published", "fix": "Publish first (data-agent publish); only published agents are queryable. Confirm datasources + select-tables were configured before publishing."},
+    {"symptom": "Data Agent gives wrong answers", "fix": "Add few-shots (add-fewshot), tighten instructions (update-config), and validate with 'data-agent evaluate' / 'validate-fewshots' (add --llm-* for a judge model)."},
+    {"symptom": "user-data-function invoke fails", "fix": "Ensure the function is published with public access; pass the exact portal-copied --url (HTTPS *.fabric.microsoft.com). fabio rejects non-trusted/non-HTTPS URLs."},
+    {"symptom": "SQL Database / Cosmos DB create fails on small capacity", "fix": "These need F4+ capacity; resume/scale the capacity first."}
+  ],
+  "safety": [
+    "Publishing a Data Agent makes it available to consumers — confirm datasources/table scope and validate answers first.",
+    "Deleting a data-agent with --hard-delete is irreversible; confirm with the user.",
+    "Exposing a GraphQL API / org-app shares underlying data — confirm the audience and least-privilege scope."
+  ],
+  "shared_references": ["throttling", "pagination", "lro"],
+  "see_also": [
+    "fabio context persona app-developer",
+    "fabio context workflow data-agent-setup",
+    "fabio context examples data_agent query",
+    "fabio context disambiguate sql-endpoint"
+  ]
+}

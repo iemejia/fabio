@@ -1,0 +1,196 @@
+---
+name: fabio-app-dev
+description: >-
+  Intent-scoped fabio skill for building application and API workloads on Microsoft Fabric: AI data agents (natural-language Q&A over data), GraphQL data APIs, User Data Functions (serverless), app backends (Power Apps), Cosmos DB databases (NoSQL OLTP), and Organizational Apps for distribution. Use to expose, query, and package Fabric data as apps/APIs/agents. Triggers: "data agent", "graphql api", "user data function", "serverless function", "app backend", "power app", "cosmos db", "organizational app", "publish app", "nl q&a".
+license: MIT
+---
+
+# fabio-app-dev — Application Development — data agents, data APIs, functions, org apps
+
+> **Generated file — do not edit by hand.** This intent-scoped sub-skill of the `fabio` skill is generated from fabio's command schema plus authored judgment. Regenerate with `cargo test generate_subskills -- --ignored`. For install, auth, output envelope, global flags, and agent-safety rules, see the root `fabio` skill.
+
+> **Prefer runtime introspection.** This index is a snapshot; the installed binary is always authoritative. Use `fabio context agent --group <group>` and `fabio context describe <group> <command>` for exact flags and output shapes.
+
+## When to use
+- Building an AI Data Agent for natural-language Q&A over lakehouse/warehouse data (add datasources, select tables, few-shots, publish, query).
+- Exposing Fabric data over a GraphQL API item.
+- Authoring/invoking serverless User Data Functions (invoke a published function via its public URL).
+- Backing a Power App / data app (app-backend) or a transactional Cosmos DB (NoSQL).
+- Packaging and distributing items as an Organizational App with audiences (org-app / org-app-audience).
+
+## When NOT to use (route elsewhere)
+- Building/transforming the underlying data (lakehouse/warehouse/pipelines) -> use fabio-data-engineering / fabio-lakehouse.
+- Relational OLTP (SQL Database) or T-SQL analytics -> use fabio-warehouse-sql.
+- Reports / semantic models -> use fabio-bi.
+- Real-time operations agents (RTI monitoring) -> use fabio-rti-kql (operations-agent lives there).
+
+## Command index
+
+Generated from fabio's command schema. For full flag details use `fabio context agent --group <group>` or `fabio context describe <group> <command>`.
+
+### fabio data-agent
+Manage data agents (create, query, and interact with AI agents)
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio data-agent add-datasource` | yes | Add a data source to the agent (auto-discovers schema from artifact) |
+| `fabio data-agent add-fewshot` | yes | Add a few-shot example (question/query pair) to a data source |
+| `fabio data-agent clear-fewshots` | yes | Delete all few-shot examples for a data source |
+| `fabio data-agent create` | yes | Create a new data agent |
+| `fabio data-agent delete` | yes | Delete a data agent |
+| `fabio data-agent delete-element` | yes | Delete a stale schema element (only elements no longer in the live schema) |
+| `fabio data-agent describe-element` | yes | Set or clear a description on a table or column in a data source |
+| `fabio data-agent evaluate` | no | Batch-run a set of questions against a published data agent (evaluation primitive) |
+| `fabio data-agent get-config` | no | Get the configuration of a data agent (instructions, data sources, preview runtime) |
+| `fabio data-agent get-definition` | no | Get the definition of a data agent (configuration, data sources, etc.) |
+| `fabio data-agent list` | no | List data agents in a workspace |
+| `fabio data-agent list-datasources` | no | List configured data sources for a data agent |
+| `fabio data-agent list-elements` | no | List elements (tables, columns) in a data source with selection state and descriptions |
+| `fabio data-agent list-fewshots` | no | List few-shot examples for a data source |
+| `fabio data-agent mcp-url` | no | Print the Model Context Protocol (MCP) endpoint URL for consuming a published data agent |
+| `fabio data-agent publish` | yes | Publish a data agent (promotes draft configuration to published state) |
+| `fabio data-agent query` | no | Query (chat with) a published data agent using natural language |
+| `fabio data-agent remove-datasource` | yes | Remove a data source from the agent |
+| `fabio data-agent remove-fewshot` | yes | Remove a few-shot example by ID |
+| `fabio data-agent reset` | yes | Reset staging (discard all draft changes, revert to published state) |
+| `fabio data-agent select-tables` | yes | Select or unselect data-source elements (tables, or ontology/graph entity types) |
+| `fabio data-agent show` | no | Show details of a data agent |
+| `fabio data-agent show-datasource` | no | Show details of a configured data source |
+| `fabio data-agent show-fewshot` | no | Show a specific few-shot example by ID |
+| `fabio data-agent update` | yes | Update a data agent (name and/or description) |
+| `fabio data-agent update-config` | yes | Update the configuration of a data agent (instructions, preview runtime) |
+| `fabio data-agent update-datasource` | yes | Update a data source's metadata (instructions, description) |
+| `fabio data-agent update-definition` | yes | Update the definition of a data agent (configure data sources, instructions, etc.) |
+| `fabio data-agent update-fewshot` | yes | Update an existing few-shot example (question and/or query) |
+| `fabio data-agent upload-fewshots` | yes | Bulk upload few-shot examples from a JSON or CSV file |
+| `fabio data-agent validate-fewshots` | no | Validate a data source's few-shot examples with an LLM (duplicates, conflicts, quality) |
+
+### fabio graphql-api
+Manage GraphQL APIs
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio graphql-api create` | yes | Create a new GraphQL API |
+| `fabio graphql-api delete` | yes | Delete a GraphQL API |
+| `fabio graphql-api get-definition` | no | Get the definition of a GraphQL API |
+| `fabio graphql-api list` | no | List GraphQL APIs in a workspace |
+| `fabio graphql-api query` | no | Execute a GraphQL query against a GraphQL API |
+| `fabio graphql-api show` | no | Show details of a GraphQL API |
+| `fabio graphql-api update` | yes | Update GraphQL API properties (name and/or description) |
+| `fabio graphql-api update-definition` | yes | Update the definition of a GraphQL API |
+
+### fabio user-data-function
+Manage user data functions
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio user-data-function create` | yes | Create a new user data function |
+| `fabio user-data-function delete` | yes | Delete a user data function |
+| `fabio user-data-function get-definition` | no | Get the definition of a user data function |
+| `fabio user-data-function invoke` | yes | Invoke a published function via its public REST endpoint |
+| `fabio user-data-function list` | no | List user data functions in a workspace |
+| `fabio user-data-function show` | no | Show details of a user data function |
+| `fabio user-data-function update` | yes | Update user data function properties |
+| `fabio user-data-function update-definition` | yes | Update the definition of a user data function |
+
+### fabio app-backend
+Manage app backends (Power Apps backend services) [preview]
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio app-backend create` | yes | Create a new app backend |
+| `fabio app-backend delete` | yes | Delete an app backend |
+| `fabio app-backend list` | no | List app backends in a workspace |
+| `fabio app-backend show` | no | Show details of an app backend |
+| `fabio app-backend update` | yes | Update app backend properties (name and/or description) |
+
+### fabio cosmos-db-database
+Manage Cosmos DB databases (mirrored from Azure Cosmos DB)
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio cosmos-db-database create` | yes | Create a new Cosmos DB database |
+| `fabio cosmos-db-database delete` | yes | Delete a Cosmos DB database |
+| `fabio cosmos-db-database get-definition` | no | Get the definition of a Cosmos DB database |
+| `fabio cosmos-db-database list` | no | List Cosmos DB databases in a workspace |
+| `fabio cosmos-db-database show` | no | Show details of a Cosmos DB database |
+| `fabio cosmos-db-database update` | yes | Update Cosmos DB database properties |
+| `fabio cosmos-db-database update-definition` | yes | Update the definition of a Cosmos DB database |
+
+### fabio org-app
+Manage org apps (organizational Power Apps)
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio org-app create` | yes | Create a new org app |
+| `fabio org-app delete` | yes | Delete an org app |
+| `fabio org-app get-definition` | no | Get the definition of an org app |
+| `fabio org-app list` | no | List org apps in a workspace |
+| `fabio org-app show` | no | Show details of an org app |
+| `fabio org-app update` | yes | Update org app properties (name and/or description) |
+| `fabio org-app update-definition` | yes | Update the definition of an org app |
+
+### fabio org-app-audience
+Manage org app audiences (audience definitions for org apps)
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio org-app-audience create` | yes | Create a new org app audience |
+| `fabio org-app-audience delete` | yes | Delete an org app audience |
+| `fabio org-app-audience get-definition` | no | Get the definition of an org app audience |
+| `fabio org-app-audience list` | no | List org app audiences in a workspace |
+| `fabio org-app-audience show` | no | Show details of an org app audience |
+| `fabio org-app-audience update` | yes | Update org app audience properties (name and/or description) |
+| `fabio org-app-audience update-definition` | yes | Update the definition of an org app audience |
+
+## Must / Prefer / Avoid
+### MUST
+- Wire an API/function/agent to a data store that ALREADY exists and is populated.
+- For a Data Agent, configure datasources + select-tables (+ few-shots) BEFORE publish — only a published agent is queryable.
+- Invoke a User Data Function only after it is published; pass its portal-copied public URL to 'user-data-function invoke --url'.
+
+### PREFER
+- A Data Agent for NL Q&A over Fabric data instead of hand-building query logic; ground it on a lakehouse/warehouse/ontology via add-datasource.
+- Multi-turn Data Agent conversations by reusing the returned threadId (--thread-id/--keep-thread); evaluate answers with 'data-agent evaluate' (add --llm-* for a judge model).
+- GraphQL API / User Data Functions over bespoke external services when the data lives in Fabric.
+- Runtime introspection (context agent --group data-agent|graphql-api|user-data-function) for exact flags.
+
+### AVOID
+- Exposing an API/agent over a store that is not yet populated.
+- Publishing a Data Agent before validating its answers (data-agent evaluate / validate-fewshots).
+- Assuming a User Data Function is REST-discoverable — Fabric exposes no API to list/invoke it; the public URL is copied from the portal.
+
+## Key gotchas
+- Only a PUBLISHED Data Agent is queryable; 'data-agent query' builds the consumption URL ({fabricBase}/workspaces/{ws}/dataagents/{id}/aiassistant/openai) when --published-url is omitted. 'data-agent mcp-url' prints the MCP endpoint for external MCP clients.
+- Data Agent preview runtime (Advanced NL2SQL) is toggled via 'update-config --enable-preview-runtime'; a published agent's runtime is fixed at publish time (republish to change).
+- 'user-data-function invoke' needs a PUBLISHED function with public access enabled in the portal; fabio SSRF-guards the URL (HTTPS + trusted Microsoft host) and attaches the Fabric bearer token.
+- Cosmos DB and SQL Database backends require F4+ capacity.
+- app-backend has aliases (rayfin-app, data-app); org-app distribution pairs org-app with org-app-audience.
+
+## Troubleshooting
+| Symptom | Fix |
+|---|---|
+| data-agent query returns an error / not published | Publish first (data-agent publish); only published agents are queryable. Confirm datasources + select-tables were configured before publishing. |
+| Data Agent gives wrong answers | Add few-shots (add-fewshot), tighten instructions (update-config), and validate with 'data-agent evaluate' / 'validate-fewshots' (add --llm-* for a judge model). |
+| user-data-function invoke fails | Ensure the function is published with public access; pass the exact portal-copied --url (HTTPS *.fabric.microsoft.com). fabio rejects non-trusted/non-HTTPS URLs. |
+| SQL Database / Cosmos DB create fails on small capacity | These need F4+ capacity; resume/scale the capacity first. |
+
+## Safety
+- Publishing a Data Agent makes it available to consumers — confirm datasources/table scope and validate answers first.
+- Deleting a data-agent with --hard-delete is irreversible; confirm with the user.
+- Exposing a GraphQL API / org-app shares underlying data — confirm the audience and least-privilege scope.
+
+## Shared references
+Cross-cutting operational guidance (the "common" layer) — consult the relevant topic before non-trivial work:
+
+| Reference | Covers |
+|---|---|
+| `fabio context best-practices throttling` | fabio transparently handles 429 (Too Many Requests) and gateway errors. Agents do NOT need to implement retry logic. |
+| `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |
+| `fabio context best-practices lro` | Many Fabric operations are async (return 202). fabio polls them automatically. Use --wait for job operations. |
+
+## See also
+- fabio context persona app-developer
+- fabio context workflow data-agent-setup
+- fabio context examples data_agent query
+- fabio context disambiguate sql-endpoint

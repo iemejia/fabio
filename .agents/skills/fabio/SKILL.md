@@ -133,7 +133,8 @@ This root skill covers cross-cutting concerns (install, auth, output envelope, g
 | `fabio-ontology` | Fabric IQ ontologies, graph models/querysets, digital twins, OWL import |
 | `fabio-geospatial` | Fabric maps (geospatial visualizations) |
 | `fabio-deploy-cicd` | Stateless content-hash deploy, Git, deployment pipelines, variable libraries |
-| `fabio-admin` | Capacity, tenant governance, domains, gateways, connections, labels |
+| `fabio-admin` | Workspaces, capacity, tenant governance, domains, gateways, connections, labels |
+| `fabio-app-dev` | Data agents (NL Q&A), GraphQL APIs, User Data Functions, app backends, Cosmos DB, org apps |
 | `fabio-migration` | Port Synapse / Databricks / HDInsight / ADF to Fabric |
 
 Load only the sub-skill(s) relevant to the task to keep context lean. They are generated from `commands.json` (drift-checked in CI), so they never fall out of sync with the CLI.

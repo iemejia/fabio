@@ -1,17 +1,18 @@
 ---
 name: fabio-admin
 description: >-
-  Intent-scoped fabio skill for Fabric tenant administration: capacity lifecycle, tenant-wide inventory and settings, domains, gateways, connections, managed private endpoints, and sensitivity labels. Most commands are tenant-scoped (no --workspace). Use for governance, connectivity, and capacity operations. Triggers: "capacity", "resume capacity", "suspend capacity", "tenant settings", "admin list workspaces", "domain", "gateway", "connection", "private endpoint", "sensitivity label".
+  Intent-scoped fabio skill for Fabric administration and workspace management: workspace lifecycle/roles/folders/networking/encryption, capacity lifecycle, tenant-wide inventory and settings, domains, gateways, connections, managed private endpoints, and sensitivity labels. Use for governance, connectivity, capacity, and workspace-level administration. Triggers: "workspace", "assign capacity", "workspace roles", "network policy", "capacity", "resume capacity", "suspend capacity", "tenant settings", "domain", "gateway", "connection", "private endpoint", "sensitivity label".
 license: MIT
 ---
 
-# fabio-admin — Administration — capacity, tenant governance, connectivity, labels
+# fabio-admin — Administration — workspaces, capacity, tenant governance, connectivity, labels
 
 > **Generated file — do not edit by hand.** This intent-scoped sub-skill of the `fabio` skill is generated from fabio's command schema plus authored judgment. Regenerate with `cargo test generate_subskills -- --ignored`. For install, auth, output envelope, global flags, and agent-safety rules, see the root `fabio` skill.
 
 > **Prefer runtime introspection.** This index is a snapshot; the installed binary is always authoritative. Use `fabio context agent --group <group>` and `fabio context describe <group> <command>` for exact flags and output shapes.
 
 ## When to use
+- Workspace lifecycle and governance: create/assign-capacity, role assignments, folders, domains, networking/firewall/encryption policies, git outbound policy, OneLake settings.
 - Capacity lifecycle: list, resume, suspend, create, delete (ARM-scoped).
 - Tenant-wide inventory and settings (requires Fabric admin role).
 - Governance: domains (group workspaces), sensitivity labels.
@@ -24,6 +25,66 @@ license: MIT
 ## Command index
 
 Generated from fabio's command schema. For full flag details use `fabio context agent --group <group>` or `fabio context describe <group> <command>`.
+
+### fabio workspace
+Manage workspaces
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio workspace add-role-assignment` | yes | Add a role assignment to a workspace |
+| `fabio workspace apply-tags` | yes | Apply tags to a workspace |
+| `fabio workspace assign-capacity` | yes | Assign a workspace to a capacity |
+| `fabio workspace assign-encryption` | yes | Assign a Customer-Managed Key (CMK) to a workspace, enabling or rotating encryption (Preview) |
+| `fabio workspace assign-to-domain` | yes | Assign workspace to a domain |
+| `fabio workspace clone` | yes | Clone workspace items from one workspace to another using bulk APIs |
+| `fabio workspace create` | yes | Create a new workspace |
+| `fabio workspace create-folder` | yes | Create a folder in a workspace |
+| `fabio workspace delete` | yes | Delete a workspace |
+| `fabio workspace delete-folder` | yes | Delete a workspace folder |
+| `fabio workspace delete-role-assignment` | yes | Delete a workspace role assignment |
+| `fabio workspace deprovision-identity` | yes | Deprovision a workspace identity |
+| `fabio workspace export-lifecycle-policy` | no | Export `OneLake` lifecycle policy |
+| `fabio workspace get-dataset-storage-format` | no | Get default dataset storage format via Power BI API |
+| `fabio workspace get-encryption` | no | Get workspace Customer-Managed Key (CMK) encryption settings (Preview) |
+| `fabio workspace get-firewall-rules` | no | Get workspace IP firewall rules |
+| `fabio workspace get-git-outbound-policy` | no | Get workspace git outbound policy |
+| `fabio workspace get-inbound-azure-resource-rules` | no | Get workspace inbound Azure resource instance rules |
+| `fabio workspace get-inbound-external-data-shares-policy` | no | Get workspace inbound External Data Shares bypass policy |
+| `fabio workspace get-network-policy` | no | Get workspace network communication policy |
+| `fabio workspace get-onelake-settings` | no | Get `OneLake` settings for a workspace |
+| `fabio workspace get-outbound-cloud-connection-rules` | no | Get workspace outbound cloud connection rules (requires OAP enabled) |
+| `fabio workspace get-outbound-gateway-rules` | no | Get workspace outbound gateway rules (requires OAP enabled) |
+| `fabio workspace get-settings` | no | Get workspace settings (properties including `automaticMetadataSync`) |
+| `fabio workspace import-lifecycle-policy` | yes | Import `OneLake` lifecycle policy |
+| `fabio workspace list` | no | List all workspaces |
+| `fabio workspace list-folders` | no | List workspace folders |
+| `fabio workspace list-role-assignments` | no | List workspace role assignments |
+| `fabio workspace modify-default-tier` | yes | Modify `OneLake` default tier (Hot, Cool, or Cold) |
+| `fabio workspace modify-diagnostics` | yes | Modify `OneLake` diagnostics configuration |
+| `fabio workspace modify-immutability-policy` | yes | Modify `OneLake` immutability policy |
+| `fabio workspace move-folder` | yes | Move a folder to another parent (or root) |
+| `fabio workspace provision-identity` | yes | Provision a workspace identity (managed identity) |
+| `fabio workspace reset-encryption` | yes | Reset workspace encryption by removing the CMK configuration (reverts to Microsoft-managed keys) (Preview) |
+| `fabio workspace reset-shortcut-cache` | yes | Reset `OneLake` shortcut cache for a workspace |
+| `fabio workspace set-dataset-storage-format` | yes | Set default dataset storage format (Small or Large) via Power BI API |
+| `fabio workspace set-firewall-rules` | yes | Set workspace IP firewall rules (replaces all existing rules) |
+| `fabio workspace set-git-outbound-policy` | yes | Set workspace git outbound policy (requires Outbound Access Protection enabled) |
+| `fabio workspace set-inbound-azure-resource-rules` | yes | Set workspace inbound Azure resource instance rules |
+| `fabio workspace set-inbound-external-data-shares-policy` | yes | Set workspace inbound External Data Shares bypass policy (preview API, requires *admin* role) |
+| `fabio workspace set-network-policy` | yes | Set workspace network communication policy |
+| `fabio workspace set-outbound-cloud-connection-rules` | yes | Set workspace outbound cloud connection rules (requires OAP enabled) |
+| `fabio workspace set-outbound-gateway-rules` | yes | Set workspace outbound gateway rules (requires OAP enabled) |
+| `fabio workspace show` | no | Show details of a workspace |
+| `fabio workspace show-folder` | no | Show details of a workspace folder |
+| `fabio workspace show-role-assignment` | no | Show a specific workspace role assignment |
+| `fabio workspace unapply-tags` | yes | Remove tags from a workspace |
+| `fabio workspace unassign-capacity` | yes | Unassign a workspace from its capacity |
+| `fabio workspace unassign-from-domain` | yes | Unassign workspace from its domain |
+| `fabio workspace update` | yes | Update workspace properties (name and/or description) |
+| `fabio workspace update-folder` | yes | Update a workspace folder |
+| `fabio workspace update-role-assignment` | yes | Update a workspace role assignment |
+| `fabio workspace update-settings` | yes | Update workspace settings (e.g. enable automatic metadata sync) |
+| `fabio workspace url` | no | Get the Fabric portal URL for a workspace |
 
 ### fabio admin
 Fabric tenant administration (settings, tags, workloads, users)

@@ -1,9 +1,10 @@
 {
   "family": "admin",
-  "title": "Administration — capacity, tenant governance, connectivity, labels",
-  "description": "Intent-scoped fabio skill for Fabric tenant administration: capacity lifecycle, tenant-wide inventory and settings, domains, gateways, connections, managed private endpoints, and sensitivity labels. Most commands are tenant-scoped (no --workspace). Use for governance, connectivity, and capacity operations. Triggers: \"capacity\", \"resume capacity\", \"suspend capacity\", \"tenant settings\", \"admin list workspaces\", \"domain\", \"gateway\", \"connection\", \"private endpoint\", \"sensitivity label\".",
-  "command_groups": ["admin", "capacity", "domain", "gateway", "connection", "managed-private-endpoint", "label"],
+  "title": "Administration — workspaces, capacity, tenant governance, connectivity, labels",
+  "description": "Intent-scoped fabio skill for Fabric administration and workspace management: workspace lifecycle/roles/folders/networking/encryption, capacity lifecycle, tenant-wide inventory and settings, domains, gateways, connections, managed private endpoints, and sensitivity labels. Use for governance, connectivity, capacity, and workspace-level administration. Triggers: \"workspace\", \"assign capacity\", \"workspace roles\", \"network policy\", \"capacity\", \"resume capacity\", \"suspend capacity\", \"tenant settings\", \"domain\", \"gateway\", \"connection\", \"private endpoint\", \"sensitivity label\".",
+  "command_groups": ["workspace", "admin", "capacity", "domain", "gateway", "connection", "managed-private-endpoint", "label"],
   "when_to_use": [
+    "Workspace lifecycle and governance: create/assign-capacity, role assignments, folders, domains, networking/firewall/encryption policies, git outbound policy, OneLake settings.",
     "Capacity lifecycle: list, resume, suspend, create, delete (ARM-scoped).",
     "Tenant-wide inventory and settings (requires Fabric admin role).",
     "Governance: domains (group workspaces), sensitivity labels.",
