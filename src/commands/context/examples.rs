@@ -230,6 +230,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/semantic_model_query.json"),
     ),
     (
+        "semantic-model/list-tables",
+        include_str!("data/examples/semantic_model_list_tables.json"),
+    ),
+    (
         "sql-database/import",
         include_str!("data/examples/sql_database_import.json"),
     ),

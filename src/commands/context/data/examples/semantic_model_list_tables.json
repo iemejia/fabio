@@ -1,0 +1,26 @@
+{
+  "command": "fabio semantic-model list-tables --workspace $WS --id $SM",
+  "description": "List a semantic model's tables via DAX INFO.VIEW.TABLES() (the Analysis Services 'Schema Rowsets' exposed over the Power BI executeQueries endpoint). Returns readable model metadata WITHOUT fetching/parsing the TMDL/TMSL definition. Sibling commands: list-columns, list-measures, list-relationships.",
+  "response": {
+    "data": [
+      {
+        "ID": 11,
+        "Name": "Sales",
+        "Model": "4d0012e9-99a8-46f0-a41b-d7333bf31171",
+        "DataCategory": "Regular",
+        "Description": null,
+        "IsHidden": false,
+        "StorageMode": "Direct Lake",
+        "Expression": null,
+        "LineageTag": "56ccb1b3-0d20-434e-9408-143353907875"
+      }
+    ],
+    "count": 1
+  },
+  "notes": "Keys are DAX-bracketed on the wire (`[Name]`, `[StorageMode]`); fabio strips the brackets for agent-friendly output. A model with no measures/relationships returns a clean `{\"data\":[],\"count\":0}`. Use `--query 'data[].{Name:Name,StorageMode:StorageMode}'` to project. Only the `INFO.VIEW.*` functions work over executeQueries — the raw `INFO.TABLES()`/`INFO.COLUMNS()` variants return HTTP 400.",
+  "query_examples": [
+    "fabio semantic-model list-columns --workspace $WS --id $SM --query \"data[].{Name:Name,Table:Table,DataType:DataType,SummarizeBy:SummarizeBy}\"",
+    "fabio semantic-model list-measures --workspace $WS --id $SM --query \"data[].{Name:Name,Table:Table,Expression:Expression}\"",
+    "fabio semantic-model list-relationships --workspace $WS --id $SM"
+  ]
+}

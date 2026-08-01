@@ -1331,3 +1331,169 @@ fn semantic_model_delete_hard_delete_dry_run() {
     assert_eq!(data["dry_run"], true);
     assert_eq!(data["details"]["hardDelete"], true);
 }
+
+/// Live: schema introspection via DAX INFO.VIEW.* (list-tables/columns/measures/
+/// relationships). Creates a 2-table model with a measure and a relationship,
+/// asserts each introspection command surfaces it, then cleans up.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_schema_introspection_lifecycle() {
+    use std::io::Write;
+
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.dest_workspace;
+
+    let bim = serde_json::json!({
+        "compatibilityLevel": 1604,
+        "model": {
+            "culture": "en-US",
+            "defaultPowerBIDataSourceVersion": "powerBI_V3",
+            "tables": [
+                {
+                    "name": "DimProduct",
+                    "columns": [
+                        {"name": "ProductKey", "dataType": "int64", "sourceColumn": "[ProductKey]", "type": "calculatedTableColumn"},
+                        {"name": "ProductName", "dataType": "string", "sourceColumn": "[ProductName]", "type": "calculatedTableColumn"}
+                    ],
+                    "partitions": [{"name": "DimProduct", "mode": "import", "source": {"type": "calculated", "expression": "DATATABLE(\"ProductKey\", INTEGER, \"ProductName\", STRING, {{1,\"Widget\"}})"}}]
+                },
+                {
+                    "name": "FactSales",
+                    "columns": [
+                        {"name": "ProductKey", "dataType": "int64", "sourceColumn": "[ProductKey]", "type": "calculatedTableColumn"},
+                        {"name": "Amount", "dataType": "double", "sourceColumn": "[Amount]", "type": "calculatedTableColumn"}
+                    ],
+                    "partitions": [{"name": "FactSales", "mode": "import", "source": {"type": "calculated", "expression": "DATATABLE(\"ProductKey\", INTEGER, \"Amount\", DOUBLE, {{1,10.0}})"}}],
+                    "measures": [{"name": "Total Amount", "expression": "SUM(FactSales[Amount])"}]
+                }
+            ],
+            "relationships": [{"name": "rel1", "fromTable": "FactSales", "fromColumn": "ProductKey", "toTable": "DimProduct", "toColumn": "ProductKey"}]
+        }
+    })
+    .to_string();
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("model.bim");
+    std::fs::File::create(&path)
+        .unwrap()
+        .write_all(bim.as_bytes())
+        .unwrap();
+
+    let name = unique_name("fabio-e2e-introspect");
+    let created = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            ws,
+            "--name",
+            &name,
+            "--file",
+            path.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let id = parse_json(&created)["data"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // list-tables: DimProduct + FactSales
+    let tables = fabio()
+        .args([
+            "semantic-model",
+            "list-tables",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+        ])
+        .assert()
+        .success();
+    let tj = parse_json(&tables);
+    let names: Vec<String> = tj["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|r| r["Name"].as_str().map(str::to_owned))
+        .collect();
+    assert!(
+        names.contains(&"DimProduct".to_string()),
+        "tables: {names:?}"
+    );
+    assert!(
+        names.contains(&"FactSales".to_string()),
+        "tables: {names:?}"
+    );
+
+    // list-columns: keys are unbracketed
+    let cols = fabio()
+        .args([
+            "semantic-model",
+            "list-columns",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+        ])
+        .assert()
+        .success();
+    let cj = parse_json(&cols);
+    let first = cj["data"].as_array().unwrap().first().unwrap();
+    assert!(
+        first
+            .as_object()
+            .unwrap()
+            .keys()
+            .all(|k| !k.starts_with('[')),
+        "column keys must be unbracketed: {first:?}"
+    );
+
+    // list-measures: Total Amount
+    let measures = fabio()
+        .args([
+            "semantic-model",
+            "list-measures",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+        ])
+        .assert()
+        .success();
+    let mj = parse_json(&measures);
+    assert!(
+        mj["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m["Name"].as_str() == Some("Total Amount")),
+        "expected 'Total Amount' measure: {mj}"
+    );
+
+    // list-relationships: one relationship present
+    let rels = fabio()
+        .args([
+            "semantic-model",
+            "list-relationships",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+        ])
+        .assert()
+        .success();
+    let rj = parse_json(&rels);
+    assert_eq!(
+        rj["count"].as_u64(),
+        Some(1),
+        "expected 1 relationship: {rj}"
+    );
+
+    // Cleanup
+    fabio()
+        .args(["semantic-model", "delete", "--workspace", ws, "--id", &id])
+        .assert()
+        .success();
+}

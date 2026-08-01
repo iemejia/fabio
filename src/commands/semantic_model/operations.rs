@@ -68,6 +68,134 @@ pub(super) async fn unbind_connection(
     Ok(())
 }
 
+// ── Schema introspection (DAX INFO.VIEW.* — the Analysis Services "Schema
+// Rowsets" exposed over the executeQueries endpoint). Returns readable model
+// metadata (tables/columns/measures/relationships) without parsing the
+// TMDL/TMSL definition.
+
+/// Strip DAX bracket-wrapping from column keys (`[Name]` -> `Name`) for
+/// agent-friendly output.
+fn strip_bracket_keys(rows: &[Value]) -> Vec<Value> {
+    rows.iter()
+        .map(|row| {
+            row.as_object().map_or_else(
+                || row.clone(),
+                |obj| {
+                    let cleaned: serde_json::Map<String, Value> = obj
+                        .iter()
+                        .map(|(k, v)| {
+                            let key = k
+                                .strip_prefix('[')
+                                .and_then(|s| s.strip_suffix(']'))
+                                .unwrap_or(k)
+                                .to_owned();
+                            (key, v.clone())
+                        })
+                        .collect();
+                    Value::Object(cleaned)
+                },
+            )
+        })
+        .collect()
+}
+
+/// Run a DAX query and return the first result table's rows.
+async fn run_dax_rows(
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    dax: &str,
+) -> Result<Vec<Value>> {
+    let body = serde_json::json!({
+        "queries": [{"query": dax}],
+        "serializerSettings": {"includeNulls": true}
+    });
+    let data = client
+        .post_powerbi(
+            &format!("/groups/{workspace}/datasets/{id}/executeQueries"),
+            &body,
+        )
+        .await
+        .map_err(|e| {
+            enrich_dax_error(enrich_forbidden(e, "semantic-model schema query", "Viewer"))
+        })?;
+
+    let rows = data
+        .get("results")
+        .and_then(Value::as_array)
+        .and_then(|arr| arr.first())
+        .and_then(|t| t.get("tables"))
+        .and_then(Value::as_array)
+        .and_then(|arr| arr.first())
+        .and_then(|t| t.get("rows"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    Ok(rows)
+}
+
+/// Render the result of an `INFO.VIEW.<function>()` introspection query.
+async fn info_view(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    function: &str,
+) -> Result<()> {
+    let dax = format!("EVALUATE INFO.VIEW.{function}()");
+    let rows = run_dax_rows(client, workspace, id, &dax).await?;
+    let items = strip_bracket_keys(&rows);
+    let columns: Vec<&str> = items
+        .first()
+        .and_then(Value::as_object)
+        .map_or_else(Vec::new, |first| first.keys().map(String::as_str).collect());
+    output::render_list_with_token(
+        cli,
+        &items,
+        &columns,
+        &columns,
+        columns.first().copied().unwrap_or("Name"),
+        None,
+    );
+    Ok(())
+}
+
+pub(super) async fn list_tables(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    info_view(cli, client, workspace, id, "TABLES").await
+}
+
+pub(super) async fn list_columns(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    info_view(cli, client, workspace, id, "COLUMNS").await
+}
+
+pub(super) async fn list_measures(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    info_view(cli, client, workspace, id, "MEASURES").await
+}
+
+pub(super) async fn list_relationships(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    info_view(cli, client, workspace, id, "RELATIONSHIPS").await
+}
+
 pub(super) async fn query(
     cli: &Cli,
     client: &FabricClient,
@@ -297,6 +425,37 @@ fn enrich_dax_error(err: anyhow::Error) -> anyhow::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strip_bracket_keys_unwraps_dax_columns() {
+        let rows = vec![serde_json::json!({
+            "[Name]": "Sales",
+            "[StorageMode]": "Direct Lake",
+            "[IsHidden]": false
+        })];
+        let out = strip_bracket_keys(&rows);
+        let obj = out[0].as_object().unwrap();
+        assert_eq!(obj.get("Name").and_then(Value::as_str), Some("Sales"));
+        assert_eq!(
+            obj.get("StorageMode").and_then(Value::as_str),
+            Some("Direct Lake")
+        );
+        assert_eq!(obj.get("IsHidden").and_then(Value::as_bool), Some(false));
+        // No bracketed keys remain.
+        assert!(obj.keys().all(|k| !k.starts_with('[')));
+    }
+
+    #[test]
+    fn strip_bracket_keys_leaves_unbracketed_and_non_objects_untouched() {
+        let rows = vec![
+            serde_json::json!({"Name": "x", "count": 3}),
+            serde_json::json!("scalar"),
+        ];
+        let out = strip_bracket_keys(&rows);
+        assert_eq!(out[0]["Name"], "x");
+        assert_eq!(out[0]["count"], 3);
+        assert_eq!(out[1], serde_json::json!("scalar"));
+    }
 
     #[test]
     fn test_enrich_dax_error_dataset_not_found() {

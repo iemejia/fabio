@@ -22,9 +22,14 @@
     "model.bim MUST use compatibilityLevel 1604 and powerBI_V3",
     "After creation, call refresh to frame Direct Lake: fabio semantic-model refresh",
     "Call takeover to make editable in portal: fabio semantic-model takeover",
-    "definition.pbism is ALWAYS required regardless of format"
+    "definition.pbism is ALWAYS required regardless of format",
+    "Introspect a model's schema WITHOUT parsing its definition via DAX INFO.VIEW.* (the Analysis Services Schema Rowsets): list-tables (StorageMode incl. Direct Lake), list-columns (DataType/SummarizeBy/FormatString), list-measures (Expression/FormatString), list-relationships (Cardinality/CrossFilteringBehavior). Use these before writing DAX or wiring a report."
   ],
   "related_commands": [
+    "fabio semantic-model list-tables --workspace <WS> --id <ID>",
+    "fabio semantic-model list-columns --workspace <WS> --id <ID>",
+    "fabio semantic-model list-measures --workspace <WS> --id <ID>",
+    "fabio semantic-model list-relationships --workspace <WS> --id <ID>",
     "fabio semantic-model refresh --workspace <WS> --id <ID>",
     "fabio semantic-model query --workspace <WS> --id <ID> --dax <QUERY>",
     "fabio semantic-model takeover --workspace <WS> --id <ID>",

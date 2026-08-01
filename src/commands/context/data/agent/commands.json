@@ -9416,6 +9416,74 @@
         "mutates": false,
         "returns": "list"
       },
+      "list-tables": {
+        "description": "List tables of a semantic model (via DAX INFO.VIEW.TABLES — no definition parsing)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "list-columns": {
+        "description": "List columns of a semantic model (via DAX INFO.VIEW.COLUMNS)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "list-measures": {
+        "description": "List measures of a semantic model (via DAX INFO.VIEW.MEASURES)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "list-relationships": {
+        "description": "List relationships of a semantic model (via DAX INFO.VIEW.RELATIONSHIPS)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
       "update-parameters": {
         "description": "Update parameters of a semantic model",
         "flags": {

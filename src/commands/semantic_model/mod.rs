@@ -207,6 +207,50 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         id: String,
     },
+    /// List tables of a semantic model (via DAX INFO.VIEW.TABLES — no definition parsing)
+    #[command(name = "list-tables", display_order = 13)]
+    ListTables {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+    },
+    /// List columns of a semantic model (via DAX INFO.VIEW.COLUMNS)
+    #[command(name = "list-columns", display_order = 13)]
+    ListColumns {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+    },
+    /// List measures of a semantic model (via DAX INFO.VIEW.MEASURES)
+    #[command(name = "list-measures", display_order = 13)]
+    ListMeasures {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+    },
+    /// List relationships of a semantic model (via DAX INFO.VIEW.RELATIONSHIPS)
+    #[command(name = "list-relationships", display_order = 13)]
+    ListRelationships {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+    },
     /// Update parameters of a semantic model
     #[command(name = "update-parameters", display_order = 14)]
     UpdateParameters {
@@ -464,6 +508,18 @@ pub async fn execute(
         }
         SemanticModelCommand::ListParameters { workspace, id } => {
             powerbi::list_parameters(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::ListTables { workspace, id } => {
+            operations::list_tables(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::ListColumns { workspace, id } => {
+            operations::list_columns(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::ListMeasures { workspace, id } => {
+            operations::list_measures(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::ListRelationships { workspace, id } => {
+            operations::list_relationships(cli, client, workspace, id).await
         }
         SemanticModelCommand::UpdateParameters {
             workspace,

@@ -41,8 +41,12 @@ Manage semantic models (Power BI datasets)
 | `fabio semantic-model get-definition` | no | Get the definition of a semantic model |
 | `fabio semantic-model import-pbix` | yes | Import a .pbix file as a new semantic model |
 | `fabio semantic-model list` | no | List semantic models in a workspace |
+| `fabio semantic-model list-columns` | no | List columns of a semantic model (via DAX INFO.VIEW.COLUMNS) |
 | `fabio semantic-model list-datasources` | no | List datasources of a semantic model |
+| `fabio semantic-model list-measures` | no | List measures of a semantic model (via DAX INFO.VIEW.MEASURES) |
 | `fabio semantic-model list-parameters` | no | List parameters of a semantic model |
+| `fabio semantic-model list-relationships` | no | List relationships of a semantic model (via DAX INFO.VIEW.RELATIONSHIPS) |
+| `fabio semantic-model list-tables` | no | List tables of a semantic model (via DAX INFO.VIEW.TABLES — no definition parsing) |
 | `fabio semantic-model list-upstream` | no | List upstream (lineage) datasets that this semantic model depends on |
 | `fabio semantic-model list-users` | no | List users (permissions) of a semantic model |
 | `fabio semantic-model query` | no | Execute a DAX query against a semantic model |
@@ -100,6 +104,7 @@ Manage dashboards (Power BI)
 - Validate a PBIR/PBIP report folder offline with 'report validate --source <folder>' before 'report create --definition' or deploy — it catches missing required files, bad $schema, and byPath-vs-byConnection issues without a tenant call.
 
 ### PREFER
+- Introspect a model's schema with semantic-model list-tables/list-columns/list-measures/list-relationships (DAX INFO.VIEW.* — the Analysis Services Schema Rowsets) to understand tables, types, StorageMode (Direct Lake), measures, and relationships WITHOUT fetching/parsing the TMDL/TMSL definition.
 - report create --definition <folder> to create a FULL multi-page PBIR report from generated files (the documented, agent-authorable format); it gathers definition.pbir + report.json or definition/** and validates first. Use --dataset with it to rebind a byPath folder to a concrete model by connection.
 - Direct Lake over import mode when data already lives in a lakehouse (no refresh cost).
 - fabio rest call --api powerbi for Power BI-specific endpoints not on the Fabric surface.
@@ -112,6 +117,7 @@ Manage dashboards (Power BI)
 
 ## Key gotchas
 - 'dataset' (legacy Power BI term) == semantic model; Power BI REST still uses /datasets (reach it via rest call --api powerbi).
+- Schema introspection uses DAX INFO.VIEW.* (list-tables/columns/measures/relationships) over the same executeQueries endpoint as query --dax; the raw INFO.TABLES()/INFO.COLUMNS() variants are rejected by executeQueries (HTTP 400) — only INFO.VIEW.* works.
 - PBIR (the enhanced per-file 'definition/' folder) is Microsoft's documented, agent-authorable report format (each page/visual has its own $schema-bearing JSON) and becomes the only format at GA; conform to the published visual.json/page.json schemas and run 'report validate' before create/deploy. fabio 'report create --definition' pushes a full PBIR tree (previously only 'deploy' could).
 - Direct Lake reads Delta directly — the report is empty until the lakehouse tables are populated.
 
