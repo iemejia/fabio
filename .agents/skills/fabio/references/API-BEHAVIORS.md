@@ -945,8 +945,8 @@ Required fields for visuals that render data:
 - `dataTransforms` — metadata for rendering engine
 - `prototypeQuery` — **REQUIRED** for data to actually render
 
-### PBIR visual.json Limitation
-PBIR visuals use `query.queryState` which stores correctly but **renders NO data** in the portal. The PBIR schema does not support `prototypeQuery`.
+### PBIR visual.json (encoding-sensitive)
+PBIR is Microsoft's documented format for programmatic report authoring — each `visual.json` has a published `$schema` (`report/definition/visualContainer/**`). An earlier fabio experiment used an ad-hoc `query.queryState` shape that stored but rendered no data; the fix is to conform to the published visual container schema, run `fabio report validate --source <folder>` offline, then `fabio report create --definition <folder>`. PBIR-Legacy (`report.json` with `prototypeQuery`) remains a working alternative until PBIR GA.
 
 ### Supported visualType Values
 `card`, `barChart`, `columnChart`, `lineChart`, `pieChart`, `donutChart`, `tableEx`, `matrix`, `map`, `scatterChart`, `slicer`, `kpi`

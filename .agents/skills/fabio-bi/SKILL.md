@@ -97,28 +97,30 @@ Manage dashboards (Power BI)
 ### MUST
 - Treat 'dataset' as a semantic model (use the semantic-model group, NOT report); see 'fabio context disambiguate semantic-model'.
 - Bind semantic-model create to a valid --connection (SQL endpoint) for import/DirectQuery.
-- Use PBIR-Legacy format when a report must render data programmatically (plain PBIR cannot).
+- Validate a PBIR/PBIP report folder offline with 'report validate --source <folder>' before 'report create --definition' or deploy — it catches missing required files, bad $schema, and byPath-vs-byConnection issues without a tenant call.
 
 ### PREFER
+- report create --definition <folder> to create a FULL multi-page PBIR report from generated files (the documented, agent-authorable format); it gathers definition.pbir + report.json or definition/** and validates first. Use --dataset with it to rebind a byPath folder to a concrete model by connection.
 - Direct Lake over import mode when data already lives in a lakehouse (no refresh cost).
 - fabio rest call --api powerbi for Power BI-specific endpoints not on the Fabric surface.
 - semantic-model query --dax for validation before wiring a report.
 
 ### AVOID
 - Inventing a 'fabio dataset' command — datasets are semantic models.
-- Expecting plain PBIR reports to render data (they need PBIR-Legacy).
+- Feeding a byPath definition.pbir to 'report create' without --dataset (byPath needs a co-deployed model; 'deploy' rewrites byPath→byConnection automatically, but 'report create' needs byConnection — pass --dataset to bind by id).
 - Refreshing on inactive capacity (CAPACITY_INACTIVE).
 
 ## Key gotchas
 - 'dataset' (legacy Power BI term) == semantic model; Power BI REST still uses /datasets (reach it via rest call --api powerbi).
-- Report visuals need PBIR-Legacy to render data; plain PBIR cannot render programmatically.
+- PBIR (the enhanced per-file 'definition/' folder) is Microsoft's documented, agent-authorable report format (each page/visual has its own $schema-bearing JSON) and becomes the only format at GA; conform to the published visual.json/page.json schemas and run 'report validate' before create/deploy. fabio 'report create --definition' pushes a full PBIR tree (previously only 'deploy' could).
 - Direct Lake reads Delta directly — the report is empty until the lakehouse tables are populated.
 
 ## Troubleshooting
 | Symptom | Fix |
 |---|---|
 | semantic-model create fails to bind | Pass --connection with a valid SQL analytics endpoint; the model needs a data source. |
-| Report shows no data | For Direct Lake, populate the lakehouse tables first; for import, refresh the model; ensure PBIR-Legacy if rendering programmatically. |
+| report create --definition rejected / opaque API error | Run 'fabio report validate --source <folder>' first; conform each PBIR file to its published $schema and ensure required files (definition.pbir, definition/{report,version}.json, pages/**/page.json) are present. |
+| Report shows no data | For Direct Lake, populate the lakehouse tables first; for import, refresh the model. For a hand-authored PBIR folder, validate it and conform visual.json to the published visual container schema. |
 | Refresh fails with CAPACITY_INACTIVE | Resume the capacity (fabio capacity resume) before refreshing. |
 | No 'fabio dataset' command | Use the semantic-model group; 'dataset' is the legacy name for a semantic model. |
 

@@ -424,7 +424,10 @@ fabio notebook update-definition --workspace $WS --id $NB --file updated.py     
 fabio semantic-model create --workspace $WS --name "Sales" --file model.tmdl --connection $SQLEP
 fabio semantic-model query --workspace $WS --id $SM --dax "EVALUATE Sales"
 fabio semantic-model refresh --workspace $WS --id $SM
-fabio report create --workspace $WS --name "Dashboard" --dataset $SM
+fabio report create --workspace $WS --name "Dashboard" --dataset $SM          # simple: 1-page report bound to a model
+# Author a full PBIR report (coding-agent path): validate a generated folder, then create the whole tree
+fabio report validate --source ./MyReport.Report                              # offline PBIR/PBIP structural + $schema checks
+fabio report create --workspace $WS --name "Sales" --definition ./MyReport.Report --dataset $SM  # full multi-page PBIR; --dataset rebinds byPath→byConnection
 ```
 
 **Data Agent (AI-powered Q&A over lakehouse data):**
@@ -574,7 +577,7 @@ These cause silent failures if ignored:
 8. **Deploy is stateless** — Content-hash diffing against live workspace. No state file. `--workspace` accepts display name or GUID (auto-resolved).
 9. **Hard delete on 38 item types** — `--hard-delete` flag permanently removes items (skips recycle bin).
 10. **SQL Database needs F4+ capacity** — F2 fails with error 18456 State 240.
-11. **Report visuals need PBIR-Legacy** — PBIR format cannot render data programmatically.
+11. **PBIR is the agent-authorable report format** — PBIR (the enhanced per-file `definition/` folder) is Microsoft's documented format for programmatic report generation and becomes the only format at GA. Author it, then `fabio report validate --source <folder>` (offline) and `fabio report create --definition <folder>` (full tree). Conform each file to its published `$schema`. `--dataset` rebinds a `byPath` folder to a concrete model by connection.
 12. **ARM scope for capacity lifecycle** — suspend/resume/create/delete use `management.azure.com`.
 
 ## Composability Patterns
