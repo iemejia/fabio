@@ -2266,8 +2266,62 @@ now discover such folders directly:
   are unit-tested in `platform.rs`; e2e `deploy_plan_raw_pbip_without_platform_is_discovered`
   in `tests/e2e_deploy.rs`.
 
+### PBIR body-schema conformance is INFEASIBLE offline (Fabric emits unpublished `$schema` versions)
+
+`report validate` performs **structural + `$schema`-presence** checks, NOT
+per-property JSON-Schema conformance. A spike to add full offline JSON-Schema
+conformance (validating every PBIR file against Microsoft's published schemas at
+`github.com/microsoft/json-schemas`) established that **body-file conformance is
+impossible offline**, and only the stable `definitionProperties` schemas could be
+validated:
+
+- **Real Fabric reports declare body-schema versions that do NOT exist upstream.**
+  A live export (workspace `fabio-e2e-dest`, report `SalesReport`) declares, in
+  its definition files:
+  - `definition/report.json` → `report/definition/report/**3.3.0**` (upstream max: 3.3.0 — OK)
+  - `definition/pages/<p>/page.json` → `page/**2.1.0**` (upstream max: 2.1.0 — OK)
+  - `definition/pages/<p>/visuals/<v>/visual.json` → `visualContainer/**2.11.0**`
+    — **upstream max is 2.9.0**; `2.11.0` is a **404** in the published repo AND
+    at `developer.microsoft.com`.
+  - `definition/pages/pages.json` → `pagesMetadata/1.1.0`;
+    `definition/version.json` → `versionMetadata/1.0.0`.
+  So Fabric's runtime emits `$schema` URLs **ahead of** (or disconnected from) the
+  published `microsoft/json-schemas` repo. Any vendored body schema will therefore
+  never match a real file's declared version → the file is skipped, so real
+  reports get **zero** body conformance. Falling back to the latest *published*
+  version (e.g. validate a `2.11.0` visual against vendored `2.9.0`) is WORSE:
+  every body schema is `additionalProperties: false`, and 2.9→2.11 adds
+  properties, so a valid real report would emit **false** `SCHEMA_VIOLATION`
+  errors on the newer properties.
+- **Only `definitionProperties` is stable + published + declared by real files.**
+  `definition.pbir` declares `report/definitionProperties/2.0.0` (upstream has
+  exactly `1.0.0`, `2.0.0`) and a real `definition.pbir` **conforms cleanly**
+  (0 errors) against the vendored 2.0.0 schema. `definition.pbism` declares
+  `semanticModel/definitionProperties/1.0.0` (the only published version).
+  These are the files fabio itself emits and agents hand-author — but full
+  conformance on them adds only strictness (unknown-property / type checks) over
+  the existing structural checks (`MISSING_VERSION`, `MISSING/AMBIGUOUS_DATASET_REFERENCE`,
+  `BYPATH_NEEDS_BYCONNECTION`), which was judged not worth promoting the
+  `jsonschema` crate from a dev-dependency to a **runtime** dependency (it pulls
+  `fraction`, `num-bigint`, `fancy-regex`, `ahash`, `referencing`, …).
+- **Implementation notes (for any future retry):** the vendored-schema retriever
+  approach works — `jsonschema` (already a dev-dep) validates offline via a custom
+  `Retrieve` impl over an in-memory `HashMap<url, Value>`, keying each doc by both
+  its `SCHEMA_BASE+rel` URL and its `$id` (embedded schemas are fetched at
+  `schema-embedded.json` but self-identify as `schema.embedded.json`). One upstream
+  wart: some schemas (e.g. `bookmark/1.0.0`) use generic-style `definitions` keys
+  containing `<`/`>` (`DecomposedTree<QueryExpressionContainer>`) which are invalid
+  URI-fragment characters — a strict `$ref` URI parser rejects them; percent-encode
+  `<`→`%3C`/`>`→`%3E` in `$ref` values (JSON-Pointer semantics are preserved). The
+  full transitive `$ref` closure of the report/semantic-model definition schemas is
+  only ~385 KB raw / ~41 KB gzip (largest single file `semanticQuery` ~72 KB), so
+  size was never the blocker — the version-drift mismatch is.
+
+**Conclusion:** closed as "won't implement". Structural + `$schema`-presence
+validation stays; per-property conformance is not viable until Fabric's emitted
+body-schema versions are published in `microsoft/json-schemas` in lockstep.
+
 ### Known gaps / roadmap (not yet implemented)
-- Full JSON-Schema validation of PBIR files against the bundled MS schemas (current validation is structural + `$schema`-presence, not per-property schema conformance).
 - Report scaffolding from a compact spec (pages/visuals) — emit schema-conformant PBIR from a high-level agent description.
 
 ## Analysis Services specs → fabio surface (semantic-model introspection)
