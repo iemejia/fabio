@@ -203,6 +203,95 @@ fn deploy_plan_exported_workspace_shows_skip_or_update() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
+fn deploy_plan_raw_pbip_without_platform_is_discovered() {
+    // A raw Power BI Desktop PBIP folder has `<name>.Report` / `<name>.SemanticModel`
+    // directories WITHOUT the Git-integration `.platform` sidecar. fabio must
+    // synthesize the item metadata from the folder-name suffix so such a folder
+    // is deployable directly. This test exports Report + SemanticModel items,
+    // strips every `.platform` file (simulating a raw Desktop save), and verifies
+    // `deploy plan` still discovers and types both items.
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let export_dir = dir.path().join("pbip");
+
+    // Step 1: Export only Report + SemanticModel items.
+    fabio()
+        .args([
+            "deploy",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--dir",
+            export_dir.to_str().unwrap(),
+            "--item-types",
+            "Report,SemanticModel",
+        ])
+        .timeout(Duration::from_mins(5))
+        .assert()
+        .success();
+
+    // Step 2: Strip every `.platform` file to simulate a raw Desktop PBIP.
+    let mut stripped = 0;
+    for entry in std::fs::read_dir(&export_dir).unwrap().flatten() {
+        let platform = entry.path().join(".platform");
+        if platform.exists() {
+            std::fs::remove_file(&platform).unwrap();
+            stripped += 1;
+        }
+    }
+    assert!(
+        stripped > 0,
+        "Expected at least one exported item with a .platform to strip"
+    );
+
+    // Step 3: Plan the `.platform`-less folder back against the same workspace.
+    // Before synthesis support, discovery would recurse past these folders and
+    // find zero items; now they are discovered by folder-name suffix.
+    let assert = fabio()
+        .args([
+            "deploy",
+            "plan",
+            "--source",
+            export_dir.to_str().unwrap(),
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .timeout(Duration::from_mins(5))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let changes = data["changes"].as_array().expect("changes array");
+
+    // Both synthesized items must be discovered and correctly typed.
+    let types: Vec<&str> = changes
+        .iter()
+        .filter_map(|c| c["item_type"].as_str())
+        .collect();
+    assert!(
+        types.contains(&"SemanticModel"),
+        "SemanticModel not discovered from raw PBIP folder: {changes:?}"
+    );
+    assert!(
+        types.contains(&"Report"),
+        "Report not discovered from raw PBIP folder: {changes:?}"
+    );
+
+    // With no `.platform`, there is no authored logicalId — the plan should warn
+    // that rename tracking is unavailable (confirms synthesis path was taken).
+    let warnings = data["warnings"].as_array().expect("warnings array");
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.as_str().is_some_and(|s| s.contains("no logicalId"))),
+        "Expected a 'no logicalId' warning for a .platform-less item"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn deploy_plan_force_all_shows_all_updates() {
     let cfg = TestConfig::from_env();
     let dir = tempfile::TempDir::new().unwrap();

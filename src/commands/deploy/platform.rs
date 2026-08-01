@@ -186,6 +186,45 @@ fn parse_platform_file(path: &Path) -> Result<PlatformMetadata> {
     })
 }
 
+/// Infer `.platform` metadata for a folder that has NO `.platform` file.
+///
+/// Power BI Desktop saves a PBIP project as plain folders named
+/// `<name>.Report` / `<name>.SemanticModel` WITHOUT the Git-integration
+/// `.platform` sidecar (that file is only added by Fabric Git Integration or
+/// fabric-cicd). To let such a raw Desktop PBIP folder be deployed directly,
+/// we synthesize the metadata from the folder-name suffix, but ONLY when the
+/// suffix maps to a known type AND the type's required entry-point definition
+/// file is present on disk (so we never misclassify an arbitrary folder).
+///
+/// Returns `None` when the folder is not a synthesizable item directory (the
+/// caller then recurses into it as a plain folder).
+fn synthesize_platform_metadata(path: &Path, dir_name: &str) -> Option<PlatformMetadata> {
+    // Suffix → (Fabric item type, required entry-point definition file).
+    // Limited to the two PBIP item types; Git-integration exports of other
+    // types always carry a real `.platform`, so they never reach here.
+    let (base, item_type, entry_file) = match dir_name.rsplit_once('.') {
+        Some((base, "Report")) => (base, "Report", "definition.pbir"),
+        Some((base, "SemanticModel")) => (base, "SemanticModel", "definition.pbism"),
+        _ => return None,
+    };
+
+    if base.is_empty() || !path.join(entry_file).exists() {
+        return None;
+    }
+
+    Some(PlatformMetadata {
+        item_type: item_type.to_owned(),
+        display_name: base.to_owned(),
+        // No `.platform` means no authored logicalId; rename/rebind resolution
+        // falls back to (type, name) matching, which is correct for PBIP.
+        logical_id: None,
+        description: None,
+        definition_format: None,
+        sensitivity_label_id: None,
+        platform_creation_payload: None,
+    })
+}
+
 /// Compute a deterministic content hash over all definition parts.
 ///
 /// The hash is computed over sorted (path, payload) pairs to ensure
@@ -333,6 +372,12 @@ fn discover_items_recursive(
             if children_dir.is_dir() {
                 discover_items_recursive(root, &children_dir, items)?;
             }
+        } else if synthesize_platform_metadata(&path, &dir_name).is_some() {
+            // A raw Power BI Desktop PBIP item folder (`<name>.Report` /
+            // `<name>.SemanticModel`) with no `.platform` sidecar — treat it as
+            // an item directory and synthesize its metadata during parsing.
+            let item = parse_item_directory(root, &path)?;
+            items.push(item);
         } else {
             // This is a folder directory — recurse into it
             discover_items_recursive(root, &path, items)?;
@@ -346,7 +391,24 @@ fn discover_items_recursive(
 #[allow(clippy::too_many_lines)]
 fn parse_item_directory(root: &Path, path: &Path) -> Result<SourceItem> {
     let platform_path = path.join(".platform");
-    let mut metadata = parse_platform_file(&platform_path)?;
+    let mut metadata = if platform_path.exists() {
+        parse_platform_file(&platform_path)?
+    } else {
+        // No `.platform` sidecar: synthesize from the folder-name suffix
+        // (raw Power BI Desktop PBIP folder). Discovery already verified this
+        // folder is synthesizable before calling us.
+        let dir_name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        synthesize_platform_metadata(path, &dir_name).ok_or_else(|| {
+            anyhow::anyhow!(
+                "Cannot determine item type for '{}': no .platform file and the \
+                 folder name is not a recognized PBIP item (<name>.Report / <name>.SemanticModel)",
+                path.display()
+            )
+        })?
+    };
 
     // Post-process: for Notebooks without explicit definitionFormat,
     // detect format from the actual content file name
@@ -1399,5 +1461,109 @@ mod tests {
         let workspace = parse_source_directory(dir.path()).unwrap();
         let item = &workspace.items[0];
         assert!(item.governance.is_none());
+    }
+
+    #[test]
+    fn test_synthesize_platform_metadata_report_and_model() {
+        let dir = TempDir::new().unwrap();
+
+        // <name>.SemanticModel with the required entry file.
+        let sm_dir = dir.path().join("Sales.SemanticModel");
+        fs::create_dir_all(&sm_dir).unwrap();
+        fs::write(sm_dir.join("definition.pbism"), "{}").unwrap();
+        let sm = synthesize_platform_metadata(&sm_dir, "Sales.SemanticModel").unwrap();
+        assert_eq!(sm.item_type, "SemanticModel");
+        assert_eq!(sm.display_name, "Sales");
+        assert!(sm.logical_id.is_none());
+
+        // <name>.Report with the required entry file.
+        let rp_dir = dir.path().join("Sales.Report");
+        fs::create_dir_all(&rp_dir).unwrap();
+        fs::write(rp_dir.join("definition.pbir"), "{}").unwrap();
+        let rp = synthesize_platform_metadata(&rp_dir, "Sales.Report").unwrap();
+        assert_eq!(rp.item_type, "Report");
+        assert_eq!(rp.display_name, "Sales");
+    }
+
+    #[test]
+    fn test_synthesize_platform_metadata_rejects_non_pbip() {
+        let dir = TempDir::new().unwrap();
+
+        // Unrecognized suffix.
+        let nb_dir = dir.path().join("Foo.Notebook");
+        fs::create_dir_all(&nb_dir).unwrap();
+        assert!(synthesize_platform_metadata(&nb_dir, "Foo.Notebook").is_none());
+
+        // Correct suffix but missing the required entry file → not synthesizable.
+        let empty_dir = dir.path().join("Bar.Report");
+        fs::create_dir_all(&empty_dir).unwrap();
+        assert!(synthesize_platform_metadata(&empty_dir, "Bar.Report").is_none());
+
+        // No dot / empty base.
+        assert!(synthesize_platform_metadata(dir.path(), "Report").is_none());
+        let dot_dir = dir.path().join(".SemanticModel");
+        fs::create_dir_all(&dot_dir).unwrap();
+        fs::write(dot_dir.join("definition.pbism"), "{}").unwrap();
+        assert!(synthesize_platform_metadata(&dot_dir, ".SemanticModel").is_none());
+    }
+
+    #[test]
+    fn test_parse_source_directory_synthesizes_pbip_without_platform() {
+        // A raw Power BI Desktop PBIP root: two item folders WITHOUT any
+        // `.platform` sidecar. Both must be discovered and typed correctly.
+        let dir = TempDir::new().unwrap();
+
+        let sm_dir = dir.path().join("Sales.SemanticModel");
+        fs::create_dir_all(sm_dir.join("definition")).unwrap();
+        fs::write(sm_dir.join("definition.pbism"), r#"{"version":"4.0"}"#).unwrap();
+        fs::write(
+            sm_dir.join("definition").join("model.tmdl"),
+            "model Model\n",
+        )
+        .unwrap();
+
+        let rp_dir = dir.path().join("Sales.Report");
+        fs::create_dir_all(&rp_dir).unwrap();
+        fs::write(rp_dir.join("definition.pbir"), r#"{"version":"4.0"}"#).unwrap();
+        // Desktop user-state folder that must be excluded from parts.
+        fs::create_dir_all(rp_dir.join(".pbi")).unwrap();
+        fs::write(rp_dir.join(".pbi").join("localSettings.json"), "{}").unwrap();
+
+        // A root-level pointer file + gitignore should be ignored (not dirs).
+        fs::write(dir.path().join("Sales.pbip"), "{}").unwrap();
+
+        let workspace = parse_source_directory(dir.path()).unwrap();
+        assert_eq!(workspace.items.len(), 2);
+
+        let model = workspace
+            .items
+            .iter()
+            .find(|i| i.metadata.item_type == "SemanticModel")
+            .expect("semantic model discovered");
+        assert_eq!(model.metadata.display_name, "Sales");
+        assert!(model.metadata.logical_id.is_none());
+
+        let report = workspace
+            .items
+            .iter()
+            .find(|i| i.metadata.item_type == "Report")
+            .expect("report discovered");
+        assert_eq!(report.metadata.display_name, "Sales");
+        // `.pbi/` user state must not be sent as a definition part.
+        assert!(
+            report
+                .parts
+                .iter()
+                .all(|p| !p.path.starts_with(".pbi/") && !p.path.starts_with(".pbi\\"))
+        );
+        assert!(report.parts.iter().any(|p| p.path == "definition.pbir"));
+
+        // The (type, name) index resolves both — this is what report byPath
+        // rebinding relies on when the model has no on-disk logicalId.
+        assert!(
+            workspace
+                .type_name_index
+                .contains_key(&("SemanticModel".to_owned(), "Sales".to_owned()))
+        );
     }
 }

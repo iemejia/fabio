@@ -2231,10 +2231,43 @@ generate/edit. fabio adds first-class support for validating and creating these.
 - **`fabio report create --definition <folder>`** — creates a FULL PBIR report (all pages/visuals) from a folder, not just a single `definition.pbir`. Gathers every file recursively (excluding `.platform`, `.pbi/`, `.children/`, and deploy sidecars), validates first (clear error instead of an opaque API rejection), and posts the parts. With `--dataset`, rebinds the folder's `definition.pbir` to that model by connection (so a byPath-referenced generated report can bind to a concrete deployed model at create time). Previously only `deploy` could push a full PBIR tree (and it required `.platform` scaffolding). Live-validated: export → validate → create-from-folder → byte-identical PDF render.
 - Pure helpers `validate_report_folder`, `validate`, `gather_report_parts`, `rebind_pbir_part` in `src/commands/report_pbir.rs` are unit-tested; e2e in `tests/e2e_report.rs` (`report_validate_pbir_folder_offline`, `report_validate_and_create_from_folder_lifecycle`).
 
+### Deploy synthesis of a raw Desktop PBIP (no `.platform`)
+Power BI Desktop saves a PBIP as plain `<name>.Report` / `<name>.SemanticModel`
+folders WITHOUT the Git-integration `.platform` sidecar (that file is only added
+by Fabric Git Integration or fabric-cicd). `fabio deploy plan/apply/validate`
+now discover such folders directly:
+- `synthesize_platform_metadata(path, dir_name)` (in `deploy/platform.rs`) infers
+  the item from the folder-name suffix: `<name>.Report` → (Report, entry file
+  `definition.pbir`), `<name>.SemanticModel` → (SemanticModel, entry file
+  `definition.pbism`). It returns `Some(..)` ONLY when the suffix maps to one of
+  these two PBIP types AND the required entry-point definition file exists on
+  disk (and the base name is non-empty). Any other folder returns `None` and is
+  recursed into as a plain workspace folder — an arbitrary directory is never
+  misclassified as an item.
+- The synthesized `PlatformMetadata` has `logical_id: None` (no authored
+  logicalId exists), so rename tracking is unavailable — `deploy plan` emits a
+  `"… has no logicalId in .platform — rename tracking won't work"` warning, and
+  items match deployed items by `(type, name)`.
+- Report→model binding still works WITHOUT modifying the resolver: the model
+  deploys first (SemanticModel precedes Report in `DEPLOY_ORDER`) and is
+  registered in the name→id map; the report's `definition.pbir` byConnection
+  carries `initial catalog=<model_name>` (v2 PBIR), which
+  `resolve_report_byconnection_model_id` rewrites to the newly-created model's
+  `semanticmodelid`. (v1 PBIR-Legacy, which sets only `pbiModelDatabaseName`, is
+  not name-rebound — but Desktop PBIP emits v2.)
+- `.pbi/` Desktop user state is excluded from definition parts via the existing
+  `read_parts_recursive` skip; the root `<name>.pbip` pointer and `.gitignore`
+  are files (not item dirs) and are ignored by discovery.
+- Live-validated: export `SalesReport` + `sales_semantic_model` → delete every
+  `.platform` → `deploy plan` discovers/types both (with the no-logicalId
+  warning) → `deploy apply` to a fresh workspace creates both AND the deployed
+  report's `semanticmodelid` matches the newly-created model's id.
+- Pure `synthesize_platform_metadata` + a `parse_source_directory` discovery test
+  are unit-tested in `platform.rs`; e2e `deploy_plan_raw_pbip_without_platform_is_discovered`
+  in `tests/e2e_deploy.rs`.
+
 ### Known gaps / roadmap (not yet implemented)
-- Deploying a raw Desktop-saved PBIP (no `.platform`) — deploy still hard-requires `.platform` per item and doesn't infer type/name from the `X.Report`/`X.SemanticModel` folder suffix or consult the `<name>.pbip` pointer. A `.platform`-synthesis step (type/name from folder, generated logicalId) would make Desktop PBIP folders deployable.
 - Full JSON-Schema validation of PBIR files against the bundled MS schemas (current validation is structural + `$schema`-presence, not per-property schema conformance).
-- Folder-based `semantic-model create`/`update-definition` (TMDL `definition/tables/**.tmdl` tree) outside of deploy — same single-file limitation the report side just closed.
 - Report scaffolding from a compact spec (pages/visuals) — emit schema-conformant PBIR from a high-level agent description.
 
 ## Analysis Services specs → fabio surface (semantic-model introspection)
