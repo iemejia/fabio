@@ -1,0 +1,38 @@
+{
+  "command": "fabio report validate --source ./SalesReport.Report",
+  "description": "Offline (no API calls) structural + $schema validation of a Power BI report definition on disk. Accepts a .Report folder, a definition.pbir file, or a PBIP root (validates each *.Report). Use before 'report create --definition' or deploy to catch missing files / bad references early. Exits non-zero when invalid.",
+  "response": {
+    "data": {
+      "status": "valid",
+      "report": {
+        "source": "./SalesReport.Report",
+        "valid": true,
+        "format": "PBIR",
+        "dataset_reference": "byConnection",
+        "checks": 54,
+        "errors": [],
+        "warnings": []
+      }
+    }
+  },
+  "notes": "format is 'PBIR' (enhanced definition/ folder) or 'PBIR-Legacy' (single report.json). dataset_reference is 'byPath' or 'byConnection'. When invalid, 'status' is 'invalid', 'report.valid' is false, and 'errors' lists machine-readable findings ({file, code, message}) with codes like MISSING_PBIR, MISSING_REQUIRED, INVALID_JSON, VERSION_FORMAT_MISMATCH, MISSING_DATASET_REFERENCE. Warnings (non-blocking) include MISSING_SCHEMA and BYPATH_NEEDS_BYCONNECTION (byPath is fine for deploy — which rewrites it — but 'report create' needs byConnection; pass --dataset). Validating a PBIP root returns a 'reports' array + a 'summary' {count, errors, warnings}.",
+  "invalid_example": {
+    "command": "fabio report validate --source ./Broken.Report",
+    "response": {
+      "data": {
+        "status": "invalid",
+        "report": {
+          "source": "./Broken.Report",
+          "valid": false,
+          "format": "PBIR",
+          "dataset_reference": "byConnection",
+          "checks": 53,
+          "errors": [
+            {"file": "definition/version.json", "code": "MISSING_REQUIRED", "message": "required PBIR file `definition/version.json` is missing"}
+          ],
+          "warnings": []
+        }
+      }
+    }
+  }
+}

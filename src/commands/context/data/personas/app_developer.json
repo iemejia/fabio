@@ -3,12 +3,12 @@
   "description": "Orchestrator persona for building applications on Microsoft Fabric: user data functions, GraphQL APIs, app backends (Power Apps), Cosmos DB databases, organizational apps, and AI data agents. Routes app/API/AI-app requests to the right command groups.",
   "purpose": "Build and operate application and API workloads on Fabric — serverless functions, GraphQL/data APIs, transactional backends, and AI data agents that answer questions over Fabric data.",
   "delegates_to": [
-    {"request_type": "Serverless functions", "command_groups": ["user-data-function"], "notes": "User Data Functions expose Python/logic as callable functions."},
+    {"request_type": "Serverless functions", "command_groups": ["user-data-function"], "notes": "User Data Functions expose Python/logic as callable functions. Invoke a PUBLISHED function via its portal-copied public URL: user-data-function invoke --url <fn-url> --parameter k=v."},
     {"request_type": "Data/GraphQL APIs", "command_groups": ["graphql-api"], "notes": "GraphQL API items expose Fabric data over GraphQL."},
     {"request_type": "App backend", "command_groups": ["app-backend"], "notes": "app-backend (aliases: rayfin-app, data-app) backs Power Apps / data apps."},
     {"request_type": "Transactional store", "command_groups": ["sql-database", "cosmos-db-database"], "notes": "SQL Database for relational OLTP (F4+); Cosmos DB for NoSQL."},
-    {"request_type": "AI data agent (NL Q&A over data)", "command_groups": ["data-agent"], "workflows": ["data-agent-setup"], "notes": "Create, configure datasources/few-shots, publish, and query a Data Agent."},
-    {"request_type": "AI operations agent", "command_groups": ["operations-agent"], "notes": "AI-powered operations agents (author logic via their definition)."},
+    {"request_type": "AI data agent (NL Q&A over data)", "command_groups": ["data-agent"], "workflows": ["data-agent-setup"], "notes": "Create, configure datasources/few-shots, publish, and query a Data Agent (multi-turn via --thread-id/--keep-thread; evaluate a question set; validate-fewshots/evaluate with a judge model via --llm-*). For external MCP clients, get the consumption endpoint with data-agent mcp-url."},
+    {"request_type": "AI operations agent", "command_groups": ["operations-agent"], "notes": "AI-powered operations agents (author logic via their definition). Activate with operations-agent start/stop/status (flips shouldRun; Fabric evaluates rules every 5 min while running)."},
     {"request_type": "Organizational app / distribution", "command_groups": ["org-app", "org-app-audience"], "notes": "Package and share items as an Organizational App with audiences."}
   ],
   "decision_gates": [

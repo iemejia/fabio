@@ -4,7 +4,7 @@
   "purpose": "Run the end-to-end ML lifecycle on Fabric — prepare features, experiment, train, register/version, serve/score, and monitor — delegating mechanics to fabio command groups.",
   "delegates_to": [
     {"request_type": "Prepare features / data", "command_groups": ["lakehouse", "notebook", "spark"], "workflows": ["lakehouse-etl"], "notes": "Build feature tables in a lakehouse; author training data prep in notebooks/Spark."},
-    {"request_type": "Train / experiment", "command_groups": ["ml-experiment", "notebook", "spark-job-definition"], "notes": "Track runs under an ml-experiment; run training as notebooks or Spark job definitions."},
+    {"request_type": "Train / experiment", "command_groups": ["ml-experiment", "notebook", "spark-job-definition"], "notes": "Track runs under an ml-experiment; run training as notebooks or Spark job definitions. Read MLflow run data with ml-experiment list-runs/get-run/get-metric-history (per-workspace MLflow server, not the item API)."},
     {"request_type": "Register / version models", "command_groups": ["ml-model"], "notes": "Register models, manage versions (list-versions, activate-version), and endpoints."},
     {"request_type": "Serve / score", "command_groups": ["ml-model"], "commands": ["ml-model score", "ml-model score-version", "ml-model get-endpoint"], "notes": "Batch scoring against the active or a pinned version."},
     {"request_type": "Anomaly detection", "command_groups": ["anomaly-detector"], "notes": "Configure detectors via their definition."},

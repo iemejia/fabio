@@ -5,7 +5,7 @@
   "delegates_to": [
     {"request_type": "Create / manage semantic model", "command_groups": ["semantic-model"], "commands": ["semantic-model create", "semantic-model refresh"], "notes": "'dataset' == semantic model. create --file model.tmdl --connection $SQLEP."},
     {"request_type": "Query a model with DAX", "command_groups": ["semantic-model"], "commands": ["semantic-model query"], "notes": "query --dax \"EVALUATE Sales\"."},
-    {"request_type": "Create / manage reports", "command_groups": ["report", "paginated-report", "dashboard"], "commands": ["report create"], "notes": "report create --dataset $SM. PBIR-Legacy needed to render data programmatically."},
+    {"request_type": "Create / manage reports", "command_groups": ["report", "paginated-report", "dashboard"], "commands": ["report validate", "report create", "report export"], "notes": "Simple: report create --dataset $SM. Coding-agent path: author a PBIR folder, 'report validate --source <folder>' (offline), then 'report create --definition <folder> [--dataset $SM]' (full multi-page PBIR; --dataset rebinds byPath→byConnection). Render with 'report export'/'paginated-report export' (PDF/PPTX/XLSX/...). PBIR is Microsoft's documented agent-authorable format."},
     {"request_type": "Direct Lake report", "workflows": ["direct-lake-report"], "notes": "Model reads Delta tables directly from OneLake — no import/refresh."},
     {"request_type": "Power BI service endpoints", "command_groups": ["rest"], "commands": ["rest call --api powerbi"], "notes": "Same Fabric token works for Power BI API (datasets/reports/dashboards)."},
     {"request_type": "Refresh scheduling", "command_groups": ["semantic-model", "job-scheduler"], "notes": "Deploy auto-refreshes semantic models as a post-hook."}

@@ -97,6 +97,10 @@ pub(super) const fn example_entries() -> &'static [(&'static str, &'static str)]
 
 const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
+        "report/validate",
+        include_str!("data/examples/report_validate.json"),
+    ),
+    (
         "lakehouse/list-tables",
         include_str!("data/examples/lakehouse_list_tables.json"),
     ),

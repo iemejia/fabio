@@ -1,35 +1,40 @@
 {
   "topic": "shortcuts",
-  "title": "ADLS Gen2 Shortcuts in Lakehouses",
-  "summary": "Creating shortcuts requires a two-step process: first create a connection, then create the shortcut referencing that connection. The list-files API may not show shortcut contents, but load-table resolves them correctly.",
-  "two_step_creation": {
-    "step_1_create_connection": "fabio connection create --name \"my-adls\" --connectivity-type ShareableCloud --connection-type AzureDataLakeStorage --server \"https://ACCOUNT.dfs.core.windows.net\" --path \"/CONTAINER\" --credential-type Key --credential-key \"$STORAGE_KEY\" --skip-test",
-    "step_2_create_shortcut": "fabio lakehouse create-shortcut --workspace $WS --id $LH --name \"shortcutname\" --path \"Files\" --target-type adls --location \"https://ACCOUNT.dfs.core.windows.net/CONTAINER\" --sub-path \"/\" --connection-id $CONN_ID"
+  "title": "OneLake Shortcuts in Lakehouses (typed create, list, delete)",
+  "summary": "OneLake shortcuts virtualize external/other-OneLake storage into a lakehouse. Create with TYPED flags per target type (9 supported: OneLake, AdlsGen2, AmazonS3, AzureBlobStorage, GoogleCloudStorage, S3Compatible, Dataverse, ExternalDataShare, OneDriveSharePoint); cloud targets need a connection first. list-shortcuts enumerates them (DW-managed internal shortcuts hidden unless --include-managed). load-table resolves shortcut paths even when list-files does not show their contents.",
+  "typed_creation": {
+    "note": "create-shortcut takes typed flags describing the target; --target-type is normalized/validated (unknown type errors with the enumerated valid values). --target JSON remains a raw escape hatch.",
+    "onelake": "fabio lakehouse create-shortcut --workspace $WS --id $LH --name ref --path Tables --target-type OneLake --target-workspace $SRC_WS --target-item $SRC_ITEM --target-path Tables/mytable",
+    "adlsgen2": "fabio lakehouse create-shortcut --workspace $WS --id $LH --name adls --path Files --target-type AdlsGen2 --connection-id $CONN --location https://ACCOUNT.dfs.core.windows.net/CONTAINER --subpath /sub",
+    "amazons3": "fabio lakehouse create-shortcut --workspace $WS --id $LH --name s3 --path Files --target-type AmazonS3 --connection-id $CONN --location https://bucket.s3.amazonaws.com --subpath /data",
+    "escape_hatch": "fabio lakehouse create-shortcut ... --target '<raw JSON matching the Fabric shortcut target schema>'"
   },
-  "connection_parameters": {
+  "connection_first": {
+    "why": "Cloud target types (AdlsGen2, AmazonS3, AzureBlobStorage, GoogleCloudStorage, S3Compatible) require a connection; create it first and pass its id via --connection-id. OneLake/ExternalDataShare targets do not.",
+    "step_1_create_connection": "fabio connection create --name \"my-adls\" --connectivity-type ShareableCloud --connection-type AzureDataLakeStorage --server \"https://ACCOUNT.dfs.core.windows.net\" --path \"/CONTAINER\" --credential-type Key --credential-key \"$STORAGE_KEY\" --skip-test",
     "server": "The DFS endpoint WITHOUT the container: https://ACCOUNT.dfs.core.windows.net",
     "path": "The container path: /CONTAINER",
-    "credential_type": "Key, OAuth2, or ServicePrincipal",
     "skip_test": "Add --skip-test to avoid connection validation during creation (faster)"
   },
-  "shortcut_parameters": {
-    "location": "Full DFS path INCLUDING the container: https://ACCOUNT.dfs.core.windows.net/CONTAINER",
-    "sub_path": "Path within the container (use / for root)",
-    "target_type": "adls for Azure Data Lake Storage Gen2"
+  "list_and_delete": {
+    "list": "fabio lakehouse list-shortcuts --workspace $WS --id $LH [--parent-path Tables] — paginated. DW-managed internal OneLake->OneLake shortcuts under Tables/ are hidden unless --include-managed.",
+    "delete_shortcut": "fabio lakehouse delete-shortcut --workspace $WS --id $LH --name NAME --path Files --force",
+    "delete_directory": "fabio lakehouse delete-directory --workspace $WS --id $LH --path Files/sub — recursive OneLake directory delete (destructive, --dry-run-guarded). fabio REFUSES an empty/root path (that would wipe the whole lakehouse)."
   },
   "known_behaviors": {
-    "list_files_limitation": "fabio lakehouse list-files may not show files through ADLS shortcuts. The OneLake DFS layer virtualizes the path and may show the lakehouse structure instead of the actual storage contents. This is a Fabric API behavior, not a fabio bug.",
+    "list_files_limitation": "fabio lakehouse list-files may not show files through a shortcut. The OneLake DFS layer virtualizes the path and may show the lakehouse structure instead of the actual storage contents. This is a Fabric API behavior, not a fabio bug — use list-shortcuts to enumerate shortcuts.",
     "load_table_works": "fabio lakehouse load-table resolves shortcut paths correctly via the Fabric backend. Files at Files/shortcutname/file.csv are accessible for table loading even when list-files does not show them.",
     "propagation_delay": "After creating a shortcut, allow 5-10 seconds before accessing files through it."
   },
   "what_agents_should_do": [
-    "Create the connection first, capture its ID, then create the shortcut",
-    "Do NOT waste time debugging list-files if it doesn't show shortcut contents",
-    "Proceed directly to load-table using the expected path (Files/shortcutname/filename.csv)",
-    "If load-table fails with NOT_FOUND, wait 10s and retry (propagation delay)",
-    "Use --skip-test on connection create to avoid validation delays"
+    "Pick the correct --target-type; for cloud targets create the connection first and capture its id.",
+    "Use list-shortcuts (not list-files) to enumerate shortcuts; add --include-managed only when you need the DW-managed internal ones.",
+    "Do NOT waste time debugging list-files if it doesn't show shortcut contents — proceed to load-table using Files/shortcutname/filename.csv.",
+    "If load-table fails with NOT_FOUND, wait 10s and retry (propagation delay).",
+    "For directory cleanup use delete-directory with a concrete subpath and --dry-run first (never an empty/root path)."
   ],
   "error_patterns": {
+    "unknown_target_type": "An unrecognized --target-type errors with the enumerated valid values — pick one of the 9 supported types.",
     "connection_not_found": "Shortcut creation fails if connection-id is invalid. Verify with: fabio connection show --id $CONN_ID",
     "conflict_on_name": "A shortcut or directory with the same name already exists. Delete it first: fabio lakehouse delete-shortcut --workspace $WS --id $LH --name NAME --path Files --force"
   }
