@@ -404,3 +404,114 @@ pub(super) async fn import_pbix(
     output::render_object(cli, &data, "id");
     Ok(())
 }
+
+// ── Gateway binding (Power BI) ────────────────────────────────────────────────
+// Bind an import model's data sources to an on-premises/VNet data gateway.
+// (Mirrors bind-connection/unbind-connection, but for gateways.)
+
+pub(super) async fn get_bound_gateway_datasources(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let data = client
+        .get_powerbi(&format!(
+            "/groups/{workspace}/datasets/{id}/Default.GetBoundGatewayDatasources"
+        ))
+        .await
+        .map_err(|e| {
+            enrich_forbidden(
+                e,
+                "semantic-model get-bound-gateway-datasources",
+                "Contributor",
+            )
+        })?;
+
+    if let Some(items) = data.get("value").and_then(Value::as_array) {
+        output::render_list_with_token(
+            cli,
+            items,
+            &["id", "gatewayId", "datasourceType"],
+            &["DATASOURCE ID", "GATEWAY ID", "TYPE"],
+            "id",
+            None,
+        );
+    } else {
+        output::render_object(cli, &data, "id");
+    }
+    Ok(())
+}
+
+pub(super) async fn bind_to_gateway(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    gateway_id: &str,
+    datasource_ids: Option<&str>,
+) -> Result<()> {
+    let body = build_bind_body(gateway_id, datasource_ids);
+
+    if output::dry_run_guard(cli, "semantic-model bind-to-gateway", &body) {
+        return Ok(());
+    }
+
+    client
+        .post_powerbi(
+            &format!("/groups/{workspace}/datasets/{id}/Default.BindToGateway"),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model bind-to-gateway", "Contributor"))?;
+
+    let obj =
+        serde_json::json!({ "id": id, "gatewayId": gateway_id, "status": "bound_to_gateway" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+/// Build the `BindToGateway` body: `gatewayObjectId` + optional
+/// `datasourceObjectIds` (a comma-separated list; omitted binds all).
+fn build_bind_body(gateway_id: &str, datasource_ids: Option<&str>) -> Value {
+    let mut body = serde_json::json!({ "gatewayObjectId": gateway_id });
+    if let Some(ids) = datasource_ids {
+        let list: Vec<String> = ids
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .collect();
+        if !list.is_empty() {
+            body["datasourceObjectIds"] = Value::from(list);
+        }
+    }
+    body
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_bind_body_gateway_only() {
+        let body = build_bind_body("gw-1", None);
+        assert_eq!(body, serde_json::json!({ "gatewayObjectId": "gw-1" }));
+    }
+
+    #[test]
+    fn build_bind_body_with_datasource_ids() {
+        let body = build_bind_body("gw-1", Some("a, b ,c"));
+        assert_eq!(body["gatewayObjectId"], "gw-1");
+        assert_eq!(
+            body["datasourceObjectIds"],
+            serde_json::json!(["a", "b", "c"])
+        );
+    }
+
+    #[test]
+    fn build_bind_body_empty_datasource_ids_omitted() {
+        let body = build_bind_body("gw-1", Some("  ,  "));
+        assert!(body.get("datasourceObjectIds").is_none());
+    }
+}

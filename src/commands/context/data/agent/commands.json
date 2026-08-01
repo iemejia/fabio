@@ -9539,6 +9539,49 @@
         "mutates": false,
         "returns": "list"
       },
+      "get-bound-gateway-datasources": {
+        "description": "List the gateway datasources bound to a semantic model",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "bind-to-gateway": {
+        "description": "Bind a semantic model's data sources to an on-premises/VNet data gateway",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--gateway-id": {
+            "type": "string",
+            "required": true,
+            "description": "Gateway object id to bind to"
+          },
+          "--datasource-ids": {
+            "type": "string",
+            "description": "Optional comma-separated gateway datasource object ids to bind (defaults to all)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
       "update-datasources": {
         "description": "Update datasources of a semantic model",
         "flags": {

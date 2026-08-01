@@ -33,12 +33,14 @@ Manage semantic models (Power BI datasets)
 |---|---|---|
 | `fabio semantic-model add-user` | yes | Add a user to a semantic model |
 | `fabio semantic-model bind-connection` | yes | Bind a semantic model to a connection |
+| `fabio semantic-model bind-to-gateway` | yes | Bind a semantic model's data sources to an on-premises/VNet data gateway |
 | `fabio semantic-model cancel-refresh` | yes | Cancel an in-progress enhanced refresh by its request id |
 | `fabio semantic-model clone` | yes | Clone a semantic model to the same or different workspace |
 | `fabio semantic-model create` | yes | Create a new semantic model from a definition file (model.bim) |
 | `fabio semantic-model delete` | yes | Delete a semantic model |
 | `fabio semantic-model delete-user` | yes | Remove a user from a semantic model |
 | `fabio semantic-model export-pbix` | no | Export a semantic model as a .pbix file |
+| `fabio semantic-model get-bound-gateway-datasources` | no | List the gateway datasources bound to a semantic model |
 | `fabio semantic-model get-definition` | no | Get the definition of a semantic model |
 | `fabio semantic-model get-refresh-schedule` | no | Get the scheduled (automatic) refresh configuration |
 | `fabio semantic-model import-pbix` | yes | Import a .pbix file as a new semantic model |

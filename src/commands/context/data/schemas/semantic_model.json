@@ -41,6 +41,8 @@
     "fabio semantic-model query --workspace <WS> --id <ID> --dax <QUERY>",
     "fabio semantic-model takeover --workspace <WS> --id <ID>",
     "fabio semantic-model bind-connection --workspace <WS> --id <ID> --connection-id <CID>",
+    "fabio semantic-model get-bound-gateway-datasources --workspace <WS> --id <ID>",
+    "fabio semantic-model bind-to-gateway --workspace <WS> --id <ID> --gateway-id <GID>",
     "fabio semantic-model get-definition --workspace <WS> --id <ID>"
   ]
 }

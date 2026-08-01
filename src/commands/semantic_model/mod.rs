@@ -298,6 +298,36 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         id: String,
     },
+    /// List the gateway datasources bound to a semantic model
+    #[command(name = "get-bound-gateway-datasources", display_order = 15)]
+    GetBoundGatewayDatasources {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Bind a semantic model's data sources to an on-premises/VNet data gateway
+    #[command(name = "bind-to-gateway", display_order = 15)]
+    BindToGateway {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Gateway object id to bind to
+        #[arg(long)]
+        gateway_id: String,
+
+        /// Optional comma-separated gateway datasource object ids to bind (defaults to all)
+        #[arg(long)]
+        datasource_ids: Option<String>,
+    },
     /// Update datasources of a semantic model
     #[command(name = "update-datasources", display_order = 16)]
     UpdateDatasources {
@@ -643,6 +673,25 @@ pub async fn execute(
         } => powerbi::update_parameters(cli, client, workspace, id, content).await,
         SemanticModelCommand::ListDatasources { workspace, id } => {
             powerbi::list_datasources(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::GetBoundGatewayDatasources { workspace, id } => {
+            powerbi::get_bound_gateway_datasources(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::BindToGateway {
+            workspace,
+            id,
+            gateway_id,
+            datasource_ids,
+        } => {
+            powerbi::bind_to_gateway(
+                cli,
+                client,
+                workspace,
+                id,
+                gateway_id,
+                datasource_ids.as_deref(),
+            )
+            .await
         }
         SemanticModelCommand::UpdateDatasources {
             workspace,

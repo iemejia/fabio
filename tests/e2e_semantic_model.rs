@@ -1893,3 +1893,65 @@ fn semantic_model_refresh_schedule_lifecycle() {
         .success();
     assert_eq!(parse_json(&after)["data"]["enabled"], false);
 }
+
+/// Offline: bind-to-gateway assembles the right body via --dry-run.
+#[test]
+fn semantic_model_bind_to_gateway_dry_run() {
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "bind-to-gateway",
+            "--workspace",
+            "test-ws",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--gateway-id",
+            "11111111-1111-1111-1111-111111111111",
+            "--datasource-ids",
+            "a,b",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let details = &json["data"]["details"];
+    assert_eq!(
+        details["gatewayObjectId"],
+        "11111111-1111-1111-1111-111111111111"
+    );
+    assert_eq!(details["datasourceObjectIds"][1], "b");
+}
+
+/// Live: get-bound-gateway-datasources returns an array (empty for a
+/// cloud/Direct Lake model with no gateway data sources).
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_get_bound_gateway_datasources_returns_array() {
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+
+    let list = fabio()
+        .args(["semantic-model", "list", "--workspace", ws])
+        .assert()
+        .success();
+    let models = parse_json(&list);
+    let Some(model) = models["data"].as_array().and_then(|a| a.first()) else {
+        eprintln!("no semantic model; skipping");
+        return;
+    };
+    let id = model["id"].as_str().unwrap().to_string();
+
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "get-bound-gateway-datasources",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+        ])
+        .assert()
+        .success();
+    assert!(parse_json(&assert)["data"].is_array());
+}
