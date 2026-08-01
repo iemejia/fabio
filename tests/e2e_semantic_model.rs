@@ -1497,3 +1497,72 @@ fn semantic_model_schema_introspection_lifecycle() {
         .assert()
         .success();
 }
+
+/// Offline: enhanced refresh assembles the correct body via --dry-run and
+/// rejects invalid --commit-mode / --objects.
+#[test]
+fn semantic_model_enhanced_refresh_dry_run_and_validation() {
+    // Enhanced body via dry-run (no tenant call).
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "refresh",
+            "--workspace",
+            "test-ws",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--type",
+            "Full",
+            "--objects",
+            r#"[{"table":"Sales"},{"table":"Sales","partition":"2024"}]"#,
+            "--commit-mode",
+            "partialBatch",
+            "--max-parallelism",
+            "4",
+            "--retry-count",
+            "2",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let details = &json["data"]["details"];
+    assert_eq!(details["type"], "Full");
+    assert_eq!(details["commitMode"], "partialBatch");
+    assert_eq!(details["maxParallelism"], 4);
+    assert_eq!(details["retryCount"], 2);
+    assert_eq!(details["objects"][0]["table"], "Sales");
+    assert_eq!(details["objects"][1]["partition"], "2024");
+
+    // Invalid commit mode rejected.
+    fabio()
+        .args([
+            "semantic-model",
+            "refresh",
+            "--workspace",
+            "test-ws",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--commit-mode",
+            "bogus",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("commit-mode"));
+
+    // Objects entry missing 'table' rejected.
+    fabio()
+        .args([
+            "semantic-model",
+            "refresh",
+            "--workspace",
+            "test-ws",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--objects",
+            r#"[{"partition":"x"}]"#,
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("table"));
+}

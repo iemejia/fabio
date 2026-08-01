@@ -9371,6 +9371,22 @@
           "--type": {
             "type": "string",
             "description": "Refresh type"
+          },
+          "--objects": {
+            "type": "string",
+            "description": "Enhanced refresh: JSON array of tables/partitions to refresh, e.g. '[{\"table\":\"Sales\"},{\"table\":\"Sales\",\"partition\":\"2024\"}]'"
+          },
+          "--commit-mode": {
+            "type": "string",
+            "description": "Enhanced refresh commit mode: transactional | partialBatch"
+          },
+          "--max-parallelism": {
+            "type": "string",
+            "description": "Enhanced refresh: maximum number of parallel processing threads"
+          },
+          "--retry-count": {
+            "type": "string",
+            "description": "Enhanced refresh: number of times to retry on transient failure"
           }
         },
         "mutates": true,

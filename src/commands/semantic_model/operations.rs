@@ -285,12 +285,17 @@ pub(super) async fn query(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn refresh(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
     id: &str,
     refresh_type: &str,
+    objects: Option<&str>,
+    commit_mode: Option<&str>,
+    max_parallelism: Option<u32>,
+    retry_count: Option<u32>,
 ) -> Result<()> {
     const VALID_TYPES: &[&str] = &[
         "Full",
@@ -320,7 +325,25 @@ pub(super) async fn refresh(
         .into());
     }
 
-    let body = serde_json::json!({ "type": refresh_type });
+    // Parse + validate --objects (enhanced refresh: specific tables/partitions).
+    let parsed_objects = match objects {
+        Some(raw) => Some(parse_refresh_objects(raw)?),
+        None => None,
+    };
+
+    // Validate --commit-mode.
+    let commit_mode = match commit_mode {
+        Some(m) => Some(normalize_commit_mode(m)?),
+        None => None,
+    };
+
+    let body = build_refresh_body(
+        refresh_type,
+        parsed_objects,
+        commit_mode,
+        max_parallelism,
+        retry_count,
+    );
 
     if output::dry_run_guard(cli, "semantic-model refresh", &body) {
         return Ok(());
@@ -341,6 +364,84 @@ pub(super) async fn refresh(
     });
     output::render_object(cli, &obj, "status");
     Ok(())
+}
+
+/// Parse the `--objects` JSON: an array of `{table, partition?}` entries for
+/// granular (enhanced) refresh. Each entry MUST have a `table`.
+fn parse_refresh_objects(raw: &str) -> Result<Value> {
+    let val: Value = serde_json::from_str(raw).map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("--objects is not valid JSON: {e}"),
+            r#"Provide a JSON array, e.g. --objects '[{"table":"Sales"},{"table":"Sales","partition":"2024"}]'"#.to_string(),
+        )
+    })?;
+    let arr = val.as_array().ok_or_else(|| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "--objects must be a JSON array".to_string(),
+            r#"e.g. --objects '[{"table":"Sales"}]'"#.to_string(),
+        )
+    })?;
+    for (i, entry) in arr.iter().enumerate() {
+        let obj = entry.as_object().ok_or_else(|| {
+            FabioError::new(
+                ErrorCode::InvalidInput,
+                format!("--objects[{i}] must be an object with a 'table' field"),
+            )
+        })?;
+        if obj.get("table").and_then(Value::as_str).is_none() {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("--objects[{i}] is missing a string 'table' field"),
+                r#"Each entry needs a table, e.g. {"table":"Sales"} or {"table":"Sales","partition":"2024"}"#.to_string(),
+            )
+            .into());
+        }
+    }
+    Ok(val)
+}
+
+/// Normalize/validate the enhanced-refresh commit mode.
+fn normalize_commit_mode(mode: &str) -> Result<&'static str> {
+    match mode.to_ascii_lowercase().as_str() {
+        "transactional" => Ok("transactional"),
+        "partialbatch" => Ok("partialBatch"),
+        _ => Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid --commit-mode: '{mode}'"),
+            "--commit-mode must be one of: transactional, partialBatch".to_string(),
+        )
+        .into()),
+    }
+}
+
+/// Build the refresh request body. With only `type` it is a basic refresh; any
+/// of `objects`/`commitMode`/`maxParallelism`/`retryCount` makes it an
+/// enhanced refresh (Power BI enhanced-refresh API — the TMSL `refresh` command's
+/// granular options over REST).
+fn build_refresh_body(
+    refresh_type: &str,
+    objects: Option<Value>,
+    commit_mode: Option<&str>,
+    max_parallelism: Option<u32>,
+    retry_count: Option<u32>,
+) -> Value {
+    let mut body = serde_json::json!({ "type": refresh_type });
+    let map = body.as_object_mut().expect("object");
+    if let Some(objs) = objects {
+        map.insert("objects".to_owned(), objs);
+    }
+    if let Some(cm) = commit_mode {
+        map.insert("commitMode".to_owned(), Value::from(cm));
+    }
+    if let Some(mp) = max_parallelism {
+        map.insert("maxParallelism".to_owned(), Value::from(mp));
+    }
+    if let Some(rc) = retry_count {
+        map.insert("retryCount".to_owned(), Value::from(rc));
+    }
+    body
 }
 
 pub(super) async fn takeover(
@@ -455,6 +556,55 @@ mod tests {
         assert_eq!(out[0]["Name"], "x");
         assert_eq!(out[0]["count"], 3);
         assert_eq!(out[1], serde_json::json!("scalar"));
+    }
+
+    #[test]
+    fn build_refresh_body_basic_is_type_only() {
+        let body = build_refresh_body("Full", None, None, None, None);
+        assert_eq!(body, serde_json::json!({ "type": "Full" }));
+    }
+
+    #[test]
+    fn build_refresh_body_enhanced_includes_all_fields() {
+        let objs = serde_json::json!([{"table": "Sales"}, {"table": "Sales", "partition": "2024"}]);
+        let body = build_refresh_body(
+            "Full",
+            Some(objs.clone()),
+            Some("partialBatch"),
+            Some(4),
+            Some(2),
+        );
+        assert_eq!(body["type"], "Full");
+        assert_eq!(body["objects"], objs);
+        assert_eq!(body["commitMode"], "partialBatch");
+        assert_eq!(body["maxParallelism"], 4);
+        assert_eq!(body["retryCount"], 2);
+    }
+
+    #[test]
+    fn parse_refresh_objects_validates_shape() {
+        // Valid.
+        let ok = parse_refresh_objects(r#"[{"table":"Sales"},{"table":"Sales","partition":"Q1"}]"#);
+        assert!(ok.is_ok());
+        // Not an array.
+        assert!(parse_refresh_objects(r#"{"table":"Sales"}"#).is_err());
+        // Missing table.
+        assert!(parse_refresh_objects(r#"[{"partition":"Q1"}]"#).is_err());
+        // Invalid JSON.
+        assert!(parse_refresh_objects("not json").is_err());
+    }
+
+    #[test]
+    fn normalize_commit_mode_accepts_valid_and_rejects_invalid() {
+        assert_eq!(
+            normalize_commit_mode("transactional").unwrap(),
+            "transactional"
+        );
+        assert_eq!(
+            normalize_commit_mode("PartialBatch").unwrap(),
+            "partialBatch"
+        );
+        assert!(normalize_commit_mode("bogus").is_err());
     }
 
     #[test]

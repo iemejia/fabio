@@ -171,6 +171,10 @@ pub enum SemanticModelCommand {
         id: String,
     },
     /// Refresh a semantic model (required to frame Direct Lake models after creation)
+    ///
+    /// Basic refresh sends just --type. Passing --objects / --commit-mode /
+    /// --max-parallelism / --retry-count triggers an ENHANCED refresh (the TMSL
+    /// refresh command's granular options over the Power BI enhanced-refresh API).
     #[command(display_order = 11)]
     Refresh {
         /// Workspace ID
@@ -184,6 +188,23 @@ pub enum SemanticModelCommand {
         /// Refresh type
         #[arg(long, default_value = "Full")]
         r#type: String,
+
+        /// Enhanced refresh: JSON array of tables/partitions to refresh, e.g.
+        /// '[{"table":"Sales"},{"table":"Sales","partition":"2024"}]'
+        #[arg(long)]
+        objects: Option<String>,
+
+        /// Enhanced refresh commit mode: transactional | partialBatch
+        #[arg(long)]
+        commit_mode: Option<String>,
+
+        /// Enhanced refresh: maximum number of parallel processing threads
+        #[arg(long)]
+        max_parallelism: Option<u32>,
+
+        /// Enhanced refresh: number of times to retry on transient failure
+        #[arg(long)]
+        retry_count: Option<u32>,
     },
     /// Take over a semantic model (converts definition-managed to service-managed for portal editing)
     #[command(display_order = 12)]
@@ -502,7 +523,24 @@ pub async fn execute(
             workspace,
             id,
             r#type,
-        } => operations::refresh(cli, client, workspace, id, r#type).await,
+            objects,
+            commit_mode,
+            max_parallelism,
+            retry_count,
+        } => {
+            operations::refresh(
+                cli,
+                client,
+                workspace,
+                id,
+                r#type,
+                objects.as_deref(),
+                commit_mode.as_deref(),
+                *max_parallelism,
+                *retry_count,
+            )
+            .await
+        }
         SemanticModelCommand::Takeover { workspace, id } => {
             operations::takeover(cli, client, workspace, id).await
         }

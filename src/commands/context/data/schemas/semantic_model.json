@@ -23,7 +23,8 @@
     "After creation, call refresh to frame Direct Lake: fabio semantic-model refresh",
     "Call takeover to make editable in portal: fabio semantic-model takeover",
     "definition.pbism is ALWAYS required regardless of format",
-    "Introspect a model's schema WITHOUT parsing its definition via DAX INFO.VIEW.* (the Analysis Services Schema Rowsets): list-tables (StorageMode incl. Direct Lake), list-columns (DataType/SummarizeBy/FormatString), list-measures (Expression/FormatString), list-relationships (Cardinality/CrossFilteringBehavior). Use these before writing DAX or wiring a report."
+    "Introspect a model's schema WITHOUT parsing its definition via DAX INFO.VIEW.* (the Analysis Services Schema Rowsets): list-tables (StorageMode incl. Direct Lake), list-columns (DataType/SummarizeBy/FormatString), list-measures (Expression/FormatString), list-relationships (Cardinality/CrossFilteringBehavior). Use these before writing DAX or wiring a report.",
+    "Enhanced/granular refresh: 'refresh --objects '[{\"table\":\"Sales\"}]'' refreshes specific tables/partitions (TMSL refresh semantics); add --commit-mode transactional|partialBatch, --max-parallelism, --retry-count. Registers as ViaEnhancedApi."
   ],
   "related_commands": [
     "fabio semantic-model list-tables --workspace <WS> --id <ID>",
