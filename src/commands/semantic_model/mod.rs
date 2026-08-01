@@ -407,6 +407,53 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         refresh_id: String,
     },
+    /// Get the scheduled (automatic) refresh configuration
+    #[command(name = "get-refresh-schedule", display_order = 20)]
+    GetRefreshSchedule {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Update the scheduled (automatic) refresh configuration
+    ///
+    /// Import / Direct Lake models. Times must be on the full or half hour
+    /// (HH:00 / HH:30). To disable, pass ONLY --enabled false (the API rejects
+    /// changing other settings while disabling).
+    #[command(name = "update-refresh-schedule", display_order = 20)]
+    UpdateRefreshSchedule {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Enable or disable the schedule
+        #[arg(long)]
+        enabled: Option<bool>,
+
+        /// Comma-separated weekday names (e.g. "Monday,Thursday")
+        #[arg(long)]
+        days: Option<String>,
+
+        /// Comma-separated times on the full/half hour (e.g. "07:00,13:30")
+        #[arg(long)]
+        times: Option<String>,
+
+        /// Local time zone id (e.g. "UTC")
+        #[arg(long)]
+        local_time_zone_id: Option<String>,
+
+        /// Failure/completion notification: NoNotification | MailOnFailure | MailOnCompletion
+        #[allow(clippy::doc_markdown)]
+        #[arg(long)]
+        notify_option: Option<String>,
+    },
     /// List upstream (lineage) datasets that this semantic model depends on
     #[command(name = "list-upstream", display_order = 21)]
     ListUpstream {
@@ -641,6 +688,31 @@ pub async fn execute(
             id,
             refresh_id,
         } => operations::cancel_refresh(cli, client, workspace, id, refresh_id).await,
+        SemanticModelCommand::GetRefreshSchedule { workspace, id } => {
+            operations::get_refresh_schedule(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::UpdateRefreshSchedule {
+            workspace,
+            id,
+            enabled,
+            days,
+            times,
+            local_time_zone_id,
+            notify_option,
+        } => {
+            operations::update_refresh_schedule(
+                cli,
+                client,
+                workspace,
+                id,
+                *enabled,
+                days.as_deref(),
+                times.as_deref(),
+                local_time_zone_id.as_deref(),
+                notify_option.as_deref(),
+            )
+            .await
+        }
         SemanticModelCommand::ListUpstream { workspace, id } => {
             powerbi::list_upstream(cli, client, workspace, id).await
         }

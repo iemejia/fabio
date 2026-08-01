@@ -9710,6 +9710,64 @@
         "returns": "object",
         "destructive": true
       },
+      "get-refresh-schedule": {
+        "description": "Get the scheduled (automatic) refresh configuration",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "update-refresh-schedule": {
+        "description": "Update the scheduled (automatic) refresh configuration",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--enabled": {
+            "type": "enum",
+            "values": [
+              "true",
+              "false"
+            ],
+            "description": "Enable or disable the schedule"
+          },
+          "--days": {
+            "type": "string",
+            "description": "Comma-separated weekday names (e.g. \"Monday,Thursday\")"
+          },
+          "--times": {
+            "type": "string",
+            "description": "Comma-separated times on the full/half hour (e.g. \"07:00,13:30\")"
+          },
+          "--local-time-zone-id": {
+            "type": "string",
+            "description": "Local time zone id (e.g. \"UTC\")"
+          },
+          "--notify-option": {
+            "type": "string",
+            "description": "Failure/completion notification: NoNotification | MailOnFailure | MailOnCompletion"
+          }
+        },
+        "mutates": true,
+        "returns": "void"
+      },
       "list-upstream": {
         "description": "List upstream (lineage) datasets that this semantic model depends on",
         "flags": {

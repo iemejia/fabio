@@ -40,6 +40,7 @@ Manage semantic models (Power BI datasets)
 | `fabio semantic-model delete-user` | yes | Remove a user from a semantic model |
 | `fabio semantic-model export-pbix` | no | Export a semantic model as a .pbix file |
 | `fabio semantic-model get-definition` | no | Get the definition of a semantic model |
+| `fabio semantic-model get-refresh-schedule` | no | Get the scheduled (automatic) refresh configuration |
 | `fabio semantic-model import-pbix` | yes | Import a .pbix file as a new semantic model |
 | `fabio semantic-model list` | no | List semantic models in a workspace |
 | `fabio semantic-model list-columns` | no | List columns of a semantic model (via DAX INFO.VIEW.COLUMNS) |
@@ -61,6 +62,7 @@ Manage semantic models (Power BI datasets)
 | `fabio semantic-model update-datasources` | yes | Update datasources of a semantic model |
 | `fabio semantic-model update-definition` | yes | Update the definition of a semantic model from a file |
 | `fabio semantic-model update-parameters` | yes | Update parameters of a semantic model |
+| `fabio semantic-model update-refresh-schedule` | yes | Update the scheduled (automatic) refresh configuration |
 
 ### fabio report
 Manage reports (Power BI)

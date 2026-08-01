@@ -493,6 +493,226 @@ pub(super) async fn cancel_refresh(
     Ok(())
 }
 
+// ── Scheduled refresh (Power BI refreshSchedule) ──────────────────────────────
+// Configure the automatic refresh schedule for an import/Direct Lake model.
+// (DirectQuery/Live models use directQueryRefreshSchedule — reach it via
+// `fabio rest call --api powerbi`.)
+
+/// Valid weekday names for a refresh schedule.
+const SCHEDULE_DAYS: &[&str] = &[
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+];
+
+/// Valid notify options.
+const NOTIFY_OPTIONS: &[&str] = &["NoNotification", "MailOnFailure", "MailOnCompletion"];
+
+/// Validate a refresh time is on the full or half hour (`HH:00` or `HH:30`).
+fn validate_schedule_time(t: &str) -> Result<()> {
+    let ok = t
+        .split_once(':')
+        .and_then(|(h, m)| {
+            let hour: u8 = h.parse().ok()?;
+            (hour <= 23 && (m == "00" || m == "30")).then_some(())
+        })
+        .is_some();
+    if ok {
+        Ok(())
+    } else {
+        Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid refresh time '{t}'"),
+            "Times must be on the full or half hour (HH:00 or HH:30), e.g. 07:00, 13:30"
+                .to_string(),
+        )
+        .into())
+    }
+}
+
+/// Normalize a comma-separated day list to canonical weekday names.
+fn normalize_days(raw: &str) -> Result<Vec<String>> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|d| {
+            SCHEDULE_DAYS
+                .iter()
+                .find(|v| v.eq_ignore_ascii_case(d))
+                .map(|v| (*v).to_owned())
+                .ok_or_else(|| {
+                    FabioError::with_hint(
+                        ErrorCode::InvalidInput,
+                        format!("Invalid day '{d}'"),
+                        format!(
+                            "--days must be day names from: {}",
+                            SCHEDULE_DAYS.join(", ")
+                        ),
+                    )
+                    .into()
+                })
+        })
+        .collect()
+}
+
+/// Normalize/validate the notify option.
+fn normalize_notify_option(raw: &str) -> Result<&'static str> {
+    NOTIFY_OPTIONS
+        .iter()
+        .find(|v| v.eq_ignore_ascii_case(raw))
+        .copied()
+        .ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid --notify-option '{raw}'"),
+                format!(
+                    "--notify-option must be one of: {}",
+                    NOTIFY_OPTIONS.join(", ")
+                ),
+            )
+            .into()
+        })
+}
+
+/// Build the `refreshSchedule` PATCH body from the provided fields.
+///
+/// The API rejects modifying other settings while disabling, so when `enabled`
+/// is `Some(false)` the body contains ONLY `enabled: false`.
+fn build_schedule_body(
+    enabled: Option<bool>,
+    days: Option<Vec<String>>,
+    times: Option<Vec<String>>,
+    time_zone: Option<&str>,
+    notify_option: Option<&str>,
+) -> Value {
+    let mut value = serde_json::Map::new();
+    if enabled == Some(false) {
+        value.insert("enabled".to_owned(), Value::Bool(false));
+        return serde_json::json!({ "value": value });
+    }
+    if let Some(e) = enabled {
+        value.insert("enabled".to_owned(), Value::Bool(e));
+    }
+    if let Some(d) = days {
+        value.insert("days".to_owned(), Value::from(d));
+    }
+    if let Some(t) = times {
+        value.insert("times".to_owned(), Value::from(t));
+    }
+    if let Some(tz) = time_zone {
+        value.insert("localTimeZoneId".to_owned(), Value::from(tz));
+    }
+    if let Some(n) = notify_option {
+        value.insert("notifyOption".to_owned(), Value::from(n));
+    }
+    serde_json::json!({ "value": value })
+}
+
+pub(super) async fn get_refresh_schedule(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let data = client
+        .get_powerbi(&format!(
+            "/groups/{workspace}/datasets/{id}/refreshSchedule"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model get-refresh-schedule", "Viewer"))?;
+    output::render_object(cli, &data, "enabled");
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn update_refresh_schedule(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    enabled: Option<bool>,
+    days: Option<&str>,
+    times: Option<&str>,
+    time_zone: Option<&str>,
+    notify_option: Option<&str>,
+) -> Result<()> {
+    if enabled.is_none()
+        && days.is_none()
+        && times.is_none()
+        && time_zone.is_none()
+        && notify_option.is_none()
+    {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "No schedule fields provided".to_string(),
+            "Pass at least one of --enabled, --days, --times, --local-time-zone-id, --notify-option"
+                .to_string(),
+        )
+        .into());
+    }
+
+    // The API rejects changing other settings while disabling.
+    if enabled == Some(false)
+        && (days.is_some() || times.is_some() || time_zone.is_some() || notify_option.is_some())
+    {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Cannot change other settings while disabling the schedule".to_string(),
+            "Disable on its own: fabio semantic-model update-refresh-schedule --workspace <WS> --id <ID> --enabled false"
+                .to_string(),
+        )
+        .into());
+    }
+
+    let days = match days {
+        Some(d) => Some(normalize_days(d)?),
+        None => None,
+    };
+    let times = match times {
+        Some(t) => {
+            let parsed: Vec<String> = t
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+                .collect();
+            for time in &parsed {
+                validate_schedule_time(time)?;
+            }
+            Some(parsed)
+        }
+        None => None,
+    };
+    let notify_option = match notify_option {
+        Some(n) => Some(normalize_notify_option(n)?),
+        None => None,
+    };
+
+    let body = build_schedule_body(enabled, days, times, time_zone, notify_option);
+
+    if output::dry_run_guard(cli, "semantic-model update-refresh-schedule", &body) {
+        return Ok(());
+    }
+
+    client
+        .patch_powerbi(
+            &format!("/groups/{workspace}/datasets/{id}/refreshSchedule"),
+            &body,
+        )
+        .await
+        .map_err(|e| {
+            enrich_forbidden(e, "semantic-model update-refresh-schedule", "Contributor")
+        })?;
+
+    let obj = serde_json::json!({ "id": id, "status": "schedule_updated" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
 pub(super) async fn takeover(
     cli: &Cli,
     client: &FabricClient,
@@ -654,6 +874,67 @@ mod tests {
             "partialBatch"
         );
         assert!(normalize_commit_mode("bogus").is_err());
+    }
+
+    #[test]
+    fn validate_schedule_time_enforces_half_hour() {
+        for ok in ["00:00", "07:00", "13:30", "23:30"] {
+            assert!(validate_schedule_time(ok).is_ok(), "{ok} should be valid");
+        }
+        for bad in ["07:15", "24:00", "07:45", "noon"] {
+            assert!(
+                validate_schedule_time(bad).is_err(),
+                "{bad} should be invalid"
+            );
+        }
+    }
+
+    #[test]
+    fn normalize_days_canonicalizes_and_rejects() {
+        assert_eq!(
+            normalize_days("monday, THURSDAY").unwrap(),
+            vec!["Monday".to_string(), "Thursday".to_string()]
+        );
+        assert!(normalize_days("Funday").is_err());
+    }
+
+    #[test]
+    fn normalize_notify_option_valid_and_invalid() {
+        assert_eq!(
+            normalize_notify_option("mailonfailure").unwrap(),
+            "MailOnFailure"
+        );
+        assert!(normalize_notify_option("Nope").is_err());
+    }
+
+    #[test]
+    fn build_schedule_body_disable_is_enabled_only() {
+        // Disabling must not carry other settings.
+        let body = build_schedule_body(
+            Some(false),
+            Some(vec!["Monday".to_owned()]),
+            Some(vec!["07:00".to_owned()]),
+            Some("UTC"),
+            Some("MailOnFailure"),
+        );
+        assert_eq!(body, serde_json::json!({ "value": { "enabled": false } }));
+    }
+
+    #[test]
+    fn build_schedule_body_only_includes_provided_fields() {
+        let body = build_schedule_body(
+            Some(true),
+            Some(vec!["Tuesday".to_owned()]),
+            Some(vec!["06:00".to_owned(), "18:30".to_owned()]),
+            None,
+            None,
+        );
+        let v = &body["value"];
+        assert_eq!(v["enabled"], true);
+        assert_eq!(v["days"], serde_json::json!(["Tuesday"]));
+        assert_eq!(v["times"], serde_json::json!(["06:00", "18:30"]));
+        assert!(v.get("localTimeZoneId").is_none());
+        assert!(v.get("notifyOption").is_none());
     }
 
     #[test]

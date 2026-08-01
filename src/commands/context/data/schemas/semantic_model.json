@@ -24,7 +24,8 @@
     "Call takeover to make editable in portal: fabio semantic-model takeover",
     "definition.pbism is ALWAYS required regardless of format",
     "Introspect a model's schema WITHOUT parsing its definition via DAX INFO.VIEW.* (the Analysis Services Schema Rowsets): list-tables (StorageMode incl. Direct Lake), list-columns (DataType/SummarizeBy/FormatString), list-measures (Expression/FormatString), list-relationships (Cardinality/CrossFilteringBehavior). Use these before writing DAX or wiring a report.",
-    "Enhanced/granular refresh: 'refresh --objects '[{\"table\":\"Sales\"}]'' refreshes specific tables/partitions (TMSL refresh semantics); add --commit-mode transactional|partialBatch, --max-parallelism, --retry-count. Registers as ViaEnhancedApi. Monitor with refresh-details --refresh-id <requestId> (object-level status) and stop with cancel-refresh --refresh-id <requestId>; get the requestId from refresh-status."
+    "Enhanced/granular refresh: 'refresh --objects '[{\"table\":\"Sales\"}]'' refreshes specific tables/partitions (TMSL refresh semantics); add --commit-mode transactional|partialBatch, --max-parallelism, --retry-count. Registers as ViaEnhancedApi. Monitor with refresh-details --refresh-id <requestId> (object-level status) and stop with cancel-refresh --refresh-id <requestId>; get the requestId from refresh-status.",
+    "Scheduled (automatic) refresh: get-refresh-schedule / update-refresh-schedule (import/Direct Lake). Times must be on the full/half hour (HH:00 or HH:30); to disable pass ONLY --enabled false (the API rejects changing other settings while disabling). DirectQuery/Live models use a different directQueryRefreshSchedule endpoint (reach via rest call --api powerbi)."
   ],
   "related_commands": [
     "fabio semantic-model list-tables --workspace <WS> --id <ID>",
@@ -35,6 +36,8 @@
     "fabio semantic-model refresh-status --workspace <WS> --id <ID>",
     "fabio semantic-model refresh-details --workspace <WS> --id <ID> --refresh-id <REQ>",
     "fabio semantic-model cancel-refresh --workspace <WS> --id <ID> --refresh-id <REQ>",
+    "fabio semantic-model get-refresh-schedule --workspace <WS> --id <ID>",
+    "fabio semantic-model update-refresh-schedule --workspace <WS> --id <ID> --enabled true --days Monday,Thursday --times 07:00,19:30",
     "fabio semantic-model query --workspace <WS> --id <ID> --dax <QUERY>",
     "fabio semantic-model takeover --workspace <WS> --id <ID>",
     "fabio semantic-model bind-connection --workspace <WS> --id <ID> --connection-id <CID>",

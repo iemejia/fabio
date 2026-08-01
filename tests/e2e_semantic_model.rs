@@ -1702,3 +1702,194 @@ fn semantic_model_enhanced_refresh_lifecycle() {
         "cancel should succeed or report a clean conflict; stderr: {stderr}"
     );
 }
+
+/// Offline: update-refresh-schedule builds the right body via --dry-run and
+/// enforces validation (half-hour times, valid days, disable-alone rule).
+#[test]
+fn semantic_model_update_refresh_schedule_dry_run_and_validation() {
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "update-refresh-schedule",
+            "--workspace",
+            "test-ws",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--enabled",
+            "true",
+            "--days",
+            "Tuesday,Friday",
+            "--times",
+            "06:00,18:30",
+            "--notify-option",
+            "MailOnFailure",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let v = &json["data"]["details"]["value"];
+    assert_eq!(v["enabled"], true);
+    assert_eq!(v["days"][1], "Friday");
+    assert_eq!(v["times"][1], "18:30");
+    assert_eq!(v["notifyOption"], "MailOnFailure");
+
+    // Invalid time.
+    fabio()
+        .args([
+            "semantic-model",
+            "update-refresh-schedule",
+            "--workspace",
+            "test-ws",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--times",
+            "07:15",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("full or half hour"));
+
+    // Invalid day.
+    fabio()
+        .args([
+            "semantic-model",
+            "update-refresh-schedule",
+            "--workspace",
+            "test-ws",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--days",
+            "Funday",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("Invalid day"));
+
+    // Disable cannot carry other settings.
+    fabio()
+        .args([
+            "semantic-model",
+            "update-refresh-schedule",
+            "--workspace",
+            "test-ws",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--enabled",
+            "false",
+            "--times",
+            "07:00",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("disabling"));
+
+    // No fields at all.
+    fabio()
+        .args([
+            "semantic-model",
+            "update-refresh-schedule",
+            "--workspace",
+            "test-ws",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("No schedule fields"));
+}
+
+/// Live: get/update the refresh schedule, verify, then disable to revert.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_refresh_schedule_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+
+    let list = fabio()
+        .args(["semantic-model", "list", "--workspace", ws])
+        .assert()
+        .success();
+    let models = parse_json(&list);
+    let Some(model) = models["data"].as_array().and_then(|a| a.first()) else {
+        eprintln!("no semantic model; skipping");
+        return;
+    };
+    let id = model["id"].as_str().unwrap().to_string();
+
+    // Get baseline.
+    fabio()
+        .args([
+            "semantic-model",
+            "get-refresh-schedule",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+        ])
+        .assert()
+        .success();
+
+    // Enable Wednesday 09:00.
+    fabio()
+        .args([
+            "semantic-model",
+            "update-refresh-schedule",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--enabled",
+            "true",
+            "--days",
+            "Wednesday",
+            "--times",
+            "09:00",
+        ])
+        .assert()
+        .success();
+
+    // Verify.
+    let got = fabio()
+        .args([
+            "semantic-model",
+            "get-refresh-schedule",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+        ])
+        .assert()
+        .success();
+    let gj = parse_json(&got);
+    assert_eq!(gj["data"]["enabled"], true);
+    assert_eq!(gj["data"]["times"][0], "09:00");
+
+    // Revert (disable alone).
+    fabio()
+        .args([
+            "semantic-model",
+            "update-refresh-schedule",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--enabled",
+            "false",
+        ])
+        .assert()
+        .success();
+    let after = fabio()
+        .args([
+            "semantic-model",
+            "get-refresh-schedule",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&after)["data"]["enabled"], false);
+}
