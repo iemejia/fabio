@@ -15,6 +15,7 @@ license: MIT
 - Exporting a workspace to disk and deploying it to another environment.
 - Planning (dry-run diff) before applying changes; converging idempotently.
 - Git integration: connect, status, commit, pull, checkout, branch-out.
+- Managing base/branch workspace relations as an independent resource (git relation list/create/delete), separate from the branch-out flow.
 - Managing deployment pipelines (dev/test/prod stages).
 - Managing variable libraries and activating environment value sets.
 
@@ -113,6 +114,7 @@ Manage variable libraries (shared variables)
 - Deploy is STATELESS — content-hash diffing against the live workspace, no state file. --workspace accepts a display name or GUID.
 - The .platform part IS sent (enables metadata propagation) but is EXCLUDED from the content hash, so idempotent skip still works.
 - --strategy: default (per-item, content-hash skip) | bulk (fast initial deploy to an empty, non-Git workspace) | sequential (debugging).
+- git relation (WorkspaceRelations, preview) manages base/branch links between workspaces as a standalone resource — distinct from 'git branch-out', which creates+connects a feature workspace in one flow.
 
 ## Troubleshooting
 | Symptom | Fix |

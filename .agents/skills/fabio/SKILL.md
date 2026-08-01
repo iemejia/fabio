@@ -574,6 +574,19 @@ fabio admin list-tenant-settings
 fabio admin list-items
 ```
 
+**Cross-cutting: job ledger, catalog search, feedback:**
+```bash
+# Async job ledger (Principle 8) — every --wait/run records a local job you can revisit
+fabio jobs list                                                             # local ledger of async jobs fabio has run
+fabio jobs get --id $JOB_ID                                                 # status/result of a tracked job
+fabio jobs prune                                                            # clear finished entries
+# Tenant-wide item discovery (OneLake catalog)
+fabio catalog search --search "sales" --top 25                              # POST /catalog/search (tenant-level, no --workspace); or --content '{"searchString":"...","top":25}'
+# Two-way I/O (Principle 10) — send structured feedback about CLI friction
+fabio feedback send "describe the issue or friction"                        # MESSAGE is a positional arg
+fabio feedback list
+```
+
 ## Stable Exit Codes
 
 Agents can branch on `$?` without parsing JSON:
