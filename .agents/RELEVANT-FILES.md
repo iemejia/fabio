@@ -38,6 +38,7 @@
 - `src/commands/environment.rs`: list/show/create/update/delete/publish/cancel-publish/get-spark-settings/get-staging-spark-settings/upload-staging-library
 - `src/commands/data_pipeline.rs`: list/show/create/update/delete/run, create-schedule, list-schedules/get-schedule/update-schedule/delete-schedule, list-instances/get-instance
 - `src/commands/report.rs`: list/show/create/update/delete/get-definition/update-definition
+- `src/commands/report_pbir.rs`: PBIP/PBIR offline validation + full-folder report definition gathering (backs `report validate` and `report create --definition`)
 - `src/commands/semantic_model.rs`: list/show/create/update/delete/get-definition/update-definition + query/refresh/bind-connection/unbind-connection/takeover + list-parameters/update-parameters/list-datasources/update-datasources/list-users/add-user/delete-user/refresh-status/list-upstream/clone/export-pbix/import-pbix
 - `src/commands/eventhouse.rs`: list/show/create/update/delete
 - `src/commands/eventstream/mod.rs`: list/show/create/update/delete/get-definition/update-definition/get-topology/pause/resume/sources/destinations

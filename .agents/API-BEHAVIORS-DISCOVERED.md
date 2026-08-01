@@ -2211,3 +2211,28 @@ a `$schema` URL at the latest matching published version and conform to the sche
 
 ### Rule for new code
 When adding any command that SYNTHESIZES a Fabric definition part (not a pass-through of a user file), check `microsoft/json-schemas/fabric/item/<type>/...` for a published schema. If it exists and marks `$schema` required, emit the latest matching `$schema` URL and conform field-for-field. Add a pure builder + a unit test asserting the `$schema` and required fields (see `build_dataset_pbir`, `build_pbism`, `build_platform_json`).
+
+## Power BI Project (PBIP) / PBIR Report Support
+
+Microsoft documents the plain-text Power BI Project format at
+<https://learn.microsoft.com/power-bi/developer/projects/projects-overview>
+(+ `projects-report`, `projects-dataset`). It is the format coding agents should
+generate/edit. fabio adds first-class support for validating and creating these.
+
+### Format recap (what agents produce)
+- **PBIP root**: `<name>.Report/`, `<name>.SemanticModel/`, `<name>.pbip` (pointer), `.gitignore`.
+- **Report** (`.Report/`): required `definition.pbir` (`$schema` + `version` + `datasetReference` with `byPath` XOR `byConnection`), plus EITHER `report.json` (PBIR-Legacy, version 1.0) OR a `definition/` folder (PBIR enhanced, version 4.0+): `definition/report.json`, `definition/version.json`, `definition/pages/pages.json` (optional), `definition/pages/<page>/page.json` (required per page), `definition/pages/<page>/visuals/<visual>/visual.json` (required per visual), optional `bookmarks/`, `reportExtensions.json` (report-level measures). Every PBIR JSON carries its own `$schema`.
+- **byPath vs byConnection**: Git Integration exports `byPath` (relative path to the `.SemanticModel`). Deploying via the REST API REQUIRES `byConnection` (a `connectionString` with `semanticmodelid=<id>`, or the 6-field v1 form). fabio deploy already rewrites `definition.pbir` byPath→byConnection.
+- **`.pbi/`** (localSettings.json, cache.abf) is git-ignored user state — never a definition part.
+- PBIR is preview; at GA it becomes the ONLY report format (PBIR-Legacy retired).
+
+### fabio commands
+- **`fabio report validate --source <path>`** — OFFLINE structural + `$schema` validation. Accepts a `.Report` folder, a `definition.pbir` file, or a PBIP root (validates each `*.Report`). Checks: definition.pbir present + valid JSON; `$schema` (warn if missing — Fabric is lenient but MS marks it required); `version`; `datasetReference` has exactly one of byPath/byConnection (byPath → warning that create needs byConnection, and the target path is resolved); format detection (PBIR vs PBIR-Legacy); required PBIR files (`definition/report.json`, `version.json`, `pages/` with ≥1 `page.json`, each `visual.json`); version/format compatibility (version 1.0 with a `definition/` folder → error). Emits `{status, report|reports, summary}` with machine-readable `code`s (`MISSING_PBIR`, `MISSING_REQUIRED`, `INVALID_JSON`, `VERSION_FORMAT_MISMATCH`, `BYPATH_NEEDS_BYCONNECTION`, …); exits non-zero when invalid. Live-validated on a real 54-check exported PBIR report.
+- **`fabio report create --definition <folder>`** — creates a FULL PBIR report (all pages/visuals) from a folder, not just a single `definition.pbir`. Gathers every file recursively (excluding `.platform`, `.pbi/`, `.children/`, and deploy sidecars), validates first (clear error instead of an opaque API rejection), and posts the parts. With `--dataset`, rebinds the folder's `definition.pbir` to that model by connection (so a byPath-referenced generated report can bind to a concrete deployed model at create time). Previously only `deploy` could push a full PBIR tree (and it required `.platform` scaffolding). Live-validated: export → validate → create-from-folder → byte-identical PDF render.
+- Pure helpers `validate_report_folder`, `validate`, `gather_report_parts`, `rebind_pbir_part` in `src/commands/report_pbir.rs` are unit-tested; e2e in `tests/e2e_report.rs` (`report_validate_pbir_folder_offline`, `report_validate_and_create_from_folder_lifecycle`).
+
+### Known gaps / roadmap (not yet implemented)
+- Deploying a raw Desktop-saved PBIP (no `.platform`) — deploy still hard-requires `.platform` per item and doesn't infer type/name from the `X.Report`/`X.SemanticModel` folder suffix or consult the `<name>.pbip` pointer. A `.platform`-synthesis step (type/name from folder, generated logicalId) would make Desktop PBIP folders deployable.
+- Full JSON-Schema validation of PBIR files against the bundled MS schemas (current validation is structural + `$schema`-presence, not per-property schema conformance).
+- Folder-based `semantic-model create`/`update-definition` (TMDL `definition/tables/**.tmdl` tree) outside of deploy — same single-file limitation the report side just closed.
+- Report scaffolding from a compact spec (pages/visuals) — emit schema-conformant PBIR from a high-level agent description.
