@@ -49,9 +49,15 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         description: Option<String>,
 
-        /// Path to model definition file (model.bim TMSL/TMDL format)
+        /// Path to a single model definition file (model.bim TMSL or a single .tmdl)
+        #[arg(long, required_unless_present = "definition")]
+        file: Option<String>,
+
+        /// Path to a FULL model definition folder (a `.SemanticModel` folder or any
+        /// folder with definition.pbism + definition/ TMDL files or model.bim). All
+        /// files are gathered recursively — the way a real multi-file TMDL model ships.
         #[arg(long)]
-        file: String,
+        definition: Option<String>,
 
         /// SQL endpoint or lakehouse ID for live connection (generates definition.pbism)
         #[arg(long, visible_alias = "connection-id")]
@@ -566,6 +572,7 @@ pub async fn execute(
             name,
             description,
             file,
+            definition,
             connection,
             sensitivity_label,
         } => {
@@ -575,7 +582,8 @@ pub async fn execute(
                 workspace,
                 name,
                 description.as_deref(),
-                file,
+                file.as_deref(),
+                definition.as_deref(),
                 connection.as_deref(),
                 sensitivity_label.as_deref(),
             )

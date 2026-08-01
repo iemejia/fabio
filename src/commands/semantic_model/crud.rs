@@ -100,17 +100,10 @@ fn build_pbism(is_tmdl: bool) -> Value {
     })
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn create(
-    cli: &Cli,
-    client: &FabricClient,
-    workspace: &str,
-    name: &str,
-    description: Option<&str>,
-    file: &str,
-    connection: Option<&str>,
-    sensitivity_label: Option<&str>,
-) -> Result<()> {
+/// Build definition parts from a SINGLE model file (model.bim TMSL or one .tmdl),
+/// synthesizing the required definition.pbism (and an expressions.tmdl for a
+/// TMDL model given a --connection).
+fn build_single_file_parts(file: &str, connection: Option<&str>) -> Result<Vec<Value>> {
     let content = std::fs::read_to_string(file).map_err(|e| {
         FabioError::with_hint(
             ErrorCode::InvalidInput,
@@ -119,8 +112,6 @@ pub(super) async fn create(
         )
     })?;
     let encoded = BASE64.encode(content.as_bytes());
-
-    // Detect format from file extension
     let is_tmdl = std::path::Path::new(file)
         .extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("tmdl"));
@@ -133,14 +124,13 @@ pub(super) async fn create(
 
     // Always include definition.pbism (required by Fabric API).
     let pbism = build_pbism(is_tmdl);
-    let pbism_encoded = BASE64.encode(pbism.to_string().as_bytes());
     parts.push(serde_json::json!({
         "path": "definition.pbism",
-        "payload": pbism_encoded,
+        "payload": BASE64.encode(pbism.to_string().as_bytes()),
         "payloadType": "InlineBase64"
     }));
 
-    // For TMDL models with --connection, generate the expressions.tmdl
+    // For TMDL models with --connection, generate the expressions.tmdl.
     if let Some(conn_id) = connection
         && is_tmdl
     {
@@ -152,13 +142,130 @@ pub(super) async fn create(
                  \t\t\tdatabase\n\
                  \tlineageTag: 00000000-0000-0000-0000-000000000001"
         );
-        let expr_encoded = BASE64.encode(expr.as_bytes());
         parts.push(serde_json::json!({
             "path": "definition/expressions.tmdl",
-            "payload": expr_encoded,
+            "payload": BASE64.encode(expr.as_bytes()),
             "payloadType": "InlineBase64"
         }));
     }
+    Ok(parts)
+}
+
+/// Validate a model definition folder before create: it must have `definition.pbism`
+/// and a model body (`model.bim` for TMSL, or `definition/model.tmdl` for TMDL).
+fn validate_model_folder(dir: &std::path::Path) -> Result<()> {
+    if !dir.join("definition.pbism").exists() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("No definition.pbism in '{}'", dir.display()),
+            "Point --definition at a .SemanticModel folder (containing definition.pbism + definition/ or model.bim)."
+                .to_string(),
+        )
+        .into());
+    }
+    let has_bim = dir.join("model.bim").exists();
+    let has_tmdl = dir.join("definition/model.tmdl").exists();
+    if !has_bim && !has_tmdl {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Model folder has neither model.bim (TMSL) nor definition/model.tmdl (TMDL)"
+                .to_string(),
+            "A model folder needs a model body: model.bim or definition/model.tmdl.".to_string(),
+        )
+        .into());
+    }
+    Ok(())
+}
+
+/// Gather every file under a model definition folder into definition parts, with
+/// paths relative to the folder root. Excludes `.platform`, `.pbi/`, and the
+/// deploy sidecar metadata files.
+fn gather_model_parts(dir: &std::path::Path) -> Result<Vec<Value>> {
+    let mut parts = Vec::new();
+    gather_recursive(dir, dir, &mut parts)?;
+    if parts.is_empty() {
+        return Err(FabioError::new(
+            ErrorCode::InvalidInput,
+            format!("No model definition files found in '{}'", dir.display()),
+        )
+        .into());
+    }
+    Ok(parts)
+}
+
+fn gather_recursive(
+    base: &std::path::Path,
+    current: &std::path::Path,
+    parts: &mut Vec<Value>,
+) -> Result<()> {
+    for entry in std::fs::read_dir(current)? {
+        let entry = entry?;
+        let path = entry.path();
+        let name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        if path.is_dir() {
+            if name == ".pbi" || name == ".children" {
+                continue;
+            }
+            gather_recursive(base, &path, parts)?;
+        } else {
+            if name == ".platform"
+                || name == "creationPayload.json"
+                || name == "shortcuts.metadata.json"
+                || name == "governance.metadata.json"
+                || name == "schedules.metadata.json"
+            {
+                continue;
+            }
+            let rel = path
+                .strip_prefix(base)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let content = std::fs::read(&path)?;
+            parts.push(serde_json::json!({
+                "path": rel,
+                "payload": BASE64.encode(&content),
+                "payloadType": "InlineBase64"
+            }));
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn create(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    name: &str,
+    description: Option<&str>,
+    file: Option<&str>,
+    definition: Option<&str>,
+    connection: Option<&str>,
+    sensitivity_label: Option<&str>,
+) -> Result<()> {
+    let parts = if let Some(folder) = definition {
+        // Gather a FULL model definition folder (definition.pbism + definition/
+        // TMDL files, or model.bim). This is how a real multi-file TMDL model
+        // ships — previously only `deploy` could push it.
+        let dir = std::path::Path::new(folder);
+        validate_model_folder(dir)?;
+        gather_model_parts(dir)?
+    } else if let Some(file) = file {
+        build_single_file_parts(file, connection)?
+    } else {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Provide --file (single model.bim/.tmdl) or --definition (a full model folder)"
+                .to_string(),
+            "e.g. --file model.bim  OR  --definition ./Sales.SemanticModel".to_string(),
+        )
+        .into());
+    };
 
     let mut body = serde_json::json!({
         "displayName": name,
@@ -361,6 +468,66 @@ fn enrich_create_error(err: anyhow::Error) -> anyhow::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn write(path: &std::path::Path, content: &str) {
+        if let Some(p) = path.parent() {
+            std::fs::create_dir_all(p).unwrap();
+        }
+        std::fs::write(path, content).unwrap();
+    }
+
+    #[test]
+    fn gather_model_parts_collects_tmdl_folder_excluding_platform() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(&root.join("definition.pbism"), r#"{"version":"4.0"}"#);
+        write(&root.join("definition/model.tmdl"), "model M");
+        write(&root.join("definition/tables/Sales.tmdl"), "table Sales");
+        write(&root.join(".platform"), r#"{"metadata":{}}"#);
+        write(&root.join(".pbi/localSettings.json"), "{}");
+
+        let parts = gather_model_parts(root).unwrap();
+        let paths: Vec<&str> = parts.iter().map(|p| p["path"].as_str().unwrap()).collect();
+        assert!(paths.contains(&"definition.pbism"));
+        assert!(paths.contains(&"definition/model.tmdl"));
+        assert!(paths.contains(&"definition/tables/Sales.tmdl"));
+        assert!(!paths.contains(&".platform"));
+        assert!(!paths.iter().any(|p| p.contains(".pbi/")));
+    }
+
+    #[test]
+    fn validate_model_folder_requires_pbism_and_body() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        // Missing pbism.
+        assert!(validate_model_folder(root).is_err());
+        // pbism but no model body.
+        write(&root.join("definition.pbism"), "{}");
+        assert!(validate_model_folder(root).is_err());
+        // pbism + TMDL body → ok.
+        write(&root.join("definition/model.tmdl"), "model M");
+        assert!(validate_model_folder(root).is_ok());
+    }
+
+    #[test]
+    fn validate_model_folder_accepts_model_bim() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(&root.join("definition.pbism"), "{}");
+        write(&root.join("model.bim"), r#"{"model":{}}"#);
+        assert!(validate_model_folder(root).is_ok());
+    }
+
+    #[test]
+    fn build_single_file_parts_tmdl_synthesizes_pbism() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("model.tmdl");
+        std::fs::write(&f, "model M").unwrap();
+        let parts = build_single_file_parts(f.to_str().unwrap(), None).unwrap();
+        let paths: Vec<&str> = parts.iter().map(|p| p["path"].as_str().unwrap()).collect();
+        assert!(paths.contains(&"definition/model.tmdl"));
+        assert!(paths.contains(&"definition.pbism"));
+    }
 
     #[test]
     fn test_enrich_create_error_v3_models() {

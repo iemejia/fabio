@@ -9173,8 +9173,11 @@
           },
           "--file": {
             "type": "string",
-            "required": true,
-            "description": "Path to model definition file (model.bim TMSL/TMDL format)"
+            "description": "Path to a single model definition file (model.bim TMSL or a single .tmdl)"
+          },
+          "--definition": {
+            "type": "string",
+            "description": "Path to a FULL model definition folder (a `.SemanticModel` folder or any folder with definition.pbism + definition/ TMDL files or model.bim). All files are gathered recursively — the way a real multi-file TMDL model ships"
           },
           "--connection": {
             "type": "string",

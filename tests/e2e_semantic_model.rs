@@ -1955,3 +1955,113 @@ fn semantic_model_get_bound_gateway_datasources_returns_array() {
         .success();
     assert!(parse_json(&assert)["data"].is_array());
 }
+
+/// Offline: create --definition rejects a folder without definition.pbism.
+#[test]
+fn semantic_model_create_definition_folder_validation() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("stray.json"), "{}").unwrap();
+    fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            "test-ws",
+            "--name",
+            "X",
+            "--definition",
+            dir.path().to_str().unwrap(),
+            "--dry-run",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("definition.pbism"));
+}
+
+/// Live: export a semantic model's full TMDL folder, then create a new model
+/// from the whole folder (multi-file), introspect it, and delete.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_create_from_tmdl_folder_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+
+    // Need a model to export.
+    let list = fabio()
+        .args(["semantic-model", "list", "--workspace", ws])
+        .assert()
+        .success();
+    let models = parse_json(&list);
+    if models["data"].as_array().is_none_or(Vec::is_empty) {
+        eprintln!("no semantic model to export; skipping");
+        return;
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let export_dir = dir.path().join("export");
+    fabio()
+        .args([
+            "deploy",
+            "export",
+            "--workspace",
+            ws,
+            "--dir",
+            export_dir.to_str().unwrap(),
+            "--overwrite",
+            "--item-types",
+            "SemanticModel",
+        ])
+        .assert()
+        .success();
+
+    // Find a *.SemanticModel folder with definition.pbism.
+    let folder = std::fs::read_dir(&export_dir)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .find(|p| p.is_dir() && p.join("definition.pbism").exists())
+        .expect("an exported .SemanticModel folder");
+
+    // Create a new model from the FULL folder.
+    let created = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            ws,
+            "--name",
+            "fabio-e2e-tmdl-folder",
+            "--definition",
+            folder.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let id = parse_json(&created)["data"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Introspect: it must have at least one table (proves the multi-file TMDL was ingested).
+    let tables = fabio()
+        .args([
+            "semantic-model",
+            "list-tables",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+        ])
+        .assert()
+        .success();
+    assert!(
+        !parse_json(&tables)["data"].as_array().unwrap().is_empty(),
+        "folder-created model should have tables"
+    );
+
+    // Cleanup.
+    fabio()
+        .args(["semantic-model", "delete", "--workspace", ws, "--id", &id])
+        .assert()
+        .success();
+}

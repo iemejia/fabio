@@ -14,12 +14,14 @@
     "type": "SemanticModel"
   },
   "flags": {
-    "--file": "Path to .tmdl files or model.bim",
+    "--file": "Path to a single model.bim (TMSL) or one .tmdl file",
+    "--definition": "Path to a FULL model definition folder (a .SemanticModel folder or any folder with definition.pbism + definition/ TMDL files or model.bim). Gathers all files recursively — the way a real multi-file TMDL model ships. Validated first (needs definition.pbism + a model body).",
     "--connection": "SQL Analytics Endpoint ID for Direct Lake binding"
   },
   "notes": [
     "Direct Lake REQUIRES TMDL format (model.bim cannot express directLake partitions)",
     "model.bim MUST use compatibilityLevel 1604 and powerBI_V3",
+    "Create a FULL multi-file TMDL model from a folder with --definition <folder> (a .SemanticModel folder); --file only sends a single file. Previously only deploy could push a full TMDL tree.",
     "After creation, call refresh to frame Direct Lake: fabio semantic-model refresh",
     "Call takeover to make editable in portal: fabio semantic-model takeover",
     "definition.pbism is ALWAYS required regardless of format",
