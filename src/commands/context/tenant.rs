@@ -736,10 +736,15 @@ fn scan_value_for_ids(
 // ── Deep mode: definition scanning ──────────────────────────────────────────
 
 /// Item types known to NOT support `getDefinition` — skip to avoid wasted LRO calls.
+///
+/// NOTE: `PaginatedReport` DOES support `getDefinition` (verified live against the
+/// generic `/items/{id}/getDefinition` endpoint) and its `.rdl` embeds a
+/// `semanticmodelid=<uuid>` reference, so scanning it recovers report→semantic-model
+/// lineage — it is intentionally NOT excluded here.
 fn supports_definition(item_type: &str) -> bool {
     !matches!(
         item_type,
-        "SQLEndpoint" | "Dashboard" | "Datamart" | "PaginatedReport" | "MLModel" | "MLExperiment"
+        "SQLEndpoint" | "Dashboard" | "Datamart" | "MLModel" | "MLExperiment"
     )
 }
 
@@ -1774,6 +1779,23 @@ mod tests {
         assert!(!is_guid("12345678-1234-1234-1234-123456789ab")); // too short
         assert!(!is_guid("12345678-1234-1234-1234-123456789abcd")); // too long
         assert!(!is_guid("1234567g-1234-1234-1234-123456789abc")); // invalid char
+    }
+
+    #[test]
+    fn test_supports_definition() {
+        // PaginatedReport DOES support getDefinition (verified live) and its RDL
+        // embeds a semantic-model UUID, so it must be scanned for lineage.
+        assert!(supports_definition("PaginatedReport"));
+        // Definition-bearing types are scanned.
+        assert!(supports_definition("Notebook"));
+        assert!(supports_definition("Report"));
+        assert!(supports_definition("SemanticModel"));
+        // Types that genuinely lack getDefinition stay excluded.
+        assert!(!supports_definition("SQLEndpoint"));
+        assert!(!supports_definition("Dashboard"));
+        assert!(!supports_definition("Datamart"));
+        assert!(!supports_definition("MLModel"));
+        assert!(!supports_definition("MLExperiment"));
     }
 
     #[test]

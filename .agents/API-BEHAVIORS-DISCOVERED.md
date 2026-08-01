@@ -186,7 +186,7 @@ Power BI has multiple file formats spanning different eras and use cases. Unders
 | Early Power BI | `.pbix`, `.pbit` | Import-only, not definition-managed |
 | Enterprise tabular | `model.bim` | `fabio semantic-model create --file model.bim` |
 | Modern DevOps/Git | `.pbip`, `.pbir`, TMDL | `fabio semantic-model create --file *.tmdl`, `fabio report create/update-definition` |
-| Paginated reporting | `.rdl` | `fabio item get-definition` (limited) |
+| Paginated reporting | `.rdl` | `fabio paginated-report create/get-definition/update-definition` (full CRUD) |
 
 ### Key Constraints
 
@@ -2039,7 +2039,7 @@ Git commands are run with CWD set to source directory. Returns `None` entirely i
 - **Three-layer relationship discovery**: Layer 1 (properties) finds typed edges from item GET responses. Layer 2 (`--deep`) decodes base64 definition payloads and regex-scans for UUID references. Layer 3 (`--include-connections`) fetches `/items/{id}/connections`. Each layer is additive — deeper layers find significantly more edges.
 - **Properties layer alone finds very few edges**: In a 154-item tenant, properties-only discovered 2 edges (both `has_endpoint`). Deep mode found 88 edges. Most relationships are embedded inside definitions, not exposed in the item's GET response.
 - **GUID scanning discovers all cross-references generically**: By building a registry of known item/workspace IDs and regex-matching `[0-9a-fA-F]{8}-...-[0-9a-fA-F]{12}` in decoded definitions, all embedded references are found without type-specific parsing logic.
-- **Items without definition support must be skipped**: SQLEndpoint, Dashboard, Datamart, PaginatedReport, MLModel, MLExperiment never support `getDefinition` (always return errors). Skipping them saves 20% of LRO calls in deep mode.
+- **Items without definition support must be skipped**: SQLEndpoint, Dashboard, Datamart, MLModel, MLExperiment never support `getDefinition` (always return errors). Skipping them avoids wasted LRO calls in deep mode. **PaginatedReport is NOT in this list** — it DOES support `getDefinition` (verified live on the generic `/items/{id}/getDefinition` endpoint), and its `.rdl` embeds a `semanticmodelid=<uuid>`, so scanning it recovers report→semantic-model lineage.
 - **Type-specific endpoints expose richer properties**: Items fetched via their type-specific GET (e.g., `/kqlDatabases/{id}` vs `/items/{id}`) include a `properties` object with parent references, connection strings, and status fields not available from the generic items endpoint.
 - **Workspace IDs appear frequently in definitions**: ~30% of definition-discovered edges are `workspace_ref` — notebooks and agents embed their workspace ID in metadata (trident, datasource configs). These are informational rather than item-to-item edges.
 - **Relationship classification by file path/content**: The definition file path and content context determine the semantic relationship type (e.g., `definition.pbir` → `bound_to_model`, `default_lakehouse` in content → `default_lakehouse`, `ExecutePipeline` → `executes`).
