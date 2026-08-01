@@ -1677,13 +1677,19 @@ async fn deploy_change(
                     .insert("description".to_owned(), Value::from(desc.as_str()));
             }
 
-            // Include sensitivityLabelSettings if governance metadata specifies a label
-            if let Some(ref gov) = source_item.governance
-                && let Some(ref label) = gov.sensitivity_label
-            {
+            // Include sensitivityLabelSettings. Prefer the governance sidecar
+            // label; fall back to the label carried in the .platform metadata
+            // (platformProperties 2.1.0, used by Fabric Git Integration / fabric-cicd).
+            let sensitivity_label_id = source_item
+                .governance
+                .as_ref()
+                .and_then(|g| g.sensitivity_label.as_ref())
+                .map(|l| l.id.clone())
+                .or_else(|| source_item.metadata.sensitivity_label_id.clone());
+            if let Some(label_id) = sensitivity_label_id {
                 body.as_object_mut().unwrap().insert(
                     "sensitivityLabelSettings".to_owned(),
-                    json!({"sensitivityLabelId": label.id}),
+                    json!({"sensitivityLabelId": label_id}),
                 );
             }
 
@@ -2687,6 +2693,7 @@ mod tests {
                 logical_id: None,
                 description: None,
                 definition_format: None,
+                sensitivity_label_id: None,
                 platform_creation_payload: None,
             },
             parts: vec![],
@@ -2734,6 +2741,7 @@ mod tests {
                 logical_id: None,
                 description: None,
                 definition_format: None,
+                sensitivity_label_id: None,
                 platform_creation_payload: None,
             },
             parts: vec![DefinitionPart {
@@ -2785,6 +2793,7 @@ mod tests {
                 logical_id: None,
                 description: None,
                 definition_format: None,
+                sensitivity_label_id: None,
                 platform_creation_payload: None,
             },
             parts: vec![DefinitionPart {
@@ -2958,6 +2967,7 @@ mod tests {
                     logical_id: Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_owned()),
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![],
@@ -3000,6 +3010,7 @@ mod tests {
                     logical_id: None, // no logical ID
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![],
@@ -3038,6 +3049,7 @@ mod tests {
                         logical_id: Some("lid-lh1".to_owned()),
                         description: None,
                         definition_format: None,
+                        sensitivity_label_id: None,
                         platform_creation_payload: None,
                     },
                     parts: vec![],
@@ -3056,6 +3068,7 @@ mod tests {
                         logical_id: Some("lid-lh2".to_owned()),
                         description: None,
                         definition_format: None,
+                        sensitivity_label_id: None,
                         platform_creation_payload: None,
                     },
                     parts: vec![],
@@ -3074,6 +3087,7 @@ mod tests {
                         logical_id: Some("lid-nb1".to_owned()),
                         description: None,
                         definition_format: None,
+                        sensitivity_label_id: None,
                         platform_creation_payload: None,
                     },
                     parts: vec![],
@@ -3172,6 +3186,7 @@ mod tests {
                     logical_id: Some("lid-lh1".to_owned()),
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![],
@@ -3384,6 +3399,7 @@ mod tests {
                 logical_id: None,
                 description: None,
                 definition_format: None,
+                sensitivity_label_id: None,
                 platform_creation_payload: None,
             },
             parts: vec![DefinitionPart {

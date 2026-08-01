@@ -933,6 +933,7 @@ mod tests {
                         logical_id: Some(lakehouse_lid.to_owned()),
                         description: None,
                         definition_format: None,
+                        sensitivity_label_id: None,
                         platform_creation_payload: None,
                     },
                     parts: vec![],
@@ -951,6 +952,7 @@ mod tests {
                         logical_id: Some("lid-notebook-001".to_owned()),
                         description: None,
                         definition_format: None,
+                        sensitivity_label_id: None,
                         platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
@@ -1018,6 +1020,7 @@ mod tests {
                         logical_id: Some(external_lid.to_owned()),
                         description: None,
                         definition_format: None,
+                        sensitivity_label_id: None,
                         platform_creation_payload: None,
                     },
                     parts: vec![],
@@ -1036,6 +1039,7 @@ mod tests {
                         logical_id: Some("lid-notebook-001".to_owned()),
                         description: None,
                         definition_format: None,
+                        sensitivity_label_id: None,
                         platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
@@ -1104,6 +1108,7 @@ mod tests {
                         logical_id: Some(lakehouse_lid.to_owned()),
                         description: None,
                         definition_format: None,
+                        sensitivity_label_id: None,
                         platform_creation_payload: None,
                     },
                     parts: vec![],
@@ -1122,6 +1127,7 @@ mod tests {
                         logical_id: Some("lid-notebook-002".to_owned()),
                         description: None,
                         definition_format: None,
+                        sensitivity_label_id: None,
                         platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
@@ -1188,6 +1194,7 @@ mod tests {
                     logical_id: None, // No logical ID → skip validation
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {

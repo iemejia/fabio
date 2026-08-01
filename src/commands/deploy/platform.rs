@@ -48,6 +48,10 @@ pub struct PlatformMetadata {
     pub description: Option<String>,
     /// Definition format required by the Fabric API (e.g., "ipynb" for Notebooks).
     pub definition_format: Option<String>,
+    /// Sensitivity label UUID carried in `.platform` `metadata.sensitivityLabelId`
+    /// (git-integration / fabric-cicd repos use platformProperties 2.1.0). Applied
+    /// on create when no governance sidecar label is present.
+    pub sensitivity_label_id: Option<String>,
     /// Optional creation payload embedded in `.platform` metadata (fabric-cicd compatible).
     #[serde(skip)]
     pub platform_creation_payload: Option<serde_json::Value>,
@@ -163,12 +167,21 @@ fn parse_platform_file(path: &Path) -> Result<PlatformMetadata> {
         .and_then(|m| m.get("creationPayload"))
         .cloned();
 
+    // Sensitivity label carried in .platform metadata (platformProperties 2.1.0,
+    // used by Fabric Git Integration / fabric-cicd). Without this, an imported
+    // label would be silently dropped.
+    let sensitivity_label_id = metadata
+        .get("sensitivityLabelId")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned);
+
     Ok(PlatformMetadata {
         item_type,
         display_name,
         logical_id,
         description,
         definition_format,
+        sensitivity_label_id,
         platform_creation_payload,
     })
 }
@@ -650,7 +663,7 @@ pub fn write_source_directory(
 /// Build the JSON content for a `.platform` file.
 fn build_platform_json(metadata: &PlatformMetadata) -> String {
     let mut obj = serde_json::json!({
-        "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.1.0/schema.json",
         "metadata": {
             "type": metadata.item_type,
             "displayName": metadata.display_name,
@@ -662,6 +675,11 @@ fn build_platform_json(metadata: &PlatformMetadata) -> String {
 
     if let Some(ref desc) = metadata.description {
         obj["metadata"]["description"] = serde_json::Value::from(desc.as_str());
+    }
+
+    // sensitivityLabelId is a platformProperties 2.1.0 metadata field.
+    if let Some(ref label_id) = metadata.sensitivity_label_id {
+        obj["metadata"]["sensitivityLabelId"] = serde_json::Value::from(label_id.as_str());
     }
 
     if let Some(ref lid) = metadata.logical_id {
@@ -756,6 +774,85 @@ mod tests {
             meta.logical_id.as_deref(),
             Some("99b570c5-0c79-9dc4-4c9b-fa16c621384c")
         );
+        // A 2.0.0 .platform has no sensitivityLabelId.
+        assert_eq!(meta.sensitivity_label_id, None);
+    }
+
+    #[test]
+    fn test_parse_platform_file_sensitivity_label() {
+        // platformProperties 2.1.0 carries metadata.sensitivityLabelId (used by
+        // Fabric Git Integration / fabric-cicd). It must be parsed, not dropped.
+        let dir = TempDir::new().unwrap();
+        let platform = dir.path().join(".platform");
+        fs::write(
+            &platform,
+            r#"{
+                "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.1.0/schema.json",
+                "metadata": {
+                    "type": "Notebook",
+                    "displayName": "Labeled",
+                    "sensitivityLabelId": "ce9c66be-6a5a-4d0b-9f3f-111122223333"
+                },
+                "config": { "version": "2.0" }
+            }"#,
+        )
+        .unwrap();
+
+        let meta = parse_platform_file(&platform).unwrap();
+        assert_eq!(
+            meta.sensitivity_label_id.as_deref(),
+            Some("ce9c66be-6a5a-4d0b-9f3f-111122223333")
+        );
+    }
+
+    #[test]
+    fn test_build_platform_json_sensitivity_label_roundtrip() {
+        let meta = PlatformMetadata {
+            item_type: "Notebook".to_owned(),
+            display_name: "Labeled".to_owned(),
+            logical_id: None,
+            description: None,
+            definition_format: None,
+            sensitivity_label_id: Some("ce9c66be-6a5a-4d0b-9f3f-111122223333".to_owned()),
+            platform_creation_payload: None,
+        };
+        let json = build_platform_json(&meta);
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        // Emits the 2.1.0 schema (the version that defines sensitivityLabelId).
+        assert!(
+            v["$schema"]
+                .as_str()
+                .unwrap()
+                .contains("platformProperties/2.1.0"),
+            "expected 2.1.0 schema, got {}",
+            v["$schema"]
+        );
+        assert_eq!(
+            v["metadata"]["sensitivityLabelId"],
+            "ce9c66be-6a5a-4d0b-9f3f-111122223333"
+        );
+
+        // Round-trips back through the parser.
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join(".platform");
+        fs::write(&path, &json).unwrap();
+        let reparsed = parse_platform_file(&path).unwrap();
+        assert_eq!(reparsed.sensitivity_label_id, meta.sensitivity_label_id);
+    }
+
+    #[test]
+    fn test_build_platform_json_omits_label_when_absent() {
+        let meta = PlatformMetadata {
+            item_type: "Notebook".to_owned(),
+            display_name: "Plain".to_owned(),
+            logical_id: None,
+            description: None,
+            definition_format: None,
+            sensitivity_label_id: None,
+            platform_creation_payload: None,
+        };
+        let v: serde_json::Value = serde_json::from_str(&build_platform_json(&meta)).unwrap();
+        assert!(v["metadata"].get("sensitivityLabelId").is_none());
     }
 
     #[test]
@@ -892,6 +989,7 @@ mod tests {
                 logical_id: Some("lid-123".to_owned()),
                 description: None,
                 definition_format: None,
+                sensitivity_label_id: None,
                 platform_creation_payload: None,
             },
             vec![DefinitionPart {

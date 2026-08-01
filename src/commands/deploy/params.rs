@@ -1557,6 +1557,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
@@ -1626,6 +1627,7 @@ mod tests {
                         logical_id: None,
                         description: None,
                         definition_format: None,
+                        sensitivity_label_id: None,
                         platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
@@ -1648,6 +1650,7 @@ mod tests {
                         logical_id: None,
                         description: None,
                         definition_format: None,
+                        sensitivity_label_id: None,
                         platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
@@ -1698,6 +1701,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
@@ -1769,6 +1773,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
@@ -1835,6 +1840,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
@@ -1897,6 +1903,7 @@ mod tests {
                         logical_id: None,
                         description: None,
                         definition_format: None,
+                        sensitivity_label_id: None,
                         platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
@@ -1919,6 +1926,7 @@ mod tests {
                         logical_id: None,
                         description: None,
                         definition_format: None,
+                        sensitivity_label_id: None,
                         platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
@@ -1989,6 +1997,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
@@ -2048,6 +2057,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
@@ -2118,6 +2128,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
@@ -2207,6 +2218,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
@@ -2278,6 +2290,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
@@ -2345,6 +2358,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
@@ -2419,6 +2433,7 @@ mod tests {
                         logical_id: None,
                         description: None,
                         definition_format: None,
+                        sensitivity_label_id: None,
                         platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
@@ -2441,6 +2456,7 @@ mod tests {
                         logical_id: None,
                         description: None,
                         definition_format: None,
+                        sensitivity_label_id: None,
                         platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
@@ -2525,6 +2541,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
@@ -2592,6 +2609,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
@@ -2665,6 +2683,7 @@ mod tests {
                         logical_id: None,
                         description: None,
                         definition_format: None,
+                        sensitivity_label_id: None,
                         platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
@@ -2687,6 +2706,7 @@ mod tests {
                         logical_id: None,
                         description: None,
                         definition_format: None,
+                        sensitivity_label_id: None,
                         platform_creation_payload: None,
                     },
                     parts: vec![DefinitionPart {
@@ -2851,6 +2871,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![],
@@ -2908,6 +2929,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![],
@@ -2970,6 +2992,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
@@ -3013,6 +3036,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![],
@@ -3063,6 +3087,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![DefinitionPart {
@@ -3124,6 +3149,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![],
@@ -3181,6 +3207,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![],
@@ -3232,6 +3259,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![],
@@ -3301,6 +3329,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![],
@@ -3398,6 +3427,7 @@ mod tests {
                     logical_id: None,
                     description: None,
                     definition_format: None,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 },
                 parts: vec![],

@@ -206,6 +206,7 @@ async fn fetch_definitions_parallel(
                     logical_id: extract_logical_id(&data),
                     description,
                     definition_format,
+                    sensitivity_label_id: None,
                     platform_creation_payload: None,
                 };
 
@@ -222,6 +223,7 @@ async fn fetch_definitions_parallel(
                         logical_id: None,
                         description,
                         definition_format: None,
+                        sensitivity_label_id: None,
                         platform_creation_payload: None,
                     };
                     exported.push((metadata, Vec::new()));
