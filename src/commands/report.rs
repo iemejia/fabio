@@ -334,6 +334,29 @@ async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Re
     Ok(())
 }
 
+/// Build the `definition.pbir` binding a report to a semantic model by ID.
+///
+/// The MS schema (`report/definitionProperties`) marks `$schema` as REQUIRED.
+/// The 6-field `byConnection` (binding by `pbiModelDatabaseName`) matches the
+/// 1.x shape (2.x allows only `connectionString`), so we reference the 1.0.0
+/// schema URL. Fabric normalizes the stored form to 2.0.0 on ingest.
+fn build_dataset_pbir(dataset_id: &str) -> Value {
+    serde_json::json!({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definitionProperties/1.0.0/schema.json",
+        "version": "4.0",
+        "datasetReference": {
+            "byConnection": {
+                "connectionString": null,
+                "pbiServiceModelId": null,
+                "pbiModelVirtualServerName": "sobe_wowvirtualserver",
+                "pbiModelDatabaseName": dataset_id,
+                "name": "EntityDataSource",
+                "connectionType": "pbiServiceXmlaStyleLive"
+            }
+        }
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn create(
     cli: &Cli,
@@ -348,20 +371,8 @@ async fn create(
     let mut parts: Vec<Value> = Vec::new();
 
     if let Some(dataset_id) = dataset {
-        // Auto-generate definition.pbir binding to the specified dataset
-        let pbir = serde_json::json!({
-            "version": "4.0",
-            "datasetReference": {
-                "byConnection": {
-                    "connectionString": null,
-                    "pbiServiceModelId": null,
-                    "pbiModelVirtualServerName": "sobe_wowvirtualserver",
-                    "pbiModelDatabaseName": dataset_id,
-                    "name": "EntityDataSource",
-                    "connectionType": "pbiServiceXmlaStyleLive"
-                }
-            }
-        });
+        // Auto-generate definition.pbir binding to the specified dataset.
+        let pbir = build_dataset_pbir(dataset_id);
         let pbir_encoded = BASE64.encode(pbir.to_string().as_bytes());
         parts.push(serde_json::json!({
             "path": "definition.pbir",
@@ -680,4 +691,26 @@ async fn publish_to_web(cli: &Cli, client: &FabricClient, workspace: &str, id: &
     });
     output::render_object(cli, &result, "embedUrl");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dataset_pbir_conforms_to_ms_schema() {
+        // MS report/definitionProperties requires $schema + version +
+        // datasetReference; the 6-field byConnection matches the 1.x schema.
+        let pbir = build_dataset_pbir("model-uuid-123");
+        let schema = pbir["$schema"].as_str().unwrap();
+        assert!(
+            schema.contains("report/definitionProperties/1.") && schema.ends_with("/schema.json"),
+            "unexpected $schema: {schema}"
+        );
+        assert_eq!(pbir["version"], "4.0");
+        let by_conn = &pbir["datasetReference"]["byConnection"];
+        assert_eq!(by_conn["pbiModelDatabaseName"], "model-uuid-123");
+        assert_eq!(by_conn["name"], "EntityDataSource");
+        assert_eq!(by_conn["connectionType"], "pbiServiceXmlaStyleLive");
+    }
 }

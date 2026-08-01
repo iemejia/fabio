@@ -4,7 +4,7 @@
   "create_command": "fabio report create --workspace <WS> --name <NAME> --dataset <SEMANTIC_MODEL_ID>",
   "definition_format": "PBIR-Legacy (report.json) or PBIR (definition/ folder)",
   "definition_parts": [
-    {"path": "definition.pbir", "description": "REQUIRED. Semantic model binding (pbiModelDatabaseName = semantic model UUID)"},
+    {"path": "definition.pbir", "description": "REQUIRED. Semantic model binding (pbiModelDatabaseName = semantic model UUID). MS schema requires $schema; fabio's --dataset binding sends the report/definitionProperties/1.0.0 schema URL (6-field byConnection); Fabric normalizes to 2.0.0 on ingest."},
     {"path": "report.json", "description": "PBIR-Legacy: all pages and visuals in one file"},
     {"path": "definition/version.json", "description": "PBIR: version metadata (version must be semver like '4.0.0')"},
     {"path": "definition/report.json", "description": "PBIR: report-level settings and theme"},

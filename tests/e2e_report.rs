@@ -239,3 +239,120 @@ fn report_export_rejects_paginated_only_format() {
         .failure()
         .stderr(predicate::str::contains("Unsupported export format"));
 }
+
+/// Live conformance test: `report create --dataset` must produce a
+/// `definition.pbir` that carries the MS-required `$schema` field, and the
+/// create must succeed end-to-end. Also exercises `semantic-model create` whose
+/// `definition.pbism` now carries `$schema`.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn report_create_dataset_pbir_has_schema() {
+    use std::io::Write;
+
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+
+    // 1. Create a minimal V3 semantic model (pbism now includes $schema).
+    let dir = tempfile::tempdir().unwrap();
+    let bim = dir.path().join("model.bim");
+    let mut f = std::fs::File::create(&bim).unwrap();
+    f.write_all(
+        br#"{"compatibilityLevel":1604,"model":{"defaultPowerBIDataSourceVersion":"powerBI_V3","culture":"en-US","tables":[{"name":"T","columns":[{"name":"c","dataType":"string","sourceColumn":"[c]","type":"calculatedTableColumn"}],"partitions":[{"name":"T","mode":"import","source":{"type":"calculated","expression":"DATATABLE(\"c\", STRING, {{\"x\"}})"}}]}]}}"#,
+    )
+    .unwrap();
+
+    let sm_assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            ws,
+            "--name",
+            "fabio-e2e-schema-model",
+            "--file",
+            bim.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let sm_id = parse_json(&sm_assert)["data"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // 2. Create a report bound to it (auto-generates definition.pbir with $schema).
+    let rep_assert = fabio()
+        .args([
+            "report",
+            "create",
+            "--workspace",
+            ws,
+            "--name",
+            "fabio-e2e-schema-report",
+            "--dataset",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+    let rep_id = parse_json(&rep_assert)["data"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // 3. The report's definition.pbir must carry a report/definitionProperties $schema.
+    let def_assert = fabio()
+        .args([
+            "report",
+            "get-definition",
+            "--workspace",
+            ws,
+            "--id",
+            &rep_id,
+            "--decode",
+        ])
+        .assert()
+        .success();
+    let def = parse_json(&def_assert);
+    let parts = def["data"]["definition"]["parts"].as_array().unwrap();
+    let pbir = parts
+        .iter()
+        .find(|p| {
+            p["path"].as_str().is_some_and(|s| {
+                std::path::Path::new(s)
+                    .extension()
+                    .is_some_and(|e| e == "pbir")
+            })
+        })
+        .expect("definition.pbir present");
+    let decoded = pbir
+        .get("decodedPayload")
+        .cloned()
+        .expect("get-definition --decode yields decodedPayload");
+    let pbir_obj: serde_json::Value = match decoded {
+        serde_json::Value::String(s) => serde_json::from_str(&s).unwrap(),
+        obj @ serde_json::Value::Object(_) => obj,
+        other => panic!("unexpected decodedPayload shape: {other}"),
+    };
+    let schema = pbir_obj["$schema"].as_str().unwrap_or_default();
+    assert!(
+        schema.contains("report/definitionProperties/"),
+        "pbir $schema missing/unexpected: {schema}"
+    );
+
+    // Cleanup.
+    fabio()
+        .args(["report", "delete", "--workspace", ws, "--id", &rep_id])
+        .assert()
+        .success();
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            ws,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+}

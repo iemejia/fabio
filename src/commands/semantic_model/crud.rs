@@ -88,6 +88,18 @@ pub(super) async fn show(
     Ok(())
 }
 
+/// Build the `definition.pbism` for a semantic model.
+///
+/// The MS schema (`semanticModel/definitionProperties/1.0.0`) marks `$schema`
+/// and `version` as REQUIRED. Version "4.0" for TMDL, "3.0" for model.bim (v3
+/// JSON); Fabric normalizes the stored version on ingest.
+fn build_pbism(is_tmdl: bool) -> Value {
+    serde_json::json!({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/semanticModel/definitionProperties/1.0.0/schema.json",
+        "version": if is_tmdl { "4.0" } else { "3.0" }
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn create(
     cli: &Cli,
@@ -119,10 +131,8 @@ pub(super) async fn create(
         "payloadType": "InlineBase64"
     })];
 
-    // Always include definition.pbism (required by Fabric API)
-    // Version "4.0" for TMDL, "3.0" for model.bim (v3 JSON)
-    let pbism_version = if is_tmdl { "4.0" } else { "3.0" };
-    let pbism = serde_json::json!({ "version": pbism_version });
+    // Always include definition.pbism (required by Fabric API).
+    let pbism = build_pbism(is_tmdl);
     let pbism_encoded = BASE64.encode(pbism.to_string().as_bytes());
     parts.push(serde_json::json!({
         "path": "definition.pbism",
@@ -376,5 +386,20 @@ mod tests {
         let enriched = enrich_create_error(err);
         let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
         assert!(fabio_err.hint.as_ref().unwrap().contains("tab"));
+    }
+
+    #[test]
+    fn pbism_conforms_to_ms_schema() {
+        // MS semanticModel/definitionProperties/1.0.0 requires $schema + version.
+        for (is_tmdl, want_version) in [(true, "4.0"), (false, "3.0")] {
+            let pbism = build_pbism(is_tmdl);
+            let schema = pbism["$schema"].as_str().unwrap();
+            assert!(
+                schema.contains("semanticModel/definitionProperties/1.")
+                    && schema.ends_with("/schema.json"),
+                "unexpected $schema: {schema}"
+            );
+            assert_eq!(pbism["version"], want_version);
+        }
     }
 }

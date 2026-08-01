@@ -4,7 +4,7 @@
   "create_command": "fabio semantic-model create --workspace <WS> --name <NAME> --file <TMDL_OR_BIM>",
   "definition_format": "TMDL (Direct Lake) or model.bim (Import)",
   "definition_parts": [
-    {"path": "definition.pbism", "description": "Required entry point. TMDL: {\"version\":\"4.2\",\"settings\":{}} with schema URL. model.bim: {\"version\":\"3.0\"}"},
+    {"path": "definition.pbism", "description": "Required entry point. MS schema requires $schema + version. fabio sends {\"$schema\":\".../semanticModel/definitionProperties/1.0.0/schema.json\",\"version\":\"4.0\"} for TMDL and version \"3.0\" for model.bim; Fabric normalizes the stored version (e.g. to 4.2)."},
     {"path": "model.tmdl", "description": "TMDL: model-level settings and expressions"},
     {"path": "definition/tables/<Name>.tmdl", "description": "TMDL: one file per table with columns/measures/partitions"},
     {"path": "model.bim", "description": "Import: full tabular model JSON (compatibilityLevel 1604, powerBI_V3)"}
