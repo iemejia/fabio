@@ -32,8 +32,11 @@
 - `src/commands/sql_database/`: list/show/create/update/delete/query/plan/connection-string/import (TDS + type inference) + definitions/mirroring/cmk/audit + insights (queries-running/history/kill) + statistics (list/show/create/update/delete)
 - `src/commands/tds_utils.rs`: Shared TDS utilities (resolve_sql_input, parse_connection_string, execute_and_render_sql, capture_query_plan, column_value_to_json)
 - `src/commands/dataagent.rs`: list/show/create/update/delete/query/get-definition/update-definition/publish + get-config/update-config, add/remove/list/show-datasource, select-tables, list-elements/describe-element, add/remove/list-fewshots/upload-fewshots
-- `src/commands/git.rs`: status/commit/pull/connect/disconnect/initialize/switch/connection/credentials/show-tracked/relation (relation submodule imported via `#[path]` from git_relation.rs)
-- `src/commands/git_relation.rs`: relation list/create/delete (Git WorkspaceRelations Preview API — base/branch links between workspaces), sibling-file submodule of `git.rs`
+- `src/commands/git/mod.rs`: GitCommand/ConnectionCommand/CredentialsCommand enums + execute() dispatch + shared `enrich_git_connect_error` + unit tests (directory module)
+- `src/commands/git/sync.rs`: status/commit/pull/show-tracked
+- `src/commands/git/connect.rs`: connect/disconnect/init/checkout + connection & credentials subcommands
+- `src/commands/git/branch_out.rs`: branch-out (create/recycle a feature workspace from a branch)
+- `src/commands/git/relation.rs`: relation list/create/delete (Git WorkspaceRelations Preview API — base/branch links between workspaces)
 - `src/commands/ontology/mod.rs`: OntologyCommand enum + execute() dispatch + shared `read_file_or_stdin` (directory module)
 - `src/commands/ontology/crud.rs`: list/show/create/update/delete
 - `src/commands/ontology/definitions.rs`: get-definition/update-definition + RDF/folder definition builders + unit tests
