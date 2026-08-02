@@ -39,6 +39,7 @@ pub async fn import_owl(
     database: Option<&str>,
     timestamp_column: Option<&str>,
     bindings: Option<&str>,
+    suppress_output: bool,
 ) -> Result<()> {
     // Validate arguments
     if workspace.is_some() && id.is_none() {
@@ -144,7 +145,7 @@ pub async fn import_owl(
 
     // Push to Fabric if workspace+id provided
     if let (Some(ws), Some(ont_id)) = (workspace, id) {
-        push_to_fabric(cli, client, ws, ont_id, &parts).await?;
+        push_to_fabric(cli, client, ws, ont_id, &parts, suppress_output).await?;
     } else if output_dir.is_some() {
         // Only exported locally
         let mut obj = serde_json::json!({
@@ -2448,6 +2449,7 @@ async fn push_to_fabric(
     workspace: &str,
     id: &str,
     parts: &[FabricPart],
+    suppress_output: bool,
 ) -> Result<()> {
     // Build definition parts array
     let api_parts: Vec<Value> = parts
@@ -2511,13 +2513,17 @@ async fn push_to_fabric(
         if let Some(h) = &hint {
             obj["hint"] = Value::from(h.clone());
         }
-        output::render_object(cli, &obj, "status");
+        if !suppress_output {
+            output::render_object(cli, &obj, "status");
+        }
     } else {
         let mut data = data;
         if let (Some(h), Some(map)) = (&hint, data.as_object_mut()) {
             map.insert("hint".to_string(), Value::from(h.clone()));
         }
-        output::render_object(cli, &data, "id");
+        if !suppress_output {
+            output::render_object(cli, &data, "id");
+        }
     }
     Ok(())
 }

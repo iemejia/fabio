@@ -7728,6 +7728,40 @@
         },
         "mutates": false,
         "returns": "object"
+      },
+      "generate": {
+        "description": "Generate an ontology from a Power BI semantic model (entity types, properties, relationships)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--semantic-model": {
+            "type": "string",
+            "required": true,
+            "description": "Source semantic model ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Name for the new ontology"
+          },
+          "--lakehouse": {
+            "type": "string",
+            "description": "Lakehouse ID to bind entity types to (matches lakehouse tables by name)"
+          },
+          "--lakehouse-workspace": {
+            "type": "string",
+            "description": "Workspace of the lakehouse (defaults to --workspace)"
+          },
+          "--output-owl": {
+            "type": "string",
+            "description": "Write the generated OWL to a file instead of creating the ontology"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
       }
     }
   },

@@ -134,6 +134,20 @@ async fn run_dax_rows(
     Ok(rows)
 }
 
+/// Fetch an `INFO.VIEW.<function>()` introspection result as cleaned rows
+/// (DAX brackets stripped). Public within the crate so other command modules
+/// (e.g. `ontology generate`) can reuse the semantic-model schema.
+pub async fn fetch_info_view(
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    function: &str,
+) -> Result<Vec<Value>> {
+    let dax = format!("EVALUATE INFO.VIEW.{function}()");
+    let rows = run_dax_rows(client, workspace, id, &dax).await?;
+    Ok(strip_bracket_keys(&rows))
+}
+
 /// Render the result of an `INFO.VIEW.<function>()` introspection query.
 async fn info_view(
     cli: &Cli,
@@ -142,9 +156,7 @@ async fn info_view(
     id: &str,
     function: &str,
 ) -> Result<()> {
-    let dax = format!("EVALUATE INFO.VIEW.{function}()");
-    let rows = run_dax_rows(client, workspace, id, &dax).await?;
-    let items = strip_bracket_keys(&rows);
+    let items = fetch_info_view(client, workspace, id, function).await?;
     let columns: Vec<&str> = items
         .first()
         .and_then(Value::as_object)

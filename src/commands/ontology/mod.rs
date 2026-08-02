@@ -11,6 +11,7 @@ use crate::errors::{enrich_forbidden, enrich_ontology_definition_error};
 mod crud;
 mod definitions;
 mod entity_types;
+mod generate;
 pub mod import;
 mod mcp;
 mod search;
@@ -333,6 +334,32 @@ pub enum OntologyCommand {
         #[arg(long)]
         raw: bool,
     },
+    /// Generate an ontology from a Power BI semantic model (entity types, properties, relationships)
+    Generate {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Source semantic model ID
+        #[arg(long)]
+        semantic_model: String,
+
+        /// Name for the new ontology
+        #[arg(long)]
+        name: String,
+
+        /// Lakehouse ID to bind entity types to (matches lakehouse tables by name)
+        #[arg(long)]
+        lakehouse: Option<String>,
+
+        /// Workspace of the lakehouse (defaults to --workspace)
+        #[arg(long)]
+        lakehouse_workspace: Option<String>,
+
+        /// Write the generated OWL to a file instead of creating the ontology
+        #[arg(long)]
+        output_owl: Option<String>,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -459,6 +486,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
                 database.as_deref(),
                 timestamp_column.as_deref(),
                 bindings.as_deref(),
+                false,
             )
             .await
         }
@@ -508,6 +536,25 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
         } => search::search(cli, client, workspace, id, prompt, !raw)
             .await
             .map_err(|e| enrich_forbidden(e, "ontology search", "Viewer")),
+        OntologyCommand::Generate {
+            workspace,
+            semantic_model,
+            name,
+            lakehouse,
+            lakehouse_workspace,
+            output_owl,
+        } => generate::generate(
+            cli,
+            client,
+            workspace,
+            semantic_model,
+            name,
+            lakehouse.as_deref(),
+            lakehouse_workspace.as_deref(),
+            output_owl.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "ontology generate", "Member")),
     }
 }
 

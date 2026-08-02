@@ -3873,3 +3873,158 @@ fn ontology_search_drives_mcp_client() {
 
     delete_ontology(ws, &ont_id);
 }
+
+// ---------------------------------------------------------------------------
+// generate (client-side reproduction of the portal "Generate Ontology" from a
+// semantic model — the tutorial's Part 1)
+// ---------------------------------------------------------------------------
+
+/// A minimal import-mode model.bim with two related tables (queryable via
+/// INFO.VIEW without an external data source).
+fn retail_model_bim() -> String {
+    serde_json::json!({
+        "compatibilityLevel": 1604,
+        "model": {
+            "culture": "en-US",
+            "defaultPowerBIDataSourceVersion": "powerBI_V3",
+            "tables": [
+                {"name": "dimstore",
+                 "columns": [
+                    {"name": "StoreId", "dataType": "string", "sourceColumn": "StoreId"},
+                    {"name": "City", "dataType": "string", "sourceColumn": "City"},
+                    {"name": "Latitude", "dataType": "double", "sourceColumn": "Latitude"}],
+                 "partitions": [{"name": "dimstore", "source": {"type": "m",
+                    "expression": "let Source = #table(type table [StoreId=text,City=text,Latitude=number], {{\"S-PAR-01\",\"Paris\",48.85}}) in Source"}}]},
+                {"name": "factsales",
+                 "columns": [
+                    {"name": "SaleId", "dataType": "int64", "sourceColumn": "SaleId"},
+                    {"name": "StoreId", "dataType": "string", "sourceColumn": "StoreId"},
+                    {"name": "RevenueUSD", "dataType": "double", "sourceColumn": "RevenueUSD"}],
+                 "partitions": [{"name": "factsales", "source": {"type": "m",
+                    "expression": "let Source = #table(type table [SaleId=Int64.Type,StoreId=text,RevenueUSD=number], {{1,\"S-PAR-01\",170.0}}) in Source"}}]}
+            ],
+            "relationships": [
+                {"name": "r", "fromTable": "factsales", "fromColumn": "StoreId",
+                 "toTable": "dimstore", "toColumn": "StoreId", "crossFilteringBehavior": "oneDirection"}
+            ]
+        }
+    })
+    .to_string()
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn ontology_generate_from_semantic_model() {
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+
+    // Create a semantic model to generate from.
+    let dir = tempfile::tempdir().unwrap();
+    let bim = dir.path().join("model.bim");
+    std::fs::write(&bim, retail_model_bim()).unwrap();
+    let sm_name = unique_name("sm_gen");
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            ws,
+            "--name",
+            &sm_name,
+            "--file",
+            bim.to_str().unwrap(),
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+    let sm_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // generate --output-owl: read the model schema and synthesize OWL, no create.
+    let owl_path = dir.path().join("gen.owl");
+    let ont_name = unique_name("ont_gen");
+    fabio()
+        .args([
+            "ontology",
+            "generate",
+            "--workspace",
+            ws,
+            "--semantic-model",
+            &sm_id,
+            "--name",
+            &ont_name,
+            "--output-owl",
+            owl_path.to_str().unwrap(),
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let owl = std::fs::read_to_string(&owl_path).unwrap();
+    // Entity types = tables; typed properties; relationship = many->one side.
+    assert!(owl.contains("<rdfs:label>dimstore</rdfs:label>"));
+    assert!(owl.contains("<rdfs:label>factsales</rdfs:label>"));
+    assert!(owl.contains("factsales_has_dimstore"));
+    assert!(owl.contains("XMLSchema#double")); // RevenueUSD/Latitude
+    assert!(owl.contains("XMLSchema#long")); // SaleId
+    // dimstore.StoreId is the relationship's "one" side -> marked as identifier.
+    let idx = owl.find("dimstore.StoreId").unwrap();
+    assert!(owl[idx..idx + 400].contains("isIdentifier"));
+
+    // Full generate: create the ontology and verify its entity types.
+    let assert = fabio()
+        .args([
+            "ontology",
+            "generate",
+            "--workspace",
+            ws,
+            "--semantic-model",
+            &sm_id,
+            "--name",
+            &ont_name,
+            "--lakehouse",
+            &cfg.source_lakehouse,
+        ])
+        .timeout(std::time::Duration::from_mins(4))
+        .assert()
+        .success();
+    let ont_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let assert = fabio()
+        .args([
+            "ontology",
+            "list-entity-types",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+        ])
+        .assert()
+        .success();
+    let names: Vec<String> = extract_data(&parse_json(&assert))["values"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v["name"].as_str().unwrap().to_string())
+        .collect();
+    assert!(names.contains(&"dimstore".to_string()), "names: {names:?}");
+    assert!(names.contains(&"factsales".to_string()), "names: {names:?}");
+
+    // Cleanup.
+    delete_ontology(ws, &ont_id);
+    let _ = fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            ws,
+            "--id",
+            &sm_id,
+        ])
+        .assert();
+}

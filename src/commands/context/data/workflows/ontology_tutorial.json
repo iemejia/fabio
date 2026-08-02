@@ -1,0 +1,71 @@
+{
+  "name": "ontology_tutorial",
+  "description": "Reproduce the Microsoft Fabric ontology (preview) tutorial end-to-end with fabio: build the Lakeshore Retail lakehouse + eventhouse, generate an ontology from a semantic model (or import one), enrich it with time-series data, and consume it with a data agent and natural-language queries. Mirrors https://learn.microsoft.com/fabric/iq/ontology/tutorial-0-introduction.",
+  "steps": [
+    {
+      "step": "Create the lakehouse and load the static tables",
+      "commands": [
+        "fabio lakehouse create --workspace <WS> --name OntologyDataLH",
+        "fabio lakehouse upload --workspace <WS> --id <LH> --source-path DimProducts.csv --dest-path Files/DimProducts.csv",
+        "fabio lakehouse load-table --workspace <WS> --id <LH> --table dimproducts --path Files/DimProducts.csv --format Csv",
+        "# repeat upload+load-table for DimStore, FactSales, Freezer (table names lowercased)"
+      ],
+      "notes": "Do NOT load FreezerTelemetry.csv here — it goes to the eventhouse (streaming/time-series)."
+    },
+    {
+      "step": "Create the eventhouse + KQL table and ingest the telemetry",
+      "commands": [
+        "fabio eventhouse create --workspace <WS> --name TelemetryDataEH",
+        "fabio kql-database ingest --workspace <WS> --id <KQL_DB> --table FreezerTelemetry --file FreezerTelemetry.csv --create-table"
+      ],
+      "notes": "The eventhouse auto-creates a KQL database of the same name. The FreezerTelemetry table has a timestamp column used for time-series binding."
+    },
+    {
+      "step": "Build the ontology — Option A: generate from a semantic model (portal-parity, client-side)",
+      "commands": [
+        "# create a Direct Lake semantic model over the lakehouse tables first (semantic-model create --file <model> --connection <sql-endpoint-id>), then:",
+        "fabio ontology generate --workspace <WS> --semantic-model <SM_ID> --name RetailSalesOntology --lakehouse <LH>"
+      ],
+      "notes": "generate reads the model's tables/columns/relationships via INFO.VIEW, synthesizes entity types + typed properties + relationship types + keys, and (with --lakehouse) binds each entity to its same-named lakehouse table. This reproduces the portal's 'Generate Ontology' (which has no REST API). Inspect first with --output-owl <file>."
+    },
+    {
+      "step": "Build the ontology — Option B: build directly from OneLake (no semantic model)",
+      "commands": [
+        "fabio ontology create --workspace <WS> --name RetailSalesOntology",
+        "fabio ontology import --workspace <WS> --id <ONT> --file schema.owl --lakehouse <LH> --bindings map.json"
+      ],
+      "notes": "Author an OWL/TTL schema (entity types + properties + relationships) and a bindings map (entity->table), or bootstrap OWL from a tenant scan: fabio context tenant --format owl."
+    },
+    {
+      "step": "Enrich the ontology with time-series (eventhouse) data",
+      "commands": [
+        "fabio ontology bind --workspace <WS> --id <ONT> --eventhouse <EH> --cluster-uri <URI> --database <DB> --timestamp-column timestamp --bindings freezer_ts.json"
+      ],
+      "notes": "Bind the Freezer entity's time-series properties (temperatureC, humidityPct, doorOpen) from the FreezerTelemetry eventhouse table. An entity can carry BOTH a static lakehouse binding and a time-series eventhouse binding."
+    },
+    {
+      "step": "Inspect the ontology",
+      "commands": [
+        "fabio ontology list-entity-types --workspace <WS> --id <ONT> --include-properties",
+        "fabio ontology get-definition --workspace <WS> --id <ONT> --decode"
+      ],
+      "notes": "list-entity-types reproduces the ontology MCP server's list_ontology_entity_types tool offline (schema exploration)."
+    },
+    {
+      "step": "Consume the ontology with a data agent + natural-language queries",
+      "commands": [
+        "fabio data-agent create --workspace <WS> --name RetailOntologyAgent",
+        "fabio data-agent add-datasource --workspace <WS> --id <DA> --artifact <ONT> --artifact-type Ontology",
+        "fabio data-agent update-config --workspace <WS> --id <DA> --instructions \"Support group by in GQL\"",
+        "fabio data-agent publish --workspace <WS> --id <DA>",
+        "fabio data-agent query --workspace <WS> --id <DA> --prompt \"What is the top product by revenue across all stores?\""
+      ],
+      "notes": "The 'Support group by in GQL' instruction improves aggregation. Alternatively, query the ontology directly (its MCP search_ontology tool) with: fabio ontology search --workspace <WS> --id <ONT> --prompt \"...\"."
+    }
+  ],
+  "see_also": [
+    "fabio context persona data-engineer",
+    "fabio context schema Ontology",
+    "fabio context best-practices lro"
+  ]
+}

@@ -13,6 +13,7 @@ license: MIT
 
 ## When to use
 - Creating/evolving an ontology item (entity types, relationship types, data bindings).
+- Generating an ontology FROM a Power BI semantic model ('ontology generate') — client-side reproduction of the portal's 'Generate Ontology' (which has no REST API): reads the model's tables/columns/relationships and synthesizes entity types + typed properties + relationship types + keys + lakehouse bindings.
 - Binding an entity to one or MULTIPLE data sources — Lakehouse Delta (--lakehouse) and/or Eventhouse KustoTable — with generated entity Documents + ResourceLinks and entity-type inheritance carried from the imported schema.
 - Managing graph models and running graph querysets.
 - Modeling IoT/operational digital twins (Digital Twin Builder models and flows).
@@ -39,6 +40,7 @@ Manage ontologies (entity types, data bindings)
 | `fabio ontology create` | yes | Create an ontology |
 | `fabio ontology delete` | yes | Delete an ontology |
 | `fabio ontology export` | no | Export a Fabric Ontology to OWL format (RDF/XML or JSON-LD) |
+| `fabio ontology generate` | yes | Generate an ontology from a Power BI semantic model (entity types, properties, relationships) |
 | `fabio ontology get-definition` | no | Get the ontology definition (entity types, bindings) |
 | `fabio ontology import` | yes | Import an OWL ontology (RDF/XML or JSON-LD) and convert to Fabric format |
 | `fabio ontology list` | no | List ontologies in a workspace |
@@ -111,6 +113,7 @@ Manage Digital Twin Builder flows
 - Use the item-definition format for ontology create/update (see 'fabio context schema ontology').
 
 ### PREFER
+- ontology generate --semantic-model <ID> --lakehouse <LH> to bootstrap an ontology from an existing semantic model (entity types + properties + relationships + bindings in one shot); inspect the synthesized OWL first with --output-owl.
 - context tenant --format owl to bootstrap an ontology schema from a real workspace scan, then ontology import.
 - ontology list-entity-types to explore an ontology's schema (entity types, properties, timeseries/untyped, inheritance) WITHOUT parsing the raw definition — byte-for-byte the same answer as the ontology MCP server's list_ontology_entity_types tool (minus the server-only etag), computed offline from getDefinition.
 - ontology import --lakehouse <ID> --bindings <map.json> to generate DataBindings + relationship Contextualizations in the same step, so the imported ontology is queryable rather than a bare schema.
@@ -155,6 +158,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 
 ## See also
 - fabio context schema ontology
+- fabio context workflow ontology_tutorial
 - fabio context persona data-engineer
 - fabio ontology mcp-url --workspace <WS> --id <ID> (consume the ontology as an MCP server)
 - fabio data-agent add-datasource --artifact-type Ontology (ground an agent on the ontology; scope with select-tables --elements)

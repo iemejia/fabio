@@ -1,6 +1,6 @@
 mod crud;
 mod definitions;
-mod operations;
+pub mod operations;
 mod powerbi;
 
 use anyhow::Result;
