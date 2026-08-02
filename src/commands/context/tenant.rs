@@ -243,7 +243,7 @@ pub(super) async fn execute(
         ContextFormat::Rdf => {
             let owl_model = build_owl_model_from_graph(&final_graph);
             let rdf_xml =
-                crate::commands::ontology_import::serialize_rdf_xml_from_model(&owl_model);
+                crate::commands::ontology::import::serialize_rdf_xml_from_model(&owl_model);
             (Value::Null, Some(rdf_xml))
         }
         ContextFormat::Full => {
@@ -1239,7 +1239,7 @@ fn format_as_owl_jsonld(graph: &ContextGraph) -> Value {
 /// Build an `OwlModelBuilder` from the context graph for RDF/XML serialization.
 fn build_owl_model_from_graph(
     graph: &ContextGraph,
-) -> crate::commands::ontology_import::OwlModelBuilder {
+) -> crate::commands::ontology::import::OwlModelBuilder {
     let base = "http://fabric.microsoft.com/ontology/";
 
     // Unique item types → classes
@@ -1301,7 +1301,7 @@ fn build_owl_model_from_graph(
         })
         .collect();
 
-    crate::commands::ontology_import::OwlModelBuilder {
+    crate::commands::ontology::import::OwlModelBuilder {
         classes,
         properties,
         relationships,

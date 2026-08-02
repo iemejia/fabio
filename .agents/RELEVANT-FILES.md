@@ -34,9 +34,11 @@
 - `src/commands/dataagent.rs`: list/show/create/update/delete/query/get-definition/update-definition/publish + get-config/update-config, add/remove/list/show-datasource, select-tables, list-elements/describe-element, add/remove/list-fewshots/upload-fewshots
 - `src/commands/git.rs`: status/commit/pull/connect/disconnect/initialize/switch/connection/credentials/show-tracked/relation (relation submodule imported via `#[path]` from git_relation.rs)
 - `src/commands/git_relation.rs`: relation list/create/delete (Git WorkspaceRelations Preview API — base/branch links between workspaces), sibling-file submodule of `git.rs`
-- `src/commands/ontology.rs`: list/show/create/update/delete/get-definition/update-definition/import/export
-- `src/commands/ontology_import.rs`: OWL RDF/XML + JSON-LD parser, Fabric format generator, RDF serializer (import + export)
-- `src/commands/ontology_mcp.rs`: `ontology mcp-url` — builds the ontology MCP server consumption URL (`build_mcp_url`) + existence check; unit tests
+- `src/commands/ontology/mod.rs`: OntologyCommand enum + execute() dispatch + shared `read_file_or_stdin` (directory module)
+- `src/commands/ontology/crud.rs`: list/show/create/update/delete
+- `src/commands/ontology/definitions.rs`: get-definition/update-definition + RDF/folder definition builders + unit tests
+- `src/commands/ontology/import.rs`: OWL RDF/XML + JSON-LD parser, Fabric format generator, RDF serializer (import/bind/export handlers)
+- `src/commands/ontology/mcp.rs`: `ontology mcp-url` — builds the ontology MCP server consumption URL (`build_mcp_url`) + existence check; unit tests
 - `src/commands/environment.rs`: list/show/create/update/delete/publish/cancel-publish/get-spark-settings/get-staging-spark-settings/upload-staging-library
 - `src/commands/data_pipeline.rs`: list/show/create/update/delete/run, create-schedule, list-schedules/get-schedule/update-schedule/delete-schedule, list-instances/get-instance
 - `src/commands/report.rs`: list/show/create/update/delete/get-definition/update-definition
