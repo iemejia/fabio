@@ -2524,3 +2524,14 @@ it CLIENT-SIDE with `fabio ontology generate --workspace <ws> --semantic-model <
 
 The full tutorial (lakehouse + eventhouse + ontology + data agent + NL query) is reproducible
 with fabio — see the `ontology_tutorial` workflow (`fabio context workflow ontology_tutorial`).
+
+### Full ontology tutorial — live end-to-end validation (all parts)
+
+The complete Fabric ontology tutorial was reproduced live with fabio (semantic-model pivot):
+- **Part 0** — `lakehouse create` + `upload` + `load-table` (DimProducts/DimStore/FactSales/Freezer); `semantic-model create` (import-mode model.bim with inline data); `eventhouse create`; `kql-database query --kql ".create table FreezerTelemetry (...)"` + `kql-database ingest --data <csv rows>` (verified `FreezerTelemetry | count` = ingested rows). ✓
+- **Part 1** — `ontology generate --semantic-model <SM> --lakehouse <LH>` → entity types + typed properties + relationships + queryable lakehouse `DataBindings`. ✓
+- **Part 2** — enrich with time-series: `ontology import --eventhouse <EH> --cluster-uri <URI> --database <KQLDB> --timestamp-column timestamp --bindings <map>` produced a Freezer entity `DataBinding` with `dataBindingType: TimeSeries`, `sourceType: KustoTable`, and the eventhouse cluster URI. ✓ (An entity can carry a static lakehouse binding AND an eventhouse time-series binding.)
+- **Part 3** — `ontology list-entity-types` (schema/instance inspection) ✓. The relationship-graph + query-builder are portal-only VISUALIZATIONS; their data queries map to `ontology search` (NL) — whose mechanism is validated but returns `isError:true` "could not be processed" on a capacity WITHOUT Fabric IQ NL reasoning provisioned.
+- **Part 4** — `data-agent create` → `add-datasource --artifact-type Ontology --artifact <ONT>` (grounds the agent on the ontology; stored as `fabricItemType: "Ontology"`) → `update-config --instructions "Support group by in GQL"` → `publish` → `query --prompt "..."`. ✓ **The data agent returns REAL grounded NL answers** — it reasons over the ontology's entities (e.g. correctly reports which data the ontology contains and which entities are absent).
+
+**Key distinction (live-verified)**: the Fabric **data agent** NL path (Copilot/Azure OpenAI) works for ontology grounding on this capacity, whereas the ontology's **native** `search_ontology` MCP tool (Fabric IQ reasoning) returns "could not be processed" — they are backed by different server-side AI features with different tenant/capacity prerequisites. fabio faithfully drives both and surfaces each one's real result.
