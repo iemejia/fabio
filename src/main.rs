@@ -4,6 +4,7 @@ mod agent;
 mod cli;
 mod client;
 mod commands;
+mod definition_spec;
 mod errors;
 mod llm;
 mod metrics;

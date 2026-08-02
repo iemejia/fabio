@@ -1,6 +1,4 @@
 use anyhow::Result;
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Subcommand;
 use serde_json::Value;
 
@@ -435,24 +433,18 @@ async fn update_definition(
             return Err(FabioError::with_hint(
                 ErrorCode::InvalidInput,
                 "Either --file or --content must be provided".to_string(),
-                "Example: fabio copy-job update-definition --workspace <WS> --id <ID> --file definition.json".to_string(),
-            ).into());
+                crate::definition_spec::definition_input_hint(
+                    "CopyJob",
+                    "copy-job",
+                    "update-definition",
+                ),
+            )
+            .into());
         }
     };
 
-    let encoded = BASE64.encode(script.as_bytes());
-
-    let body = serde_json::json!({
-        "definition": {
-            "parts": [
-                {
-                    "path": "CopyJobV1.json",
-                    "payload": encoded,
-                    "payloadType": "InlineBase64"
-                }
-            ]
-        }
-    });
+    let body =
+        crate::definition_spec::build_update_definition_body(&script, "copyjob-content.json");
 
     if output::dry_run_guard(
         cli,

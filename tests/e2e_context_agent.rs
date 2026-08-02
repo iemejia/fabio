@@ -632,8 +632,16 @@ fn find_knowledge_results_have_type_field() {
     for result in &knowledge_results {
         let result_type = result["type"].as_str().unwrap();
         assert!(
-            result_type == "best-practice" || result_type == "workflow",
-            "type should be 'best-practice' or 'workflow', got: {result_type}"
+            matches!(
+                result_type,
+                "best-practice"
+                    | "workflow"
+                    | "persona"
+                    | "disambiguation"
+                    | "item-schema"
+                    | "output-example"
+            ),
+            "unexpected knowledge type: {result_type}"
         );
         // Knowledge results should have command pointing to context subcommand
         let cmd = result["command"].as_str().unwrap();
@@ -658,12 +666,11 @@ fn find_command_results_lack_type_field() {
     let command_results: Vec<_> = results
         .iter()
         .filter(|r| {
+            // Command results are real CLI invocations, not `fabio context <helper>`
+            // knowledge pointers (best-practices, workflows, schemas, examples, ...).
             r["command"]
                 .as_str()
-                .is_some_and(|c| !c.starts_with("fabio context best-practices"))
-                && r["command"]
-                    .as_str()
-                    .is_some_and(|c| !c.starts_with("fabio context workflow"))
+                .is_some_and(|c| !c.starts_with("fabio context "))
         })
         .collect();
 

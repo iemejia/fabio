@@ -512,9 +512,13 @@ async fn create(
             "payloadType": "InlineBase64"
         }));
     } else {
-        return Err(FabioError::new(
+        return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
             "Provide --file, --definition, or --dataset".to_string(),
+            "Use --dataset <semantic-model-id> to create a report bound to a model, or \
+             --definition <folder> for a full PBIR report folder (validate it first: \
+             fabio report validate --source <folder>). See: fabio context schema Report."
+                .to_string(),
         )
         .into());
     }

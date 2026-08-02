@@ -226,6 +226,25 @@ pub(super) fn execute_find(cli: &Cli, query: &str) {
         &query_lower,
         &mut results,
     );
+    // Item-definition schemas — so a query like "notebook definition format"
+    // routes an agent to `fabio context schema <Type>`.
+    search_knowledge_entries(
+        super::schemas::entries(),
+        "item-schema",
+        "fabio context schema",
+        &query_tokens,
+        &query_lower,
+        &mut results,
+    );
+    // Output examples — response shapes for a command.
+    search_knowledge_entries(
+        super::examples::example_entries(),
+        "output-example",
+        "fabio context examples",
+        &query_tokens,
+        &query_lower,
+        &mut results,
+    );
 
     // Sort by score descending, take top 10.
     results.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));

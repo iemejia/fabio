@@ -73,6 +73,29 @@ pub enum ItemCommand {
         #[arg(long)]
         decode: bool,
     },
+    /// Validate an item definition offline (no API call) before `create`/`update-definition`
+    #[command(display_order = 4)]
+    ValidateDefinition {
+        /// Item type (e.g., Notebook, `SparkJobDefinition`). Enables per-type canonical-part checks.
+        #[arg(short = 't', long = "type")]
+        item_type: Option<String>,
+
+        /// Path to a JSON file containing the definition envelope ({"definition":{"parts":[...]}} or {"parts":[...]})
+        #[arg(long, group = "defn")]
+        file: Option<String>,
+
+        /// Inline JSON definition envelope
+        #[arg(long, group = "defn")]
+        definition: Option<String>,
+
+        /// Path to a folder of definition parts (assembled into an envelope, like a deploy item folder)
+        #[arg(long, group = "defn")]
+        dir: Option<String>,
+
+        /// Treat warnings (e.g. non-canonical part paths) as failures (exit non-zero)
+        #[arg(long)]
+        strict: bool,
+    },
     /// List connections used by an item
     #[command(display_order = 4)]
     ListConnections {
@@ -541,6 +564,20 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             definitions::get_definition(cli, client, workspace, id, format.as_deref(), *decode)
                 .await
         }
+        ItemCommand::ValidateDefinition {
+            item_type,
+            file,
+            definition,
+            dir,
+            strict,
+        } => definitions::validate_definition_offline(
+            cli,
+            item_type.as_deref(),
+            file.as_deref(),
+            definition.as_deref(),
+            dir.as_deref(),
+            *strict,
+        ),
         ItemCommand::ListConnections { workspace, id } => {
             crud::list_connections(cli, client, workspace, id).await
         }

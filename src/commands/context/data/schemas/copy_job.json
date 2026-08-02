@@ -4,8 +4,17 @@
   "create_command": "fabio copy-job create --workspace <WS> --name <NAME>",
   "definition_format": null,
   "definition_parts": [
-    {"path": "CopyJobV1.json", "description": "Copy job configuration with source/destination mappings"}
+    {"path": "copyjob-content.json", "description": "Copy job configuration: {\"properties\":{\"jobMode\":\"Batch\"},\"activities\":[...]}. This is the canonical export path. Verified live."},
+    {"path": ".platform", "description": "Optional Git-integration metadata (type + displayName)."}
   ],
+  "definition_content_template": {
+    "copyjob-content.json": {
+      "properties": {
+        "jobMode": "Batch"
+      },
+      "activities": []
+    }
+  },
   "creation_body_template": {
     "displayName": "{{name}}"
   },
@@ -17,12 +26,15 @@
     "Create is LRO",
     "getDefinition sends empty body {} (LRO)",
     "updateDefinition is LRO",
+    "The canonical part path is copyjob-content.json (the API also tolerates the alias CopyJobV1.json, but export/round-trip use copyjob-content.json). Verified live.",
     "Reset allows re-copying: --all or --entity-ids (mutually exclusive)",
-    "Required roles: Create/Delete need Member; Update/Definition need Contributor"
+    "Required roles: Create/Delete need Member; Update/Definition need Contributor",
+    "Validate offline before pushing: fabio item validate-definition --type CopyJob --dir <folder>"
   ],
   "related_commands": [
     "fabio copy-job get-definition --workspace <WS> --id <ID>",
     "fabio copy-job update-definition --workspace <WS> --id <ID> --file <FILE>",
+    "fabio item validate-definition --type CopyJob --dir <FOLDER>",
     "fabio copy-job reset --workspace <WS> --id <ID> --all",
     "fabio copy-job list --workspace <WS>",
     "fabio copy-job delete --workspace <WS> --id <ID>"

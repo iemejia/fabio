@@ -42,7 +42,11 @@ pub(super) async fn update_definition(
         FabioError::with_hint(
             ErrorCode::InvalidInput,
             format!("Failed to read file '{file}': {e}"),
-            "Provide a valid model.bim file path.".to_string(),
+            "Provide a model.bim (TMSL) file. A SemanticModel definition needs definition.pbism \
+             plus a model body (model.bim, or a definition/ folder of *.tmdl). \
+             See the canonical parts: fabio context schema SemanticModel. \
+             Validate offline: fabio item validate-definition --type SemanticModel --dir <folder>."
+                .to_string(),
         )
     })?;
     let encoded = BASE64.encode(content.as_bytes());

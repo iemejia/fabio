@@ -4,8 +4,22 @@
   "create_command": "fabio spark-job-definition create --workspace <WS> --name <NAME>",
   "definition_format": "SparkJobDefinitionV2",
   "definition_parts": [
-    {"path": "SparkJobDefinitionV2.json", "description": "Job configuration with mainFile, args, language, spark conf"}
+    {"path": "SparkJobDefinitionV1.json", "description": "Job configuration. NOTE: the FILENAME is V1 but the definitionFormat is V2 — do not confuse them. Verified live."},
+    {"path": ".platform", "description": "Optional Git-integration metadata (type + displayName)."}
   ],
+  "definition_content_template": {
+    "SparkJobDefinitionV1.json": {
+      "executableFile": "abfss://<ws>@onelake.dfs.fabric.microsoft.com/<lakehouse>.Lakehouse/Files/main.py",
+      "defaultLakehouseArtifactId": null,
+      "mainClass": null,
+      "additionalLakehouseIds": [],
+      "retryPolicy": null,
+      "commandLineArguments": null,
+      "additionalLibraryUris": null,
+      "language": "Python",
+      "environmentArtifactId": null
+    }
+  },
   "creation_body_template": {
     "displayName": "{{name}}"
   },
@@ -17,13 +31,15 @@
     "Create is LRO",
     "getDefinition/updateDefinition use type-specific endpoints (not generic items)",
     "Run job type is 'sparkjob' (lowercase)",
-    "Format auto-detected as SparkJobDefinitionV2 when .platform lacks definitionFormat",
-    "Definition JSON includes mainFile path, arguments array, language, and Spark properties"
+    "The definition part FILENAME is SparkJobDefinitionV1.json; the definitionFormat is SparkJobDefinitionV2 (auto-detected when .platform lacks definitionFormat). Verified live against the tenant.",
+    "For an accurate starting point, create the item then run get-definition to capture the real SparkJobDefinitionV1.json shape.",
+    "Validate offline before pushing: fabio item validate-definition --type SparkJobDefinition --dir <folder>"
   ],
   "related_commands": [
     "fabio spark-job-definition run --workspace <WS> --id <ID> [--wait]",
     "fabio spark-job-definition get-definition --workspace <WS> --id <ID>",
     "fabio spark-job-definition update-definition --workspace <WS> --id <ID> --file <FILE>",
+    "fabio item validate-definition --type SparkJobDefinition --dir <FOLDER>",
     "fabio spark-job-definition list --workspace <WS>"
   ]
 }

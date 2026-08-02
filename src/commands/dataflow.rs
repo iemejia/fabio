@@ -1,8 +1,6 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Subcommand;
 use serde_json::Value;
 use tokio::time::sleep;
@@ -538,24 +536,17 @@ async fn update_definition(
             return Err(FabioError::with_hint(
                 ErrorCode::InvalidInput,
                 "Either --file or --content must be provided".to_string(),
-                "Example: fabio dataflow update-definition --workspace <WS> --id <ID> --file dataflow.json".to_string(),
-            ).into());
+                crate::definition_spec::definition_input_hint(
+                    "Dataflow",
+                    "dataflow",
+                    "update-definition",
+                ),
+            )
+            .into());
         }
     };
 
-    let encoded = BASE64.encode(script.as_bytes());
-
-    let body = serde_json::json!({
-        "definition": {
-            "parts": [
-                {
-                    "path": "dataflow.json",
-                    "payload": encoded,
-                    "payloadType": "InlineBase64"
-                }
-            ]
-        }
-    });
+    let body = crate::definition_spec::build_update_definition_body(&script, "queryMetadata.json");
 
     if output::dry_run_guard(
         cli,

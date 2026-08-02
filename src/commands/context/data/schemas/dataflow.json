@@ -4,8 +4,19 @@
   "create_command": "fabio dataflow create --workspace <WS> --name <NAME>",
   "definition_format": null,
   "definition_parts": [
-    {"path": "dataflow.json", "description": "Dataflow definition with M queries and transformations"}
+    {"path": "queryMetadata.json", "description": "Settings: {\"formatVersion\":\"202502\",\"computeEngineSettings\":{\"allowFastCopy\":false},\"name\":null,\"allowNativeQueries\":false}. REQUIRED. Verified live."},
+    {"path": "mashup.pq", "description": "The Power Query M script (starts with 'section Section1;'). Holds the queries/transformations. Verified live."},
+    {"path": ".platform", "description": "Optional Git-integration metadata (type + displayName)."}
   ],
+  "definition_content_template": {
+    "queryMetadata.json": {
+      "formatVersion": "202502",
+      "computeEngineSettings": {"allowFastCopy": false},
+      "name": null,
+      "allowNativeQueries": false
+    },
+    "mashup.pq": "section Section1;"
+  },
   "creation_body_template": {
     "displayName": "{{name}}"
   },
@@ -16,15 +27,19 @@
   "notes": [
     "Create is LRO",
     "getDefinition sends empty body {} (LRO)",
+    "A Dataflow definition is MULTI-PART: queryMetadata.json (required) + mashup.pq (the M script). Sending mashup.pq alone fails; queryMetadata.json is required. Verified live.",
+    "fabio dataflow update-definition passes a full envelope through verbatim, so the reliable pattern is: get-definition -> edit the parts -> update-definition --file <envelope.json>.",
     "Two job types: 'execute' (runs dataflow) and 'applyChanges' (applies pending definition changes)",
     "Run supports --wait with polling (terminal states: Completed, Failed, Cancelled)",
     "execute-query returns binary Apache Arrow IPC stream (save to --file)",
-    "discover-parameters returns M parameters from the dataflow"
+    "discover-parameters returns M parameters from the dataflow",
+    "Validate offline before pushing: fabio item validate-definition --type Dataflow --dir <folder>"
   ],
   "related_commands": [
     "fabio dataflow run --workspace <WS> --id <ID> [--wait] [--job-type execute]",
     "fabio dataflow get-definition --workspace <WS> --id <ID>",
-    "fabio dataflow update-definition --workspace <WS> --id <ID> --file <FILE>",
+    "fabio dataflow update-definition --workspace <WS> --id <ID> --file <ENVELOPE.json>",
+    "fabio item validate-definition --type Dataflow --dir <FOLDER>",
     "fabio dataflow discover-parameters --workspace <WS> --id <ID>",
     "fabio dataflow execute-query --workspace <WS> --id <ID> --query-name <NAME> --file <OUTPUT>"
   ]

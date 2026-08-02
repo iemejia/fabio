@@ -1679,6 +1679,33 @@
         "returns": "object",
         "async": true
       },
+      "validate-definition": {
+        "description": "Validate an item definition offline (no API call) before create/update-definition",
+        "flags": {
+          "--type": {
+            "type": "string",
+            "description": "Item type (e.g., Notebook, SparkJobDefinition). Enables per-type canonical-part checks"
+          },
+          "--file": {
+            "type": "string",
+            "description": "Path to a JSON file containing the definition envelope ({\"definition\":{\"parts\":[...]}} or {\"parts\":[...]})"
+          },
+          "--definition": {
+            "type": "string",
+            "description": "Inline JSON definition envelope"
+          },
+          "--dir": {
+            "type": "string",
+            "description": "Path to a folder of definition parts (assembled into an envelope, like a deploy item folder)"
+          },
+          "--strict": {
+            "type": "bool",
+            "description": "Treat warnings (e.g. non-canonical part paths) as failures (exit non-zero)"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
       "list-connections": {
         "description": "List connections used by an item",
         "flags": {

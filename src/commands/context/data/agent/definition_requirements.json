@@ -1,0 +1,156 @@
+{
+  "_comment": "Source of truth for Fabric item-definition part requirements. Powers `fabio item validate-definition`, definition-authoring error hints, and `fabio context schema`. Canonical part paths are what `getDefinition`/Git-integration export return (and what deploy round-trips). The Fabric updateDefinition API is often LENIENT and tolerates alias filenames, so the offline validator flags a missing canonical part as a WARNING (not an error) unless --strict. Universal envelope rules (parts array, path/payload/payloadType, base64, JSON validity) are always errors. Verified live against the tenant where marked.",
+  "types": {
+    "Notebook": {
+      "requiredOneOf": [["notebook-content.py", "notebook-content.ipynb"]],
+      "optionalParts": [".platform", "notebook-settings.json"],
+      "format": "ipynb",
+      "note": "Source part is notebook-content.py with `# CELL ***` markers (format 'ipynb'), or a raw notebook-content.ipynb. Add notebook-settings.json (since Mar 2026) for auto-binding lakehouse dependencies. Verified live."
+    },
+    "DataPipeline": {
+      "requiredParts": ["pipeline-content.json"],
+      "optionalParts": [".platform"],
+      "note": "pipeline-content.json = {\"properties\":{\"activities\":[...]}}. Empty pipeline is {\"properties\":{\"activities\":[]}}. Verified live."
+    },
+    "CopyJob": {
+      "requiredParts": ["copyjob-content.json"],
+      "optionalParts": [".platform"],
+      "aliasParts": ["CopyJobV1.json"],
+      "note": "Canonical export part is copyjob-content.json = {\"properties\":{\"jobMode\":\"Batch\"},\"activities\":[]}. The API also accepts the alias CopyJobV1.json. Verified live."
+    },
+    "Dataflow": {
+      "requiredParts": ["queryMetadata.json", "mashup.pq"],
+      "optionalParts": [".platform"],
+      "aliasParts": ["dataflow.json"],
+      "note": "Canonical export parts are queryMetadata.json (settings) + mashup.pq (the Power Query M script). The API also tolerates a single dataflow.json part. Verified live."
+    },
+    "SparkJobDefinition": {
+      "requiredParts": ["SparkJobDefinitionV1.json"],
+      "optionalParts": [".platform"],
+      "format": "SparkJobDefinitionV2",
+      "note": "The part FILENAME is SparkJobDefinitionV1.json; the definitionFormat is SparkJobDefinitionV2 — do NOT confuse them. Content = {\"executableFile\",\"defaultLakehouseArtifactId\",\"mainClass\",\"additionalLakehouseIds\":[],\"commandLineArguments\",\"additionalLibraryUris\",\"language\",\"environmentArtifactId\"}. Verified live."
+    },
+    "Report": {
+      "requiredParts": ["definition.pbir"],
+      "requiredOneOf": [["report.json", "definition/report.json"]],
+      "optionalParts": [".platform", "definition/version.json", "definition/pages/pages.json", "StaticResources"],
+      "note": "definition.pbir binds the report to a semantic model (byConnection XOR byPath). report.json = PBIR-Legacy (v1.0); a definition/ folder = PBIR enhanced (v4.0+). Validate offline first: fabio report validate --source <folder>."
+    },
+    "PaginatedReport": {
+      "requiredParts": ["<displayName>.rdl"],
+      "optionalParts": [".platform"],
+      "note": "The single RDL part path MUST equal '<displayName>.rdl' or the API returns MissingDefinitionParts. The definition object must NOT include a 'format' field (sending format:PaginatedReportDefinition is rejected with InvalidDefinitionFormat)."
+    },
+    "SemanticModel": {
+      "requiredParts": ["definition.pbism"],
+      "requiredOneOf": [["model.bim", "definition/model.tmdl"]],
+      "optionalParts": [".platform", "definition/database.tmdl", "definition/tables", "definition/relationships.tmdl", "diagramLayout.json"],
+      "note": "definition.pbism declares the format. model.bim = TMSL (v1.0); a definition/ folder of *.tmdl = TMDL (v4.0+). Compat level 1604 for Direct Lake."
+    },
+    "VariableLibrary": {
+      "requiredParts": ["variables.json", "settings.json"],
+      "optionalParts": [".platform", "valueSets/*.json"],
+      "note": "variables.json (definitions) + settings.json (required). Alternate value sets live under valueSets/<name>.json using variableOverrides. Active set is a workspace setting, not part of the definition."
+    },
+    "Eventstream": {
+      "requiredParts": ["eventstream.json"],
+      "optionalParts": ["eventstreamProperties.json", ".platform"],
+      "note": "eventstream.json holds the streaming topology (sources, destinations, operators). Validate offline: fabio eventstream validate."
+    },
+    "Reflex": {
+      "requiredParts": ["ReflexEntities.json"],
+      "optionalParts": [".platform"],
+      "note": "ReflexEntities.json defines entities and rule actions (Data Activator). KQL sources cannot be configured via REST — use the portal."
+    },
+    "KQLDashboard": {
+      "requiredParts": ["RealTimeDashboard.json"],
+      "optionalParts": [".platform"],
+      "note": "RealTimeDashboard.json holds tiles, data sources (clusterUri + database), and KQL queries per tile."
+    },
+    "KQLQueryset": {
+      "requiredParts": ["RealTimeQueryset.json"],
+      "optionalParts": [".platform"],
+      "note": "RealTimeQueryset.json (NOT RawQueryset.kql): {\"queryset\":{\"version\",\"dataSources\":[{\"id\",\"clusterUri\",\"type\",\"databaseName\"}],\"tabs\":[{\"id\",\"content\",\"title\",\"dataSourceId\"}]}}. tab.content is the KQL text (\\n for newlines)."
+    },
+    "Map": {
+      "requiredParts": ["map.json"],
+      "optionalParts": [".platform"],
+      "note": "map.json holds the geospatial map definition (layers, data bindings)."
+    },
+    "GraphModel": {
+      "requiredParts": ["GraphModel.json"],
+      "optionalParts": [".platform"],
+      "note": "GraphModel.json defines the graph model (node/edge types and bindings)."
+    },
+    "OperationsAgent": {
+      "requiredParts": ["Configurations.json"],
+      "optionalParts": [".platform"],
+      "note": "Configurations.json holds the RTI operations agent config. The top-level shouldRun boolean activates it (Fabric coerces it back to false unless a data source + playbook are configured)."
+    },
+    "AnomalyDetector": {
+      "requiredParts": ["Configurations.json"],
+      "optionalParts": [".platform"],
+      "note": "Configurations.json holds the anomaly detector configuration."
+    },
+    "EventSchemaSet": {
+      "requiredParts": ["EventSchemaSetDefinition.json"],
+      "optionalParts": [".platform"],
+      "note": "EventSchemaSetDefinition.json defines the event schemas."
+    },
+    "MountedDataFactory": {
+      "requiredParts": ["mountedDataFactory-content.json"],
+      "optionalParts": [".platform"],
+      "note": "mountedDataFactory-content.json references the mounted Azure Data Factory."
+    },
+    "Environment": {
+      "requiredParts": ["environment.metadata.json"],
+      "optionalParts": [".platform"],
+      "note": "environment.metadata.json holds Spark compute + libraries. Publish staging after update: fabio environment publish."
+    },
+    "MirroredDatabase": {
+      "requiredParts": ["mirroring.json"],
+      "optionalParts": [".platform"],
+      "note": "mirroring.json holds the source connection + replication config."
+    },
+    "MirroredAzureDatabricksCatalog": {
+      "requiredParts": ["mirroring.json"],
+      "optionalParts": [".platform"],
+      "note": "mirroring.json holds the Azure Databricks (Unity Catalog) mirroring config."
+    },
+    "GraphQLApi": {
+      "requiredOneOf": [["graphql-definition.json", "schema.graphql"]],
+      "optionalParts": [".platform"],
+      "note": "graphql-definition.json (bindings) and/or schema.graphql (the GraphQL SDL). fabio graphql-api update-definition sends a single schema.graphql part."
+    },
+    "Ontology": {
+      "requiredParts": ["definition.json"],
+      "optionalParts": [".platform", "EntityTypes/*/definition.json", "RelationshipTypes/*/definition.json", "DataBindings/*.json"],
+      "note": "definition.json is the root; entity/relationship types and data bindings live in per-object subfolders. Untyped properties must NEVER appear in a DataBinding's propertyBindings."
+    },
+    "SnowflakeDatabase": {
+      "requiredParts": ["definition.json"],
+      "optionalParts": [".platform"],
+      "note": "definition.json holds the Snowflake mirroring/source config."
+    },
+    "UserDataFunction": {
+      "requiredParts": ["definition.json"],
+      "optionalParts": [".platform"],
+      "note": "definition.json holds the function metadata. Invoke a PUBLISHED function via its portal URL: fabio user-data-function invoke --url <url>."
+    },
+    "CosmosDbDatabase": {
+      "requiredParts": ["definition.json"],
+      "optionalParts": [".platform"],
+      "note": "definition.json holds the Cosmos DB (NoSQL) database config."
+    },
+    "DigitalTwinBuilder": {
+      "requiredParts": ["definition.json"],
+      "optionalParts": [".platform"],
+      "note": "definition.json holds the Digital Twin Builder model."
+    },
+    "DigitalTwinBuilderFlow": {
+      "requiredParts": ["definition.json"],
+      "optionalParts": [".platform"],
+      "note": "definition.json holds the Digital Twin Builder flow."
+    }
+  }
+}

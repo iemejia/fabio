@@ -4,8 +4,16 @@
   "create_command": "fabio data-pipeline create --workspace <WS> --name <NAME>",
   "definition_format": null,
   "definition_parts": [
-    {"path": "pipeline-content.json", "description": "Pipeline JSON with activities array, parameters, and annotations"}
+    {"path": "pipeline-content.json", "description": "Pipeline JSON: {\"properties\":{\"activities\":[...]}}. An empty pipeline is {\"properties\":{\"activities\":[]}}. Verified live."},
+    {"path": ".platform", "description": "Optional Git-integration metadata (type + displayName)."}
   ],
+  "definition_content_template": {
+    "pipeline-content.json": {
+      "properties": {
+        "activities": []
+      }
+    }
+  },
   "creation_body_template": {
     "displayName": "{{name}}"
   },
@@ -18,12 +26,15 @@
     "Run with: fabio data-pipeline run --workspace <WS> --id <ID>",
     "Job type for run is 'Pipeline' (PascalCase)",
     "Supports schedule management (create-schedule, list-schedules, etc.)",
-    "Definition getDefinition/updateDefinition are both LRO"
+    "Definition getDefinition/updateDefinition are both LRO",
+    "For an accurate activities schema, author in the portal once then get-definition to capture the exact activity JSON.",
+    "Validate offline before pushing: fabio item validate-definition --type DataPipeline --dir <folder>"
   ],
   "related_commands": [
     "fabio data-pipeline run --workspace <WS> --id <ID>",
     "fabio data-pipeline get-definition --workspace <WS> --id <ID>",
     "fabio data-pipeline update-definition --workspace <WS> --id <ID> --file <FILE>",
+    "fabio item validate-definition --type DataPipeline --dir <FOLDER>",
     "fabio data-pipeline create-schedule --workspace <WS> --id <ID> --content <JSON>",
     "fabio data-pipeline list-instances --workspace <WS> --id <ID>"
   ]
