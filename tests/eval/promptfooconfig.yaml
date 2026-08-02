@@ -2058,3 +2058,15 @@ tests:
       - type: llm-rubric
         value: "The response indicates the definition part FILENAME is SparkJobDefinitionV1.json while the definitionFormat is SparkJobDefinitionV2 (they differ), or points the user to 'fabio context schema SparkJobDefinition' / 'fabio item validate-definition' to discover it. It does not claim the filename is SparkJobDefinitionV2.json."
         metric: sjd-part-format
+
+  - description: "Ontology: consume as MCP server"
+    vars:
+      user_query: "How do I expose my Fabric ontology as an MCP server so VS Code agent mode can query it?"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('ontology mcp-url')
+        metric: ontology-mcp-url-command
+      - type: llm-rubric
+        value: "The response uses 'fabio ontology mcp-url' (with --workspace and --id) to get the ontology's MCP server URL for use in an MCP client. It does not confuse this with grounding a data agent, and does not invent a non-existent command."
+        metric: ontology-mcp-url-routing
