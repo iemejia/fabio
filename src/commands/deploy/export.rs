@@ -138,7 +138,36 @@ async fn collect_exportable_items(
         });
     }
 
+    // Exclude the auto-created child items an Ontology spawns (an internal
+    // Lakehouse `<name>_lh_<id>` and a GraphModel `<name>_graph_<id>`). These are
+    // provisioned automatically when the Ontology item is (re)created, so they
+    // must NOT be exported as independent items — deploying them would create
+    // orphan duplicates. Names are derived exactly from each Ontology's id, so a
+    // user's own `*_lh_*`/`*_graph_*` item is never falsely excluded.
+    let child_names = ontology_child_names(&items);
+    if !child_names.is_empty() {
+        items.retain(|it| {
+            !((it.item_type == "Lakehouse" || it.item_type == "GraphModel")
+                && child_names.contains(&it.name))
+        });
+    }
+
     Ok(items)
+}
+
+/// The exact display names of the child items each Ontology auto-provisions:
+/// `<ontologyName>_lh_<idNoDashes>` (internal Lakehouse) and
+/// `<ontologyName>_graph_<idNoDashes>` (backing `GraphModel`).
+fn ontology_child_names(items: &[ExportableItem]) -> std::collections::HashSet<String> {
+    let mut names = std::collections::HashSet::new();
+    for it in items {
+        if it.item_type == "Ontology" {
+            let id_no_dashes = it.id.replace('-', "");
+            names.insert(format!("{}_lh_{id_no_dashes}", it.name));
+            names.insert(format!("{}_graph_{id_no_dashes}", it.name));
+        }
+    }
+    names
 }
 
 /// Fetch item definitions in parallel using bounded concurrency.
@@ -176,7 +205,13 @@ async fn fetch_definitions_parallel(
                 );
             }
 
-            (item_type_owned, name_owned, description_owned, result)
+            (
+                item_type_owned,
+                name_owned,
+                description_owned,
+                item_id,
+                result,
+            )
         }));
     }
 
@@ -184,7 +219,7 @@ async fn fetch_definitions_parallel(
     let mut skipped = Vec::new();
 
     for handle in handles {
-        let (item_type, name, description, result) = handle.await?;
+        let (item_type, name, description, item_id, result) = handle.await?;
 
         match result {
             Ok(data) => {
@@ -203,7 +238,7 @@ async fn fetch_definitions_parallel(
                 let metadata = PlatformMetadata {
                     item_type,
                     display_name: name,
-                    logical_id: extract_logical_id(&data),
+                    logical_id: Some(stable_logical_id(&data, &item_id)),
                     description,
                     definition_format,
                     sensitivity_label_id: None,
@@ -220,7 +255,7 @@ async fn fetch_definitions_parallel(
                     let metadata = PlatformMetadata {
                         item_type,
                         display_name: name,
-                        logical_id: None,
+                        logical_id: Some(item_id),
                         description,
                         definition_format: None,
                         sensitivity_label_id: None,
@@ -335,6 +370,27 @@ fn extract_logical_id(data: &Value) -> Option<String> {
     }
 
     None
+}
+
+/// The all-zero GUID the Fabric API returns as a placeholder `logicalId` for
+/// items with no Git-integration logical id.
+const ZERO_LOGICAL_ID: &str = "00000000-0000-0000-0000-000000000000";
+
+/// Resolve a STABLE logical id for an exported item: prefer a real
+/// Git-integration `logicalId` from the `.platform` part, but when that is
+/// absent or the all-zero placeholder, fall back to the item's own source GUID.
+///
+/// Using the source GUID as the logical id is what makes cross-item references
+/// resolvable on `deploy apply`: a reference in one item's definition that holds
+/// another item's source GUID (e.g. an Ontology `DataBinding.itemId` pointing at
+/// a Lakehouse) is rewritten to the newly-deployed GUID by the existing
+/// logical-id resolver (`build_resolution_map` + `resolve_logical_ids_in_payload`),
+/// because the referenced item's logical id now equals that same source GUID.
+fn stable_logical_id(data: &Value, source_item_id: &str) -> String {
+    match extract_logical_id(data) {
+        Some(lid) if !lid.is_empty() && lid != ZERO_LOGICAL_ID => lid,
+        _ => source_item_id.to_owned(),
+    }
 }
 
 /// Export shortcuts for all Lakehouse items in the workspace.
@@ -720,6 +776,70 @@ mod tests {
         });
         let logical_id = extract_logical_id(&data);
         assert!(logical_id.is_none());
+    }
+
+    // ── stable_logical_id ───────────────────────────────────────────────────
+
+    fn platform_data(logical_id: Option<&str>) -> Value {
+        let mut cfg = json!({"version": "2.0"});
+        if let Some(l) = logical_id {
+            cfg["logicalId"] = Value::from(l);
+        }
+        let platform = json!({"config": cfg, "metadata": {"type": "Lakehouse"}});
+        let encoded = BASE64.encode(serde_json::to_string(&platform).unwrap());
+        json!({"definition": {"parts": [
+            {"path": ".platform", "payload": encoded, "payloadType": "InlineBase64"}
+        ]}})
+    }
+
+    #[test]
+    fn stable_logical_id_prefers_real_git_logical_id() {
+        let data = platform_data(Some("real-git-lid"));
+        assert_eq!(stable_logical_id(&data, "src-guid"), "real-git-lid");
+    }
+
+    #[test]
+    fn stable_logical_id_falls_back_to_source_guid_for_zero_placeholder() {
+        let data = platform_data(Some(ZERO_LOGICAL_ID));
+        assert_eq!(stable_logical_id(&data, "src-guid-123"), "src-guid-123");
+    }
+
+    #[test]
+    fn stable_logical_id_falls_back_to_source_guid_when_absent() {
+        let data = platform_data(None);
+        assert_eq!(stable_logical_id(&data, "src-guid-456"), "src-guid-456");
+    }
+
+    // ── ontology_child_names ────────────────────────────────────────────────
+
+    fn item(item_type: &str, name: &str, id: &str) -> ExportableItem {
+        ExportableItem {
+            id: id.to_owned(),
+            item_type: item_type.to_owned(),
+            name: name.to_owned(),
+            description: None,
+            sensitivity_label: None,
+            tags: None,
+        }
+    }
+
+    #[test]
+    fn ontology_child_names_derived_from_ontology_id() {
+        let items = vec![item(
+            "Ontology",
+            "RetailOntology",
+            "3c341d94-1f51-438f-ae78-d09942d8e81b",
+        )];
+        let names = ontology_child_names(&items);
+        assert!(names.contains("RetailOntology_lh_3c341d941f51438fae78d09942d8e81b"));
+        assert!(names.contains("RetailOntology_graph_3c341d941f51438fae78d09942d8e81b"));
+        assert_eq!(names.len(), 2);
+    }
+
+    #[test]
+    fn ontology_child_names_empty_without_ontology() {
+        let items = vec![item("Lakehouse", "MyLH", "id-1")];
+        assert!(ontology_child_names(&items).is_empty());
     }
 
     // ── write_governance_metadata ───────────────────────────────────────────
