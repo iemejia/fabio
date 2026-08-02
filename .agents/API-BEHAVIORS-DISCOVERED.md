@@ -2368,3 +2368,45 @@ Mapping to what fabio (a REST CLI) can reach:
 
 ### Deferred (REST-reachable but not yet implemented)
 - **TMSL command execution** (createOrReplace/alter/backup/restore/synchronize) and **TOM editing** require an XMLA/AS client — out of scope for a REST CLI (fabio edits definitions via the Fabric items `updateDefinition` API instead).
+
+## Item Definition Part Requirements & Offline Validation (live-verified)
+
+Ground-truthed live against the tenant by creating items, capturing `getDefinition`, and
+round-tripping `updateDefinition`. Source of truth: `src/commands/context/data/agent/definition_requirements.json`
+(loaded by `src/definition_spec.rs`), which powers `fabio item validate-definition`,
+definition-authoring error hints, and the `definition_requirements` block merged into
+`fabio context schema <Type>`.
+
+### Canonical part paths differ from some fabio emitters — Fabric is LENIENT
+- The Fabric `updateDefinition` API tolerates alias part filenames: sending `CopyJobV1.json`
+  (instead of the canonical `copyjob-content.json`) or `dataflow.json` (instead of the canonical
+  `queryMetadata.json`) is accepted and its content is parsed/validated — but `getDefinition`
+  (and Git-integration export / `deploy`) always return the CANONICAL paths. Proven by sending
+  deliberately invalid content under each alias: Fabric returned the SAME JSON-parse error under
+  both the alias and the canonical path, so both are read.
+- **CopyJob**: canonical part is `copyjob-content.json` = `{"properties":{"jobMode":"Batch"},"activities":[]}`.
+- **Dataflow**: canonical parts are `queryMetadata.json` (settings: `{"formatVersion":"202502","computeEngineSettings":{"allowFastCopy":false},"name":null,"allowNativeQueries":false}`) **+** `mashup.pq` (the Power Query M script, starts `section Section1;`). `queryMetadata.json` is REQUIRED — sending only `mashup.pq` fails (`Unexpected character encountered while parsing value: s`, i.e. Fabric tried to JSON-parse the M script). A full 2-part envelope round-trips cleanly.
+- **SparkJobDefinition**: the part FILENAME is `SparkJobDefinitionV1.json` but the `definitionFormat` is `SparkJobDefinitionV2` — do not confuse them. Content = `{"executableFile","defaultLakehouseArtifactId","mainClass","additionalLakehouseIds":[],"retryPolicy","commandLineArguments","additionalLibraryUris","language","environmentArtifactId"}`.
+- **DataPipeline**: `pipeline-content.json` = `{"properties":{"activities":[...]}}` (empty: `{"properties":{"activities":[]}}`).
+
+### fabio alignment fixes (align emitters with Fabric)
+- `copy-job update-definition` now emits `copyjob-content.json` (was `CopyJobV1.json`).
+- `dataflow update-definition` was effectively a NO-OP for real content: it wrapped the input as a
+  single `dataflow.json` part, which Fabric parsed but IGNORED (the canonical `queryMetadata.json` +
+  `mashup.pq` were left unchanged). It now uses the shared `definition_spec::build_update_definition_body`,
+  which PASSES THROUGH a full envelope (`{"definition":{"parts":[...]}}` / `{"parts":[...]}`) verbatim —
+  so the reliable pattern is `get-definition` → edit parts → `update-definition --file <envelope.json>`.
+  A single raw file still wraps under the type's canonical part path. Applied to `copy-job`,
+  `dataflow`, and `spark-job-definition`; the other type-specific `update-definition` commands already
+  emit their canonical single part.
+
+### Offline validator (`fabio item validate-definition`)
+- Read-only, no API call. Inputs: `--file` (JSON envelope), `--definition` (inline JSON), or `--dir`
+  (a folder of parts assembled into an envelope). `--type <T>` enables per-type canonical-part checks.
+- Universal envelope rules are ERRORS (deterministic, zero false positives on real definitions):
+  `MISSING_PARTS`, `EMPTY_PARTS`, `MISSING_PART_PATH`, `MISSING_PAYLOAD_TYPE`/`INVALID_PAYLOAD_TYPE`
+  (only `InlineBase64` is valid), `MISSING_PAYLOAD`, `INVALID_BASE64`, `INVALID_JSON_PART`,
+  `DUPLICATE_PART`. Per-type canonical-part gaps are WARNINGS (`MISSING_CANONICAL_PART`,
+  `MISSING_ONE_OF`, `UNKNOWN_ITEM_TYPE`, `PLATFORM_MISSING_METADATA`) — because Fabric tolerates
+  aliases — promoted to failures with `--strict`. Verified `--strict` clean (0 warnings) against real
+  exported CopyJob/Dataflow/DataPipeline/SparkJobDefinition/Notebook folders.

@@ -9,6 +9,7 @@
 - `src/main.rs`: Entry point, `#![recursion_limit = "256"]`, tokio async main, error handling dispatch
 - `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 74 subcommand groups
 - `src/errors.rs`: ErrorCode enum (with stable exit codes) + FabioError struct with thiserror
+- `src/definition_spec.rs`: Source-of-truth for item-definition part requirements (loads `context/data/agent/definition_requirements.json`); `validate_definition` (offline validator), `definition_input_hint`, `build_update_definition_body` (canonical/multi-part-aware update body); unit tests
 - `src/output.rs`: render_list_with_token, render_object, render_error (respects --quiet/--query/--wrap-untrusted), apply_query, dry_run_guard, unit tests
 - `src/parallel.rs`: Parallel execution framework for concurrent file/table operations with rate-limit retry
 - `src/verbose.rs`: Lightweight `--verbose` diagnostics module (global AtomicBool flag, HTTP/LRO/auth tracing to stderr)
@@ -127,6 +128,7 @@
 - `tests/e2e_workspace.rs`: Workspace CRUD + assign-capacity + networking + OneLake settings + folders + storage format + roles filter + CMK encryption tests
 - `tests/e2e_global_options.rs`: --query, --quiet, --output format tests
 - `tests/e2e_item.rs`: Item list/show/create/delete/copy/move/bulk-create/bulk-delete tests
+- `tests/e2e_item_validate_definition.rs`: Offline `item validate-definition` tests (envelope/dir/strict, error codes)
 - `tests/e2e_lakehouse.rs`: Tables/files/upload/download/query tests
 - `tests/e2e_lakehouse_files.rs`: File copy/move/delete tests
 - `tests/e2e_lakehouse_tables.rs`: Table load/copy/move/delete tests
