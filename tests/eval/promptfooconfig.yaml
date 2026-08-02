@@ -2038,3 +2038,23 @@ tests:
       - type: llm-rubric
         value: "The response uses 'fabio user-data-function invoke' with --url (the function's public URL) and passes the parameter (via --parameter name=John or --body). It does not invent a non-existent invoke API."
         metric: udf-invoke-routing
+
+  - description: "Validate an item definition offline before deploying"
+    vars:
+      user_query: "I generated a Fabric notebook definition folder. How do I check it's valid before creating the item?"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('item validate-definition')
+        metric: validate-definition-command
+      - type: llm-rubric
+        value: "The response uses 'fabio item validate-definition' (with --dir for a folder, or --file/--definition for an envelope, optionally --type Notebook and --strict) to validate the definition OFFLINE before create/update-definition. It does not claim validation requires an API call or the portal."
+        metric: validate-definition-routing
+
+  - description: "SparkJobDefinition definition part filename vs format"
+    vars:
+      user_query: "What file name and format does a Fabric Spark Job Definition item definition use?"
+    assert:
+      - type: llm-rubric
+        value: "The response indicates the definition part FILENAME is SparkJobDefinitionV1.json while the definitionFormat is SparkJobDefinitionV2 (they differ), or points the user to 'fabio context schema SparkJobDefinition' / 'fabio item validate-definition' to discover it. It does not claim the filename is SparkJobDefinitionV2.json."
+        metric: sjd-part-format
