@@ -59,6 +59,12 @@ pub async fn export_workspace(
         export_lakehouse_shortcuts(client, workspace_id, output_dir, &items_to_export).await;
     }
 
+    // Export SQL analytics endpoint identity for Lakehouse items (enables
+    // Direct Lake connection rewiring on deploy apply).
+    if !cli.dry_run {
+        export_lakehouse_sql_endpoints(client, workspace_id, output_dir, &items_to_export).await;
+    }
+
     // Export governance metadata (sensitivity labels + tags)
     if !cli.dry_run {
         write_governance_metadata(output_dir, &items_to_export);
@@ -432,6 +438,55 @@ async fn export_lakehouse_shortcuts(
 
         let content = serde_json::to_string_pretty(shortcuts).unwrap_or_default();
         let _ = std::fs::write(item_dir.join("shortcuts.metadata.json"), content);
+    }
+}
+
+/// Export the SQL analytics endpoint identity (`sqlendpoint.metadata.json`) for
+/// each Lakehouse: `{ "id": <endpoint item id>, "server": <connectionString> }`.
+///
+/// Deploy apply uses this to map the SOURCE endpoint id + server to the newly
+/// provisioned TARGET endpoint, so a Direct Lake `SemanticModel`'s
+/// `Sql.Database("<server>","<endpointId>")` connection is rewired to the
+/// deployed lakehouse. Failures are silently ignored (optional metadata).
+async fn export_lakehouse_sql_endpoints(
+    client: &FabricClient,
+    workspace_id: &str,
+    output_dir: &std::path::Path,
+    items: &[ExportableItem],
+) {
+    for item in items {
+        if !item.item_type.eq_ignore_ascii_case("Lakehouse") {
+            continue;
+        }
+
+        let url = format!("/workspaces/{workspace_id}/lakehouses/{}", item.id);
+        let Ok(data) = client.get(&url).await else {
+            continue;
+        };
+        let ep = data
+            .get("properties")
+            .and_then(|p| p.get("sqlEndpointProperties"));
+        let (Some(id), Some(server)) = (
+            ep.and_then(|e| e.get("id")).and_then(|v| v.as_str()),
+            ep.and_then(|e| e.get("connectionString"))
+                .and_then(|v| v.as_str()),
+        ) else {
+            continue;
+        };
+        if id.is_empty() || server.is_empty() {
+            continue;
+        }
+
+        let item_dir = output_dir.join(format!("{}.{}", item.name, item.item_type));
+        if !item_dir.exists() {
+            continue;
+        }
+        let content = serde_json::to_string_pretty(&serde_json::json!({
+            "id": id,
+            "server": server,
+        }))
+        .unwrap_or_default();
+        let _ = std::fs::write(item_dir.join("sqlendpoint.metadata.json"), content);
     }
 }
 

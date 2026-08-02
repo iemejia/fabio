@@ -155,7 +155,7 @@ pub async fn fetch_deployed_folders(
     client: &FabricClient,
     workspace_id: &str,
 ) -> Result<HashMap<String, DeployedFolder>> {
-    let url = format!("workspaces/{workspace_id}/folders");
+    let url = format!("/workspaces/{workspace_id}/folders");
     let resp = client.get(&url).await;
 
     match resp {
@@ -243,7 +243,7 @@ pub async fn create_folder(
     display_name: &str,
     parent_folder_id: Option<&str>,
 ) -> Result<String> {
-    let url = format!("workspaces/{workspace_id}/folders");
+    let url = format!("/workspaces/{workspace_id}/folders");
     let mut body = json!({ "displayName": display_name });
 
     if let Some(pid) = parent_folder_id {
@@ -270,7 +270,7 @@ pub async fn move_item_to_folder(
     item_id: &str,
     folder_id: Option<&str>,
 ) -> Result<()> {
-    let url = format!("workspaces/{workspace_id}/items/{item_id}/move");
+    let url = format!("/workspaces/{workspace_id}/items/{item_id}/move");
     let body = folder_id.map_or_else(|| json!({}), |fid| json!({ "targetFolderId": fid }));
 
     let _ = client.post(&url, &body, false).await?;
@@ -283,7 +283,7 @@ pub async fn delete_folder(
     workspace_id: &str,
     folder_id: &str,
 ) -> Result<()> {
-    let url = format!("workspaces/{workspace_id}/folders/{folder_id}");
+    let url = format!("/workspaces/{workspace_id}/folders/{folder_id}");
     let _ = client.delete(&url).await?;
     Ok(())
 }

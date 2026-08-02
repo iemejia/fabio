@@ -114,6 +114,13 @@ pub async fn execute_changeset(
         }
     }
 
+    // Extra source→target string mappings discovered during apply — currently a
+    // deployed Lakehouse's SQL-endpoint id + server FQDN (keyed by the SOURCE
+    // endpoint id/server), so a Direct Lake SemanticModel's `Sql.Database(...)`
+    // connection is rewired to the deployed lakehouse. Populated after each tier.
+    let mut extra_resolutions: HashMap<String, String> = HashMap::new();
+    let mut polled_lakehouses: std::collections::HashSet<String> = std::collections::HashSet::new();
+
     // Execute creates/updates in tier order.
     // Types within the same tier are independent and can run concurrently.
     // DataPipeline and Dataflow need topological ordering and run sequentially.
@@ -168,6 +175,7 @@ pub async fn execute_changeset(
                         source,
                         &source_map,
                         &created_ids,
+                        &extra_resolutions,
                     )
                     .await;
 
@@ -235,7 +243,7 @@ pub async fn execute_changeset(
                         .copied();
 
                     let source_item = src_idx.map(|idx| source.items[idx].clone());
-                    let res_map = build_resolution_map(source, &created_ids);
+                    let res_map = build_resolution_map(source, &created_ids, &extra_resolutions);
                     let mut sm_ids = build_semantic_model_name_map(&created_ids);
                     extend_semantic_model_map_with_dir_aliases(&mut sm_ids, source);
 
@@ -408,6 +416,7 @@ pub async fn execute_changeset(
                     source,
                     &source_map,
                     &created_ids,
+                    &extra_resolutions,
                 )
                 .await;
 
@@ -460,6 +469,23 @@ pub async fn execute_changeset(
             }
         }
 
+        // Inter-tier hook: rewire Direct Lake connections once a Lakehouse's tier
+        // completes. Map each newly-created lakehouse's SOURCE SQL-endpoint id +
+        // server FQDN to the deployed endpoint, so a later-tier SemanticModel's
+        // `Sql.Database("<server>","<endpointId>")` resolves to the new lakehouse.
+        if !cli.dry_run {
+            populate_sql_endpoint_resolutions(
+                client,
+                workspace_id,
+                source,
+                &created_ids,
+                &mut extra_resolutions,
+                &mut polled_lakehouses,
+                cli.quiet,
+            )
+            .await;
+        }
+
         // Inter-tier hook: refresh SemanticModels after their tier completes.
         // Reports in the next tier need the model refreshed to bind successfully.
         if !cli.dry_run {
@@ -478,9 +504,7 @@ pub async fn execute_changeset(
                             change.name
                         ),
                     );
-                    let path =
-                        format!("/workspaces/{workspace_id}/semanticModels/{item_id}/refreshes");
-                    let _ = client.post(&path, &json!({"type": "Full"}), false).await;
+                    let _ = refresh_semantic_model(client, workspace_id, item_id).await;
                 }
             }
         }
@@ -820,7 +844,7 @@ pub async fn execute_post_hooks(
                     ),
                 );
                 match poll_lakehouse_sql_endpoint(client, workspace_id, item_id).await {
-                    Ok(()) => {
+                    Ok(_) => {
                         results.push(json!({
                             "hook": "sql_endpoint_poll",
                             "item_type": "Lakehouse",
@@ -855,10 +879,8 @@ pub async fn execute_post_hooks(
                     cli.quiet,
                     &format!("post-hook: refreshing semantic model \"{}\"", change.name),
                 );
-                let path = format!("/workspaces/{workspace_id}/semanticModels/{item_id}/refreshes");
-                let body = json!({"type": "Full"});
-                match client.post(&path, &body, false).await {
-                    Ok(_) => {
+                match refresh_semantic_model(client, workspace_id, item_id).await {
+                    Ok(()) => {
                         results.push(json!({
                             "hook": "refresh",
                             "item_type": "SemanticModel",
@@ -1128,6 +1150,108 @@ pub async fn apply_item_schedules(
     results
 }
 
+/// Read a Lakehouse's exported source SQL-endpoint identity from
+/// `sqlendpoint.metadata.json` in its source directory.
+fn read_source_sql_endpoint(item_dir: &std::path::Path) -> Option<super::platform::SqlEndpointRef> {
+    let content = std::fs::read_to_string(item_dir.join("sqlendpoint.metadata.json")).ok()?;
+    let r: super::platform::SqlEndpointRef = serde_json::from_str(&content).ok()?;
+    (!r.id.is_empty() && !r.server.is_empty()).then_some(r)
+}
+
+/// Whether any source item's definition parts contain any of `needles` (the raw
+/// base64 payloads are decoded and searched). Used to decide whether polling a
+/// lakehouse's target SQL endpoint is worthwhile (i.e. a Direct Lake model
+/// references it).
+fn source_references_any(source: &SourceWorkspace, needles: &[&str]) -> bool {
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as BASE64;
+    for item in &source.items {
+        for part in &item.parts {
+            if let Ok(decoded) = BASE64.decode(&part.payload) {
+                let text = String::from_utf8_lossy(&decoded);
+                if needles.iter().any(|n| text.contains(n)) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Inter-tier hook: for each newly-created Lakehouse that has an exported source
+/// SQL-endpoint identity AND is referenced by another item's definition (e.g. a
+/// Direct Lake `SemanticModel`), poll its deployed SQL endpoint and register
+/// `source_endpoint_id → target_endpoint_id` and `source_server → target_server`
+/// in `extra`, so the generic resolver rewrites the connection.
+async fn populate_sql_endpoint_resolutions(
+    client: &FabricClient,
+    workspace_id: &str,
+    source: &SourceWorkspace,
+    created_ids: &HashMap<(String, String), String>,
+    extra: &mut HashMap<String, String>,
+    polled: &mut std::collections::HashSet<String>,
+    quiet: bool,
+) {
+    for ((item_type, name), deployed_id) in created_ids {
+        if !item_type.eq_ignore_ascii_case("Lakehouse") || polled.contains(deployed_id) {
+            continue;
+        }
+        polled.insert(deployed_id.clone());
+
+        let Some(&idx) = source
+            .type_name_index
+            .get(&(item_type.clone(), name.clone()))
+        else {
+            continue;
+        };
+        let Some(src_ep) = read_source_sql_endpoint(&source.items[idx].source_path) else {
+            continue;
+        };
+        if !source_references_any(source, &[src_ep.id.as_str(), src_ep.server.as_str()]) {
+            continue;
+        }
+
+        if let Ok(Some((target_id, target_server))) =
+            poll_lakehouse_sql_endpoint(client, workspace_id, deployed_id).await
+        {
+            extra.insert(src_ep.id.clone(), target_id);
+            extra.insert(src_ep.server.clone(), target_server);
+            emit_progress(
+                quiet,
+                &format!("  rewired Direct Lake connection to deployed lakehouse \"{name}\""),
+            );
+        }
+    }
+}
+
+/// Refresh (frame) a deployed `SemanticModel`. A deploy-created Direct Lake model
+/// is "definition-managed" and rejects a refresh with `EntityNotFound` until it
+/// is taken over, so this takes ownership (best-effort) first, then refreshes via
+/// the Power BI datasets endpoint (the Fabric `/semanticModels/{id}/refreshes`
+/// path 404s for a definition-managed model).
+async fn refresh_semantic_model(
+    client: &FabricClient,
+    workspace_id: &str,
+    item_id: &str,
+) -> Result<()> {
+    // Best-effort takeover — converts definition-managed → service-managed so the
+    // dataset refresh endpoint resolves. Ignore errors (an import model may already
+    // be service-managed, or the principal may lack takeover rights).
+    let _ = client
+        .post_powerbi(
+            &format!("/groups/{workspace_id}/datasets/{item_id}/Default.TakeOver"),
+            &json!({}),
+        )
+        .await;
+    client
+        .post_powerbi(
+            &format!("/groups/{workspace_id}/datasets/{item_id}/refreshes"),
+            &json!({"type": "Full"}),
+        )
+        .await
+        .map(|_| ())
+}
+
 /// Feature 3: Poll SQL endpoint provisioning status after Lakehouse creation.
 ///
 /// The SQL analytics endpoint takes time to provision after a lakehouse is created.
@@ -1136,8 +1260,8 @@ async fn poll_lakehouse_sql_endpoint(
     client: &FabricClient,
     workspace_id: &str,
     lakehouse_id: &str,
-) -> Result<()> {
-    let url = format!("workspaces/{workspace_id}/lakehouses/{lakehouse_id}");
+) -> Result<Option<(String, String)>> {
+    let url = format!("/workspaces/{workspace_id}/lakehouses/{lakehouse_id}");
     let max_wait = std::time::Duration::from_mins(5);
     let poll_interval = std::time::Duration::from_secs(5);
     let start = std::time::Instant::now();
@@ -1149,15 +1273,26 @@ async fn poll_lakehouse_sql_endpoint(
 
         let resp = client.get(&url).await?;
 
-        let status = resp
+        let ep = resp
             .get("properties")
-            .and_then(|p| p.get("sqlEndpointProperties"))
+            .and_then(|p| p.get("sqlEndpointProperties"));
+        let status = ep
             .and_then(|ep| ep.get("provisioningStatus"))
             .and_then(|s| s.as_str())
             .unwrap_or("Unknown");
 
         match status {
-            "Success" => return Ok(()),
+            "Success" => {
+                let id = ep
+                    .and_then(|e| e.get("id"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned);
+                let server = ep
+                    .and_then(|e| e.get("connectionString"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned);
+                return Ok(id.zip(server));
+            }
             "Failed" => return Err(FabioError::with_hint(ErrorCode::ApiError, "SQL endpoint provisioning failed", "Check capacity state and lakehouse health. Ensure capacity is active: fabio capacity list").into()),
             _ => tokio::time::sleep(poll_interval).await,
         }
@@ -1175,7 +1310,7 @@ async fn poll_environment_publish(
     environment_id: &str,
     env_name: &str,
 ) -> Result<()> {
-    let url = format!("workspaces/{workspace_id}/environments/{environment_id}");
+    let url = format!("/workspaces/{workspace_id}/environments/{environment_id}");
     let max_wait = std::time::Duration::from_mins(5);
     let poll_interval = std::time::Duration::from_secs(5);
     let start = std::time::Instant::now();
@@ -1511,6 +1646,7 @@ pub async fn apply_governance_tags(
 
 ///
 /// Returns the deployed item GUID on success.
+#[allow(clippy::too_many_arguments)]
 async fn execute_single_change(
     cli: &Cli,
     client: &FabricClient,
@@ -1519,6 +1655,7 @@ async fn execute_single_change(
     source: &SourceWorkspace,
     source_map: &HashMap<(&str, &str), usize>,
     created_ids: &HashMap<(String, String), String>,
+    extra: &HashMap<String, String>,
 ) -> Result<Option<String>> {
     let source_idx = source_map
         .get(&(change.item_type.as_str(), change.name.as_str()))
@@ -1533,7 +1670,7 @@ async fn execute_single_change(
     let source_item = &source.items[*source_idx];
 
     // Build logical ID resolution map from created_ids + source workspace info
-    let resolution_map = build_resolution_map(source, created_ids);
+    let resolution_map = build_resolution_map(source, created_ids, extra);
 
     // Build semantic model name → deployed_id map for report byConnection resolution
     let mut semantic_model_ids = build_semantic_model_name_map(created_ids);
@@ -2060,8 +2197,15 @@ fn extract_dataflow_references(
 fn build_resolution_map(
     source: &SourceWorkspace,
     created_ids: &HashMap<(String, String), String>,
+    extra: &HashMap<String, String>,
 ) -> HashMap<String, String> {
     let mut map = HashMap::new();
+
+    // Extra source→target string mappings computed during apply (e.g. a source
+    // Lakehouse SQL-endpoint id/server → the deployed one, for Direct Lake rewiring).
+    for (k, v) in extra {
+        map.insert(k.clone(), v.clone());
+    }
 
     // Map logical_id → deployed_id from created_ids (items created in this session)
     for ((item_type, name), deployed_id) in created_ids {
@@ -2710,6 +2854,75 @@ mod tests {
         assert!(refs.is_empty());
     }
 
+    fn src_item_with_part(item_type: &str, name: &str, payload_plain: &str) -> SourceItem {
+        use base64::Engine;
+        use base64::engine::general_purpose::STANDARD as BASE64;
+        SourceItem {
+            metadata: super::super::platform::PlatformMetadata {
+                item_type: item_type.to_owned(),
+                display_name: name.to_owned(),
+                logical_id: None,
+                description: None,
+                definition_format: None,
+                sensitivity_label_id: None,
+                platform_creation_payload: None,
+            },
+            parts: vec![super::super::platform::DefinitionPart {
+                path: "x.json".to_owned(),
+                payload: BASE64.encode(payload_plain),
+                payload_type: "InlineBase64".to_owned(),
+            }],
+            content_hash: "sha256:x".to_owned(),
+            schedules: None,
+            folder_path: String::new(),
+            source_path: std::path::PathBuf::from("/tmp"),
+            creation_payload: None,
+            shortcuts: None,
+            governance: None,
+        }
+    }
+
+    #[test]
+    fn source_references_any_finds_needle_in_decoded_part() {
+        let ws = SourceWorkspace {
+            items: vec![src_item_with_part(
+                "SemanticModel",
+                "M",
+                r#"Sql.Database("srv","c19f6cde-0000")"#,
+            )],
+            logical_id_index: HashMap::new(),
+            type_name_index: HashMap::new(),
+        };
+        assert!(source_references_any(&ws, &["c19f6cde-0000"]));
+        assert!(source_references_any(&ws, &["nope", "srv"]));
+        assert!(!source_references_any(&ws, &["absent-guid"]));
+    }
+
+    #[test]
+    fn read_source_sql_endpoint_roundtrips() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("sqlendpoint.metadata.json"),
+            r#"{"id":"ep-1","server":"srv.example.com"}"#,
+        )
+        .unwrap();
+        let r = read_source_sql_endpoint(dir.path()).unwrap();
+        assert_eq!(r.id, "ep-1");
+        assert_eq!(r.server, "srv.example.com");
+    }
+
+    #[test]
+    fn read_source_sql_endpoint_none_when_missing_or_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(read_source_sql_endpoint(dir.path()).is_none());
+        std::fs::write(
+            dir.path().join("sqlendpoint.metadata.json"),
+            r#"{"id":"","server":""}"#,
+        )
+        .unwrap();
+        assert!(read_source_sql_endpoint(dir.path()).is_none());
+    }
+
     #[test]
     fn test_extract_pipeline_references_finds_execute_pipeline() {
         let pipeline_json = serde_json::json!({
@@ -2991,7 +3204,7 @@ mod tests {
             "11111111-2222-3333-4444-555555555555".to_owned(),
         )]);
 
-        let map = build_resolution_map(&source, &created_ids);
+        let map = build_resolution_map(&source, &created_ids, &HashMap::new());
         assert_eq!(
             map.get("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
             Some(&"11111111-2222-3333-4444-555555555555".to_owned())
@@ -3031,7 +3244,7 @@ mod tests {
             "22222222-3333-4444-5555-666666666666".to_owned(),
         )]);
 
-        let map = build_resolution_map(&source, &created_ids);
+        let map = build_resolution_map(&source, &created_ids, &HashMap::new());
         // No entry — item has no logical_id so it can't be referenced
         assert!(map.is_empty());
     }
@@ -3123,7 +3336,7 @@ mod tests {
             ),
         ]);
 
-        let map = build_resolution_map(&source, &created_ids);
+        let map = build_resolution_map(&source, &created_ids, &HashMap::new());
         assert_eq!(map.len(), 2);
         assert_eq!(map.get("lid-lh1"), Some(&"deployed-id-lh1".to_owned()));
         assert_eq!(map.get("lid-nb1"), Some(&"deployed-id-nb1".to_owned()));
@@ -3214,7 +3427,7 @@ mod tests {
             ),
         ]);
 
-        let map = build_resolution_map(&source, &created_ids);
+        let map = build_resolution_map(&source, &created_ids, &HashMap::new());
         assert_eq!(map.len(), 1);
         assert_eq!(map.get("lid-lh1"), Some(&"deployed-lh1".to_owned()));
     }

@@ -2654,3 +2654,58 @@ Comparison harness (decode + per-entity diff of two ontology definitions) lives 
 `/tmp/opencode/compare_onto.py`; the fix is unit-tested (`keyed_entity_uses_identifier_and_null_display_name`,
 `keyless_entity_left_keyless_like_portal`) and live-validated (regenerated ontology diffs clean
 against the portal except the two intentional deviations above).
+
+## Deploy — same-run cross-item connection resolution (tutorial-scenario validation)
+
+Deploying a multi-item scenario end-to-end (Lakehouse + Direct Lake SemanticModel +
+Eventhouse + KQLDatabase + Ontology) via `deploy export` → `deploy apply` to a fresh
+workspace surfaced (and we fixed) five gaps in cross-item wiring. Live-validated: all four
+connection types now resolve to the DEPLOYED items on the target, and both post-hooks
+(`sql_endpoint_poll: ready`, `refresh: triggered`) are green.
+
+- **Export dropped source GUIDs (`logicalId: 0000…`)** — the root cause. `deploy export` now
+  writes each item's `.platform` `logicalId` = its SOURCE item GUID (when there is no real Git
+  logicalId). Deploy's existing `build_resolution_map` + `resolve_logical_ids_in_payload` then
+  rewrite ANY reference holding another item's source GUID to the deployed GUID. This fixes,
+  generically: Ontology `DataBinding.itemId` → deployed Lakehouse (previously only `workspaceId`
+  was rewritten by the regex, leaving `itemId` pointing at the SOURCE lakehouse); and
+  KQLDatabase `parentEventhouseItemId` → deployed Eventhouse. (`stable_logical_id` in `export.rs`.)
+
+- **Direct Lake SemanticModel connection was NOT rewired** — a Direct Lake model's
+  `Sql.Database("<server>","<sqlEndpointId>")` references the lakehouse's SQL *analytics
+  endpoint* (a separate auto-provisioned item) + server FQDN, neither of which is a logicalId.
+  Fix: `deploy export` writes a `sqlendpoint.metadata.json` sidecar per Lakehouse
+  (`{id, server}` = source endpoint id + connectionString). On apply, an inter-tier hook
+  (`populate_sql_endpoint_resolutions`) — after the Lakehouse tier, only for lakehouses whose
+  source endpoint id/server is actually referenced by another item's parts — polls the DEPLOYED
+  lakehouse's SQL endpoint and registers `source_endpoint_id → target_endpoint_id` and
+  `source_server → target_server` in an `extra_resolutions` map merged into the resolver. The
+  deployed model's connection is then rewired to the target endpoint (live-verified: both server
+  FQDN and endpoint GUID replaced). `$items.*.sqlendpointid` params remain broken/unused; this
+  zero-config path supersedes them for the Direct Lake case.
+
+- **SemanticModel refresh post-hook 404'd (`EntityNotFound`)** — a deploy-created Direct Lake
+  model is **definition-managed** and rejects a refresh until it is **taken over**. Fix:
+  `refresh_semantic_model` now does a best-effort `POST /groups/{ws}/datasets/{id}/Default.TakeOver`
+  (Power BI API) THEN refreshes via `POST /groups/{ws}/datasets/{id}/refreshes` (the Power BI
+  datasets endpoint — the Fabric `/semanticModels/{id}/refreshes` path 404s for definition-managed
+  models). Post-hook now reports `triggered` instead of `failed`. NOTE: framing still needs DATA
+  in the target lakehouse (deploy moves item DEFINITIONS, not Delta tables), so the async refresh
+  may still fail to frame over an empty lakehouse — that is expected, not a deploy bug.
+
+- **Ontology auto-created children were exported as top-level items** — an Ontology spawns an
+  internal Lakehouse `<name>_lh_<id>` and a backing GraphModel `<name>_graph_<id>` (auto-created
+  when the Ontology is (re)created — confirmed on the target). `deploy export` now excludes them
+  (`ontology_child_names`, derived exactly from each Ontology's id so a user's own `*_lh_*`/
+  `*_graph_*` item is never falsely dropped).
+
+- **Deploy poll URLs 404'd (malformed)** — `poll_lakehouse_sql_endpoint`, `poll_environment_publish`,
+  and the `folders.rs` helpers built paths as `format!("workspaces/…")` with NO leading slash;
+  `client::fabric_url` prepends the base (`https://api.fabric.microsoft.com/v1`, no trailing slash)
+  verbatim, so the URL became `…/v1workspaces/…` → an IIS `HTTP 404` (not a Fabric JSON 404). Fixed
+  to `/workspaces/…`. This is why the lakehouse SQL-endpoint poll always timed out with a 404.
+
+Reproduction/validation harness: source workspace built with the tutorial items, exported, and
+applied to throwaway target workspaces (`/tmp/opencode/deploy.env`, `/tmp/opencode/deploy_src4`).
+New helpers unit-tested (`stable_logical_id`, `ontology_child_names`, `read_source_sql_endpoint`,
+`source_references_any`).

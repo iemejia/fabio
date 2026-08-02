@@ -39,6 +39,19 @@ pub struct TagRef {
     pub display_name: String,
 }
 
+/// A Lakehouse's SQL analytics endpoint identity, captured on export
+/// (`sqlendpoint.metadata.json`). Deploy uses it to map the SOURCE endpoint
+/// id + server FQDN to the newly-provisioned TARGET endpoint, so a Direct Lake
+/// `SemanticModel`'s `Sql.Database("<server>","<endpointId>")` connection is
+/// rewired to the deployed lakehouse.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SqlEndpointRef {
+    /// The SQL analytics endpoint item id.
+    pub id: String,
+    /// The endpoint server FQDN (the `connectionString`).
+    pub server: String,
+}
+
 /// Metadata from a `.platform` file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlatformMetadata {
@@ -92,7 +105,6 @@ pub struct SourceItem {
     /// Workspace folder path (e.g., "/ETL/Bronze"). Empty string means root level.
     pub folder_path: String,
     /// Path to the item directory on disk.
-    #[allow(dead_code)]
     pub source_path: PathBuf,
 }
 
@@ -539,6 +551,9 @@ fn parse_item_directory(root: &Path, path: &Path) -> Result<SourceItem> {
         None
     };
 
+    // Read optional sqlendpoint.metadata.json (Lakehouse source SQL endpoint identity).
+    // Read on-demand during apply from `source_path`; nothing to parse here.
+
     // Compute folder path from item's parent relative to root
     let folder_path = super::folders::item_folder_path(root, path);
 
@@ -602,6 +617,7 @@ fn read_parts_recursive(
                 || file_name == "shortcuts.metadata.json"
                 || file_name == "governance.metadata.json"
                 || file_name == "schedules.metadata.json"
+                || file_name == "sqlendpoint.metadata.json"
             {
                 continue;
             }
