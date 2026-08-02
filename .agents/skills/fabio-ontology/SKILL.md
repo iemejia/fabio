@@ -17,6 +17,7 @@ license: MIT
 - Managing graph models and running graph querysets.
 - Modeling IoT/operational digital twins (Digital Twin Builder models and flows).
 - Grounding an agent in a knowledge graph over Fabric data.
+- Exposing an ontology to external AI systems as an MCP server ('ontology mcp-url').
 - Importing an OWL schema (e.g. one produced by 'fabio context tenant --format owl').
 
 ## When NOT to use (route elsewhere)
@@ -40,6 +41,7 @@ Manage ontologies (entity types, data bindings)
 | `fabio ontology get-definition` | no | Get the ontology definition (entity types, bindings) |
 | `fabio ontology import` | yes | Import an OWL ontology (RDF/XML or JSON-LD) and convert to Fabric format |
 | `fabio ontology list` | no | List ontologies in a workspace |
+| `fabio ontology mcp-url` | no | Print the Model Context Protocol (MCP) server URL for consuming this ontology |
 | `fabio ontology show` | no | Show details of an ontology |
 | `fabio ontology update` | yes | Update ontology properties (name and/or description) |
 | `fabio ontology update-definition` | yes | Update the ontology definition (replaces current definition) |
@@ -124,6 +126,7 @@ Manage Digital Twin Builder flows
 - updateDefinition validates all parts together; a bad reference in ANY part fails the whole push. The generic ALMOperationImportFailed's real cause is in error.errorCode + error.moreDetails (fabio surfaces both and adds a self-correction checklist).
 - Fabric does NOT check that a bound Lakehouse table/column exists at updateDefinition time (deferred to query time) — a missing table imports fine and is never the cause of an import failure.
 - Ontology needs a capacity with the Ontology/Digital Twin Builder preview enabled; each create/import/getDefinition is an LRO taking ~60-100s.
+- An ontology can be consumed as an MCP server by external agents. 'fabio ontology mcp-url --workspace <WS> --id <ID>' prints the canonical endpoint ({fabricBase}/mcp/dataPlane/workspaces/{ws}/items/{id}/ontologyEndpoint) — a deterministic URL agents cannot guess. Distinct from grounding a fabio data-agent on the ontology; this exposes the ontology itself over MCP (HTTP transport, Fabric auth) to VS Code agent mode/Claude/Copilot Studio. Requires F2+/P1 capacity and the Ontology-item preview tenant setting.
 
 ## Troubleshooting
 | Symptom | Fix |
@@ -148,4 +151,5 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 ## See also
 - fabio context schema ontology
 - fabio context persona data-engineer
+- fabio ontology mcp-url --workspace <WS> --id <ID> (consume the ontology as an MCP server)
 - fabio data-agent add-datasource --artifact-type Ontology (ground an agent on the ontology; scope with select-tables --elements)

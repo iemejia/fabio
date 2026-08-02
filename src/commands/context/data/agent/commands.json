@@ -1680,11 +1680,11 @@
         "async": true
       },
       "validate-definition": {
-        "description": "Validate an item definition offline (no API call) before create/update-definition",
+        "description": "Validate an item definition offline (no API call) before `create`/`update-definition`",
         "flags": {
           "--type": {
             "type": "string",
-            "description": "Item type (e.g., Notebook, SparkJobDefinition). Enables per-type canonical-part checks"
+            "description": "Item type (e.g., Notebook, `SparkJobDefinition`). Enables per-type canonical-part checks"
           },
           "--file": {
             "type": "string",
@@ -7660,6 +7660,23 @@
           "fabio ontology export --workspace $WS --id $ONT --format rdf --file exported.rdf",
           "fabio ontology export --workspace $WS --id $ONT --format jsonld --file exported.jsonld"
         ]
+      },
+      "mcp-url": {
+        "description": "Print the Model Context Protocol (MCP) server URL for consuming this ontology",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Ontology ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
       }
     }
   },

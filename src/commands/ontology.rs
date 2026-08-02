@@ -283,6 +283,16 @@ pub enum OntologyCommand {
         #[arg(long)]
         file: Option<String>,
     },
+    /// Print the Model Context Protocol (MCP) server URL for consuming this ontology
+    McpUrl {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Ontology ID
+        #[arg(long)]
+        id: String,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -438,6 +448,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
                 file.as_deref(),
             )
             .await
+        }
+        OntologyCommand::McpUrl { workspace, id } => {
+            crate::commands::ontology_mcp::mcp_url(cli, client, workspace, id)
+                .await
+                .map_err(|e| enrich_forbidden(e, "ontology mcp-url", "Viewer"))
         }
     }
 }

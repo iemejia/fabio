@@ -3519,3 +3519,93 @@ fn e2e_ontology_import_eventhouse_timeseries() {
 
     delete_ontology(ws, &ont_id);
 }
+
+// ---------------------------------------------------------------------------
+// MCP server URL
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn ontology_mcp_url_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("ont_mcp");
+
+    // Create a bare ontology.
+    let assert = fabio()
+        .args([
+            "ontology",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let ont_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let expected_url = format!(
+        "https://api.fabric.microsoft.com/v1/mcp/dataPlane/workspaces/{}/items/{}/ontologyEndpoint",
+        cfg.source_workspace, ont_id
+    );
+
+    // Existing ontology: canonical URL, exists true, prerequisite note, no hint.
+    let assert = fabio()
+        .args([
+            "ontology",
+            "mcp-url",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&assert)).clone();
+    assert_eq!(data["mcpUrl"], expected_url);
+    assert_eq!(data["transport"], "http");
+    assert_eq!(data["exists"], true);
+    assert!(data["note"].as_str().unwrap().contains("MCP server"));
+    assert!(data["hint"].is_null());
+
+    // Nonexistent ontology: still emits the deterministic URL, exists false + hint.
+    let missing = "00000000-0000-0000-0000-000000000000";
+    let assert = fabio()
+        .args([
+            "ontology",
+            "mcp-url",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            missing,
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&assert)).clone();
+    assert!(
+        data["mcpUrl"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/items/{missing}/ontologyEndpoint"))
+    );
+    assert_eq!(data["exists"], false);
+    assert!(data["hint"].as_str().unwrap().contains("ontology list"));
+
+    // Cleanup.
+    fabio()
+        .args([
+            "ontology",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &ont_id,
+        ])
+        .assert()
+        .success();
+}

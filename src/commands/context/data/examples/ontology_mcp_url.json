@@ -1,0 +1,17 @@
+{
+  "command": "fabio ontology mcp-url --workspace <WS> --id <ONTOLOGY_ID>",
+  "description": "Print the Model Context Protocol (MCP) server URL for consuming a Fabric ontology (preview) item. External MCP clients (VS Code agent mode, Claude, Copilot Studio) connect to this URL over HTTP transport with Fabric auth. The URL is deterministic; fabio constructs it because agents cannot guess the /mcp/dataPlane/.../ontologyEndpoint shape.",
+  "response": {
+    "data": {
+      "id": "76062d6c-e0ca-4869-b824-d119881dc703",
+      "mcpUrl": "https://api.fabric.microsoft.com/v1/mcp/dataPlane/workspaces/376a5172-75a0-450f-9080-92ba5dd58797/items/76062d6c-e0ca-4869-b824-d119881dc703/ontologyEndpoint",
+      "transport": "http",
+      "exists": true,
+      "note": "Consume this URL as an MCP server (HTTP transport) from VS Code agent mode, Claude, Copilot Studio, or any MCP client, signing in with your Fabric credentials. Prerequisites: an F2+/P1 capacity and the 'Ontology item (preview)' tenant setting enabled."
+    }
+  },
+  "notes": "The URL shape DIFFERS from the data-agent MCP URL (/mcp/workspaces/{ws}/dataagents/{id}/agent). There is no 'publish' step for ontology — the endpoint is live as soon as the item exists. When the ontology id is not found, the command still emits the deterministic URL but sets exists=false and adds a hint instead of the note. Verified live: an MCP 'initialize' handshake to this URL returns serverInfo 'Microsoft Fabric Ontology' v1.0.0 with a tools capability. This is distinct from grounding a data agent ON an ontology (fabio data-agent add-datasource --artifact-type Ontology).",
+  "query_examples": [
+    "fabio ontology mcp-url --workspace <WS> --id <ID> --query mcpUrl -o plain"
+  ]
+}

@@ -214,6 +214,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/ontology_import.json"),
     ),
     (
+        "ontology/mcp-url",
+        include_str!("data/examples/ontology_mcp_url.json"),
+    ),
+    (
         "ontology/bind",
         include_str!("data/examples/ontology_bind.json"),
     ),
