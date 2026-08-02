@@ -41,6 +41,7 @@ Manage ontologies (entity types, data bindings)
 | `fabio ontology get-definition` | no | Get the ontology definition (entity types, bindings) |
 | `fabio ontology import` | yes | Import an OWL ontology (RDF/XML or JSON-LD) and convert to Fabric format |
 | `fabio ontology list` | no | List ontologies in a workspace |
+| `fabio ontology list-entity-types` | no | List the ontology's entity types and their properties (schema exploration) |
 | `fabio ontology mcp-url` | no | Print the Model Context Protocol (MCP) server URL for consuming this ontology |
 | `fabio ontology show` | no | Show details of an ontology |
 | `fabio ontology update` | yes | Update ontology properties (name and/or description) |
@@ -109,6 +110,7 @@ Manage Digital Twin Builder flows
 
 ### PREFER
 - context tenant --format owl to bootstrap an ontology schema from a real workspace scan, then ontology import.
+- ontology list-entity-types to explore an ontology's schema (entity types, properties, timeseries/untyped, inheritance) WITHOUT parsing the raw definition — byte-for-byte the same answer as the ontology MCP server's list_ontology_entity_types tool (minus the server-only etag), computed offline from getDefinition.
 - ontology import --lakehouse <ID> --bindings <map.json> to generate DataBindings + relationship Contextualizations in the same step, so the imported ontology is queryable rather than a bare schema.
 - ontology bind --lakehouse <ID> --bindings <map.json> to add/update data bindings on an EXISTING ontology (e.g. portal-authored) without re-importing OWL; types are matched by name.
 - Runtime introspection (context agent --group ontology|graph-model) for exact flags.
@@ -127,6 +129,7 @@ Manage Digital Twin Builder flows
 - Fabric does NOT check that a bound Lakehouse table/column exists at updateDefinition time (deferred to query time) — a missing table imports fine and is never the cause of an import failure.
 - Ontology needs a capacity with the Ontology/Digital Twin Builder preview enabled; each create/import/getDefinition is an LRO taking ~60-100s.
 - An ontology can be consumed as an MCP server by external agents. 'fabio ontology mcp-url --workspace <WS> --id <ID>' prints the canonical endpoint ({fabricBase}/mcp/dataPlane/workspaces/{ws}/items/{id}/ontologyEndpoint) — a deterministic URL agents cannot guess. Distinct from grounding a fabio data-agent on the ontology; this exposes the ontology itself over MCP (HTTP transport, Fabric auth) to VS Code agent mode/Claude/Copilot Studio. Requires F2+/P1 capacity and the Ontology-item preview tenant setting.
+- The ontology MCP server exposes two tools: list_ontology_entity_types (schema) and search_ontology (natural-language query over the ontology data estate). 'fabio ontology list-entity-types' already reproduces the FIRST one exactly (verified byte-for-byte live). The SECOND (search_ontology) has no pure-fabio equivalent — it is server-side Fabric IQ NL reasoning; ground a data agent on the ontology (data-agent add-datasource --artifact-type Ontology) and use data-agent query, or consume the ontology MCP server directly.
 
 ## Troubleshooting
 | Symptom | Fix |

@@ -10,6 +10,7 @@ use crate::errors::{enrich_forbidden, enrich_ontology_definition_error};
 
 mod crud;
 mod definitions;
+mod entity_types;
 pub mod import;
 mod mcp;
 
@@ -115,6 +116,24 @@ pub enum OntologyCommand {
         /// Decode base64 payloads in definition parts to readable JSON/text
         #[arg(long)]
         decode: bool,
+    },
+    /// List the ontology's entity types and their properties (schema exploration)
+    ListEntityTypes {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Ontology ID
+        #[arg(long)]
+        id: String,
+
+        /// Filter to a single entity type by name (exact match)
+        #[arg(long)]
+        entity_name: Option<String>,
+
+        /// Include each entity type's properties/timeseries/untyped properties
+        #[arg(long)]
+        include_properties: bool,
     },
     /// Update the ontology definition (replaces current definition)
     UpdateDefinition {
@@ -355,6 +374,21 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
             definitions::get_definition(cli, client, workspace, id, format.as_deref(), *decode)
                 .await
         }
+        OntologyCommand::ListEntityTypes {
+            workspace,
+            id,
+            entity_name,
+            include_properties,
+        } => entity_types::list_entity_types(
+            cli,
+            client,
+            workspace,
+            id,
+            entity_name.as_deref(),
+            *include_properties,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "ontology list-entity-types", "Viewer")),
         OntologyCommand::UpdateDefinition {
             workspace,
             id,

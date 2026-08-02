@@ -40,6 +40,7 @@
 - `src/commands/ontology/mod.rs`: OntologyCommand enum + execute() dispatch + shared `read_file_or_stdin` (directory module)
 - `src/commands/ontology/crud.rs`: list/show/create/update/delete
 - `src/commands/ontology/definitions.rs`: get-definition/update-definition + RDF/folder definition builders + unit tests
+- `src/commands/ontology/entity_types.rs`: `ontology list-entity-types` — reproduces the ontology MCP `list_ontology_entity_types` tool offline from getDefinition (byte-for-byte, minus server-only etag); unit tests
 - `src/commands/ontology/import.rs`: OWL RDF/XML + JSON-LD parser, Fabric format generator, RDF serializer (import/bind/export handlers)
 - `src/commands/ontology/mcp.rs`: `ontology mcp-url` — builds the ontology MCP server consumption URL (`build_mcp_url`) + existence check; unit tests
 - `src/commands/environment.rs`: list/show/create/update/delete/publish/cancel-publish/get-spark-settings/get-staging-spark-settings/upload-staging-library

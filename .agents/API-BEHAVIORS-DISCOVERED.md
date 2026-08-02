@@ -2436,3 +2436,20 @@ constructs the endpoint (agents cannot guess it).
 - **Distinct from grounding**: `data-agent add-datasource --artifact-type Ontology` grounds a
   fabio DATA AGENT on an ontology; `ontology mcp-url` exposes the ontology ITSELF as an MCP
   server. Both are valid, different integration paths.
+
+## Ontology MCP tools vs. pure fabio (live comparison)
+
+Enumerated both Fabric MCP servers' tools live (`tools/list`) and mapped them to fabio commands.
+
+### Ontology MCP server (`Microsoft Fabric Ontology` v1.0.0) — 2 tools
+- `list_ontology_entity_types(entityName?, includeProperties=false)` → `{"values":[<entityType>...]}`. Each entity type carries `id`, `namespace`, `name`, `namespaceType`, `baseEntityTypeId` (only when it inherits), `entityIdParts`, `displayNamePropertyId`, `visibility`, `properties`/`timeseriesProperties`/`untypedProperties` (each `{id,name,valueType}`), `documents`/`mappings`/`resourceLinks`, and a server-assigned `etag`. `includeProperties=false` empties the three property arrays; `entityName` filters by exact name; ordered by `id` ascending.
+- `search_ontology(naturalLanguageQuery, naturalLanguageResponse)` → NL query over the ontology data estate (server-side Fabric IQ reasoning).
+
+**`fabio ontology list-entity-types` reproduces `list_ontology_entity_types` byte-for-byte** (verified live for includeProperties true/false and the entityName filter). It derives the answer offline from `getDefinition`'s `EntityTypes/*/definition.json` parts: reorders fields to the tool's order (preserve_order), strips `$schema` and null property fields (`redefines`, `baseTypeNamespaceType`), and defaults `documents`/`mappings`/`resourceLinks` to `[]`. The ONLY field it cannot reproduce is the server-assigned `etag` (a per-entity concurrency token with no offline source) — it is omitted, and every other field matches value-for-value and in the same key order. `search_ontology` has NO pure-fabio equivalent (LLM reasoning over the semantic layer); the workarounds are grounding a data agent on the ontology or consuming the ontology MCP server directly.
+
+### Data-agent MCP server (`DataAgent MCP Server` v1.0.0) — 1 tool
+- `DataAgent_<name>(userQuestion)` → NL answer over the agent's configured sources. Advertises a `resources` capability but `resources/list` returns "Feature is not enabled".
+
+**Already fully covered by `fabio data-agent query --prompt "…"`** (verified live: same published agent, same NL answer; fabio uses the OpenAI-Assistants endpoint, the tool uses MCP — same outcome). fabio also adds `data-agent evaluate` (batch). No reason for fabio to consume the data-agent MCP server.
+
+**Net:** of the three tools across both servers, two are already achievable in pure fabio (`list_ontology_entity_types` → `ontology list-entity-types`; `DataAgent_<name>` → `data-agent query`); only `search_ontology` (ontology NL query) is a genuine gap requiring an LLM/MCP-client path.

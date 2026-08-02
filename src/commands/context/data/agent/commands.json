@@ -7465,6 +7465,31 @@
         "returns": "object",
         "async": true
       },
+      "list-entity-types": {
+        "description": "List the ontology's entity types and their properties (schema exploration)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Ontology ID"
+          },
+          "--entity-name": {
+            "type": "string",
+            "description": "Filter to a single entity type by name (exact match)"
+          },
+          "--include-properties": {
+            "type": "bool",
+            "description": "Include each entity type's properties/timeseries/untyped properties"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
       "update-definition": {
         "description": "Update the ontology definition (replaces current definition)",
         "flags": {

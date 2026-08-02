@@ -3609,3 +3609,154 @@ fn ontology_mcp_url_lifecycle() {
         .assert()
         .success();
 }
+
+// ---------------------------------------------------------------------------
+// list-entity-types (pure-fabio equivalent of the ontology MCP
+// `list_ontology_entity_types` tool)
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn ontology_list_entity_types_matches_mcp_shape() {
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+
+    // Create an ontology and import a two-entity schema (Asset; Sensor inherits
+    // Asset and has a timeseries property).
+    let name = unique_name("ont_let");
+    let assert = fabio()
+        .args(["ontology", "create", "--workspace", ws, "--name", &name])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let ont_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let dir = tempfile::tempdir().unwrap();
+    let rdf = dir.path().join("dt.rdf");
+    std::fs::write(&rdf, FEATURES_RDF).unwrap();
+    fabio()
+        .args([
+            "ontology",
+            "import",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--file",
+            rdf.to_str().unwrap(),
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // list-entity-types --include-properties
+    let assert = fabio()
+        .args([
+            "ontology",
+            "list-entity-types",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--include-properties",
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&assert)).clone();
+    let values = data["values"].as_array().expect("values array");
+    assert_eq!(values.len(), 2, "Asset + Sensor");
+
+    let by_name = |n: &str| {
+        values
+            .iter()
+            .find(|v| v["name"] == n)
+            .unwrap_or_else(|| panic!("entity {n} missing"))
+            .clone()
+    };
+    let asset = by_name("Asset");
+    let sensor = by_name("Sensor");
+
+    // MCP-shape fields present; server-only etag and $schema must NOT leak.
+    for v in [&asset, &sensor] {
+        let obj = v.as_object().unwrap();
+        for k in [
+            "id",
+            "namespace",
+            "name",
+            "namespaceType",
+            "entityIdParts",
+            "displayNamePropertyId",
+            "visibility",
+            "properties",
+            "timeseriesProperties",
+            "untypedProperties",
+            "documents",
+            "mappings",
+            "resourceLinks",
+        ] {
+            assert!(obj.contains_key(k), "missing {k}");
+        }
+        assert!(!obj.contains_key("etag"), "etag must not leak");
+        assert!(!obj.contains_key("$schema"), "$schema must not leak");
+    }
+
+    // Asset has no inheritance; Sensor inherits Asset and carries timeseries +
+    // untyped properties, each reduced to {id,name,valueType} (no null fields).
+    assert!(!asset.as_object().unwrap().contains_key("baseEntityTypeId"));
+    assert_eq!(sensor["baseEntityTypeId"], asset["id"]);
+    let ts_names: Vec<&str> = sensor["timeseriesProperties"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["name"].as_str().unwrap())
+        .collect();
+    assert!(ts_names.contains(&"temperature"), "ts: {ts_names:?}");
+    let temp = sensor["timeseriesProperties"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["name"] == "temperature")
+        .unwrap();
+    assert_eq!(temp["valueType"], "Double");
+    assert!(!temp.as_object().unwrap().contains_key("redefines"));
+    // payload is an untyped property.
+    let untyped_names: Vec<&str> = sensor["untypedProperties"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["name"].as_str().unwrap())
+        .collect();
+    assert!(
+        untyped_names.contains(&"payload"),
+        "untyped: {untyped_names:?}"
+    );
+
+    // --entity-name filter returns exactly that entity.
+    let assert = fabio()
+        .args([
+            "ontology",
+            "list-entity-types",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--entity-name",
+            "Sensor",
+        ])
+        .assert()
+        .success();
+    let filtered = extract_data(&parse_json(&assert))["values"]
+        .as_array()
+        .unwrap()
+        .clone();
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0]["name"], "Sensor");
+    // Default (no --include-properties) empties the property arrays.
+    assert_eq!(filtered[0]["properties"].as_array().unwrap().len(), 0);
+
+    delete_ontology(ws, &ont_id);
+}
