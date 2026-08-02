@@ -1522,7 +1522,6 @@ fn generate_fabric_parts(
         let mut timeseries_properties: Vec<Value> = Vec::new();
         let mut untyped_properties: Vec<Value> = Vec::new();
         let mut id_parts: Vec<String> = Vec::new();
-        let mut display_name_id: Option<String> = None;
         // Properties available to the entity's data bindings.
         let mut binding_props: Vec<BindingProp> = Vec::new();
 
@@ -1564,41 +1563,18 @@ fn generate_fabric_parts(
                 });
             }
 
-            // Identifiers and the display name come from static (non-time-series,
-            // non-untyped) properties.
+            // Identifiers come from static (non-time-series, non-untyped)
+            // properties explicitly marked ont:isIdentifier.
             if prop.is_identifier && !time_series && !untyped {
                 id_parts.push(prop_id.clone());
             }
-            if display_name_id.is_none()
-                && !time_series
-                && !untyped
-                && prop.property_type == "String"
-            {
-                display_name_id = Some(prop_id.clone());
-            }
         }
 
-        // If no identifier was marked, use the first static property
-        if id_parts.is_empty()
-            && let Some(first) = properties.first()
-            && let Some(pid) = first.get("id").and_then(Value::as_str)
-        {
-            id_parts.push(pid.to_string());
-        }
-
-        // displayNamePropertyId prefers a String property, but an entity type
-        // may have none (e.g. `factsales` with only SaleId:long + RevenueUSD:double).
-        // Fall back to the entity key (or first property) so the Fabric API does
-        // not reject the import with "DisplayNamePropertyId cannot be empty".
-        if display_name_id.is_none() {
-            display_name_id = id_parts.first().cloned().or_else(|| {
-                properties
-                    .first()
-                    .and_then(|p| p.get("id").and_then(Value::as_str))
-                    .map(String::from)
-            });
-        }
-
+        // Match the portal's "Generate ontology": keys come ONLY from explicit
+        // identifiers (a relationship "one"-side / ont:isIdentifier). Do NOT
+        // fabricate a key from an arbitrary property — a table with no natural
+        // key (e.g. a fact table) is left keyless, and displayNamePropertyId is
+        // left null, exactly as the portal's server-side generation does.
         identifier_ids.insert(class.uri.clone(), id_parts.clone());
 
         // baseEntityTypeId from rdfs:subClassOf, overridable by binding-map baseEntityType.
@@ -1620,7 +1596,7 @@ fn generate_fabric_parts(
             "name": sanitize_name(&class.label),
             "namespaceType": "Custom",
             "visibility": "Visible",
-            "displayNamePropertyId": display_name_id.as_deref().unwrap_or(""),
+            "displayNamePropertyId": Value::Null,
             "entityIdParts": id_parts,
             "properties": properties,
         });
@@ -2740,11 +2716,12 @@ mod tests {
     }
 
     #[test]
-    fn entity_type_with_only_numeric_properties_gets_display_name() {
-        // Regression: an entity type whose properties are all non-String (e.g.
-        // a fact table with SaleId:long + RevenueUSD:double) must still get a
-        // non-empty displayNamePropertyId, or Fabric rejects the import with
-        // "DisplayNamePropertyId cannot be empty".
+    fn keyed_entity_uses_identifier_and_null_display_name() {
+        // Match the portal's "Generate ontology": an explicit identifier becomes
+        // entityIdParts, and displayNamePropertyId is left null (the portal never
+        // fabricates a display name). namespaceType stays "Custom" — the official
+        // Fabric entityType schema mandates const "Custom" (the portal's "Imported"
+        // violates that schema, so fabio stays conformant).
         let model = OwlModel {
             subclass_of: std::collections::HashMap::new(),
             timeseries_properties: std::collections::HashSet::new(),
@@ -2771,15 +2748,52 @@ mod tests {
         };
         let parts = generate_fabric_parts(&model, None).unwrap();
         let entity: serde_json::Value = serde_json::from_str(&parts[1].content).unwrap();
-        let dnp = entity["displayNamePropertyId"].as_str().unwrap();
-        assert!(!dnp.is_empty(), "displayNamePropertyId must not be empty");
-        // It falls back to the entity key (SaleId).
-        assert_eq!(
-            entity["entityIdParts"].as_array().unwrap()[0]
-                .as_str()
-                .unwrap(),
-            dnp
+        assert_eq!(entity["namespaceType"], "Custom");
+        // Display name is null (portal parity), even though a key exists.
+        assert!(entity["displayNamePropertyId"].is_null());
+        // The explicit identifier (SaleId) is the sole key.
+        let key_id = entity["entityIdParts"].as_array().unwrap();
+        assert_eq!(key_id.len(), 1);
+        assert_eq!(key_id[0], entity["properties"][0]["id"]);
+    }
+
+    #[test]
+    fn keyless_entity_left_keyless_like_portal() {
+        // A table with NO explicit identifier (e.g. a fact table with no
+        // relationship "one"-side) must be left keyless — the portal does NOT
+        // fabricate a key from the first property (a prior fabio bug).
+        let model = OwlModel {
+            subclass_of: std::collections::HashMap::new(),
+            timeseries_properties: std::collections::HashSet::new(),
+            untyped_properties: std::collections::HashSet::new(),
+            classes: vec![OwlClass {
+                uri: "http://ex.org/factsales".to_string(),
+                label: "factsales".to_string(),
+            }],
+            datatype_properties: vec![
+                OwlDatatypeProperty {
+                    label: "SaleId".to_string(),
+                    domain_uri: "http://ex.org/factsales".to_string(),
+                    property_type: "Int64".to_string(),
+                    is_identifier: false,
+                },
+                OwlDatatypeProperty {
+                    label: "RevenueUSD".to_string(),
+                    domain_uri: "http://ex.org/factsales".to_string(),
+                    property_type: "Double".to_string(),
+                    is_identifier: false,
+                },
+            ],
+            object_properties: vec![],
+        };
+        let parts = generate_fabric_parts(&model, None).unwrap();
+        let entity: serde_json::Value = serde_json::from_str(&parts[1].content).unwrap();
+        assert!(
+            entity["entityIdParts"].as_array().unwrap().is_empty(),
+            "keyless entity must have empty entityIdParts, got {:?}",
+            entity["entityIdParts"]
         );
+        assert!(entity["displayNamePropertyId"].is_null());
     }
 
     #[test]

@@ -2603,12 +2603,54 @@ provisioned". That was IMPRECISE. Root cause, established empirically:
 'entityType')` whenever an entity type had **no String property** — e.g. a fact table bound
 to `SaleId:long` + `RevenueUSD:double`. Cause: `generate_fabric_parts` assigned
 `displayNamePropertyId` ONLY from the first `String` property; if an entity had none,
-`display_name_id` stayed `None` and was serialized as `""`, which Fabric rejects. (The
-`entityIdParts` key already had a first-property fallback, but `displayNamePropertyId` did
-not.) This is why the ontology tutorial worked — its `factsales` table has string columns
-(SaleDate/StoreId/ProductId) — but a hand-authored OWL with a numeric-only entity failed.
-Fix: `displayNamePropertyId` now falls back to the entity key (first `entityIdParts` id) and
-then the first property when no String property exists. Regression-tested
-(`entity_type_with_only_numeric_properties_gets_display_name`) and live-validated (a
-`Metric{MetricId:long, Value:double}` schema now imports with `displayNamePropertyId` = the
-`MetricId` key).
+`display_name_id` stayed `None` and was serialized as **`""`** (empty string), which Fabric
+rejects. **The rejection was specifically of the empty STRING — JSON `null` is accepted** (see
+the portal-comparison note below, which supersedes the original fabricate-a-fallback fix).
+
+### `ontology generate` — portal-parity comparison (fabio vs. Fabric server-side "Generate ontology")
+
+We generated an ontology from the SAME Direct Lake semantic model two ways — fabio
+`ontology generate --semantic-model <SM> --lakehouse <LH>` and the portal's **Generate
+ontology** — and diffed the decoded definitions part-by-part. Result: **structurally
+identical** (same part layout, same relationship types `{From}_has_{To}` with the same
+source/target, same property `valueType`s String/Double/BigInt/DateTime, same `DataBindings`
+column→property maps and `sourceTableProperties`). The portal's generate has NO public REST
+API — it is a browser-UI-only action (probed exhaustively: `POST .../ontologies/generate`,
+`.../generateFromSemanticModel`, `.../semanticModels/{id}/generateOntology`, and
+`creationPayload`/`generationSource` bodies all 404 or are silently ignored), and it appears
+to run the SAME kind of client-side schema→definition transformation fabio does.
+
+The diff surfaced three fabio bugs (now FIXED in `generate_fabric_parts`) and two deliberate,
+schema-justified deviations:
+
+**Fixed to match the portal:**
+1. **Fabricated keys.** fabio set `entityIdParts` to the first property when no key was marked
+   — so a fact table with no relationship "one"-side got a bogus key (`FactSales.entityIdParts
+   = [SaleId]`). The portal leaves such tables **keyless** (`entityIdParts: []`). Fix: keys now
+   come ONLY from explicit identifiers (relationship "one"-side / `ont:isIdentifier`); no
+   first-property fallback. Dimensions still get their natural key (both tools agree
+   `DimStore=[StoreId]`, `DimProducts=[ProductId]`).
+2. **Inconsistent / forced display name.** fabio always set `displayNamePropertyId`, and via a
+   SEPARATE fallback path it could disagree with the key (`FactSales`: `entityIdParts=[SaleId]`
+   but `displayNamePropertyId=StoreId`). The portal leaves `displayNamePropertyId: null` on
+   EVERY generated entity. Fix: fabio now emits **`null`** (JSON null, not `""`) — the official
+   `entityType/1.0.0` schema types the field `["string","null"]`, and `updateDefinition`
+   accepts null at runtime (live-confirmed; the earlier "cannot be empty" error was only for the
+   empty STRING). This also removes the need for the fabricate-a-fallback logic.
+3. (These two together mean fabio's generated `entityIdParts` + `displayNamePropertyId` now
+   match the portal byte-for-byte on the retail model: dims keyed, fact keyless, display names
+   null.)
+
+**Deliberate deviations where fabio is MORE correct than the portal:**
+4. **`namespaceType`.** The portal emits `"Imported"` for generated entity/relationship types.
+   The **official Microsoft schema** (`.../ontology/entityType/1.0.0/schema.json`) declares
+   `namespaceType` as **`const: "Custom"`** ("should always be Custom"). So the portal
+   **violates its own published schema**; fabio keeps `"Custom"` and stays schema-conformant
+   (fabio's `assert_schema_valid` conformance test would reject `"Imported"`). NOT changed.
+5. **`DataBinding.sourceSchema`.** The portal leaves it `null`; fabio emits `"dbo"` (the actual
+   lakehouse schema — explicit and correct). Kept as-is.
+
+Comparison harness (decode + per-entity diff of two ontology definitions) lives at
+`/tmp/opencode/compare_onto.py`; the fix is unit-tested (`keyed_entity_uses_identifier_and_null_display_name`,
+`keyless_entity_left_keyless_like_portal`) and live-validated (regenerated ontology diffs clean
+against the portal except the two intentional deviations above).
