@@ -2489,3 +2489,38 @@ header and returns tool results.
 - **`search_ontology` argument shape**: `{"naturalLanguageQuery": "<text>",
   "naturalLanguageResponse": <bool>}`. The tool always returns raw JSON results;
   `naturalLanguageResponse=true` additionally derives an NL answer.
+
+## Ontology generation from a semantic model (`ontology generate`) — portal-parity, client-side
+
+The Fabric portal's "Generate Ontology" from a semantic model has NO public REST API (the
+Fabric ontology REST surface is CRUD-only: create/get/list/update/delete). fabio reproduces
+it CLIENT-SIDE with `fabio ontology generate --workspace <ws> --semantic-model <id> --name
+<name> [--lakehouse <id>] [--output-owl <file>]`:
+
+- **Reads the model schema** via the DAX `INFO.VIEW.*` functions (the same metadata the portal
+  uses), reusing the existing `semantic-model list-tables/list-columns/list-relationships`
+  plumbing (`fetch_info_view` in `semantic_model/operations.rs`, now `pub(crate)`).
+- **Synthesizes an OWL model** (pure `build_owl` in `ontology/generate.rs`): each table →
+  `owl:Class` (entity type); each column → typed `owl:DatatypeProperty`; each relationship →
+  `owl:ObjectProperty` from the many-side entity to the one-side entity; the relationship's
+  "one"-side `ToColumn` is marked `isIdentifier` (the dimension key).
+- **Runs it through the existing `ontology import` path** (create ontology → `import_owl`),
+  so entity types, typed properties, relationship types, and — with `--lakehouse` — data
+  bindings (entity name → same-named lakehouse table) are all produced. Verified live: a
+  3-table retail model generated a 3-entity ontology (dimproducts/dimstore/factsales) with
+  17 typed properties, keys, 2 relationship types, and queryable lakehouse `DataBindings`.
+- **INFO.VIEW DataType mapping (live-verified)**: `Text`→string, `Integer`→long, `Number`→
+  double (Power BI's floating-point "Decimal Number" surfaces as `Number`, NOT `Double`),
+  Currency/Decimal→decimal, DateTime→dateTime, Boolean→boolean. A synthetic hidden
+  `RowNumber-*` column (`Type`/`DataCategory` = `RowNumber`, `IsKey:true`) is excluded.
+- **`--output-owl <file>`** writes the synthesized OWL and stops (inspect/compose); `--dry-run`
+  prints the plan + OWL without creating.
+- **Single clean output**: `import_owl` gained a `suppress_output` flag so `generate` emits one
+  JSON object (`{status, id, name, summary, note}`) instead of the import result + its own.
+- **Follow-ups (matching the portal flow, left manual)**: time-series bindings
+  (`ontology bind --eventhouse ...`), entity-key review, and relationship data bindings — per
+  the concepts-generate doc (portal generate also leaves these manual). Import-mode semantic
+  models generate schema only (no bindings); Direct Lake models can auto-bind.
+
+The full tutorial (lakehouse + eventhouse + ontology + data agent + NL query) is reproducible
+with fabio — see the `ontology_tutorial` workflow (`fabio context workflow ontology_tutorial`).
