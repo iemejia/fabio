@@ -1586,6 +1586,19 @@ fn generate_fabric_parts(
             id_parts.push(pid.to_string());
         }
 
+        // displayNamePropertyId prefers a String property, but an entity type
+        // may have none (e.g. `factsales` with only SaleId:long + RevenueUSD:double).
+        // Fall back to the entity key (or first property) so the Fabric API does
+        // not reject the import with "DisplayNamePropertyId cannot be empty".
+        if display_name_id.is_none() {
+            display_name_id = id_parts.first().cloned().or_else(|| {
+                properties
+                    .first()
+                    .and_then(|p| p.get("id").and_then(Value::as_str))
+                    .map(String::from)
+            });
+        }
+
         identifier_ids.insert(class.uri.clone(), id_parts.clone());
 
         // baseEntityTypeId from rdfs:subClassOf, overridable by binding-map baseEntityType.
@@ -2724,6 +2737,49 @@ mod tests {
         assert_eq!(entity["name"], "TypeA");
         assert_eq!(entity["properties"][0]["name"], "name");
         assert_eq!(entity["properties"][0]["valueType"], "String");
+    }
+
+    #[test]
+    fn entity_type_with_only_numeric_properties_gets_display_name() {
+        // Regression: an entity type whose properties are all non-String (e.g.
+        // a fact table with SaleId:long + RevenueUSD:double) must still get a
+        // non-empty displayNamePropertyId, or Fabric rejects the import with
+        // "DisplayNamePropertyId cannot be empty".
+        let model = OwlModel {
+            subclass_of: std::collections::HashMap::new(),
+            timeseries_properties: std::collections::HashSet::new(),
+            untyped_properties: std::collections::HashSet::new(),
+            classes: vec![OwlClass {
+                uri: "http://ex.org/factsales".to_string(),
+                label: "factsales".to_string(),
+            }],
+            datatype_properties: vec![
+                OwlDatatypeProperty {
+                    label: "SaleId".to_string(),
+                    domain_uri: "http://ex.org/factsales".to_string(),
+                    property_type: "Int64".to_string(),
+                    is_identifier: true,
+                },
+                OwlDatatypeProperty {
+                    label: "RevenueUSD".to_string(),
+                    domain_uri: "http://ex.org/factsales".to_string(),
+                    property_type: "Double".to_string(),
+                    is_identifier: false,
+                },
+            ],
+            object_properties: vec![],
+        };
+        let parts = generate_fabric_parts(&model, None).unwrap();
+        let entity: serde_json::Value = serde_json::from_str(&parts[1].content).unwrap();
+        let dnp = entity["displayNamePropertyId"].as_str().unwrap();
+        assert!(!dnp.is_empty(), "displayNamePropertyId must not be empty");
+        // It falls back to the entity key (SaleId).
+        assert_eq!(
+            entity["entityIdParts"].as_array().unwrap()[0]
+                .as_str()
+                .unwrap(),
+            dnp
+        );
     }
 
     #[test]

@@ -2566,3 +2566,20 @@ provisioned". That was IMPRECISE. Root cause, established empirically:
   initialize it, then `fabio graph-model refresh-graph` loads it and `ontology search` /
   `graph-model execute-query` work. There is currently no public REST API to initialize the graph,
   so fabio cannot fully bootstrap it headlessly.
+
+### Bug fix — `ontology import`/`generate` empty `displayNamePropertyId` for numeric-only entity types
+
+`ontology import` (and `ontology generate`, which reuses the import path) rejected with
+`ALMOperationImportFailed: DisplayNamePropertyId cannot be empty or whitespace. (Parameter
+'entityType')` whenever an entity type had **no String property** — e.g. a fact table bound
+to `SaleId:long` + `RevenueUSD:double`. Cause: `generate_fabric_parts` assigned
+`displayNamePropertyId` ONLY from the first `String` property; if an entity had none,
+`display_name_id` stayed `None` and was serialized as `""`, which Fabric rejects. (The
+`entityIdParts` key already had a first-property fallback, but `displayNamePropertyId` did
+not.) This is why the ontology tutorial worked — its `factsales` table has string columns
+(SaleDate/StoreId/ProductId) — but a hand-authored OWL with a numeric-only entity failed.
+Fix: `displayNamePropertyId` now falls back to the entity key (first `entityIdParts` id) and
+then the first property when no String property exists. Regression-tested
+(`entity_type_with_only_numeric_properties_gets_display_name`) and live-validated (a
+`Metric{MetricId:long, Value:double}` schema now imports with `displayNamePropertyId` = the
+`MetricId` key).
