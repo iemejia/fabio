@@ -2535,3 +2535,30 @@ The complete Fabric ontology tutorial was reproduced live with fabio (semantic-m
 - **Part 4** — `data-agent create` → `add-datasource --artifact-type Ontology --artifact <ONT>` (grounds the agent on the ontology; stored as `fabricItemType: "Ontology"`) → `update-config --instructions "Support group by in GQL"` → `publish` → `query --prompt "..."`. ✓ **The data agent returns REAL grounded NL answers** — it reasons over the ontology's entities (e.g. correctly reports which data the ontology contains and which entities are absent).
 
 **Key distinction (live-verified)**: the Fabric **data agent** NL path (Copilot/Azure OpenAI) works for ontology grounding on this capacity, whereas the ontology's **native** `search_ontology` MCP tool (Fabric IQ reasoning) returns "could not be processed" — they are backed by different server-side AI features with different tenant/capacity prerequisites. fabio faithfully drives both and surfaces each one's real result.
+
+### CORRECTION — why `ontology search` returns "could not be processed" (root cause: portal-only graph init, NOT capacity)
+
+An earlier note attributed the `ontology search` / `search_ontology` failure to "Fabric IQ not
+provisioned". That was IMPRECISE. Root cause, established empirically:
+
+- An ontology (preview) item spawns a hidden **`GraphModel` child item** (`<name>_graph_<id>`) plus
+  an internal lakehouse (`<name>_lh_<id>`). Both `ontology search` (NL) and direct GQL queries run
+  against this backing graph.
+- The backing graph is **not queryable until it is INITIALIZED, which is a PORTAL-ONLY operation**
+  (no public REST API). Direct proof: `graph-model execute-query` on a freshly fabio-created
+  ontology's graph returns `GraphNotQueryable: GraphIsNotLoaded`, and `graph-model initialize`
+  reports *"Graph model initialization is a portal-only operation. The REST API refresh fails with
+  'VersionConfig does not exist' until the portal provisions the internal loading infrastructure."*
+  fabio can trigger `graph-model refresh-graph`, but refresh only works AFTER the portal has
+  provisioned the graph's loading infrastructure the first time.
+- Therefore `search_ontology` returns `isError:true` "could not be processed" for a fabio-created
+  ontology whose graph was never opened in the portal. A **portal-created** ontology (like the
+  tutorial's) is initialized automatically, so its search works.
+- **It is NOT a capacity issue.** The capacity was F8 (>> the F2 minimum); there is no separate
+  "Fabric IQ" tenant/capacity setting; and the Fabric **data agent** grounded on the SAME ontology
+  returned real answers on the SAME F8 capacity (it reasons over the ontology schema + bound data
+  via a different path that does not require the loaded graph). A bigger capacity does NOT fix this.
+- **Fix / workaround**: open the ontology (or its `GraphModel` child) once in the Fabric portal to
+  initialize it, then `fabio graph-model refresh-graph` loads it and `ontology search` /
+  `graph-model execute-query` work. There is currently no public REST API to initialize the graph,
+  so fabio cannot fully bootstrap it headlessly.
