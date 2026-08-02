@@ -2552,7 +2552,11 @@ provisioned". That was IMPRECISE. Root cause, established empirically:
   fabio can trigger `graph-model refresh-graph`, but refresh only works AFTER the portal has
   provisioned the graph's loading infrastructure the first time.
 - Therefore `search_ontology` returns `isError:true` "could not be processed" for a fabio-created
-  ontology whose graph was never opened in the portal. A **portal-created** ontology (like the
+  ontology whose graph was never opened in the portal. DIRECTLY VERIFIED (not inferred): on the
+  SAME ontology, `fabio ontology search` returns "could not be processed" AND `graph-model
+  execute-query` returns `GraphIsNotLoaded`; running `graph-model refresh-graph` and re-testing
+  leaves BOTH failing identically — refresh alone does not load the graph without the prior
+  portal initialization. A **portal-created** ontology (like the
   tutorial's) is initialized automatically, so its search works.
 - **It is NOT a capacity issue.** The capacity was F8 (>> the F2 minimum); there is no separate
   "Fabric IQ" tenant/capacity setting; and the Fabric **data agent** grounded on the SAME ontology
