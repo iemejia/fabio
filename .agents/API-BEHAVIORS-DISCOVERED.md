@@ -2410,3 +2410,29 @@ definition-authoring error hints, and the `definition_requirements` block merged
   `MISSING_ONE_OF`, `UNKNOWN_ITEM_TYPE`, `PLATFORM_MISSING_METADATA`) — because Fabric tolerates
   aliases — promoted to failures with `--strict`. Verified `--strict` clean (0 warnings) against real
   exported CopyJob/Dataflow/DataPipeline/SparkJobDefinition/Notebook folders.
+
+## Ontology MCP Server (Preview) — live-verified
+
+A Fabric ontology (preview) item can be consumed as a Model Context Protocol (MCP)
+server by external AI systems. `fabio ontology mcp-url --workspace <ws> --id <id>`
+constructs the endpoint (agents cannot guess it).
+
+- **URL format** (per Microsoft docs, verified live):
+  `{fabricBase}/mcp/dataPlane/workspaces/{ws}/items/{id}/ontologyEndpoint`
+  = `https://api.fabric.microsoft.com/v1/mcp/dataPlane/workspaces/{ws}/items/{id}/ontologyEndpoint`.
+  This DIFFERS from the data-agent MCP URL (`/mcp/workspaces/{ws}/dataagents/{id}/agent`):
+  ontology uses the generic `dataPlane/.../items/...` path with an `ontologyEndpoint` suffix.
+- **The endpoint is a real MCP server (HTTP transport)**. A JSON-RPC `initialize` handshake
+  (`POST` the endpoint with `{"jsonrpc":"2.0","method":"initialize",...}`) returns
+  `serverInfo: {"name":"Microsoft Fabric Ontology","version":"1.0.0"}`, `protocolVersion
+  2025-06-18`, and `capabilities.tools` (with instructions describing ontology schema
+  exploration + natural-language querying of the ontology data estate). Verified via
+  `fabio rest call --api fabric --method post --path /mcp/dataPlane/workspaces/{ws}/items/{id}/ontologyEndpoint --body <initialize>`.
+- **Prerequisites**: an F2+/P1 capacity and the "Ontology item (preview)" tenant setting.
+  There is NO "publish" step (unlike data agents) — the endpoint is live as soon as the
+  ontology item exists. fabio therefore does a light existence check (GET
+  `/workspaces/{ws}/ontologies/{id}`) and surfaces an `exists` flag + prerequisite `note`,
+  rather than a published/draft gate.
+- **Distinct from grounding**: `data-agent add-datasource --artifact-type Ontology` grounds a
+  fabio DATA AGENT on an ontology; `ontology mcp-url` exposes the ontology ITSELF as an MCP
+  server. Both are valid, different integration paths.
