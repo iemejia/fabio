@@ -23,7 +23,7 @@ use crate::output;
 /// Fabric credentials. Note this differs from the data-agent MCP URL shape
 /// (`/mcp/workspaces/{ws}/dataagents/{id}/agent`): ontology uses the generic
 /// `dataPlane/.../items/...` path with an `ontologyEndpoint` suffix.
-fn build_mcp_url(base: &str, workspace: &str, id: &str) -> String {
+pub(super) fn build_mcp_url(base: &str, workspace: &str, id: &str) -> String {
     let base = base.trim_end_matches('/');
     format!("{base}/mcp/dataPlane/workspaces/{workspace}/items/{id}/ontologyEndpoint")
 }

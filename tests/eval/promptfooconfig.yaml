@@ -2070,3 +2070,15 @@ tests:
       - type: llm-rubric
         value: "The response uses 'fabio ontology mcp-url' (with --workspace and --id) to get the ontology's MCP server URL for use in an MCP client. It does not confuse this with grounding a data agent, and does not invent a non-existent command."
         metric: ontology-mcp-url-routing
+
+  - description: "Ontology: natural-language query over its data"
+    vars:
+      user_query: "Ask my Fabric ontology in plain English how many assets exist"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('ontology search')
+        metric: ontology-search-command
+      - type: llm-rubric
+        value: "The response uses 'fabio ontology search' (with --workspace, --id, and --prompt for the natural-language question) to query the ontology. It does not confuse this with ontology list-entity-types (schema) or data-agent query."
+        metric: ontology-search-routing

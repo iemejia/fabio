@@ -7702,6 +7702,32 @@
         },
         "mutates": false,
         "returns": "object"
+      },
+      "search": {
+        "description": "Ask a natural-language question over the ontology's data (MCP `search_ontology` tool)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Ontology ID"
+          },
+          "--prompt": {
+            "type": "string",
+            "required": true,
+            "description": "Natural-language question"
+          },
+          "--raw": {
+            "type": "bool",
+            "description": "Return only raw JSON results (skip the derived natural-language answer)"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
       }
     }
   },

@@ -2453,3 +2453,39 @@ Enumerated both Fabric MCP servers' tools live (`tools/list`) and mapped them to
 **Already fully covered by `fabio data-agent query --prompt "…"`** (verified live: same published agent, same NL answer; fabio uses the OpenAI-Assistants endpoint, the tool uses MCP — same outcome). fabio also adds `data-agent evaluate` (batch). No reason for fabio to consume the data-agent MCP server.
 
 **Net:** of the three tools across both servers, two are already achievable in pure fabio (`list_ontology_entity_types` → `ontology list-entity-types`; `DataAgent_<name>` → `data-agent query`); only `search_ontology` (ontology NL query) is a genuine gap requiring an LLM/MCP-client path.
+
+## MCP client (fabio consuming external MCP servers) — `ontology search`
+
+fabio gained its first MCP-CLIENT capability: `src/mcp_client.rs` is a generic
+Model Context Protocol client over the streamable-HTTP transport (`McpClient::connect`
+→ `initialize` handshake + `notifications/initialized`, then `list_tools`/`call_tool`).
+It is the counterpart of `fabio mcp serve` (fabio as an MCP *server*). Nothing in the
+module is ontology-specific — it takes an endpoint URL + an optional `Authorization`
+header and returns tool results.
+
+- **Transport behavior (Fabric ontology MCP server, verified live)**: the server is
+  STATELESS — it does NOT return an `Mcp-Session-Id` header on `initialize`, and each
+  JSON-RPC request is an independent POST. It responds with `application/json` (not SSE)
+  for the ontology endpoint, but the client handles both `application/json` and
+  `text/event-stream` (SSE `data:` events). The client advertises protocol version
+  `2025-06-18`, which the server accepts.
+- **Auth**: the client attaches the Fabric bearer token (`FabricClient::require_auth()`);
+  the endpoint is HTTPS + trusted-host validated (`validate_trusted_url`) before the
+  token is sent.
+- **`fabio ontology search --workspace <ws> --id <id> --prompt "<q>" [--raw]`**: builds
+  the ontology MCP URL (same as `mcp-url`), connects, confirms the server exposes
+  `search_ontology` (via `list_tools`), then calls it with
+  `{naturalLanguageQuery, naturalLanguageResponse=!--raw}`. Output:
+  `{"query","answer","isError"}` (the tool's text content is JSON-parsed when possible).
+  `--dry-run` prints the plan (endpoint + query + tool) without any network call.
+- **Live validation**: fabio's `ontology search` produces BYTE-IDENTICAL behavior to a
+  raw MCP `tools/call` (verified by side-by-side curl). On a tenant/ontology WITHOUT
+  Fabric IQ natural-language reasoning fully provisioned, `search_ontology` returns
+  `{"isError":true,"...":"The natural language query could not be processed..."}` — the
+  same response fabio surfaces (it correctly transmits the query and reports the
+  server's result, exiting non-zero on `isError`). A successful NL answer therefore
+  needs the ontology bound to data AND the capacity's Fabric IQ/Copilot reasoning
+  enabled — a server-side prerequisite, not a fabio limitation.
+- **`search_ontology` argument shape**: `{"naturalLanguageQuery": "<text>",
+  "naturalLanguageResponse": <bool>}`. The tool always returns raw JSON results;
+  `naturalLanguageResponse=true` additionally derives an NL answer.

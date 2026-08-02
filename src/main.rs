@@ -7,6 +7,7 @@ mod commands;
 mod definition_spec;
 mod errors;
 mod llm;
+mod mcp_client;
 mod metrics;
 mod output;
 mod parallel;

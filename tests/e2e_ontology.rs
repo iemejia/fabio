@@ -3760,3 +3760,116 @@ fn ontology_list_entity_types_matches_mcp_shape() {
 
     delete_ontology(ws, &ont_id);
 }
+
+// ---------------------------------------------------------------------------
+// search (MCP client — consumes the ontology MCP `search_ontology` tool)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn ontology_search_dry_run_offline() {
+    // Deterministic: --dry-run stops before any network/MCP call.
+    let assert = fabio()
+        .args([
+            "ontology",
+            "search",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--prompt",
+            "How many assets are there?",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "ontology search");
+    assert_eq!(data["details"]["tool"], "search_ontology");
+    assert_eq!(data["details"]["query"], "How many assets are there?");
+    // Endpoint must be the canonical ontology MCP URL.
+    assert!(
+        data["details"]["endpoint"]
+            .as_str()
+            .unwrap()
+            .ends_with("/ontologyEndpoint")
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn ontology_search_drives_mcp_client() {
+    // Validates fabio's MCP CLIENT end-to-end: create an ontology, then run
+    // `ontology search`, which must connect to the ontology MCP server,
+    // discover the search_ontology tool, call it, and return a structured
+    // {query, answer, isError} response. A successful *answer* depends on
+    // server-side Fabric IQ provisioning, so we assert the mechanism (the query
+    // is echoed and an answer field is returned), not a specific answer.
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+    let name = unique_name("ont_search");
+
+    let assert = fabio()
+        .args(["ontology", "create", "--workspace", ws, "--name", &name])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let ont_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let dir = tempfile::tempdir().unwrap();
+    let rdf = dir.path().join("dt.rdf");
+    std::fs::write(&rdf, FEATURES_RDF).unwrap();
+    fabio()
+        .args([
+            "ontology",
+            "import",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--file",
+            rdf.to_str().unwrap(),
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // Run search. On a tenant without Fabric IQ NL reasoning this returns
+    // isError:true (non-zero exit), so do not assert success — inspect stdout.
+    let output = fabio()
+        .args([
+            "ontology",
+            "search",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--prompt",
+            "How many assets are there?",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .get_output()
+        .clone();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|_| panic!("search stdout not JSON: {stdout}"));
+    let data = &json["data"];
+    // The MCP round-trip happened: our query is echoed and an answer is present.
+    assert_eq!(data["query"], "How many assets are there?");
+    assert!(
+        !data["answer"].is_null(),
+        "expected an answer field: {json}"
+    );
+    assert!(
+        data.get("isError").is_some(),
+        "expected isError flag: {json}"
+    );
+
+    delete_ontology(ws, &ont_id);
+}

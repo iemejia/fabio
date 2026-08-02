@@ -13,6 +13,7 @@ mod definitions;
 mod entity_types;
 pub mod import;
 mod mcp;
+mod search;
 
 #[derive(Debug, Subcommand)]
 #[command(
@@ -314,6 +315,24 @@ pub enum OntologyCommand {
         #[arg(long)]
         id: String,
     },
+    /// Ask a natural-language question over the ontology's data (MCP `search_ontology` tool)
+    Search {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Ontology ID
+        #[arg(long)]
+        id: String,
+
+        /// Natural-language question
+        #[arg(short, long)]
+        prompt: String,
+
+        /// Return only raw JSON results (skip the derived natural-language answer)
+        #[arg(long)]
+        raw: bool,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -481,6 +500,14 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
         OntologyCommand::McpUrl { workspace, id } => mcp::mcp_url(cli, client, workspace, id)
             .await
             .map_err(|e| enrich_forbidden(e, "ontology mcp-url", "Viewer")),
+        OntologyCommand::Search {
+            workspace,
+            id,
+            prompt,
+            raw,
+        } => search::search(cli, client, workspace, id, prompt, !raw)
+            .await
+            .map_err(|e| enrich_forbidden(e, "ontology search", "Viewer")),
     }
 }
 

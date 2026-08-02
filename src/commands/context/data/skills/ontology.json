@@ -10,6 +10,7 @@
     "Modeling IoT/operational digital twins (Digital Twin Builder models and flows).",
     "Grounding an agent in a knowledge graph over Fabric data.",
     "Exposing an ontology to external AI systems as an MCP server ('ontology mcp-url').",
+    "Querying an ontology's data in natural language ('ontology search') — fabio consumes the ontology MCP server's search_ontology tool as an MCP client.",
     "Importing an OWL schema (e.g. one produced by 'fabio context tenant --format owl')."
   ],
   "when_not_to_use": [
@@ -42,7 +43,7 @@
     "Fabric does NOT check that a bound Lakehouse table/column exists at updateDefinition time (deferred to query time) — a missing table imports fine and is never the cause of an import failure.",
     "Ontology needs a capacity with the Ontology/Digital Twin Builder preview enabled; each create/import/getDefinition is an LRO taking ~60-100s.",
     "An ontology can be consumed as an MCP server by external agents. 'fabio ontology mcp-url --workspace <WS> --id <ID>' prints the canonical endpoint ({fabricBase}/mcp/dataPlane/workspaces/{ws}/items/{id}/ontologyEndpoint) — a deterministic URL agents cannot guess. Distinct from grounding a fabio data-agent on the ontology; this exposes the ontology itself over MCP (HTTP transport, Fabric auth) to VS Code agent mode/Claude/Copilot Studio. Requires F2+/P1 capacity and the Ontology-item preview tenant setting.",
-    "The ontology MCP server exposes two tools: list_ontology_entity_types (schema) and search_ontology (natural-language query over the ontology data estate). 'fabio ontology list-entity-types' already reproduces the FIRST one exactly (verified byte-for-byte live). The SECOND (search_ontology) has no pure-fabio equivalent — it is server-side Fabric IQ NL reasoning; ground a data agent on the ontology (data-agent add-datasource --artifact-type Ontology) and use data-agent query, or consume the ontology MCP server directly."
+    "The ontology MCP server exposes two tools: list_ontology_entity_types (schema) and search_ontology (natural-language query over the ontology data estate). Both now have pure-fabio equivalents: 'fabio ontology list-entity-types' reproduces the first EXACTLY (offline, byte-for-byte), and 'fabio ontology search --prompt \"...\"' drives the second by consuming the ontology MCP server as an MCP CLIENT (fabio's first MCP-client feature). search returns raw JSON results + an optional derived NL answer; a successful answer needs the ontology bound to data AND server-side Fabric IQ NL reasoning provisioned on the capacity."
   ],
   "troubleshooting": [
     {"symptom": "ALMOperationImportFailed / generic 'import failed' on import/bind/update-definition", "fix": "The top-level message is often an unfilled '{0} {1} {2}' template — read error.errorCode + error.moreDetails (fabio flattens these into the message + hint). Check in order: (1) no untyped property is bound, (2) every entityTypeId/propertyId/relationshipTypeId referenced by a binding or contextualization is defined in the same push and case-matches, (3) TimeSeries bindings have a timestampColumn, (4) contextualization source/target entity ids match the relationship endpoints. A missing Lakehouse table is NOT a cause."},

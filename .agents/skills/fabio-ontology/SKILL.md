@@ -18,6 +18,7 @@ license: MIT
 - Modeling IoT/operational digital twins (Digital Twin Builder models and flows).
 - Grounding an agent in a knowledge graph over Fabric data.
 - Exposing an ontology to external AI systems as an MCP server ('ontology mcp-url').
+- Querying an ontology's data in natural language ('ontology search') — fabio consumes the ontology MCP server's search_ontology tool as an MCP client.
 - Importing an OWL schema (e.g. one produced by 'fabio context tenant --format owl').
 
 ## When NOT to use (route elsewhere)
@@ -43,6 +44,7 @@ Manage ontologies (entity types, data bindings)
 | `fabio ontology list` | no | List ontologies in a workspace |
 | `fabio ontology list-entity-types` | no | List the ontology's entity types and their properties (schema exploration) |
 | `fabio ontology mcp-url` | no | Print the Model Context Protocol (MCP) server URL for consuming this ontology |
+| `fabio ontology search` | no | Ask a natural-language question over the ontology's data (MCP `search_ontology` tool) |
 | `fabio ontology show` | no | Show details of an ontology |
 | `fabio ontology update` | yes | Update ontology properties (name and/or description) |
 | `fabio ontology update-definition` | yes | Update the ontology definition (replaces current definition) |
@@ -129,7 +131,7 @@ Manage Digital Twin Builder flows
 - Fabric does NOT check that a bound Lakehouse table/column exists at updateDefinition time (deferred to query time) — a missing table imports fine and is never the cause of an import failure.
 - Ontology needs a capacity with the Ontology/Digital Twin Builder preview enabled; each create/import/getDefinition is an LRO taking ~60-100s.
 - An ontology can be consumed as an MCP server by external agents. 'fabio ontology mcp-url --workspace <WS> --id <ID>' prints the canonical endpoint ({fabricBase}/mcp/dataPlane/workspaces/{ws}/items/{id}/ontologyEndpoint) — a deterministic URL agents cannot guess. Distinct from grounding a fabio data-agent on the ontology; this exposes the ontology itself over MCP (HTTP transport, Fabric auth) to VS Code agent mode/Claude/Copilot Studio. Requires F2+/P1 capacity and the Ontology-item preview tenant setting.
-- The ontology MCP server exposes two tools: list_ontology_entity_types (schema) and search_ontology (natural-language query over the ontology data estate). 'fabio ontology list-entity-types' already reproduces the FIRST one exactly (verified byte-for-byte live). The SECOND (search_ontology) has no pure-fabio equivalent — it is server-side Fabric IQ NL reasoning; ground a data agent on the ontology (data-agent add-datasource --artifact-type Ontology) and use data-agent query, or consume the ontology MCP server directly.
+- The ontology MCP server exposes two tools: list_ontology_entity_types (schema) and search_ontology (natural-language query over the ontology data estate). Both now have pure-fabio equivalents: 'fabio ontology list-entity-types' reproduces the first EXACTLY (offline, byte-for-byte), and 'fabio ontology search --prompt "..."' drives the second by consuming the ontology MCP server as an MCP CLIENT (fabio's first MCP-client feature). search returns raw JSON results + an optional derived NL answer; a successful answer needs the ontology bound to data AND server-side Fabric IQ NL reasoning provisioned on the capacity.
 
 ## Troubleshooting
 | Symptom | Fix |
