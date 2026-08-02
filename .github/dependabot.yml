@@ -17,6 +17,13 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "ci"
+    groups:
+      # Batch all GitHub Actions bumps into a single PR so multi-reference
+      # actions (e.g. github/codeql-action used by init/autobuild/analyze)
+      # always update in lockstep and never drift to mismatched versions.
+      github-actions:
+        patterns:
+          - "*"
 
   - package-ecosystem: "npm"
     directory: "/docs"
