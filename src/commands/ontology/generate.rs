@@ -1,17 +1,23 @@
-//! `ontology generate` — generate an ontology from a Power BI semantic model.
+//! `ontology generate` — generate an ontology from a semantic model or lakehouse.
 //!
 //! The Fabric portal can "Generate Ontology" from a semantic model, but there is
-//! NO public REST API for it. fabio reproduces the feature CLIENT-SIDE: it reads
-//! the model's schema via the DAX `INFO.VIEW.*` functions (tables, columns,
-//! relationships — the same metadata the portal uses), synthesizes an OWL model,
-//! and runs it through the existing `ontology import` path (which builds entity
-//! types, typed properties, relationship types, and — with `--lakehouse` — data
-//! bindings by table name).
+//! NO public REST API for it. fabio reproduces the feature CLIENT-SIDE from one of
+//! two schema sources:
 //!
-//! This mirrors the portal's automatic output (entity types + static properties +
-//! bindings + relationship definitions). As the concepts doc notes, time-series
-//! bindings, relationship data bindings, and entity-key review remain manual
-//! follow-ups (`ontology bind`, `ontology update-definition`).
+//! * `--semantic-model <id>`: reads the model's schema via the DAX `INFO.VIEW.*`
+//!   functions (tables, columns, relationships — the same metadata the portal
+//!   uses). Relationship "one"-side columns become entity identifiers.
+//! * `--lakehouse <id>` (without `--semantic-model`): reads the lakehouse SQL
+//!   analytics endpoint's `INFORMATION_SCHEMA.COLUMNS` (base tables only). Each
+//!   table becomes an entity type; each column a typed property. There are no
+//!   relationships to infer, so the first column of each table is treated as its
+//!   identifier (a reviewable heuristic).
+//!
+//! Either way, the synthesized OWL runs through the existing `ontology import`
+//! path (entity types, typed properties, relationship types, and — with
+//! `--lakehouse` — data bindings by table name). As the concepts doc notes,
+//! time-series bindings, relationship data bindings, and entity-key review remain
+//! manual follow-ups (`ontology bind`, `ontology update-definition`).
 
 use std::collections::HashSet;
 use std::fmt::Write as _;
@@ -22,6 +28,7 @@ use serde_json::Value;
 use crate::cli::Cli;
 use crate::client::FabricClient;
 use crate::commands::semantic_model::operations::fetch_info_view;
+use crate::commands::tds_utils::{execute_sql_rows, resolve_lakehouse_sql};
 use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
@@ -33,18 +40,23 @@ pub(super) async fn generate(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
-    semantic_model: &str,
+    semantic_model: Option<&str>,
     name: &str,
     lakehouse: Option<&str>,
     lakehouse_workspace: Option<&str>,
     output_owl: Option<&str>,
 ) -> Result<()> {
-    // Fetch the model schema (tables, columns, relationships) via INFO.VIEW.
-    let tables = fetch_info_view(client, workspace, semantic_model, "TABLES").await?;
-    let columns = fetch_info_view(client, workspace, semantic_model, "COLUMNS").await?;
-    let relationships = fetch_info_view(client, workspace, semantic_model, "RELATIONSHIPS").await?;
+    // Resolve the schema source: semantic model (INFO.VIEW) or lakehouse (SQL).
+    let (tables, columns, relationships, keys, source) = resolve_schema(
+        client,
+        workspace,
+        semantic_model,
+        lakehouse,
+        lakehouse_workspace,
+    )
+    .await?;
 
-    let owl = build_owl(&tables, &columns, &relationships);
+    let owl = build_owl(&tables, &columns, &relationships, &keys);
     let summary = summarize(&tables, &columns, &relationships);
 
     // --output-owl: write the generated OWL and stop (composable / inspectable).
@@ -57,7 +69,7 @@ pub(super) async fn generate(
         })?;
         output::render_object(
             cli,
-            &serde_json::json!({"status": "generated", "owlFile": path, "summary": summary}),
+            &serde_json::json!({"status": "generated", "owlFile": path, "source": source, "summary": summary}),
             "status",
         );
         return Ok(());
@@ -68,7 +80,7 @@ pub(super) async fn generate(
         "ontology generate",
         &serde_json::json!({
             "workspace": workspace,
-            "semanticModel": semantic_model,
+            "source": source,
             "name": name,
             "lakehouse": lakehouse,
             "summary": summary,
@@ -126,7 +138,7 @@ pub(super) async fn generate(
             "status": "generated",
             "id": ontology_id,
             "name": name,
-            "semanticModel": semantic_model,
+            "source": source,
             "summary": summary,
             "note": "Follow-ups (matching the portal flow): bind time-series data \
                      (ontology bind --eventhouse ...), review entity keys, and bind \
@@ -135,6 +147,142 @@ pub(super) async fn generate(
         "status",
     );
     Ok(())
+}
+
+/// Resolve the schema source into `(tables, columns, relationships, keys, source)`.
+///
+/// With `--semantic-model`, reads INFO.VIEW metadata and derives keys from
+/// relationships. Otherwise reads the lakehouse SQL endpoint and derives keys
+/// from the first column of each table.
+type Schema = (
+    Vec<Value>,
+    Vec<Value>,
+    Vec<Value>,
+    HashSet<(String, String)>,
+    Value,
+);
+
+async fn resolve_schema(
+    client: &FabricClient,
+    workspace: &str,
+    semantic_model: Option<&str>,
+    lakehouse: Option<&str>,
+    lakehouse_workspace: Option<&str>,
+) -> Result<Schema> {
+    if let Some(sm) = semantic_model {
+        let tables = fetch_info_view(client, workspace, sm, "TABLES").await?;
+        let columns = fetch_info_view(client, workspace, sm, "COLUMNS").await?;
+        let relationships = fetch_info_view(client, workspace, sm, "RELATIONSHIPS").await?;
+        let keys = relationship_keys(&relationships);
+        let source = serde_json::json!({"semanticModel": sm});
+        return Ok((tables, columns, relationships, keys, source));
+    }
+
+    let lh = lakehouse.ok_or_else(|| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "No schema source specified.",
+            "Provide --semantic-model <id> or --lakehouse <id> as the source.",
+        )
+    })?;
+    let lh_ws = lakehouse_workspace.unwrap_or(workspace);
+    let (tables, columns, keys) = fetch_lakehouse_schema(client, lh_ws, lh).await?;
+    let source = serde_json::json!({"lakehouse": lh});
+    Ok((tables, columns, Vec::new(), keys, source))
+}
+
+/// Fetch a lakehouse's schema (base tables + columns) from its SQL analytics
+/// endpoint and synthesize the `(tables, columns, keys)` triple in the same
+/// `Value` shape [`build_owl`] consumes for the semantic-model path.
+///
+/// Each column carries a pre-resolved `Xsd` local name (from [`map_sql_type`]).
+/// With no relationships to infer keys from, the first column (lowest
+/// `ORDINAL_POSITION`) of each table is treated as the entity identifier — a
+/// reviewable heuristic, since lakehouse Delta tables have no declared PK.
+async fn fetch_lakehouse_schema(
+    client: &FabricClient,
+    workspace: &str,
+    lakehouse_id: &str,
+) -> Result<(Vec<Value>, Vec<Value>, HashSet<(String, String)>)> {
+    let (server, database) = resolve_lakehouse_sql(client, workspace, lakehouse_id).await?;
+    let sql = "SELECT c.TABLE_NAME, c.COLUMN_NAME, c.DATA_TYPE, c.ORDINAL_POSITION \
+               FROM INFORMATION_SCHEMA.COLUMNS c \
+               JOIN INFORMATION_SCHEMA.TABLES t \
+               ON c.TABLE_SCHEMA = t.TABLE_SCHEMA AND c.TABLE_NAME = t.TABLE_NAME \
+               WHERE t.TABLE_TYPE = 'BASE TABLE' \
+               ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION";
+    let (_cols, rows) = execute_sql_rows(client, &server, &database, sql).await?;
+    Ok(lakehouse_schema_from_rows(&rows))
+}
+
+/// Pure transform: `INFORMATION_SCHEMA.COLUMNS` rows -> `(tables, columns, keys)`.
+fn lakehouse_schema_from_rows(
+    rows: &[Value],
+) -> (Vec<Value>, Vec<Value>, HashSet<(String, String)>) {
+    let mut tables: Vec<Value> = Vec::new();
+    let mut seen_tables: HashSet<String> = HashSet::new();
+    let mut columns: Vec<Value> = Vec::new();
+    let mut keys: HashSet<(String, String)> = HashSet::new();
+    // The first column encountered per table (rows are ordered by ORDINAL_POSITION)
+    // is the identifier heuristic.
+    let mut has_key: HashSet<String> = HashSet::new();
+
+    for row in rows {
+        let Some(table) = row.get("TABLE_NAME").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(col) = row.get("COLUMN_NAME").and_then(Value::as_str) else {
+            continue;
+        };
+        let sql_type = row
+            .get("DATA_TYPE")
+            .and_then(Value::as_str)
+            .unwrap_or("varchar");
+
+        if seen_tables.insert(table.to_string()) {
+            tables.push(serde_json::json!({"Name": table, "IsHidden": false}));
+        }
+        if has_key.insert(table.to_string()) {
+            // First column for this table -> identifier heuristic.
+            keys.insert((table.to_string(), col.to_string()));
+        }
+        columns.push(serde_json::json!({
+            "Name": col,
+            "Table": table,
+            "Xsd": map_sql_type(sql_type),
+            "IsHidden": false,
+            "Type": "Data",
+        }));
+    }
+    (tables, columns, keys)
+}
+
+/// Map a T-SQL `INFORMATION_SCHEMA` `DATA_TYPE` value to an `xsd` type local name.
+fn map_sql_type(sql_type: &str) -> &'static str {
+    match sql_type.to_ascii_lowercase().as_str() {
+        "bit" => "boolean",
+        "tinyint" | "smallint" | "int" | "bigint" => "long",
+        "real" | "float" => "double",
+        "decimal" | "numeric" | "money" | "smallmoney" => "decimal",
+        "date" | "time" | "datetime" | "datetime2" | "smalldatetime" | "datetimeoffset" => {
+            "dateTime"
+        }
+        // char/varchar/nchar/nvarchar/text/uniqueidentifier/binary/... -> string.
+        _ => "string",
+    }
+}
+
+/// Keys from semantic-model relationships: the (`ToTable`, `ToColumn`) "one" side.
+fn relationship_keys(relationships: &[Value]) -> HashSet<(String, String)> {
+    relationships
+        .iter()
+        .filter_map(|r| {
+            Some((
+                r.get("ToTable").and_then(Value::as_str)?.to_string(),
+                r.get("ToColumn").and_then(Value::as_str)?.to_string(),
+            ))
+        })
+        .collect()
 }
 
 /// Map a DAX `INFO.VIEW.COLUMNS.DataType` to an XSD type local name.
@@ -166,22 +314,16 @@ fn is_synthetic_column(col: &Value) -> bool {
     hidden || ty == "RowNumber" || cat == "RowNumber" || name.starts_with("RowNumber-")
 }
 
-/// Build an RDF/XML OWL document from the semantic-model schema. Tables become
-/// `owl:Class`, columns become `owl:DatatypeProperty` (typed), the "one"-side key
-/// of each relationship is marked `isIdentifier`, and relationships become
-/// `owl:ObjectProperty` from the many-side entity to the one-side entity.
-fn build_owl(tables: &[Value], columns: &[Value], relationships: &[Value]) -> String {
-    // Keys = (ToTable, ToColumn) pairs (the dimension/"one" side of a relationship).
-    let keys: HashSet<(String, String)> = relationships
-        .iter()
-        .filter_map(|r| {
-            Some((
-                r.get("ToTable").and_then(Value::as_str)?.to_string(),
-                r.get("ToColumn").and_then(Value::as_str)?.to_string(),
-            ))
-        })
-        .collect();
-
+/// Build an RDF/XML OWL document from a schema. Tables become `owl:Class`,
+/// columns become `owl:DatatypeProperty` (typed), any (table, column) in `keys`
+/// is marked `isIdentifier`, and relationships become `owl:ObjectProperty` from
+/// the many-side entity to the one-side entity.
+fn build_owl(
+    tables: &[Value],
+    columns: &[Value],
+    relationships: &[Value],
+    keys: &HashSet<(String, String)>,
+) -> String {
     let mut owl = String::from(
         "<?xml version=\"1.0\"?>\n\
          <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"\n\
@@ -214,7 +356,12 @@ fn build_owl(tables: &[Value], columns: &[Value], relationships: &[Value]) -> St
             continue;
         };
         let dax_type = c.get("DataType").and_then(Value::as_str).unwrap_or("Text");
-        let xsd = map_datatype(dax_type);
+        // Lakehouse path pre-resolves the XSD type into an `Xsd` field; the
+        // semantic-model path carries a DAX `DataType` mapped on the fly.
+        let xsd = c
+            .get("Xsd")
+            .and_then(Value::as_str)
+            .unwrap_or_else(|| map_datatype(dax_type));
         let is_key = keys.contains(&(table.to_string(), name.to_string()));
         // Property IRI is per-(table,column) to avoid collisions across entities;
         // the label (the ontology property name) stays the column name.
@@ -323,7 +470,12 @@ mod tests {
 
     #[test]
     fn owl_has_class_per_visible_table() {
-        let owl = build_owl(&tables(), &columns(), &relationships());
+        let owl = build_owl(
+            &tables(),
+            &columns(),
+            &relationships(),
+            &relationship_keys(&relationships()),
+        );
         assert!(
             owl.contains("<owl:Class rdf:about=\"http://fabric.microsoft.com/ontology/dimstore\">")
         );
@@ -337,7 +489,12 @@ mod tests {
 
     #[test]
     fn owl_skips_rownumber_and_types_properties() {
-        let owl = build_owl(&tables(), &columns(), &relationships());
+        let owl = build_owl(
+            &tables(),
+            &columns(),
+            &relationships(),
+            &relationship_keys(&relationships()),
+        );
         assert!(!owl.contains("RowNumber"));
         // Latitude is Double -> xsd:double.
         assert!(owl.contains("dimstore.Latitude"));
@@ -348,7 +505,12 @@ mod tests {
 
     #[test]
     fn owl_marks_relationship_target_keys_as_identifier() {
-        let owl = build_owl(&tables(), &columns(), &relationships());
+        let owl = build_owl(
+            &tables(),
+            &columns(),
+            &relationships(),
+            &relationship_keys(&relationships()),
+        );
         // dimstore.StoreId is the "one" side of a relationship -> isIdentifier.
         let store_key = owl.find("dimstore.StoreId").unwrap();
         let after = &owl[store_key..store_key + 400];
@@ -367,7 +529,12 @@ mod tests {
 
     #[test]
     fn owl_emits_object_property_per_relationship() {
-        let owl = build_owl(&tables(), &columns(), &relationships());
+        let owl = build_owl(
+            &tables(),
+            &columns(),
+            &relationships(),
+            &relationship_keys(&relationships()),
+        );
         assert!(owl.contains("factsales_has_dimstore"));
         assert!(owl.contains("factsales_has_dimproducts"));
         assert_eq!(owl.matches("<owl:ObjectProperty").count(), 2);
@@ -380,5 +547,59 @@ mod tests {
         assert_eq!(s["relationshipCount"], 2);
         // 6 real columns (RowNumber excluded).
         assert_eq!(s["propertyCount"], 6);
+    }
+
+    // --- Lakehouse (INFORMATION_SCHEMA) source path ---
+
+    fn info_schema_rows() -> Vec<Value> {
+        vec![
+            json!({"TABLE_NAME": "dimstore", "COLUMN_NAME": "StoreId", "DATA_TYPE": "varchar", "ORDINAL_POSITION": 1}),
+            json!({"TABLE_NAME": "dimstore", "COLUMN_NAME": "Latitude", "DATA_TYPE": "float", "ORDINAL_POSITION": 2}),
+            json!({"TABLE_NAME": "factsales", "COLUMN_NAME": "SaleId", "DATA_TYPE": "bigint", "ORDINAL_POSITION": 1}),
+            json!({"TABLE_NAME": "factsales", "COLUMN_NAME": "RevenueUSD", "DATA_TYPE": "decimal", "ORDINAL_POSITION": 2}),
+            json!({"TABLE_NAME": "factsales", "COLUMN_NAME": "SoldAt", "DATA_TYPE": "datetime2", "ORDINAL_POSITION": 3}),
+        ]
+    }
+
+    #[test]
+    fn maps_sql_types_to_xsd() {
+        assert_eq!(map_sql_type("varchar"), "string");
+        assert_eq!(map_sql_type("NVARCHAR"), "string");
+        assert_eq!(map_sql_type("int"), "long");
+        assert_eq!(map_sql_type("bigint"), "long");
+        assert_eq!(map_sql_type("float"), "double");
+        assert_eq!(map_sql_type("decimal"), "decimal");
+        assert_eq!(map_sql_type("datetime2"), "dateTime");
+        assert_eq!(map_sql_type("bit"), "boolean");
+        assert_eq!(map_sql_type("uniqueidentifier"), "string");
+    }
+
+    #[test]
+    fn lakehouse_rows_build_tables_columns_and_first_column_keys() {
+        let (tables, columns, keys) = lakehouse_schema_from_rows(&info_schema_rows());
+        assert_eq!(tables.len(), 2);
+        assert_eq!(columns.len(), 5);
+        // First column of each table is the identifier heuristic.
+        assert!(keys.contains(&("dimstore".to_string(), "StoreId".to_string())));
+        assert!(keys.contains(&("factsales".to_string(), "SaleId".to_string())));
+        // Non-first columns are not keys.
+        assert!(!keys.contains(&("factsales".to_string(), "RevenueUSD".to_string())));
+        assert_eq!(keys.len(), 2);
+    }
+
+    #[test]
+    fn lakehouse_owl_is_typed_and_keyed() {
+        let (tables, columns, keys) = lakehouse_schema_from_rows(&info_schema_rows());
+        let owl = build_owl(&tables, &columns, &[], &keys);
+        assert_eq!(owl.matches("<owl:Class").count(), 2);
+        // No relationships from a lakehouse source.
+        assert_eq!(owl.matches("<owl:ObjectProperty").count(), 0);
+        // decimal + dateTime + long types resolved from SQL.
+        assert!(owl.contains("XMLSchema#decimal"));
+        assert!(owl.contains("XMLSchema#dateTime"));
+        assert!(owl.contains("XMLSchema#long"));
+        // First column is a key.
+        let store_key = owl.find("dimstore.StoreId").unwrap();
+        assert!(owl[store_key..store_key + 400].contains("isIdentifier"));
     }
 }

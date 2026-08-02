@@ -2492,38 +2492,67 @@ header and returns tool results.
 
 ## Ontology generation from a semantic model (`ontology generate`) — portal-parity, client-side
 
-The Fabric portal's "Generate Ontology" from a semantic model has NO public REST API (the
-Fabric ontology REST surface is CRUD-only: create/get/list/update/delete). fabio reproduces
-it CLIENT-SIDE with `fabio ontology generate --workspace <ws> --semantic-model <id> --name
-<name> [--lakehouse <id>] [--output-owl <file>]`:
+The Fabric portal's "Generate Ontology" has NO public REST API (the Fabric ontology REST
+surface is CRUD-only: create/get/list/update/delete). fabio reproduces it CLIENT-SIDE with
+`fabio ontology generate --workspace <ws> (--semantic-model <id> | --lakehouse <id>) --name
+<name> [--lakehouse <id>] [--output-owl <file>]`, from EITHER of two schema sources (exactly
+one required — `resolve_schema` in `ontology/generate.rs` dispatches; omitting both errors
+with a hint):
+
+### Source A — semantic model (`--semantic-model`)
 
 - **Reads the model schema** via the DAX `INFO.VIEW.*` functions (the same metadata the portal
   uses), reusing the existing `semantic-model list-tables/list-columns/list-relationships`
-  plumbing (`fetch_info_view` in `semantic_model/operations.rs`, now `pub(crate)`).
-- **Synthesizes an OWL model** (pure `build_owl` in `ontology/generate.rs`): each table →
-  `owl:Class` (entity type); each column → typed `owl:DatatypeProperty`; each relationship →
-  `owl:ObjectProperty` from the many-side entity to the one-side entity; the relationship's
-  "one"-side `ToColumn` is marked `isIdentifier` (the dimension key).
-- **Runs it through the existing `ontology import` path** (create ontology → `import_owl`),
-  so entity types, typed properties, relationship types, and — with `--lakehouse` — data
-  bindings (entity name → same-named lakehouse table) are all produced. Verified live: a
-  3-table retail model generated a 3-entity ontology (dimproducts/dimstore/factsales) with
-  17 typed properties, keys, 2 relationship types, and queryable lakehouse `DataBindings`.
+  plumbing (`fetch_info_view` in `semantic_model/operations.rs`, `pub`).
+- **Keys** come from relationships: the "one"-side `ToColumn` of each relationship is marked
+  `isIdentifier`. Relationships become `owl:ObjectProperty` many-side→one-side.
 - **INFO.VIEW DataType mapping (live-verified)**: `Text`→string, `Integer`→long, `Number`→
   double (Power BI's floating-point "Decimal Number" surfaces as `Number`, NOT `Double`),
   Currency/Decimal→decimal, DateTime→dateTime, Boolean→boolean. A synthetic hidden
-  `RowNumber-*` column (`Type`/`DataCategory` = `RowNumber`, `IsKey:true`) is excluded.
+  `RowNumber-*` column (`Type`/`DataCategory` = `RowNumber`) is excluded.
+
+### Source B — lakehouse (`--lakehouse` WITHOUT `--semantic-model`)
+
+- **Reads the lakehouse SQL analytics endpoint's** `INFORMATION_SCHEMA.COLUMNS` (base tables
+  only — joined to `INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE'`, ordered by
+  `ORDINAL_POSITION`) via the new `tds_utils::execute_sql_rows` (row-returning counterpart of
+  `execute_and_render_sql`) and `tds_utils::resolve_lakehouse_sql` (moved from
+  `lakehouse/insights.rs` so both callers share ONE resolver — a lakehouse's SQL catalog is
+  named after its `displayName`, not the connection-string DB).
+- **No relationships or PK exist in a lakehouse**, so there are NO `owl:ObjectProperty` edges,
+  and the FIRST column of each table (lowest `ORDINAL_POSITION`) is the identifier heuristic
+  (`lakehouse_schema_from_rows`), reviewable via `ontology update-definition`.
+- **The `--lakehouse` is ALSO the bind target**: each entity auto-binds to its same-named
+  lakehouse table (`DataBindings/*` parts with `sourceType: LakehouseTable`, `workspaceId`,
+  `itemId`, `sourceTableName`, `sourceSchema: dbo`). Verified live on a throwaway lakehouse
+  (dimstore/dimproducts/factsales) → 3-entity ontology, 17 typed properties, first-column keys,
+  and one `DataBindings` part per entity referencing the correct table.
+- **T-SQL `INFORMATION_SCHEMA.DATA_TYPE` mapping (`map_sql_type`, live-verified)**: bit→boolean;
+  tinyint/smallint/int/bigint→long; real/float→double; decimal/numeric/money/smallmoney→decimal;
+  date/time/datetime/datetime2/smalldatetime/datetimeoffset→dateTime; everything else
+  (varchar/nvarchar/char/nchar/text/uniqueidentifier/binary/…)→string. A `float` Latitude and a
+  `decimal` RevenueUSD both surfaced as `xsd:double`/`xsd:decimal`; SaleId/Units (`bigint`)→long;
+  a `datetime2` SaleDate→dateTime.
+- **SQL endpoint lag**: newly `load-table`'d Delta tables surface in `INFORMATION_SCHEMA` with a
+  delay (seconds to ~1 min). The e2e test polls `generate --output-owl` until the tables appear.
+
+### Shared
+
+- **Synthesizes an OWL model** (pure `build_owl` in `ontology/generate.rs`): each table →
+  `owl:Class` (entity type); each column → typed `owl:DatatypeProperty`; keys → `isIdentifier`;
+  relationships → `owl:ObjectProperty`. Columns carry a pre-resolved `Xsd` field (lakehouse path)
+  or a DAX `DataType` mapped on the fly (semantic-model path).
+- **Runs it through the existing `ontology import` path** (create ontology → `import_owl`).
 - **`--output-owl <file>`** writes the synthesized OWL and stops (inspect/compose); `--dry-run`
   prints the plan + OWL without creating.
-- **Single clean output**: `import_owl` gained a `suppress_output` flag so `generate` emits one
-  JSON object (`{status, id, name, summary, note}`) instead of the import result + its own.
+- **Single clean output**: `import_owl` has a `suppress_output` flag so `generate` emits one
+  JSON object (`{status, id, name, source, summary, note}`) instead of the import result + its own.
 - **Follow-ups (matching the portal flow, left manual)**: time-series bindings
-  (`ontology bind --eventhouse ...`), entity-key review, and relationship data bindings — per
-  the concepts-generate doc (portal generate also leaves these manual). Import-mode semantic
-  models generate schema only (no bindings); Direct Lake models can auto-bind.
+  (`ontology bind --eventhouse ...`), entity-key review, and relationship data bindings.
 
-The full tutorial (lakehouse + eventhouse + ontology + data agent + NL query) is reproducible
-with fabio — see the `ontology_tutorial` workflow (`fabio context workflow ontology_tutorial`).
+Pure `build_owl`/`map_datatype`/`map_sql_type`/`lakehouse_schema_from_rows`/`relationship_keys`/
+`is_synthetic_column`/`summarize` are unit-tested; live e2e `ontology_generate_from_semantic_model`
+and `ontology_generate_from_lakehouse` validate both create+import paths.
 
 ### Full ontology tutorial — live end-to-end validation (all parts)
 

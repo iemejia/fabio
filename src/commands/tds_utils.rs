@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::{ErrorCode, FabioError};
+use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 /// Resolve SQL text from flag, @file, or stdin.
@@ -75,6 +75,50 @@ pub fn parse_connection_string(connection_string: &str) -> (String, String) {
     (server, database)
 }
 
+/// Resolve a lakehouse's SQL analytics endpoint to `(server, database)`.
+///
+/// The database is the lakehouse `displayName` (Fabric names the SQL catalog
+/// after the lakehouse), falling back to the catalog parsed from the connection
+/// string. Errors if the SQL endpoint has not been provisioned yet.
+pub async fn resolve_lakehouse_sql(
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> anyhow::Result<(String, String)> {
+    let data = client
+        .get(&format!("/workspaces/{workspace}/lakehouses/{id}"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse", "Viewer"))?;
+
+    let connection_string = data
+        .get("properties")
+        .and_then(|p| p.get("sqlEndpointProperties"))
+        .and_then(|s| s.get("connectionString"))
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::NotFound,
+                "Lakehouse SQL endpoint not available.",
+                "Wait for provisioning to complete, then retry.",
+            )
+        })?;
+
+    let display_name = data
+        .get("displayName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+
+    let (server, parsed_db) = parse_connection_string(connection_string);
+    let database = if display_name.is_empty() {
+        parsed_db
+    } else {
+        display_name.to_string()
+    };
+
+    Ok((server, database))
+}
+
 /// Execute a SQL query over TDS and render results.
 ///
 /// `server` is the hostname (without port), `database` is the initial catalog.
@@ -85,6 +129,35 @@ pub async fn execute_and_render_sql(
     database: &str,
     sql_text: &str,
 ) -> anyhow::Result<()> {
+    let (columns, all_rows) = execute_sql_rows(client, server, database, sql_text).await?;
+
+    // Render output
+    if all_rows.is_empty() {
+        let obj = serde_json::json!({
+            "rows_affected": 0,
+            "message": "Query executed successfully (no result set returned)."
+        });
+        output::render_object(cli, &obj, "message");
+    } else {
+        let col_refs: Vec<&str> = columns.iter().map(String::as_str).collect();
+        output::render_list(cli, &all_rows, &col_refs, &col_refs, &columns[0]);
+    }
+
+    Ok(())
+}
+
+/// Execute a SQL query over TDS and return `(column_names, rows)`.
+///
+/// Rows are returned as `serde_json::Value::Object`s keyed by column name.
+/// This is the row-returning counterpart of [`execute_and_render_sql`], for
+/// callers that need to consume the result set programmatically rather than
+/// render it to stdout.
+pub async fn execute_sql_rows(
+    client: &FabricClient,
+    server: &str,
+    database: &str,
+    sql_text: &str,
+) -> anyhow::Result<(Vec<String>, Vec<Value>)> {
     // Acquire AAD token for SQL scope
     let token = client.require_sql_auth().await?;
 
@@ -154,19 +227,7 @@ pub async fn execute_and_render_sql(
         .await
         .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("Failed to close query: {e}")))?;
 
-    // Render output
-    if all_rows.is_empty() {
-        let obj = serde_json::json!({
-            "rows_affected": 0,
-            "message": "Query executed successfully (no result set returned)."
-        });
-        output::render_object(cli, &obj, "message");
-    } else {
-        let col_refs: Vec<&str> = columns.iter().map(String::as_str).collect();
-        output::render_list(cli, &all_rows, &col_refs, &col_refs, &columns[0]);
-    }
-
-    Ok(())
+    Ok((columns, all_rows))
 }
 
 /// Convert a TDS `ColumnValues` to a `serde_json::Value`.

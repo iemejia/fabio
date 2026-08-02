@@ -334,21 +334,23 @@ pub enum OntologyCommand {
         #[arg(long)]
         raw: bool,
     },
-    /// Generate an ontology from a Power BI semantic model (entity types, properties, relationships)
+    /// Generate an ontology from a semantic model or lakehouse (entity types, properties, relationships)
     Generate {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Source semantic model ID
+        /// Source semantic model ID. Omit to use --lakehouse as the schema source instead.
         #[arg(long)]
-        semantic_model: String,
+        semantic_model: Option<String>,
 
         /// Name for the new ontology
         #[arg(long)]
         name: String,
 
-        /// Lakehouse ID to bind entity types to (matches lakehouse tables by name)
+        /// Lakehouse ID to bind entity types to (matches lakehouse tables by name).
+        /// When --semantic-model is omitted, this lakehouse is ALSO the schema source
+        /// (entity types + typed properties are derived from its tables).
         #[arg(long)]
         lakehouse: Option<String>,
 
@@ -543,16 +545,16 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
             lakehouse,
             lakehouse_workspace,
             output_owl,
-        } => generate::generate(
+        } => Box::pin(generate::generate(
             cli,
             client,
             workspace,
-            semantic_model,
+            semantic_model.as_deref(),
             name,
             lakehouse.as_deref(),
             lakehouse_workspace.as_deref(),
             output_owl.as_deref(),
-        )
+        ))
         .await
         .map_err(|e| enrich_forbidden(e, "ontology generate", "Member")),
     }

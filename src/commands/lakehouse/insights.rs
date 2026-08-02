@@ -4,50 +4,9 @@ use serde_json::Value;
 use crate::cli::Cli;
 use crate::client::FabricClient;
 use crate::commands::tds_utils::{
-    capture_query_plan, execute_and_render_sql, parse_connection_string, resolve_sql_input,
+    capture_query_plan, execute_and_render_sql, resolve_lakehouse_sql, resolve_sql_input,
 };
-use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
-
-/// Resolve lakehouse SQL endpoint connection: returns (server, database).
-async fn resolve_lakehouse_sql(
-    client: &FabricClient,
-    workspace: &str,
-    id: &str,
-) -> Result<(String, String)> {
-    let data = client
-        .get(&format!("/workspaces/{workspace}/lakehouses/{id}"))
-        .await
-        .map_err(|e| enrich_forbidden(e, "lakehouse", "Viewer"))?;
-
-    let connection_string = data
-        .get("properties")
-        .and_then(|p| p.get("sqlEndpointProperties"))
-        .and_then(|s| s.get("connectionString"))
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| {
-            FabioError::with_hint(
-                ErrorCode::NotFound,
-                "Lakehouse SQL endpoint not available.",
-                "Wait for provisioning to complete, then retry.",
-            )
-        })?;
-
-    let display_name = data
-        .get("displayName")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-
-    let (server, parsed_db) = parse_connection_string(connection_string);
-    let database = if display_name.is_empty() {
-        parsed_db
-    } else {
-        display_name.to_string()
-    };
-
-    Ok((server, database))
-}
 
 /// Helper: resolve lakehouse SQL connection and execute a TDS query.
 async fn execute_lakehouse_query(

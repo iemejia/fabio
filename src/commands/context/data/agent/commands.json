@@ -7730,7 +7730,7 @@
         "returns": "object"
       },
       "generate": {
-        "description": "Generate an ontology from a Power BI semantic model (entity types, properties, relationships)",
+        "description": "Generate an ontology from a semantic model or lakehouse (entity types, properties, relationships)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -7739,8 +7739,7 @@
           },
           "--semantic-model": {
             "type": "string",
-            "required": true,
-            "description": "Source semantic model ID"
+            "description": "Source semantic model ID. Omit to use --lakehouse as the schema source instead"
           },
           "--name": {
             "type": "string",
@@ -7749,7 +7748,7 @@
           },
           "--lakehouse": {
             "type": "string",
-            "description": "Lakehouse ID to bind entity types to (matches lakehouse tables by name)"
+            "description": "Lakehouse ID to bind entity types to (matches lakehouse tables by name). When --semantic-model is omitted, this lakehouse is ALSO the schema source (entity types + typed properties are derived from its tables)"
           },
           "--lakehouse-workspace": {
             "type": "string",

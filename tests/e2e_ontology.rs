@@ -4028,3 +4028,202 @@ fn ontology_generate_from_semantic_model() {
         ])
         .assert();
 }
+
+/// Upload a CSV and load it as a Delta table into the given lakehouse.
+fn load_csv_table(ws: &str, lh: &str, table: &str, csv: &str, dir: &std::path::Path) {
+    let local = dir.join(format!("{table}.csv"));
+    std::fs::write(&local, csv).unwrap();
+    let remote = format!("Files/{table}.csv");
+    fabio()
+        .args([
+            "lakehouse",
+            "upload",
+            "--workspace",
+            ws,
+            "--id",
+            lh,
+            "--source-path",
+            local.to_str().unwrap(),
+            "--dest-path",
+            &remote,
+        ])
+        .assert()
+        .success();
+    fabio()
+        .args([
+            "lakehouse",
+            "load-table",
+            "--workspace",
+            ws,
+            "--id",
+            lh,
+            "--source-path",
+            &remote,
+            "--table",
+            table,
+            "--mode",
+            "Overwrite",
+            "--format",
+            "Csv",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn ontology_generate_from_lakehouse() {
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+    let dir = tempfile::tempdir().unwrap();
+
+    // Dedicated throwaway lakehouse so the generated ontology reflects exactly
+    // the tables we load (and cleanup is a single delete).
+    let lh_name = unique_name("lh_ontogen");
+    let assert = fabio()
+        .args(["lakehouse", "create", "--workspace", ws, "--name", &lh_name])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let lh_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Two tables: a string-keyed dimension and a numeric-keyed fact, exercising
+    // the SQL->XSD type mapping and the first-column identifier heuristic.
+    load_csv_table(
+        ws,
+        &lh_id,
+        "dimstore",
+        "StoreId,City,Latitude\nS-01,Paris,48.8566\nS-02,Lyon,45.7640\n",
+        dir.path(),
+    );
+    load_csv_table(
+        ws,
+        &lh_id,
+        "factsales",
+        "SaleId,StoreId,Units,RevenueUSD\n1,S-01,34,170.0\n2,S-02,12,60.5\n",
+        dir.path(),
+    );
+
+    // generate --output-owl: read the lakehouse schema (SQL endpoint) -> OWL.
+    // The SQL analytics endpoint reflects newly-loaded Delta tables with a lag,
+    // so poll until both tables surface (or time out).
+    let owl_path = dir.path().join("gen_lh.owl");
+    let ont_name = unique_name("ont_lhgen");
+    let mut owl = String::new();
+    for attempt in 0..12 {
+        fabio()
+            .args([
+                "ontology",
+                "generate",
+                "--workspace",
+                ws,
+                "--lakehouse",
+                &lh_id,
+                "--name",
+                &ont_name,
+                "--output-owl",
+                owl_path.to_str().unwrap(),
+            ])
+            .timeout(std::time::Duration::from_mins(2))
+            .assert()
+            .success();
+        owl = std::fs::read_to_string(&owl_path).unwrap();
+        if owl.contains("<rdfs:label>dimstore</rdfs:label>")
+            && owl.contains("<rdfs:label>factsales</rdfs:label>")
+        {
+            break;
+        }
+        assert!(attempt < 11, "SQL endpoint never surfaced tables:\n{owl}");
+        std::thread::sleep(std::time::Duration::from_secs(20));
+    }
+    assert!(owl.contains("<rdfs:label>dimstore</rdfs:label>"));
+    assert!(owl.contains("<rdfs:label>factsales</rdfs:label>"));
+    // No relationships can be inferred from a lakehouse source.
+    assert!(!owl.contains("<owl:ObjectProperty"));
+    // Latitude/RevenueUSD -> xsd:double; SaleId/Units -> xsd:long.
+    assert!(owl.contains("XMLSchema#double"));
+    assert!(owl.contains("XMLSchema#long"));
+    // First column of each table is the identifier heuristic.
+    let idx = owl.find("dimstore.StoreId").unwrap();
+    assert!(owl[idx..idx + 400].contains("isIdentifier"));
+    let idx2 = owl.find("factsales.SaleId").unwrap();
+    assert!(owl[idx2..idx2 + 400].contains("isIdentifier"));
+
+    // Full generate: create the ontology + bind entity types to the lakehouse.
+    let assert = fabio()
+        .args([
+            "ontology",
+            "generate",
+            "--workspace",
+            ws,
+            "--lakehouse",
+            &lh_id,
+            "--name",
+            &ont_name,
+        ])
+        .timeout(std::time::Duration::from_mins(4))
+        .assert()
+        .success();
+    let ont_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Entity types are created from the tables.
+    let assert = fabio()
+        .args([
+            "ontology",
+            "list-entity-types",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+        ])
+        .assert()
+        .success();
+    let names: Vec<String> = extract_data(&parse_json(&assert))["values"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v["name"].as_str().unwrap().to_string())
+        .collect();
+    assert!(names.contains(&"dimstore".to_string()), "names: {names:?}");
+    assert!(names.contains(&"factsales".to_string()), "names: {names:?}");
+
+    // Data bindings to the lakehouse are emitted as DataBindings definition parts.
+    let assert = fabio()
+        .args([
+            "ontology",
+            "get-definition",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+        ])
+        .assert()
+        .success();
+    let has_binding = extract_data(&parse_json(&assert))["definition"]["parts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|p| {
+            p["path"]
+                .as_str()
+                .is_some_and(|s| s.contains("DataBindings/"))
+        });
+    assert!(
+        has_binding,
+        "expected DataBindings parts from --lakehouse bind"
+    );
+
+    // Cleanup.
+    delete_ontology(ws, &ont_id);
+    let _ = fabio()
+        .args(["lakehouse", "delete", "--workspace", ws, "--id", &lh_id])
+        .assert();
+}

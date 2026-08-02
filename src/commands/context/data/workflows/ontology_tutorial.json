@@ -29,7 +29,14 @@
       "notes": "generate reads the model's tables/columns/relationships via INFO.VIEW, synthesizes entity types + typed properties + relationship types + keys, and (with --lakehouse) binds each entity to its same-named lakehouse table. This reproduces the portal's 'Generate Ontology' (which has no REST API). Inspect first with --output-owl <file>."
     },
     {
-      "step": "Build the ontology — Option B: build directly from OneLake (no semantic model)",
+      "step": "Build the ontology — Option B: generate directly from a lakehouse (no semantic model)",
+      "commands": [
+        "fabio ontology generate --workspace <WS> --lakehouse <LH> --name RetailSalesOntology"
+      ],
+      "notes": "With --lakehouse but NO --semantic-model, generate reads the lakehouse SQL analytics endpoint's INFORMATION_SCHEMA (base tables only), makes each table an entity type with typed properties, treats the first column of each table as its identifier (a reviewable heuristic — no PKs exist in a lakehouse), and binds each entity to its same-named table. There are no relationships to infer. Inspect first with --output-owl <file>; refine keys/relationships afterwards with ontology update-definition."
+    },
+    {
+      "step": "Build the ontology — Option C: author OWL by hand and import",
       "commands": [
         "fabio ontology create --workspace <WS> --name RetailSalesOntology",
         "fabio ontology import --workspace <WS> --id <ONT> --file schema.owl --lakehouse <LH> --bindings map.json"
