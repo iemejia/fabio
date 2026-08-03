@@ -8231,11 +8231,11 @@
           },
           "--file": {
             "type": "string",
-            "description": "Path to JSON file with external libraries config"
+            "description": "Path to the external-libraries file (e.g. an `environment.yml` listing public/feed libraries). Sent verbatim as octet-stream"
           },
           "--content": {
             "type": "string",
-            "description": "Inline JSON content with external libraries config"
+            "description": "Inline external-libraries file content (e.g. environment.yml text). Sent verbatim as octet-stream"
           }
         },
         "mutates": true,

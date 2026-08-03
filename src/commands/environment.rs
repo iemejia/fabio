@@ -242,11 +242,11 @@ pub enum EnvironmentCommand {
         #[arg(long)]
         id: String,
 
-        /// Path to JSON file with external libraries config
+        /// Path to the external-libraries file (e.g. an `environment.yml` listing public/feed libraries). Sent verbatim as octet-stream.
         #[arg(long)]
         file: Option<String>,
 
-        /// Inline JSON content with external libraries config
+        /// Inline external-libraries file content (e.g. environment.yml text). Sent verbatim as octet-stream.
         #[arg(long)]
         content: Option<String>,
     },
@@ -838,12 +838,15 @@ async fn export_libraries(
     workspace: &str,
     id: &str,
 ) -> Result<()> {
-    let data = client
-        .get(&format!(
+    // The endpoint returns the raw external-libraries file (e.g. environment.yml
+    // YAML), NOT JSON — fetch it as text and wrap it in the JSON envelope.
+    let text = client
+        .get_text(&format!(
             "/workspaces/{workspace}/environments/{id}/libraries/exportExternalLibraries"
         ))
         .await?;
-    output::render_object(cli, &data, "externalLibraries");
+    let obj = serde_json::json!({ "externalLibraries": text });
+    output::render_object(cli, &obj, "externalLibraries");
     Ok(())
 }
 
@@ -901,12 +904,15 @@ async fn export_staging_libraries(
     workspace: &str,
     id: &str,
 ) -> Result<()> {
-    let data = client
-        .get(&format!(
+    // The endpoint returns the raw external-libraries file (e.g. environment.yml
+    // YAML), NOT JSON — fetch it as text and wrap it in the JSON envelope.
+    let text = client
+        .get_text(&format!(
             "/workspaces/{workspace}/environments/{id}/staging/libraries/exportExternalLibraries"
         ))
         .await?;
-    output::render_object(cli, &data, "externalLibraries");
+    let obj = serde_json::json!({ "externalLibraries": text });
+    output::render_object(cli, &obj, "externalLibraries");
     Ok(())
 }
 
@@ -918,31 +924,26 @@ async fn import_staging_libraries(
     file: Option<&str>,
     content: Option<&str>,
 ) -> Result<()> {
-    let body_str = match (file, content) {
-        (Some(path), _) => std::fs::read_to_string(path).map_err(|e| {
+    // The importExternalLibraries endpoint expects the RAW external-libraries file
+    // (e.g. an `environment.yml`) as `application/octet-stream` — NOT JSON. Read the
+    // bytes verbatim and post them unchanged (no JSON parsing/re-encoding).
+    let bytes: Vec<u8> = match (file, content) {
+        (Some(path), _) => std::fs::read(path).map_err(|e| {
             FabioError::with_hint(
                 ErrorCode::InvalidInput,
                 format!("Failed to read file '{path}': {e}"),
                 "Verify the file path is correct and the file is readable.",
             )
         })?,
-        (_, Some(c)) => c.to_string(),
+        (_, Some(c)) => c.as_bytes().to_vec(),
         (None, None) => {
             return Err(FabioError::with_hint(
                 ErrorCode::InvalidInput,
                 "Either --file or --content must be provided".to_string(),
-                "Example: fabio environment import-staging-libraries --workspace <WS> --id <ID> --file libs.json".to_string(),
+                "Provide an environment.yml (public libraries / Azure Artifact Feed) file. Example: fabio environment import-staging-libraries --workspace <WS> --id <ID> --file environment.yml".to_string(),
             ).into());
         }
     };
-
-    let body: Value = serde_json::from_str(&body_str).map_err(|e| {
-        FabioError::with_hint(
-            ErrorCode::InvalidInput,
-            format!("Invalid JSON: {e}"),
-            "Provide valid JSON content via --file or --content.",
-        )
-    })?;
 
     if output::dry_run_guard(
         cli,
@@ -950,19 +951,18 @@ async fn import_staging_libraries(
         &serde_json::json!({
             "workspace": workspace,
             "id": id,
-            "contentLength": body_str.len()
+            "contentLength": bytes.len()
         }),
     ) {
         return Ok(());
     }
 
     let data = client
-        .post(
+        .post_octet_stream(
             &format!(
                 "/workspaces/{workspace}/environments/{id}/staging/libraries/importExternalLibraries"
             ),
-            &body,
-            false,
+            bytes,
         )
         .await
         .map_err(|e| enrich_forbidden(e, "environment import-staging-libraries", "Contributor"))?;

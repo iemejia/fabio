@@ -435,3 +435,135 @@ fn environment_staging_spark_compute_runtime_and_properties_lifecycle() {
         .assert()
         .success();
 }
+
+// ─── External libraries (import/export environment.yml) ──────────────────────
+
+#[test]
+fn environment_import_staging_libraries_dry_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let yml = dir.path().join("environment.yml");
+    std::fs::write(&yml, "dependencies:\n  - pip:\n    - requests==2.32.3\n").unwrap();
+
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "environment",
+            "import-staging-libraries",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--file",
+            yml.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(
+        data["would_execute"],
+        "environment import-staging-libraries"
+    );
+    assert!(data["details"]["contentLength"].as_u64().unwrap() > 0);
+}
+
+#[test]
+fn environment_import_staging_libraries_requires_input() {
+    let assert = fabio()
+        .args([
+            "environment",
+            "import-staging-libraries",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("--file") || stderr.contains("--content"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn environment_external_libraries_roundtrip() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("env_extlibs");
+
+    // Create a throwaway environment.
+    let assert = fabio()
+        .args([
+            "environment",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let env_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Import an environment.yml (octet-stream, not JSON).
+    let yml = "dependencies:\n  - pip:\n    - requests==2.32.3\n";
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("environment.yml");
+    std::fs::write(&path, yml).unwrap();
+    let assert = fabio()
+        .args([
+            "environment",
+            "import-staging-libraries",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &env_id,
+            "--file",
+            path.to_str().unwrap(),
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    assert_eq!(
+        extract_data(&parse_json(&assert))["status"],
+        "libraries_imported"
+    );
+
+    // Export it back and confirm the content round-trips (raw text, not JSON).
+    let assert = fabio()
+        .args([
+            "environment",
+            "export-staging-libraries",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &env_id,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let exported = data["externalLibraries"].as_str().unwrap();
+    assert!(
+        exported.contains("dependencies") && exported.contains("requests"),
+        "expected the imported environment.yml back, got: {exported}"
+    );
+
+    // Clean up.
+    fabio()
+        .args([
+            "environment",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &env_id,
+        ])
+        .assert()
+        .success();
+}
