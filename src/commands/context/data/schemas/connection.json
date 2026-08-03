@@ -1,7 +1,7 @@
 {
   "type": "Connection",
-  "description": "Reusable credential/connection to an external service (Azure SQL, ADLS, Snowflake, etc.). Tenant-scoped — shared across workspaces. Required by items that access external data.",
-  "create_command": "fabio connection create --content <JSON>",
+  "description": "Reusable credential/connection to an external service (Azure SQL, ADLS, Snowflake, Event Hubs, etc.). Tenant-scoped — shared across workspaces. Required by items that access external data (including Eventstream sources).",
+  "create_command": "fabio connection create --name <NAME> --connectivity-type ShareableCloud --connection-type <TYPE> --creation-method <METHOD> --parameters <JSON> --credential-type <CRED>",
   "definition_format": null,
   "definition_parts": [],
   "creation_body_template": {
@@ -21,22 +21,33 @@
     "privacyLevel": "Organizational"
   },
   "flags": {
-    "--content": "Full connection JSON body (inline or @file)"
+    "--name": "Display name for the connection",
+    "--connectivity-type": "ShareableCloud | OnPremises | VirtualNetworkGateway | StreamingVirtualNetworkGateway | PersonalCloud",
+    "--connection-type": "Connection type (connectionDetails.type), e.g. SQL, EventHub, Oracle, MQTT, ConfluentCloud, Web. Discover via list-supported-types.",
+    "--creation-method": "connectionDetails.creationMethod. Defaults to --connection-type, but MANY types differ (EventHub -> EventHub.Contents, ConfluentCloud -> ConfluentCloud.Contents, MQTT -> MQTT.Contents). Get the exact value from list-supported-types -o json.",
+    "--parameters": "Connection parameters as a JSON object (converted to the API array form). Required param names vary by type (e.g. EventHub needs endpoint + entityPath).",
+    "--credential-type": "Basic | OAuth2 | Key | Anonymous | ServicePrincipal | SharedAccessSignature | WorkspaceIdentity | KeyPair",
+    "--credentials": "Credential fields as JSON (shape depends on credential type)",
+    "--gateway-id": "Required when connectivity type is VirtualNetworkGateway or StreamingVirtualNetworkGateway",
+    "--privacy-level": "None | Public | Organizational | Private (default Organizational)",
+    "--skip-test-connection": "Skip the connection test during creation (not supported by all type/connectivity combinations)"
   },
   "notes": [
     "Tenant-level scope: endpoints at /connections/{id} (NO workspace prefix)",
     "Connectivity types: ShareableCloud, OnPremises, VirtualNetworkGateway, StreamingVirtualNetworkGateway, PersonalCloud",
-    "Credential types: Basic, OAuth2, Key, Anonymous, ServicePrincipal, WorkspaceIdentity",
+    "Credential types: Basic, OAuth2, Key, Anonymous, ServicePrincipal, SharedAccessSignature, WorkspaceIdentity, KeyPair",
     "Privacy levels: None, Public, Organizational, Private",
-    "Parameters provided as JSON object are converted to array format automatically",
+    "Parameters provided as a JSON object are converted to the API array format automatically",
+    "creationMethod OFTEN differs from the connection type: EventHub -> EventHub.Contents, ConfluentCloud -> ConfluentCloud.Contents, MQTT -> MQTT.Contents (Oracle -> Oracle matches). If create fails with 'InvalidConnectionDetails', you likely need --creation-method with the type's real creation method from list-supported-types -o json.",
     "VirtualNetworkGateway and StreamingVirtualNetworkGateway connections require --gateway-id (the gateway's object ID)",
-    "list-supported-types returns all available connection type definitions"
+    "Azure Event Hubs connections support the WorkspaceIdentity credential type: create with --connection-type EventHub --creation-method EventHub.Contents --credential-type WorkspaceIdentity (params: endpoint, entityPath). This is the connection an Eventstream 'AzureEventHub' extended-features source references for Workspace Identity authentication (no shared access key).",
+    "list-supported-types -o json returns each type's creationMethods (with required parameters) and supportedCredentialTypes — the source of truth for --creation-method, --parameters, and --credential-type"
   ],
   "related_commands": [
     "fabio connection list",
     "fabio connection show --id <ID>",
-    "fabio connection update --id <ID> --content <JSON>",
+    "fabio connection update --id <ID> --credential-type <CRED> --credentials <JSON>",
     "fabio connection delete --id <ID>",
-    "fabio connection list-supported-types"
+    "fabio connection list-supported-types -o json"
   ]
 }

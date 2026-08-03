@@ -519,3 +519,125 @@ fn connection_list_table_omits_gateway_id_column_when_no_connections_have_gatewa
         "unexpected 'GATEWAY ID' column header when no connection has a non-null gatewayId, got:\n{stdout}"
     );
 }
+
+// ─── Creation method (connectionDetails.creationMethod) ──────────────────────
+
+#[test]
+fn connection_create_dry_run_shows_creation_method_override() {
+    // Many connection types have a creationMethod that differs from the type name,
+    // e.g. EventHub -> EventHub.Contents. The dry-run preview must reflect the override.
+    let assert = fabio()
+        .args([
+            "connection",
+            "create",
+            "--name",
+            "eh-conn",
+            "--connectivity-type",
+            "ShareableCloud",
+            "--connection-type",
+            "EventHub",
+            "--creation-method",
+            "EventHub.Contents",
+            "--parameters",
+            r#"{"endpoint":"sb://x.servicebus.windows.net","entityPath":"h"}"#,
+            "--credential-type",
+            "WorkspaceIdentity",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["connectionType"], "EventHub");
+    assert_eq!(data["creationMethod"], "EventHub.Contents");
+}
+
+#[test]
+fn connection_create_dry_run_creation_method_defaults_to_type() {
+    let assert = fabio()
+        .args([
+            "connection",
+            "create",
+            "--name",
+            "sql-conn",
+            "--connectivity-type",
+            "ShareableCloud",
+            "--connection-type",
+            "SQL",
+            "--parameters",
+            r#"{"server":"s","database":"d"}"#,
+            "--credential-type",
+            "Basic",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // When --creation-method is omitted it defaults to the connection type.
+    assert_eq!(data["creationMethod"], "SQL");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn connection_creation_method_accepted_by_api() {
+    // Proves the creationMethod fix at the API-contract level without needing a real
+    // Event Hub: EventHub's creation method is EventHub.Contents. With the WRONG method
+    // (the old hardcoded behaviour = the type name) the API rejects the connection
+    // details; with the correct method it accepts them and proceeds to test the
+    // (unreachable, fake) endpoint identity.
+    let bad_name = common::unique_name("eh_badcm");
+    let bad = fabio()
+        .args([
+            "connection",
+            "create",
+            "--name",
+            &bad_name,
+            "--connectivity-type",
+            "ShareableCloud",
+            "--connection-type",
+            "EventHub",
+            "--parameters",
+            r#"{"endpoint":"sb://example.servicebus.windows.net","entityPath":"h"}"#,
+            "--credential-type",
+            "WorkspaceIdentity",
+        ])
+        .assert()
+        .failure();
+    let bad_err = String::from_utf8_lossy(&bad.get_output().stdout)
+        + String::from_utf8_lossy(&bad.get_output().stderr);
+    assert!(
+        bad_err.contains("InvalidConnectionDetails"),
+        "without --creation-method the EventHub connection details should be rejected, got: {bad_err}"
+    );
+
+    let good_name = common::unique_name("eh_goodcm");
+    let good = fabio()
+        .args([
+            "connection",
+            "create",
+            "--name",
+            &good_name,
+            "--connectivity-type",
+            "ShareableCloud",
+            "--connection-type",
+            "EventHub",
+            "--creation-method",
+            "EventHub.Contents",
+            "--parameters",
+            r#"{"endpoint":"sb://example.servicebus.windows.net","entityPath":"h"}"#,
+            "--credential-type",
+            "WorkspaceIdentity",
+        ])
+        .assert()
+        .failure();
+    let good_err = String::from_utf8_lossy(&good.get_output().stdout)
+        + String::from_utf8_lossy(&good.get_output().stderr);
+    // With the correct creation method the connection details are accepted; the failure
+    // is now about the unreachable fake endpoint, not invalid connection details.
+    assert!(
+        !good_err.contains("InvalidConnectionDetails"),
+        "with --creation-method EventHub.Contents the connection details should be accepted, got: {good_err}"
+    );
+}

@@ -37,6 +37,10 @@ pub enum ConnectionCommand {
         #[arg(long, visible_alias = "type", value_name = "TYPE")]
         connection_type: String,
 
+        /// Creation method (`connectionDetails.creationMethod`). Defaults to the connection type, but many types differ — e.g. `EventHub.Contents`, `ConfluentCloud.Contents`, `MQTT.Contents`. Discover via `connection list-supported-types -o json`.
+        #[arg(long, value_name = "METHOD")]
+        creation_method: Option<String>,
+
         /// Connection parameters as JSON (e.g., '{"server":"host","database":"db"}')
         #[arg(long)]
         parameters: String,
@@ -174,6 +178,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ConnectionComma
             name,
             connectivity_type,
             connection_type,
+            creation_method,
             parameters,
             gateway_id,
             credential_type,
@@ -187,6 +192,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ConnectionComma
                 name,
                 connectivity_type,
                 connection_type,
+                creation_method.as_deref(),
                 parameters,
                 gateway_id.as_deref(),
                 credential_type,
@@ -303,6 +309,7 @@ async fn create(
     name: &str,
     connectivity_type: &str,
     connection_type: &str,
+    creation_method: Option<&str>,
     parameters: &str,
     gateway_id: Option<&str>,
     credential_type: &str,
@@ -325,6 +332,8 @@ async fn create(
             "message": format!("Would create connection '{name}' ({connectivity_type})"),
             "displayName": name,
             "connectivityType": connectivity_type,
+            "connectionType": connection_type,
+            "creationMethod": creation_method.unwrap_or(connection_type),
         });
         output::render_object(cli, &preview, "status");
         return Ok(());
@@ -383,12 +392,43 @@ async fn create(
         bail!("--parameters must be a JSON object (e.g., '{{\"server\":\"host\"}}')");
     };
 
+    let body = build_connection_body(
+        name,
+        connectivity_type,
+        connection_type,
+        creation_method,
+        &connection_params,
+        &cred_details,
+        privacy_level,
+        gateway_id,
+    );
+
+    let data = client.post("/connections", &body, false).await?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+/// Build the `POST /connections` request body. `creation_method` defaults to
+/// `connection_type` when `None` (many types differ, e.g. `EventHub.Contents`).
+/// Pure function for testing.
+#[allow(clippy::too_many_arguments)]
+fn build_connection_body(
+    name: &str,
+    connectivity_type: &str,
+    connection_type: &str,
+    creation_method: Option<&str>,
+    connection_params: &[Value],
+    cred_details: &Value,
+    privacy_level: &str,
+    gateway_id: Option<&str>,
+) -> Value {
+    let method = creation_method.unwrap_or(connection_type);
     let mut body = json!({
         "displayName": name,
         "connectivityType": connectivity_type,
         "connectionDetails": {
             "type": connection_type,
-            "creationMethod": connection_type,
+            "creationMethod": method,
             "parameters": connection_params,
         },
         "credentialDetails": cred_details,
@@ -397,10 +437,7 @@ async fn create(
     if let Some(gw_id) = gateway_id {
         body["gatewayId"] = json!(gw_id);
     }
-
-    let data = client.post("/connections", &body, false).await?;
-    output::render_object(cli, &data, "id");
-    Ok(())
+    body
 }
 
 async fn delete(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
@@ -735,5 +772,65 @@ mod tests {
         let (columns, headers) = list_table_columns(&items);
         assert_eq!(columns, ["displayName", "id", "connectivityType"]);
         assert_eq!(headers, ["NAME", "ID", "CONNECTIVITY TYPE"]);
+    }
+
+    #[test]
+    fn creation_method_defaults_to_connection_type() {
+        let creds = json!({"credentialType": "WorkspaceIdentity"});
+        let body = build_connection_body(
+            "c1",
+            "ShareableCloud",
+            "SQL",
+            None,
+            &[],
+            &creds,
+            "Organizational",
+            None,
+        );
+        assert_eq!(body["connectionDetails"]["type"], "SQL");
+        assert_eq!(body["connectionDetails"]["creationMethod"], "SQL");
+        assert!(body.get("gatewayId").is_none());
+    }
+
+    #[test]
+    fn creation_method_override_is_used() {
+        // EventHub's creation method is EventHub.Contents, not EventHub.
+        let creds = json!({"credentialType": "WorkspaceIdentity"});
+        let params = vec![json!({"dataType": "Text", "name": "endpoint", "value": "sb://x"})];
+        let body = build_connection_body(
+            "eh",
+            "ShareableCloud",
+            "EventHub",
+            Some("EventHub.Contents"),
+            &params,
+            &creds,
+            "Organizational",
+            None,
+        );
+        assert_eq!(body["connectionDetails"]["type"], "EventHub");
+        assert_eq!(
+            body["connectionDetails"]["creationMethod"],
+            "EventHub.Contents"
+        );
+        assert_eq!(
+            body["connectionDetails"]["parameters"][0]["name"],
+            "endpoint"
+        );
+    }
+
+    #[test]
+    fn build_body_includes_gateway_when_present() {
+        let creds = json!({"credentialType": "Basic"});
+        let body = build_connection_body(
+            "vnet",
+            "VirtualNetworkGateway",
+            "SQL",
+            None,
+            &[],
+            &creds,
+            "Organizational",
+            Some("gw-123"),
+        );
+        assert_eq!(body["gatewayId"], "gw-123");
     }
 }

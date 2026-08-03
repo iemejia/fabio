@@ -18635,6 +18635,10 @@
             "required": true,
             "description": "Connection type path (e.g., Web, SQL, `GitHubSourceControl`)"
           },
+          "--creation-method": {
+            "type": "string",
+            "description": "Creation method (`connectionDetails.creationMethod`). Defaults to the connection type, but many types differ — e.g. `EventHub.Contents`, `ConfluentCloud.Contents`, `MQTT.Contents`. Discover via `connection list-supported-types -o json`"
+          },
           "--parameters": {
             "type": "string",
             "required": true,
