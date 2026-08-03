@@ -1029,6 +1029,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Create is LRO**: `POST /workspaces/{ws}/dataPipelines` with `poll: true`.
 
 ## KQL Database API Behaviors Discovered
+- **Remote MCP server URL (verified live)**: A KQL database (in an eventhouse) is consumable as a hosted remote MCP server at `{fabricBase}/mcp/dataPlane/workspaces/{ws}/items/{itemId}/kqlEndpoint`, where `itemId` is the KQL DATABASE item id (the portal's "Database details → MCP Server URI"), NOT the eventhouse id. Same generic `dataPlane/.../items/...` shape as the ontology MCP URL, with a `kqlEndpoint` suffix. `fabio kql-database mcp-url` constructs it (deterministic — agents cannot guess the suffix). Live-verified end-to-end: POSTing an MCP `initialize` to the constructed URL with a Fabric bearer token returns `{serverInfo:{name:"KustoMCP",version:"1.0.0"},capabilities:{tools:{...}}}` — a real, working MCP server exposing schema-discovery / NL→KQL / execute / sample tools. A global variant also exists (`{fabricBase}/mcp/dataPlane/kqlEndpoint`, with `workspaceId`+`itemId` supplied per tool call), and tools accept optional `clusterUrl`/`databaseName` params; fabio prints the deterministic per-item URL.
 - **Query endpoint routing**: Management commands (starting with `.`) use `/v1/rest/mgmt`; data queries use `/v2/rest/query`. Both at the Kusto query URI.
 - **Query body**: `{"db": "<database_name>", "csl": "<kql_text>"}`.
 - **Token scoping**: Acquires token scoped to `{kusto_uri}/.default` (not the standard Fabric scope).

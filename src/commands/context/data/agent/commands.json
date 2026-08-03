@@ -11309,6 +11309,23 @@
           "fabio kql-database deeplink --workspace $WS --id $KDB --kql \"SensorEvents | where Temperature > 30 | take 100\""
         ]
       },
+      "mcp-url": {
+        "description": "Print the remote MCP server URL for consuming this KQL database with AI agents",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "KQL database ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
       "queries-running": {
         "description": "Show currently running queries on the KQL database",
         "flags": {

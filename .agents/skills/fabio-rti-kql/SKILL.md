@@ -62,6 +62,7 @@ Manage KQL databases (within eventhouses)
 | `fabio kql-database list` | no | List KQL databases in a workspace |
 | `fabio kql-database list-entities` | no | List entities (tables, materialized views, external tables, functions) in a database |
 | `fabio kql-database list-shortcuts` | no | List shortcuts in a KQL database |
+| `fabio kql-database mcp-url` | no | Print the remote MCP server URL for consuming this KQL database with AI agents |
 | `fabio kql-database queries-completed` | yes | Show recently completed queries |
 | `fabio kql-database queries-running` | yes | Show currently running queries on the KQL database |
 | `fabio kql-database query` | no | Execute a KQL query against a KQL database |

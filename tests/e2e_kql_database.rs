@@ -1055,3 +1055,106 @@ fn kql_database_queries_completed() {
         .assert()
         .success();
 }
+
+// ─── MCP URL (Eventhouse remote MCP) ─────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn kql_database_mcp_url_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("kql_mcp_eh");
+
+    // Create an eventhouse (auto-creates a KQL database of the same name).
+    let assert = fabio()
+        .args([
+            "eventhouse",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let eh_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Find the auto-created KQL database.
+    std::thread::sleep(std::time::Duration::from_secs(8));
+    let assert = fabio()
+        .args(["kql-database", "list", "--workspace", &cfg.source_workspace])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let dbs = extract_data(&json).as_array().unwrap().clone();
+    let kql_id = dbs
+        .iter()
+        .find(|d| d["displayName"].as_str() == Some(name.as_str()))
+        .and_then(|d| d["id"].as_str())
+        .expect("auto-created KQL database")
+        .to_string();
+
+    let expected_url = format!(
+        "https://api.fabric.microsoft.com/v1/mcp/dataPlane/workspaces/{}/items/{}/kqlEndpoint",
+        cfg.source_workspace, kql_id
+    );
+
+    // Existing KQL database: canonical URL, exists true, note, no hint.
+    let assert = fabio()
+        .args([
+            "kql-database",
+            "mcp-url",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &kql_id,
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&assert)).clone();
+    assert_eq!(data["mcpUrl"], expected_url);
+    assert_eq!(data["transport"], "http");
+    assert_eq!(data["exists"], true);
+    assert!(data["note"].as_str().unwrap().contains("MCP server"));
+    assert!(data["hint"].is_null());
+
+    // Nonexistent id: still emits the deterministic URL, exists false + hint.
+    let missing = "00000000-0000-0000-0000-000000000000";
+    let assert = fabio()
+        .args([
+            "kql-database",
+            "mcp-url",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            missing,
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&assert)).clone();
+    assert!(
+        data["mcpUrl"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/items/{missing}/kqlEndpoint"))
+    );
+    assert_eq!(data["exists"], false);
+    assert!(!data["hint"].as_str().unwrap().is_empty());
+
+    // Clean up (deleting the eventhouse cascades to its KQL database).
+    fabio()
+        .args([
+            "eventhouse",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &eh_id,
+        ])
+        .assert()
+        .success();
+}

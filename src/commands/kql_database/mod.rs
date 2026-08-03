@@ -306,6 +306,17 @@ pub enum KqlDatabaseCommand {
         #[arg(long)]
         query_uri: Option<String>,
     },
+    /// Print the remote MCP server URL for consuming this KQL database with AI agents
+    #[command(display_order = 19)]
+    McpUrl {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// KQL database ID
+        #[arg(long)]
+        id: String,
+    },
 
     // ── Query Monitoring ─────────────────────────────────────────────────
     /// Show currently running queries on the KQL database
@@ -662,6 +673,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &KqlDatabaseComm
             intelligence::deeplink(cli, client, workspace, id, kql, style, query_uri.as_deref())
                 .await
         }
+        KqlDatabaseCommand::McpUrl { workspace, id } => {
+            mcp::mcp_url(cli, client, workspace, id).await
+        }
         KqlDatabaseCommand::QueriesRunning {
             workspace,
             id,
@@ -942,6 +956,7 @@ async fn delete(
 }
 
 mod intelligence;
+mod mcp;
 
 // ─── Definitions ─────────────────────────────────────────────────────────────
 
