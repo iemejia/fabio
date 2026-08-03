@@ -51,7 +51,6 @@ pub const DEPLOY_ORDER: &[&str] = &[
     "GraphQLApi",
     "ApacheAirflowJob",
     "MountedDataFactory",
-    "DataAgent",
     "OperationsAgent",
     "AnomalyDetector",
     // --- ML & experimentation ---
@@ -63,6 +62,11 @@ pub const DEPLOY_ORDER: &[&str] = &[
     "GraphQuerySet",
     "DigitalTwinBuilder",
     "DigitalTwinBuilderFlow",
+    // --- Consumers of any data source (must come last) ---
+    // A DataAgent binds to Lakehouse / Warehouse / KQLDatabase / SemanticModel /
+    // Ontology / GraphModel / MirroredDatabase / SQLDatabase data sources, so it
+    // must deploy AFTER all of them for its datasource references to resolve.
+    "DataAgent",
     // --- Visualization & cross-cutting ---
     "Map",
     "Connection",
@@ -95,7 +99,8 @@ pub fn deploy_priority(item_type: &str) -> usize {
 /// - Tier 6: APIs & integration
 /// - Tier 7: ML & experimentation
 /// - Tier 8: Graph & ontology
-/// - Tier 9: Visualization & cross-cutting
+/// - Tier 9: `DataAgent` (binds any data source; must come after all of them)
+/// - Tier 10: Visualization & cross-cutting
 #[inline]
 pub fn deploy_tier(item_type: &str) -> usize {
     let priority = deploy_priority(item_type);
@@ -110,7 +115,8 @@ pub fn deploy_tier(item_type: &str) -> usize {
         29..=33 => 7, // APIs: GraphQLApi..AnomalyDetector
         34..=35 => 8, // ML: MLExperiment, MLModel
         36..=40 => 9, // Graph: Ontology..DigitalTwinBuilderFlow
-        _ => 10,      // Visualization & cross-cutting + unknown
+        41 => 10,     // DataAgent: binds any data source, must come after all of them
+        _ => 11,      // Visualization & cross-cutting + unknown
     }
 }
 
@@ -220,6 +226,32 @@ mod tests {
         assert_eq!(unknown, DEPLOY_ORDER.len());
     }
 
+    #[test]
+    fn test_data_agent_deploys_after_its_datasource_types() {
+        // A DataAgent binds to these data-source types; it must deploy AFTER all
+        // of them (both in linear priority and in dependency tier) so its
+        // datasource references resolve to the freshly-deployed item ids.
+        for src in [
+            "Lakehouse",
+            "Warehouse",
+            "KQLDatabase",
+            "SemanticModel",
+            "Ontology",
+            "GraphModel",
+            "MirroredDatabase",
+            "SQLDatabase",
+        ] {
+            assert!(
+                deploy_priority("DataAgent") > deploy_priority(src),
+                "DataAgent must have higher priority than {src}"
+            );
+            assert!(
+                deploy_tier("DataAgent") > deploy_tier(src),
+                "DataAgent must be in a later tier than {src}"
+            );
+        }
+    }
+
     // ── deploy_tier ─────────────────────────────────────────────────────────
 
     #[test]
@@ -256,7 +288,7 @@ mod tests {
 
     #[test]
     fn test_deploy_tier_unknown_type_in_last_tier() {
-        assert_eq!(deploy_tier("UnknownType"), 10);
+        assert_eq!(deploy_tier("UnknownType"), 11);
     }
 
     #[test]
