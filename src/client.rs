@@ -420,6 +420,15 @@ impl FabricClient {
         }
     }
 
+    /// Construct a `OneLake` Blob URL for a workspace-relative item path.
+    ///
+    /// Public wrapper over [`Self::onelake_blob_url`] for callers outside this module
+    /// (e.g. KQL ingestion from `OneLake`). `suffix` is the item-relative path such as
+    /// `{lakehouse_id}/Files/raw/data.json`.
+    pub fn onelake_blob_item_url(&self, workspace: &str, suffix: &str) -> String {
+        self.onelake_blob_url(workspace, suffix)
+    }
+
     /// Construct a `OneLake` Blob URL, applying private link transform if configured.
     ///
     /// If `FABIO_ONELAKE_BLOB_ENDPOINT` is set, that value is used directly (no private link

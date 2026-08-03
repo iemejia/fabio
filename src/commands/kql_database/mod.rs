@@ -201,7 +201,7 @@ pub enum KqlDatabaseCommand {
         query_uri: Option<String>,
     },
 
-    /// Ingest inline data into a KQL table
+    /// Ingest data into a KQL table — inline (small) or from OneLake/blob storage (large files)
     #[command(display_order = 11)]
     Ingest {
         /// Workspace ID
@@ -216,9 +216,34 @@ pub enum KqlDatabaseCommand {
         #[arg(long)]
         table: String,
 
-        /// Inline CSV data to ingest (or use @file to read from file, or pipe via stdin)
-        #[arg(long)]
+        /// Inline CSV data to ingest (or use @file to read from file, or pipe via stdin).
+        /// Limited to ~4 MB. For larger data use --source-path (OneLake/blob ingestion).
+        #[arg(long, conflicts_with = "source_path")]
         data: Option<String>,
+
+        /// Ingest from a storage source instead of inline. Either a full HTTPS URL to a trusted
+        /// Microsoft endpoint (`OneLake` / ADLS Gen2) OR, together with --source-lakehouse, a
+        /// lakehouse-relative path like `Files/raw/payments.json`. No ~4 MB size limit.
+        #[arg(long)]
+        source_path: Option<String>,
+
+        /// Source lakehouse item ID. When set, --source-path is treated as a path within this
+        /// lakehouse (`Files/...` or `Tables/...`) and resolved to a `OneLake` blob URL.
+        #[arg(long, requires = "source_path")]
+        source_lakehouse: Option<String>,
+
+        /// Workspace hosting the source lakehouse (defaults to --workspace).
+        #[arg(long, requires = "source_lakehouse")]
+        source_workspace: Option<String>,
+
+        /// Data format for storage ingestion: `Csv`, `Tsv`, `Json`, `MultiJson`, `Parquet` (default: `Csv`).
+        /// Ignored for inline ingestion (always CSV).
+        #[arg(long)]
+        format: Option<String>,
+
+        /// For Csv/Tsv storage ingestion: skip the first (header) row.
+        #[arg(long)]
+        ignore_first_record: bool,
 
         /// Override the Kusto query URI
         #[arg(long)]
@@ -581,6 +606,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &KqlDatabaseComm
             id,
             table,
             data,
+            source_path,
+            source_lakehouse,
+            source_workspace,
+            format,
+            ignore_first_record,
             query_uri,
         } => {
             intelligence::ingest(
@@ -590,6 +620,13 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &KqlDatabaseComm
                 id,
                 table,
                 data.as_deref(),
+                intelligence::IngestSource {
+                    source_path: source_path.as_deref(),
+                    source_lakehouse: source_lakehouse.as_deref(),
+                    source_workspace: source_workspace.as_deref(),
+                    format: format.as_deref(),
+                    ignore_first_record: *ignore_first_record,
+                },
                 query_uri.as_deref(),
             )
             .await

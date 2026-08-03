@@ -236,6 +236,79 @@ pub(super) async fn sample(
 
 // ─── Ingestion & Diagnostics ─────────────────────────────────────────────────
 
+/// Options describing a storage-backed ingestion source (`OneLake` / ADLS Gen2).
+///
+/// When `source_path` is `None`, ingestion falls back to inline mode using the
+/// `data` argument of [`ingest`].
+#[derive(Debug, Default, Clone, Copy)]
+pub(super) struct IngestSource<'a> {
+    pub source_path: Option<&'a str>,
+    pub source_lakehouse: Option<&'a str>,
+    pub source_workspace: Option<&'a str>,
+    pub format: Option<&'a str>,
+    pub ignore_first_record: bool,
+}
+
+/// Normalize a user-supplied format string to the Kusto ingestion format token.
+fn normalize_kusto_format(fmt: &str) -> Result<&'static str> {
+    match fmt.to_lowercase().as_str() {
+        "csv" => Ok("csv"),
+        "tsv" => Ok("tsv"),
+        "scsv" => Ok("scsv"),
+        "psv" => Ok("psv"),
+        "json" | "singlejson" => Ok("singlejson"),
+        "multijson" | "multi-json" => Ok("multijson"),
+        "parquet" => Ok("parquet"),
+        "orc" => Ok("orc"),
+        "avro" => Ok("avro"),
+        "raw" | "txt" => Ok("txt"),
+        other => Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Unsupported ingestion format: {other}"),
+            "Supported formats: Csv, Tsv, Json, MultiJson, Parquet, Avro, Orc.".to_string(),
+        )
+        .into()),
+    }
+}
+
+/// Build the storage connection string that Kusto reads from.
+///
+/// A `OneLake` lakehouse path is resolved to a `onelake.blob.fabric.microsoft.com`
+/// URL; a full HTTPS URL is validated against the trusted-domain allowlist. Both
+/// are suffixed with `;impersonate` so the engine reads storage using the caller's
+/// identity (no SAS token needed).
+fn build_storage_connection(
+    client: &FabricClient,
+    workspace: &str,
+    src: &IngestSource,
+) -> Result<String> {
+    let raw = src
+        .source_path
+        .expect("build_storage_connection requires source_path");
+
+    let url = if raw.starts_with("https://") || raw.starts_with("http://") {
+        crate::client::validate_trusted_url(raw, "--source-path")?;
+        raw.to_string()
+    } else if let Some(lakehouse) = src.source_lakehouse {
+        let ws = src.source_workspace.unwrap_or(workspace);
+        let path = raw.trim_start_matches('/');
+        client.onelake_blob_item_url(ws, &format!("{lakehouse}/{path}"))
+    } else {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "--source-path is a relative path but --source-lakehouse was not provided.".to_string(),
+            "Either pass a full https:// OneLake/ADLS URL, or add --source-lakehouse <id> so the \
+             lakehouse-relative path can be resolved."
+                .to_string(),
+        )
+        .into());
+    };
+
+    // `h'...'` obfuscates the connection string in Kusto logs; `;impersonate`
+    // reads storage with the submitting principal's identity.
+    Ok(format!("h'{url};impersonate'"))
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn ingest(
     cli: &Cli,
@@ -244,9 +317,16 @@ pub(super) async fn ingest(
     id: &str,
     table: &str,
     data: Option<&str>,
+    src: IngestSource<'_>,
     query_uri_override: Option<&str>,
 ) -> Result<()> {
-    // Resolve data input: --data flag, @file prefix, or stdin
+    // Storage-backed ingestion (OneLake / ADLS) for large files.
+    if src.source_path.is_some() {
+        return ingest_from_storage(cli, client, workspace, id, table, &src, query_uri_override)
+            .await;
+    }
+
+    // Inline ingestion (small payloads, ~4 MB cap).
     let csv_data = kql_utils::resolve_kql_input(data)?;
 
     // Dry-run guard: ingestion is a mutation
@@ -274,6 +354,74 @@ pub(super) async fn ingest(
             "status": "ingested",
             "table": table,
             "data_size_bytes": csv_data.len(),
+        });
+        output::render_object(cli, &obj, "status");
+    } else {
+        kql_utils::render_kql_results(cli, &rows, &columns);
+    }
+    Ok(())
+}
+
+/// Build the `.ingest into` management command for a storage-backed source.
+///
+/// Pure/string-only so it is unit-testable without a live client.
+fn build_ingest_command(
+    table: &str,
+    connection: &str,
+    format: &str,
+    ignore_first_record: bool,
+) -> String {
+    let mut props: Vec<String> = vec![format!("format='{format}'")];
+    if ignore_first_record && matches!(format, "csv" | "tsv" | "scsv" | "psv") {
+        props.push("ignoreFirstRecord=true".to_string());
+    }
+    format!(
+        ".ingest into table ['{table}'] ({connection}) with ({})",
+        props.join(", ")
+    )
+}
+
+/// Ingest from a storage source (`OneLake` blob / ADLS Gen2) via `.ingest into`.
+async fn ingest_from_storage(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    table: &str,
+    src: &IngestSource<'_>,
+    query_uri_override: Option<&str>,
+) -> Result<()> {
+    let connection = build_storage_connection(client, workspace, src)?;
+    let format = normalize_kusto_format(src.format.unwrap_or("csv"))?;
+
+    if output::dry_run_guard(
+        cli,
+        "kql-database ingest",
+        &serde_json::json!({
+            "table": table,
+            "source_path": src.source_path,
+            "format": format,
+            "mode": "storage",
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let (kusto_uri, db_name) =
+        kql_utils::resolve_query_uri(client, workspace, id, query_uri_override).await?;
+
+    // `.ingest into` pulls the referenced blob synchronously and returns the
+    // resulting extent(s). Suitable for one-shot loads of moderately large files.
+    let kql = build_ingest_command(table, &connection, format, src.ignore_first_record);
+
+    let (rows, columns) = kql_utils::execute_kql(client, &kusto_uri, &db_name, &kql).await?;
+
+    if rows.is_empty() {
+        let obj = serde_json::json!({
+            "status": "ingested",
+            "table": table,
+            "format": format,
+            "mode": "storage",
         });
         output::render_object(cli, &obj, "status");
     } else {
@@ -477,4 +625,42 @@ pub(super) async fn queries_completed(
         kql_utils::execute_kql(client, &kusto_uri, &db_name, ".show queries").await?;
     kql_utils::render_kql_results(cli, &rows, &columns);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_kusto_format_maps_friendly_names() {
+        assert_eq!(normalize_kusto_format("Csv").unwrap(), "csv");
+        assert_eq!(normalize_kusto_format("MultiJson").unwrap(), "multijson");
+        assert_eq!(normalize_kusto_format("json").unwrap(), "singlejson");
+        assert_eq!(normalize_kusto_format("Parquet").unwrap(), "parquet");
+        assert_eq!(normalize_kusto_format("TSV").unwrap(), "tsv");
+        assert!(normalize_kusto_format("xlsx").is_err());
+    }
+
+    #[test]
+    fn build_ingest_command_multijson_no_header() {
+        let cmd = build_ingest_command(
+            "payments",
+            "h'https://onelake.blob.fabric.microsoft.com/ws/lh/Files/raw/p.json;impersonate'",
+            "multijson",
+            true, // ignoreFirstRecord is CSV/TSV-only, must be dropped for multijson
+        );
+        assert_eq!(
+            cmd,
+            ".ingest into table ['payments'] (h'https://onelake.blob.fabric.microsoft.com/ws/lh/Files/raw/p.json;impersonate') with (format='multijson')"
+        );
+    }
+
+    #[test]
+    fn build_ingest_command_csv_with_header_skip() {
+        let cmd = build_ingest_command("orders", "h'https://x;impersonate'", "csv", true);
+        assert_eq!(
+            cmd,
+            ".ingest into table ['orders'] (h'https://x;impersonate') with (format='csv', ignoreFirstRecord=true)"
+        );
+    }
 }

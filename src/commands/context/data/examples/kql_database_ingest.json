@@ -1,6 +1,6 @@
 {
   "command": "fabio kql-database ingest --workspace $WS_ID --id $KDB_ID --table SensorEvents --data \"DeviceId,Temperature,Timestamp\\ndev-001,23.5,2026-06-18T10:00:00Z\\ndev-002,19.8,2026-06-18T10:01:00Z\"",
-  "description": "Ingests inline CSV data into a KQL table using .ingest inline command. Limited to ~4MB payload. Use @file to read from disk.",
+  "description": "Ingest data into a KQL table. Inline mode (--data) is limited to ~4MB. For larger files, use storage mode (--source-path) to pull from OneLake or ADLS Gen2 with no size cap.",
   "response": {
     "data": {
       "status": "ingested",
@@ -8,9 +8,13 @@
       "data_size_bytes": 95
     }
   },
-  "notes": "Input sources: --data 'csv text', --data @file.csv, or pipe via stdin. The command constructs '.ingest inline into table [T] <| data' and sends it to the management endpoint.",
+  "notes": "INLINE: --data 'csv text', --data @file.csv, or pipe via stdin. Constructs '.ingest inline into table [T] <| data' (mgmt endpoint). STORAGE: --source-path pulls from storage via '.ingest into table [T] (h'URL;impersonate') with (format=...)'. Pass either a full https:// OneLake/ADLS URL, OR a lakehouse-relative path with --source-lakehouse <id> (+ optional --source-workspace). The engine reads storage using the caller's identity (impersonate) — no SAS needed. Set --format (Csv|Tsv|Json|MultiJson|Parquet, default Csv) and --ignore-first-record for CSV/TSV headers.",
+  "storage_example": {
+    "command": "fabio kql-database ingest --workspace $WS --id $KDB --table payments --source-lakehouse $LH --source-path Files/raw/payments.json --format MultiJson",
+    "description": "Pull a 35 MB JSON file from OneLake into a KQL table. Resolves the lakehouse-relative path to a onelake.blob.fabric.microsoft.com URL and ingests it synchronously via '.ingest into'."
+  },
   "query_examples": [
     {"query": "data.status", "description": "Check ingestion status."},
-    {"query": "data.data_size_bytes", "description": "Get the size of data ingested."}
+    {"query": "data.data_size_bytes", "description": "Get the size of inline data ingested."}
   ]
 }

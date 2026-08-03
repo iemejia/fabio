@@ -11172,7 +11172,7 @@
         ]
       },
       "ingest": {
-        "description": "Ingest inline data into a KQL table",
+        "description": "Ingest data into a KQL table — inline (small) or from OneLake/blob storage (large files)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11191,7 +11191,27 @@
           },
           "--data": {
             "type": "string",
-            "description": "Inline CSV data to ingest (or use @file to read from file, or pipe via stdin)"
+            "description": "Inline CSV data to ingest (or use @file to read from file, or pipe via stdin). Limited to ~4 MB. For larger data use --source-path (OneLake/blob ingestion)"
+          },
+          "--source-path": {
+            "type": "string",
+            "description": "Ingest from a storage source instead of inline. Either a full HTTPS URL to a trusted Microsoft endpoint (`OneLake` / ADLS Gen2) OR, together with --source-lakehouse, a lakehouse-relative path like `Files/raw/payments.json`. No ~4 MB size limit"
+          },
+          "--source-lakehouse": {
+            "type": "string",
+            "description": "Source lakehouse item ID. When set, --source-path is treated as a path within this lakehouse (`Files/...` or `Tables/...`) and resolved to a `OneLake` blob URL"
+          },
+          "--source-workspace": {
+            "type": "string",
+            "description": "Workspace hosting the source lakehouse (defaults to --workspace)"
+          },
+          "--format": {
+            "type": "string",
+            "description": "Data format for storage ingestion: `Csv`, `Tsv`, `Json`, `MultiJson`, `Parquet` (default: `Csv`). Ignored for inline ingestion (always CSV)"
+          },
+          "--ignore-first-record": {
+            "type": "bool",
+            "description": "For Csv/Tsv storage ingestion: skip the first (header) row"
           },
           "--query-uri": {
             "type": "string",
