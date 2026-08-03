@@ -2,7 +2,9 @@ use anyhow::Result;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::commands::tds_utils::{execute_and_render_sql, parse_connection_string};
+use crate::commands::tds_utils::{
+    execute_and_render_sql, parse_connection_string, pool_insights_sql,
+};
 use crate::output;
 
 use super::get_connection_string;
@@ -80,6 +82,17 @@ pub(super) async fn queries_history(
          FROM queryinsights.exec_requests_history \
          ORDER BY start_time DESC"
     );
+    super::execute_insights_query(cli, client, workspace, id, &sql).await
+}
+
+pub(super) async fn pool_insights(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    top: u32,
+) -> Result<()> {
+    let sql = pool_insights_sql(top);
     super::execute_insights_query(cli, client, workspace, id, &sql).await
 }
 

@@ -656,6 +656,35 @@ fn warehouse_queries_history() {
 }
 
 // ---------------------------------------------------------------------------
+// warehouse pool-insights — SQL pool state / pressure events
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_pool_insights() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "pool-insights",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--top",
+            "5",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    // Result set is a list (rows present on active pools, possibly empty otherwise).
+    let json = parse_json(&assert);
+    assert!(json.get("data").is_some());
+}
+
+// ---------------------------------------------------------------------------
 // warehouse statistics-list — list statistics objects
 // ---------------------------------------------------------------------------
 

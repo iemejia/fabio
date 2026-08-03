@@ -42,6 +42,26 @@ pub fn resolve_sql_input(sql: Option<&str>) -> anyhow::Result<String> {
     }
 }
 
+/// Build the SQL for the SQL Pool Insights view (`queryinsights.sql_pool_insights`),
+/// which logs pool state changes and sustained pressure events for the built-in
+/// SELECT / NON-SELECT SQL pools of a Warehouse or Lakehouse SQL analytics endpoint.
+/// Pure function for testing.
+#[must_use]
+pub fn pool_insights_sql(top: u32) -> String {
+    format!(
+        "SELECT TOP ({top}) \
+         sql_pool_name, \
+         timestamp, \
+         is_optimized_for_reads, \
+         is_pool_under_pressure, \
+         max_resource_percentage, \
+         cache_cooldown_minutes, \
+         current_workspace_capacity \
+         FROM queryinsights.sql_pool_insights \
+         ORDER BY timestamp DESC"
+    )
+}
+
 /// Parse a connection string into (server, database).
 pub fn parse_connection_string(connection_string: &str) -> (String, String) {
     let cleaned = connection_string
@@ -560,5 +580,15 @@ mod tests {
         let j = SqlJson::from("not valid json".to_string());
         let result = column_value_to_json(&ColumnValues::Json(j));
         assert_eq!(result, Value::from("not valid json"));
+    }
+
+    #[test]
+    fn pool_insights_sql_targets_view_with_top_and_order() {
+        let sql = pool_insights_sql(25);
+        assert!(sql.contains("FROM queryinsights.sql_pool_insights"));
+        assert!(sql.contains("TOP (25)"));
+        assert!(sql.contains("ORDER BY timestamp DESC"));
+        assert!(sql.contains("is_pool_under_pressure"));
+        assert!(sql.contains("max_resource_percentage"));
     }
 }

@@ -4,7 +4,8 @@ use serde_json::Value;
 use crate::cli::Cli;
 use crate::client::FabricClient;
 use crate::commands::tds_utils::{
-    capture_query_plan, execute_and_render_sql, resolve_lakehouse_sql, resolve_sql_input,
+    capture_query_plan, execute_and_render_sql, pool_insights_sql, resolve_lakehouse_sql,
+    resolve_sql_input,
 };
 use crate::errors::{ErrorCode, FabioError};
 use crate::output;
@@ -129,6 +130,17 @@ pub(super) async fn queries_history(
          FROM queryinsights.exec_requests_history \
          ORDER BY start_time DESC"
     );
+    execute_lakehouse_query(cli, client, workspace, id, &sql).await
+}
+
+pub(super) async fn pool_insights(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    top: u32,
+) -> Result<()> {
+    let sql = pool_insights_sql(top);
     execute_lakehouse_query(cli, client, workspace, id, &sql).await
 }
 

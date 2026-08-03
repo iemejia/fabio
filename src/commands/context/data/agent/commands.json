@@ -2616,6 +2616,27 @@
         "mutates": true,
         "returns": "object"
       },
+      "pool-insights": {
+        "description": "Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID"
+          },
+          "--top": {
+            "type": "string",
+            "description": "Maximum rows to return (default: 100)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
       "table-health": {
         "description": "Report file-level storage health metrics for a table (runs `sys.sp_get_table_health_metrics` on the SQL analytics endpoint)",
         "flags": {
@@ -5364,6 +5385,27 @@
         "mutates": true,
         "returns": "object"
       },
+      "pool-insights": {
+        "description": "Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse or Lakehouse ID"
+          },
+          "--top": {
+            "type": "string",
+            "description": "Maximum rows to return (default: 100)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
       "statistics-list": {
         "description": "List user-defined statistics on a warehouse or SQL endpoint",
         "flags": {
@@ -6341,6 +6383,27 @@
       },
       "queries-history": {
         "description": "List completed query history (from `queryinsights.exec_requests_history`)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "SQL endpoint ID"
+          },
+          "--top": {
+            "type": "string",
+            "description": "Maximum rows to return (default: 100)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "pool-insights": {
+        "description": "Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`)",
         "flags": {
           "--workspace": {
             "type": "string",

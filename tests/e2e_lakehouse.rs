@@ -1212,6 +1212,30 @@ fn lakehouse_queries_history() {
         .success();
 }
 
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_pool_insights() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "pool-insights",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--top",
+            "5",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(json.get("data").is_some());
+}
+
 // ─── Table Health ────────────────────────────────────────────────────────────
 
 #[test]

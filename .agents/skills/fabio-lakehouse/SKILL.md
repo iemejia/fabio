@@ -73,6 +73,7 @@ Manage lakehouses (tables, files, shortcuts)
 | `fabio lakehouse move-table` | yes | Move a table between lakehouses (copy + delete source) |
 | `fabio lakehouse optimize-table` | yes | Optimize a Delta table (V-Order compaction + optional Z-Order) |
 | `fabio lakehouse plan` | yes | Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query |
+| `fabio lakehouse pool-insights` | yes | Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`) |
 | `fabio lakehouse queries-frequent` | yes | List frequently-run queries (from `queryinsights.frequently_run_queries`) |
 | `fabio lakehouse queries-history` | yes | List completed query history (from `queryinsights.exec_requests_history`) |
 | `fabio lakehouse queries-long-running` | yes | List long-running queries (from `queryinsights.long_running_queries`) |

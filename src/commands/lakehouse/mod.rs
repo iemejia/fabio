@@ -218,6 +218,21 @@ pub enum LakehouseCommand {
         #[arg(long, default_value = "100")]
         top: u32,
     },
+    /// Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`)
+    #[command(display_order = 9)]
+    PoolInsights {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Maximum rows to return (default: 100)
+        #[arg(long, default_value = "100")]
+        top: u32,
+    },
     /// Report file-level storage health metrics for a table (runs `sys.sp_get_table_health_metrics` on the SQL analytics endpoint)
     #[command(display_order = 9)]
     TableHealth {
@@ -1319,6 +1334,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
         }
         LakehouseCommand::QueriesHistory { workspace, id, top } => {
             insights::queries_history(cli, client, workspace, id, *top).await
+        }
+        LakehouseCommand::PoolInsights { workspace, id, top } => {
+            insights::pool_insights(cli, client, workspace, id, *top).await
         }
         LakehouseCommand::TableHealth {
             workspace,

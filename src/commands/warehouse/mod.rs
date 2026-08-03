@@ -377,6 +377,21 @@ pub enum WarehouseCommand {
         #[arg(long)]
         session_id: i32,
     },
+    /// Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`)
+    #[command(display_order = 45)]
+    PoolInsights {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Warehouse or Lakehouse ID
+        #[arg(long)]
+        id: String,
+
+        /// Maximum rows to return (default: 100)
+        #[arg(long, default_value = "100")]
+        top: u32,
+    },
 
     // ── Statistics ────────────────────────────────────────────────────────
     /// List user-defined statistics on a warehouse or SQL endpoint
@@ -650,6 +665,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
                 *session_id,
             ))
             .await
+        }
+        WarehouseCommand::PoolInsights { workspace, id, top } => {
+            Box::pin(insights::pool_insights(cli, client, workspace, id, *top)).await
         }
         WarehouseCommand::StatisticsList {
             workspace,

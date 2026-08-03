@@ -389,3 +389,43 @@ fn sql_endpoint_queries_history() {
         .assert()
         .success();
 }
+
+// ---------------------------------------------------------------------------
+// sql-endpoint pool-insights
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sql_endpoint_pool_insights() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args(["sql-endpoint", "list", "--workspace", &cfg.source_workspace])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    if items.is_empty() {
+        eprintln!("No SQL endpoints found, skipping");
+        return;
+    }
+    let ep_id = items[0]["id"].as_str().unwrap();
+
+    let assert = fabio()
+        .args([
+            "sql-endpoint",
+            "pool-insights",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            ep_id,
+            "--top",
+            "5",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(json.get("data").is_some());
+}

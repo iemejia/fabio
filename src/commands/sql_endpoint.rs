@@ -5,7 +5,8 @@ use serde_json::Value;
 use crate::cli::Cli;
 use crate::client::FabricClient;
 use crate::commands::tds_utils::{
-    capture_query_plan, execute_and_render_sql, parse_connection_string, resolve_sql_input,
+    capture_query_plan, execute_and_render_sql, parse_connection_string, pool_insights_sql,
+    resolve_sql_input,
 };
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
@@ -204,6 +205,21 @@ pub enum SqlEndpointCommand {
         #[arg(long, default_value = "100")]
         top: u32,
     },
+    /// Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`)
+    #[command(display_order = 24)]
+    PoolInsights {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL endpoint ID
+        #[arg(long)]
+        id: String,
+
+        /// Maximum rows to return (default: 100)
+        #[arg(long, default_value = "100")]
+        top: u32,
+    },
 }
 
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlEndpointCommand) -> Result<()> {
@@ -274,6 +290,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlEndpointComm
         }
         SqlEndpointCommand::QueriesHistory { workspace, id, top } => {
             Box::pin(insights_history(cli, client, workspace, id, *top)).await
+        }
+        SqlEndpointCommand::PoolInsights { workspace, id, top } => {
+            Box::pin(insights_pool(cli, client, workspace, id, *top)).await
         }
     }
 }
@@ -753,5 +772,16 @@ async fn insights_history(
          FROM queryinsights.exec_requests_history \
          ORDER BY start_time DESC"
     );
+    Box::pin(execute_endpoint_query(cli, client, workspace, id, &sql)).await
+}
+
+async fn insights_pool(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    top: u32,
+) -> Result<()> {
+    let sql = pool_insights_sql(top);
     Box::pin(execute_endpoint_query(cli, client, workspace, id, &sql)).await
 }
