@@ -51,6 +51,7 @@ Manage lakehouses (tables, files, shortcuts)
 | `fabio lakehouse download` | no | Download a file from a lakehouse |
 | `fabio lakehouse get-definition` | no | Get the definition of a lakehouse |
 | `fabio lakehouse get-livy-session` | no | Get details of a Livy session for a lakehouse |
+| `fabio lakehouse get-materialized-views-schedule` | no | Show a single materialized lake view refresh schedule by ID |
 | `fabio lakehouse get-shortcut` | no | Get shortcut details |
 | `fabio lakehouse iceberg-config` | no | Get Iceberg REST Catalog configuration for a lakehouse |
 | `fabio lakehouse iceberg-credentials` | no | Load vended storage credentials scoped to a specific table |

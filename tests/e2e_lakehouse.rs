@@ -1262,6 +1262,36 @@ fn lakehouse_list_materialized_views_schedules() {
     );
 }
 
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_get_materialized_views_schedule_not_found() {
+    let cfg = TestConfig::from_env();
+
+    // A nonexistent schedule id must route correctly and return a clean not-found
+    // (proves the GET /schedules/{id} endpoint is wired), rather than a route error.
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "get-materialized-views-schedule",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--schedule-id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr)
+        + String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        stderr.contains("ScheduleNotFound") || stderr.contains("not found"),
+        "expected a clean schedule-not-found error, got: {stderr}"
+    );
+}
+
 // ─── Table Health ────────────────────────────────────────────────────────────
 
 #[test]

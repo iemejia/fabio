@@ -71,6 +71,23 @@ pub(super) async fn list_materialized_views_schedules(
     Ok(())
 }
 
+pub(super) async fn get_materialized_views_schedule(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    schedule_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/lakehouses/{id}/jobs/refreshMaterializedLakeViews/schedules/{schedule_id}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse get-materialized-views-schedule", "Viewer"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
 pub(super) async fn create_materialized_views_schedule(
     cli: &Cli,
     client: &FabricClient,

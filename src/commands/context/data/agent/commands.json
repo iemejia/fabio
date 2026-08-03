@@ -3441,6 +3441,28 @@
         "mutates": false,
         "returns": "list"
       },
+      "get-materialized-views-schedule": {
+        "description": "Show a single materialized lake view refresh schedule by ID",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID"
+          },
+          "--schedule-id": {
+            "type": "string",
+            "required": true,
+            "description": "Schedule ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
       "create-materialized-views-schedule": {
         "description": "Create a schedule for materialized lake view refresh",
         "flags": {
