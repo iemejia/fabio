@@ -239,3 +239,199 @@ fn environment_upload_staging_library_missing_file() {
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     assert!(stderr.contains("Failed to read file"));
 }
+
+// ─── Staging Spark Compute (runtime version + spark properties) ──────────────
+
+#[test]
+fn environment_update_staging_spark_compute_typed_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "environment",
+            "update-staging-spark-compute",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--runtime-version",
+            "2.0",
+            "--spark-property",
+            "spark.native.enabled=true",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(
+        data["would_execute"],
+        "environment update-staging-spark-compute"
+    );
+    assert_eq!(data["details"]["runtimeVersion"], "2.0");
+    assert_eq!(
+        data["details"]["sparkProperties"]["spark.native.enabled"],
+        "true"
+    );
+}
+
+#[test]
+fn environment_update_staging_spark_compute_requires_input() {
+    // Neither --file/--content nor --runtime-version/--spark-property provided.
+    let assert = fabio()
+        .args([
+            "environment",
+            "update-staging-spark-compute",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("--runtime-version"));
+}
+
+#[test]
+fn environment_update_staging_spark_compute_content_conflicts_with_typed() {
+    // clap should reject combining raw JSON with typed override flags.
+    let assert = fabio()
+        .args([
+            "environment",
+            "update-staging-spark-compute",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--content",
+            "{}",
+            "--runtime-version",
+            "2.0",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("cannot be used with"));
+}
+
+#[test]
+fn environment_update_staging_spark_compute_rejects_bad_property() {
+    let assert = fabio()
+        .args([
+            "environment",
+            "update-staging-spark-compute",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--spark-property",
+            "no-equals-sign",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("KEY=VALUE"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn environment_staging_spark_compute_runtime_and_properties_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("env_spark_rt");
+
+    // Create a throwaway environment.
+    let assert = fabio()
+        .args([
+            "environment",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let env_id = extract_data(&json)["id"].as_str().unwrap().to_string();
+
+    // Set runtime 2.0 + a spark property (read-merge-write).
+    let assert = fabio()
+        .args([
+            "environment",
+            "update-staging-spark-compute",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &env_id,
+            "--runtime-version",
+            "2.0",
+            "--spark-property",
+            "spark.native.enabled=true",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["runtimeVersion"], "2.0");
+    assert_eq!(data["sparkProperties"]["spark.native.enabled"], "true");
+
+    // Add a second property; runtime + first property must be preserved (merge).
+    let assert = fabio()
+        .args([
+            "environment",
+            "update-staging-spark-compute",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &env_id,
+            "--spark-property",
+            "spark.remote.shuffle.enabled=true",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["runtimeVersion"], "2.0");
+    assert_eq!(data["sparkProperties"]["spark.native.enabled"], "true");
+    assert_eq!(
+        data["sparkProperties"]["spark.remote.shuffle.enabled"],
+        "true"
+    );
+
+    // Read back via get-staging-spark-settings.
+    let assert = fabio()
+        .args([
+            "environment",
+            "get-staging-spark-settings",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &env_id,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["runtimeVersion"], "2.0");
+
+    // Clean up.
+    fabio()
+        .args([
+            "environment",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &env_id,
+        ])
+        .assert()
+        .success();
+}

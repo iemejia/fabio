@@ -83,6 +83,7 @@ Manage lakehouses (tables, files, shortcuts)
 | `fabio lakehouse show` | no | Show details of a lakehouse |
 | `fabio lakehouse show-execution-definition` | no | Show a materialized lake view execution definition |
 | `fabio lakehouse sync` | yes | Sync files between lakehouses (parallel, copies new/modified files) |
+| `fabio lakehouse table-health` | yes | Report file-level storage health metrics for a table (runs `sys.sp_get_table_health_metrics` on the SQL analytics endpoint) |
 | `fabio lakehouse table-schema` | no | Show Delta table schema (reads from `OneLake` `_delta_log` without Spark/SQL) |
 | `fabio lakehouse update` | yes | Update a lakehouse (rename/redescribe) |
 | `fabio lakehouse update-definition` | yes | Update the definition of a lakehouse |

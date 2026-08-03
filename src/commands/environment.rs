@@ -297,13 +297,21 @@ pub enum EnvironmentCommand {
         #[arg(long)]
         id: String,
 
-        /// Path to JSON file with spark compute config
+        /// Path to JSON file with spark compute config (full body; conflicts with --runtime-version/--spark-property)
         #[arg(long)]
         file: Option<String>,
 
-        /// Inline JSON content with spark compute config
+        /// Inline JSON content with spark compute config (full body; conflicts with --runtime-version/--spark-property)
         #[arg(long)]
         content: Option<String>,
+
+        /// Spark runtime version to set (e.g. "1.3" for Spark 3.5, "2.0" for the Spark 4.1 / Delta 4.2 preview). Merged into the existing staging compute (other fields preserved).
+        #[arg(long, conflicts_with_all = ["file", "content"])]
+        runtime_version: Option<String>,
+
+        /// Spark configuration property to set as KEY=VALUE (repeatable). Merged into existing sparkProperties. E.g. --spark-property spark.native.enabled=true
+        #[arg(long = "spark-property", value_name = "KEY=VALUE", conflicts_with_all = ["file", "content"])]
+        spark_property: Vec<String>,
     },
 }
 
@@ -431,6 +439,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EnvironmentComm
             id,
             file,
             content,
+            runtime_version,
+            spark_property,
         } => {
             update_staging_spark_compute(
                 cli,
@@ -439,6 +449,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EnvironmentComm
                 id,
                 file.as_deref(),
                 content.as_deref(),
+                runtime_version.as_deref(),
+                spark_property,
             )
             .await
         }
@@ -1007,6 +1019,58 @@ async fn remove_staging_library(
 
 // ─── Staging Spark Compute ───────────────────────────────────────────────────
 
+/// Parse a `KEY=VALUE` Spark property argument.
+fn parse_spark_property(s: &str) -> Result<(String, String)> {
+    let (key, value) = s.split_once('=').ok_or_else(|| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid --spark-property '{s}': expected KEY=VALUE"),
+            "Example: --spark-property spark.native.enabled=true",
+        )
+    })?;
+    let key = key.trim();
+    if key.is_empty() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid --spark-property '{s}': key is empty"),
+            "Example: --spark-property spark.native.enabled=true",
+        )
+        .into());
+    }
+    Ok((key.to_string(), value.to_string()))
+}
+
+/// Apply typed runtime-version / spark-property overrides onto an existing
+/// staging sparkcompute object, preserving all other fields (and existing
+/// `sparkProperties` keys that are not overridden). Pure function for testing.
+fn apply_spark_compute_overrides(
+    mut current: Value,
+    runtime_version: Option<&str>,
+    spark_properties: &[(String, String)],
+) -> Value {
+    if !current.is_object() {
+        current = Value::Object(serde_json::Map::new());
+    }
+    let obj = current.as_object_mut().expect("ensured object above");
+    if let Some(rv) = runtime_version {
+        obj.insert("runtimeVersion".to_string(), Value::from(rv));
+    }
+    if !spark_properties.is_empty() {
+        let props = obj
+            .entry("sparkProperties".to_string())
+            .or_insert_with(|| Value::Object(serde_json::Map::new()));
+        if !props.is_object() {
+            *props = Value::Object(serde_json::Map::new());
+        }
+        let pobj = props.as_object_mut().expect("ensured object above");
+        for (k, v) in spark_properties {
+            pobj.insert(k.clone(), Value::from(v.as_str()));
+        }
+    }
+    current
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn update_staging_spark_compute(
     cli: &Cli,
     client: &FabricClient,
@@ -1014,54 +1078,103 @@ async fn update_staging_spark_compute(
     id: &str,
     file: Option<&str>,
     content: Option<&str>,
+    runtime_version: Option<&str>,
+    spark_property: &[String],
 ) -> Result<()> {
-    let body_str = match (file, content) {
-        (Some(path), _) => std::fs::read_to_string(path).map_err(|e| {
-            FabioError::with_hint(
-                ErrorCode::InvalidInput,
-                format!("Failed to read file '{path}': {e}"),
-                "Verify the file path is correct and the file is readable.",
-            )
-        })?,
-        (_, Some(c)) => c.to_string(),
-        (None, None) => {
-            return Err(FabioError::with_hint(
-                ErrorCode::InvalidInput,
-                "Either --file or --content must be provided".to_string(),
-                "Example: fabio environment update-staging-spark-compute --workspace <WS> --id <ID> --file compute.json".to_string(),
-            ).into());
+    let path = format!("/workspaces/{workspace}/environments/{id}/staging/sparkcompute");
+
+    // Two mutually-exclusive modes:
+    //   (a) raw JSON body via --file/--content (full replace of the compute body)
+    //   (b) typed overrides via --runtime-version/--spark-property (read-merge-write,
+    //       preserving all other fields and existing sparkProperties)
+    let raw_body: Option<(Value, usize)> = match (file, content) {
+        (Some(path), _) => {
+            let s = std::fs::read_to_string(path).map_err(|e| {
+                FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!("Failed to read file '{path}': {e}"),
+                    "Verify the file path is correct and the file is readable.",
+                )
+            })?;
+            let v: Value = serde_json::from_str(&s).map_err(|e| {
+                FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!("Invalid JSON: {e}"),
+                    "Provide valid JSON content via --file or --content.",
+                )
+            })?;
+            Some((v, s.len()))
         }
+        (_, Some(c)) => {
+            let v: Value = serde_json::from_str(c).map_err(|e| {
+                FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!("Invalid JSON: {e}"),
+                    "Provide valid JSON content via --file or --content.",
+                )
+            })?;
+            Some((v, c.len()))
+        }
+        (None, None) => None,
     };
 
-    let body: Value = serde_json::from_str(&body_str).map_err(|e| {
-        FabioError::with_hint(
-            ErrorCode::InvalidInput,
-            format!("Invalid JSON: {e}"),
-            "Provide valid JSON content via --file or --content.",
-        )
-    })?;
+    let typed_props: Option<Vec<(String, String)>> =
+        if raw_body.is_none() && (runtime_version.is_some() || !spark_property.is_empty()) {
+            Some(
+                spark_property
+                    .iter()
+                    .map(|s| parse_spark_property(s))
+                    .collect::<Result<Vec<_>, _>>()?,
+            )
+        } else {
+            None
+        };
 
-    if output::dry_run_guard(
-        cli,
-        "environment update-staging-spark-compute",
-        &serde_json::json!({
+    if raw_body.is_none() && typed_props.is_none() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Provide either --file/--content or --runtime-version/--spark-property".to_string(),
+            "Example: fabio environment update-staging-spark-compute --workspace <WS> --id <ID> --runtime-version 2.0 --spark-property spark.native.enabled=true".to_string(),
+        ).into());
+    }
+
+    // Build a dry-run preview from the inputs (no network call for the typed path).
+    let preview = if let Some((_, len)) = &raw_body {
+        serde_json::json!({ "workspace": workspace, "id": id, "contentLength": len })
+    } else {
+        let props: serde_json::Map<String, Value> = typed_props
+            .as_ref()
+            .map(|p| {
+                p.iter()
+                    .map(|(k, v)| (k.clone(), Value::from(v.as_str())))
+                    .collect()
+            })
+            .unwrap_or_default();
+        serde_json::json!({
             "workspace": workspace,
             "id": id,
-            "contentLength": body_str.len()
-        }),
-    ) {
+            "runtimeVersion": runtime_version,
+            "sparkProperties": Value::Object(props),
+        })
+    };
+
+    if output::dry_run_guard(cli, "environment update-staging-spark-compute", &preview) {
         return Ok(());
     }
 
-    let data = client
-        .patch(
-            &format!("/workspaces/{workspace}/environments/{id}/staging/sparkcompute"),
-            &body,
-        )
-        .await
-        .map_err(|e| {
+    let body = if let Some((v, _)) = raw_body {
+        v
+    } else {
+        // read-merge-write: fetch current staging compute, apply overrides.
+        let current = client.get(&path).await.map_err(|e| {
             enrich_forbidden(e, "environment update-staging-spark-compute", "Contributor")
         })?;
+        apply_spark_compute_overrides(current, runtime_version, &typed_props.unwrap_or_default())
+    };
+
+    let data = client.patch(&path, &body).await.map_err(|e| {
+        enrich_forbidden(e, "environment update-staging-spark-compute", "Contributor")
+    })?;
 
     if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
         let obj = serde_json::json!({ "id": id, "status": "spark_compute_updated" });
@@ -1121,4 +1234,87 @@ async fn upload_staging_library(
         output::render_object(cli, &data, "id");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parse_spark_property_splits_key_value() {
+        let (k, v) = parse_spark_property("spark.native.enabled=true").unwrap();
+        assert_eq!(k, "spark.native.enabled");
+        assert_eq!(v, "true");
+    }
+
+    #[test]
+    fn parse_spark_property_trims_key_and_preserves_value() {
+        // Value may itself contain '=' (only the first '=' splits).
+        let (k, v) = parse_spark_property(" spark.conf.key = a=b=c ").unwrap();
+        assert_eq!(k, "spark.conf.key");
+        assert_eq!(v, " a=b=c ");
+    }
+
+    #[test]
+    fn parse_spark_property_rejects_missing_equals() {
+        assert!(parse_spark_property("spark.native.enabled").is_err());
+    }
+
+    #[test]
+    fn parse_spark_property_rejects_empty_key() {
+        assert!(parse_spark_property("=true").is_err());
+        assert!(parse_spark_property("   =true").is_err());
+    }
+
+    #[test]
+    fn apply_overrides_sets_runtime_version_only() {
+        let current = json!({
+            "runtimeVersion": "1.3",
+            "driverCores": 8,
+            "sparkProperties": { "existing.key": "keep" }
+        });
+        let out = apply_spark_compute_overrides(current, Some("2.0"), &[]);
+        assert_eq!(out["runtimeVersion"], json!("2.0"));
+        // Other fields preserved.
+        assert_eq!(out["driverCores"], json!(8));
+        // sparkProperties untouched when none supplied.
+        assert_eq!(out["sparkProperties"]["existing.key"], json!("keep"));
+    }
+
+    #[test]
+    fn apply_overrides_merges_spark_properties_preserving_existing() {
+        let current = json!({
+            "runtimeVersion": "1.3",
+            "sparkProperties": { "existing.key": "keep", "override.me": "old" }
+        });
+        let props = vec![
+            ("spark.native.enabled".to_string(), "true".to_string()),
+            ("override.me".to_string(), "new".to_string()),
+        ];
+        let out = apply_spark_compute_overrides(current, None, &props);
+        // runtimeVersion unchanged when not supplied.
+        assert_eq!(out["runtimeVersion"], json!("1.3"));
+        // existing preserved, new added, overridden replaced.
+        assert_eq!(out["sparkProperties"]["existing.key"], json!("keep"));
+        assert_eq!(
+            out["sparkProperties"]["spark.native.enabled"],
+            json!("true")
+        );
+        assert_eq!(out["sparkProperties"]["override.me"], json!("new"));
+    }
+
+    #[test]
+    fn apply_overrides_creates_spark_properties_when_absent() {
+        let current = json!({ "runtimeVersion": "2.0" });
+        let props = vec![("k".to_string(), "v".to_string())];
+        let out = apply_spark_compute_overrides(current, None, &props);
+        assert_eq!(out["sparkProperties"]["k"], json!("v"));
+    }
+
+    #[test]
+    fn apply_overrides_recovers_from_non_object_input() {
+        let out = apply_spark_compute_overrides(json!("not-an-object"), Some("2.0"), &[]);
+        assert_eq!(out["runtimeVersion"], json!("2.0"));
+    }
 }

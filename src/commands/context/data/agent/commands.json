@@ -2616,6 +2616,28 @@
         "mutates": true,
         "returns": "object"
       },
+      "table-health": {
+        "description": "Report file-level storage health metrics for a table (runs `sys.sp_get_table_health_metrics` on the SQL analytics endpoint)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Fully-qualified table name to analyze (format `schema.table`; schema optional if `dbo`)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
       "upload": {
         "description": "Upload files to a lakehouse (supports glob patterns for parallel upload)",
         "flags": {
@@ -8181,11 +8203,19 @@
           },
           "--file": {
             "type": "string",
-            "description": "Path to JSON file with spark compute config"
+            "description": "Path to JSON file with spark compute config (full body; conflicts with --runtime-version/--spark-property)"
           },
           "--content": {
             "type": "string",
-            "description": "Inline JSON content with spark compute config"
+            "description": "Inline JSON content with spark compute config (full body; conflicts with --runtime-version/--spark-property)"
+          },
+          "--runtime-version": {
+            "type": "string",
+            "description": "Spark runtime version to set (e.g. \"1.3\" for Spark 3.5, \"2.0\" for the Spark 4.1 / Delta 4.2 preview). Merged into the existing staging compute (other fields preserved)"
+          },
+          "--spark-property": {
+            "type": "string",
+            "description": "Spark configuration property to set as KEY=VALUE (repeatable). Merged into existing sparkProperties. E.g. --spark-property spark.native.enabled=true"
           }
         },
         "mutates": true,

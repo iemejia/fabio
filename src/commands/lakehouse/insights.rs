@@ -6,6 +6,7 @@ use crate::client::FabricClient;
 use crate::commands::tds_utils::{
     capture_query_plan, execute_and_render_sql, resolve_lakehouse_sql, resolve_sql_input,
 };
+use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
 /// Helper: resolve lakehouse SQL connection and execute a TDS query.
@@ -129,4 +130,83 @@ pub(super) async fn queries_history(
          ORDER BY start_time DESC"
     );
     execute_lakehouse_query(cli, client, workspace, id, &sql).await
+}
+
+// ─── Table Health ──────────────────────────────────────────────────────────────
+
+/// Build the `sp_get_table_health_metrics` call for a table name, escaping the
+/// single-quoted literal to keep the T-SQL well-formed. Pure function for testing.
+fn build_table_health_sql(table: &str) -> String {
+    // Escape single quotes per T-SQL string-literal rules ('' == literal ').
+    let escaped = table.replace('\'', "''");
+    format!("EXEC sys.sp_get_table_health_metrics @table_name = N'{escaped}';")
+}
+
+/// Validate a caller-supplied table name before it is embedded into T-SQL.
+fn validate_table_name(table: &str) -> Result<()> {
+    let trimmed = table.trim();
+    if trimmed.is_empty() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Table name is empty".to_string(),
+            "Provide a fully-qualified table name, e.g. --table dbo.FactSales",
+        )
+        .into());
+    }
+    Ok(())
+}
+
+pub(super) async fn table_health(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    table: &str,
+) -> Result<()> {
+    validate_table_name(table)?;
+    let sql = build_table_health_sql(table.trim());
+    execute_lakehouse_query(cli, client, workspace, id, &sql).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn table_health_sql_wraps_name() {
+        assert_eq!(
+            build_table_health_sql("dbo.FactSales"),
+            "EXEC sys.sp_get_table_health_metrics @table_name = N'dbo.FactSales';"
+        );
+    }
+
+    #[test]
+    fn table_health_sql_escapes_single_quotes() {
+        // A stray single quote must be doubled so the literal stays well-formed.
+        assert_eq!(
+            build_table_health_sql("dbo.O'Brien"),
+            "EXEC sys.sp_get_table_health_metrics @table_name = N'dbo.O''Brien';"
+        );
+    }
+
+    #[test]
+    fn table_health_sql_neutralizes_injection_attempt() {
+        // A classic injection payload becomes an inert (doubled-quote) literal.
+        let sql = build_table_health_sql("x'; DROP TABLE t; --");
+        assert!(sql.contains("x''; DROP TABLE t; --"));
+        // Exactly one statement terminator we added; the injected ';' is inside the literal.
+        assert!(sql.ends_with("--';"));
+    }
+
+    #[test]
+    fn validate_table_name_rejects_empty() {
+        assert!(validate_table_name("").is_err());
+        assert!(validate_table_name("   ").is_err());
+    }
+
+    #[test]
+    fn validate_table_name_accepts_qualified() {
+        assert!(validate_table_name("dbo.FactSales").is_ok());
+        assert!(validate_table_name("FactSales").is_ok());
+    }
 }

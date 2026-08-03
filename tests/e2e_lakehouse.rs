@@ -1211,3 +1211,124 @@ fn lakehouse_queries_history() {
         .assert()
         .success();
 }
+
+// ─── Table Health ────────────────────────────────────────────────────────────
+
+#[test]
+fn lakehouse_table_health_rejects_empty_table() {
+    // Offline: whitespace-only table name must fail fast before any network call.
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "table-health",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--table",
+            "   ",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("Table name is empty"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_table_health_lifecycle() {
+    let cfg = TestConfig::from_env();
+    // Valid SQL identifier (no hyphens).
+    let table = common::unique_name("fabio_health").replace('-', "_");
+
+    // Seed a small Delta table (upload + load in one step).
+    let dir = TempDir::new().unwrap();
+    let csv = dir.path().join("data.csv");
+    fs::write(
+        &csv,
+        "id,name,amount\n1,alice,100\n2,bob,200\n3,carol,300\n",
+    )
+    .unwrap();
+    fabio()
+        .args([
+            "lakehouse",
+            "upload-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            csv.to_str().unwrap(),
+            "--table",
+            &table,
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // Poll until the SQL analytics endpoint syncs the new table.
+    let probe_sql = format!("SELECT COUNT(*) AS n FROM dbo.{table}");
+    let mut visible = false;
+    for _ in 0..12 {
+        std::thread::sleep(std::time::Duration::from_secs(15));
+        let out = fabio()
+            .args([
+                "lakehouse",
+                "query",
+                "--workspace",
+                &cfg.source_workspace,
+                "--id",
+                &cfg.source_lakehouse,
+                "--sql",
+                &probe_sql,
+            ])
+            .output()
+            .unwrap();
+        if out.status.success() && String::from_utf8_lossy(&out.stdout).contains("\"n\"") {
+            visible = true;
+            break;
+        }
+    }
+    assert!(visible, "table did not become visible on the SQL endpoint");
+
+    // Run the health check.
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "table-health",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--table",
+            &format!("dbo.{table}"),
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let row = &data.as_array().unwrap()[0];
+    assert!(
+        row.get("PotentialAnomalyType").is_some(),
+        "expected health-metric columns"
+    );
+    assert_eq!(row["PhysicalRowCount"], 3);
+
+    // Clean up.
+    fabio()
+        .args([
+            "lakehouse",
+            "delete-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--table",
+            &table,
+            "--force",
+        ])
+        .assert()
+        .success();
+}

@@ -218,6 +218,21 @@ pub enum LakehouseCommand {
         #[arg(long, default_value = "100")]
         top: u32,
     },
+    /// Report file-level storage health metrics for a table (runs `sys.sp_get_table_health_metrics` on the SQL analytics endpoint)
+    #[command(display_order = 9)]
+    TableHealth {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Fully-qualified table name to analyze (format `schema.table`; schema optional if `dbo`)
+        #[arg(long)]
+        table: String,
+    },
 
     // ── Read/Write ───────────────────────────────────────────────────────
     /// Upload files to a lakehouse (supports glob patterns for parallel upload)
@@ -1305,6 +1320,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
         LakehouseCommand::QueriesHistory { workspace, id, top } => {
             insights::queries_history(cli, client, workspace, id, *top).await
         }
+        LakehouseCommand::TableHealth {
+            workspace,
+            id,
+            table,
+        } => insights::table_health(cli, client, workspace, id, table).await,
         LakehouseCommand::Upload {
             workspace,
             id,

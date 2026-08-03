@@ -107,6 +107,36 @@ tests:
         value: "--format csv"
         metric: no-lowercase-format
 
+  - description: "Lakehouse table health check (sp_get_table_health_metrics)"
+    vars:
+      user_query: "Check whether the dbo.FactSales table in my lakehouse needs optimizing (small files / fragmentation)"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('lakehouse table-health')
+        metric: table-health-command
+      - type: icontains
+        value: "--table"
+      - type: icontains
+        value: "FactSales"
+
+  - description: "Environment: enable Fabric Runtime 2.0 and native execution engine"
+    vars:
+      user_query: "Set my Spark environment to runtime 2.0 and turn on the native execution engine"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('environment update-staging-spark-compute')
+        metric: spark-compute-command
+      - type: icontains
+        value: "--runtime-version"
+      - type: contains
+        value: "2.0"
+      - type: icontains
+        value: "--spark-property"
+      - type: contains
+        value: "spark.native.enabled"
+
   - description: "Load Parquet with PascalCase"
     vars:
       user_query: "Load a parquet file into the orders table in append mode"
