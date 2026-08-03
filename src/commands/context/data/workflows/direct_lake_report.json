@@ -6,7 +6,7 @@
     {"step_number": 1, "command": "fabio lakehouse create --workspace $WS_ID --name \"SalesLakehouse\"", "description": "Create lakehouse for Delta tables."},
     {"step_number": 2, "command": "fabio lakehouse upload --workspace $WS_ID --id $LH_ID --source ./sales.csv --dest Files/staging/sales.csv", "description": "Upload source data."},
     {"step_number": 3, "command": "fabio lakehouse load-table --workspace $WS_ID --id $LH_ID --table sales --source-path Files/staging/sales.csv --mode Overwrite --format Csv --header true", "description": "Load CSV into Delta table."},
-    {"step_number": 4, "command": "fabio lakehouse show --workspace $WS_ID --id $LH_ID --query 'data.properties.sqlEndpointProperties.id'", "description": "Get the SQL endpoint ID (needed for the model connection)."},
+    {"step_number": 4, "command": "fabio lakehouse show --workspace $WS_ID --id $LH_ID --query 'properties.sqlEndpointProperties.id'", "description": "Get the SQL endpoint ID (needed for the model connection)."},
     {"step_number": 5, "command": "fabio semantic-model create --workspace $WS_ID --name \"SalesModel\" --file /tmp/model.bim --connection $SQL_ENDPOINT_ID", "description": "Create Direct Lake semantic model from model.bim with connection to SQL endpoint."},
     {"step_number": 6, "command": "fabio semantic-model refresh --workspace $WS_ID --id $SM_ID", "description": "Frame the model (required before DAX queries work). Wait 15-30s after."},
     {"step_number": 7, "command": "fabio semantic-model query --workspace $WS_ID --id $SM_ID --dax \"EVALUATE TOPN(5, 'sales', [amount], DESC)\"", "description": "Verify model works with a DAX query."},
@@ -72,9 +72,9 @@
     "model.bim WORKS for Direct Lake — use compatibilityLevel 1604 and defaultMode: directLake.",
     "TMDL is preferred for multi-table models but model.bim is simpler for single-table cases.",
     "The --connection flag on semantic-model create is required — it links to the SQL endpoint ID (not the lakehouse ID).",
-    "Get the SQL endpoint ID from: fabio lakehouse show --workspace $WS --id $LH --query 'data.properties.sqlEndpointProperties.id' -o plain",
+    "Get the SQL endpoint ID from: fabio lakehouse show --workspace $WS --id $LH --query 'properties.sqlEndpointProperties.id' -o plain",
     "After refresh, wait 15-30 seconds before querying with DAX.",
     "Use fabio lakehouse table-schema to discover column names and types for building the model.bim.",
-    "Use --query 'data.id' -o plain to extract created item IDs for chaining commands."
+    "Use --query 'id' -o plain to extract created item IDs for chaining commands."
   ]
 }

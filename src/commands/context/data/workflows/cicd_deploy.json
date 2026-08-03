@@ -7,9 +7,9 @@
     {"step_number": 2, "command": "fabio deploy init-params --source ./export --out ./parameters.json", "description": "Scan for GUIDs and generate parameter template.", "notes": "Edit to fill environment-specific values. Use $ENV:VAR_NAME for CI/CD secrets."},
     {"step_number": 3, "command": "fabio deploy validate --source ./export --parameters ./parameters.json --env prod", "description": "Pre-flight validation (checks for unknown types, duplicates, missing notebook-settings.json, parameter env coverage).", "notes": "Runs offline — no API calls. Fix any errors/warnings before proceeding."},
     {"step_number": 4, "command": "fabio deploy plan --source ./export --workspace \"Production\" --parameters ./parameters.json --env prod", "description": "Generate changeset (create/update/delete/skip).", "notes": "Review data.summary and data.destructive fields."},
-    {"step_number": 5, "command": "fabio deploy plan ... --query 'data.summary'", "description": "Review summary counts."},
+    {"step_number": 5, "command": "fabio deploy plan ... --query 'summary'", "description": "Review summary counts."},
     {"step_number": 6, "command": "fabio deploy apply --source ./export --workspace \"Production\" --parameters ./parameters.json --env prod", "description": "Execute the deployment. Post-hooks auto-run: variable library value set activation (matching --env name), semantic model refresh, environment publish, lakehouse SQL endpoint poll.", "notes": "Variable libraries deployed first; value set matching 'prod' auto-activated. Notebooks rebind via logicalId if notebook-settings.json is present."},
-    {"step_number": 7, "command": "fabio deploy plan --source ./export --workspace \"Production\" --parameters ./parameters.json --env prod --query 'data.summary'", "description": "Re-plan to verify convergence (all skip)."},
+    {"step_number": 7, "command": "fabio deploy plan --source ./export --workspace \"Production\" --parameters ./parameters.json --env prod --query 'summary'", "description": "Re-plan to verify convergence (all skip)."},
     {"step_number": 8, "command": "fabio variable-library list-value-sets --workspace \"Production\" --id <VL_ID>", "description": "Verify the correct value set is active.", "notes": "Optional verification step. The --env auto-activation should have already set it."}
   ],
   "tips": [
@@ -20,7 +20,7 @@
     "If pipelines fail with 'invalid reference' errors, run: fabio deploy init-params --source <DIR> --resolve-connections --out params.json to auto-map connection GUIDs.",
     "Use --dry-run on apply to preview without changes.",
     "Use --delete-orphans to remove workspace items not in source (protected types require --allow-delete-types).",
-    "Use --query 'data.changes[?action==`Create`].name' to list items being created.",
+    "Use --query 'changes[?action==`Create`].name' to list items being created.",
     "Use $ENV:VAR_NAME in parameters.json replace_value fields to inject secrets from CI/CD environment variables.",
     "Use $workspace.id and $items.Type.Name.id for cross-item references that resolve at deploy time.",
     "Check data.destructive field in plan output — true means deletions or force-all overwrites are planned.",

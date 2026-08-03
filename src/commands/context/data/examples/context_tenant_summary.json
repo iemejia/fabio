@@ -12,9 +12,9 @@
   },
   "notes": "This is the cheapest context tenant operation — only calls workspace resolution + item listing (2 API calls per workspace). No type-specific detail fetching, no definition scanning, no connection fetching. Agents should use this first to decide whether to do a full scan or a focused query.",
   "query_examples": [
-    {"query": "data.totalItems", "description": "Total number of items in workspace."},
-    {"query": "data.itemTypes", "description": "Item counts grouped by type."},
-    {"query": "data.workspaces[0].name", "description": "Workspace display name."},
-    {"query": "data.scanDurationMs", "description": "How long the probe took (ms)."}
+    {"query": "totalItems", "description": "Total number of items in workspace."},
+    {"query": "itemTypes", "description": "Item counts grouped by type."},
+    {"query": "workspaces[0].name", "description": "Workspace display name."},
+    {"query": "scanDurationMs", "description": "How long the probe took (ms)."}
   ]
 }

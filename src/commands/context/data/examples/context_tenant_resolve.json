@@ -12,8 +12,8 @@
   },
   "notes": "Resolve spec format: Type:Name pairs separated by commas. Case-insensitive matching on both type and name. If an item is not found, the entry includes an error field instead of id/type. This is faster than a full scan — only workspace resolution + item listing needed (no graph construction).",
   "query_examples": [
-    {"query": "data.resolved[0].id", "description": "Get the ID of the first resolved item."},
-    {"query": "data.resolved[?error]", "description": "Find items that could not be resolved."},
-    {"query": "data.count", "description": "Total number of resolve results."}
+    {"query": "resolved[0].id", "description": "Get the ID of the first resolved item."},
+    {"query": "resolved[?error]", "description": "Find items that could not be resolved."},
+    {"query": "count", "description": "Total number of resolve results."}
   ]
 }

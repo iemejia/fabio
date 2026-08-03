@@ -36,8 +36,8 @@
   },
   "notes": "Connections are tenant-level (no workspace prefix). Connectivity types: ShareableCloud, OnPremises, VirtualNetworkGateway, PersonalCloud. Credential types: Basic, OAuth2, Key, Anonymous, ServicePrincipal, WorkspaceIdentity. Use the connection ID when creating shortcuts or data sources.",
   "query_examples": [
-    {"query": "data[].{name: displayName, type: connectionDetails.type}", "description": "Names and types of all connections."},
-    {"query": "data[?connectionDetails.type=='AzureDataLakeStorage'].id", "description": "IDs of ADLS connections."},
-    {"query": "data[?credentialDetails.credentialType=='OAuth2'].displayName", "description": "Connections using OAuth2."}
+    {"query": "[].{name: displayName, type: connectionDetails.type}", "description": "Names and types of all connections."},
+    {"query": "[?connectionDetails.type=='AzureDataLakeStorage'].id", "description": "IDs of ADLS connections."},
+    {"query": "[?credentialDetails.credentialType=='OAuth2'].displayName", "description": "Connections using OAuth2."}
   ]
 }

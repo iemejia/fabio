@@ -15,9 +15,9 @@
   },
   "notes": "Returns one row per column across all tables. The Folder field indicates the table's folder grouping (empty string if none). Use describe-entity for a single table's detailed schema (returns parsed JSON instead of flat rows).",
   "query_examples": [
-    {"query": "data[?TableName=='StormEvents']", "description": "Get columns for a specific table."},
-    {"query": "data[].TableName | unique(@)", "description": "List all unique table names."},
-    {"query": "data[?ColumnType=='datetime'].ColumnName", "description": "Find all datetime columns."},
-    {"query": "length(data[?TableName=='SensorData'])", "description": "Count columns in a table."}
+    {"query": "[?TableName=='StormEvents']", "description": "Get columns for a specific table."},
+    {"query": "[].TableName | unique(@)", "description": "List all unique table names."},
+    {"query": "[?ColumnType=='datetime'].ColumnName", "description": "Find all datetime columns."},
+    {"query": "length([?TableName=='SensorData'])", "description": "Count columns in a table."}
   ]
 }

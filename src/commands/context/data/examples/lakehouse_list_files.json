@@ -29,9 +29,9 @@
   },
   "notes": "Paths are relative to the lakehouse root. Top-level directories are 'Files/' and 'Tables/'. ETags are OneLake DateTime ticks in hex (NOT content hashes). Use --recursive to list all nested files.",
   "query_examples": [
-    {"query": "data[?isDirectory==`false`].name", "description": "List only files (not directories)."},
-    {"query": "data[?isDirectory==`true`].name", "description": "List only directories."},
-    {"query": "data[].{name: name, size: contentLength}", "description": "Name and size of each entry."},
-    {"query": "data[?contentLength > `1000000`].name", "description": "Files larger than 1MB."}
+    {"query": "[?isDirectory==`false`].name", "description": "List only files (not directories)."},
+    {"query": "[?isDirectory==`true`].name", "description": "List only directories."},
+    {"query": "[].{name: name, size: contentLength}", "description": "Name and size of each entry."},
+    {"query": "[?contentLength > `1000000`].name", "description": "Files larger than 1MB."}
   ]
 }

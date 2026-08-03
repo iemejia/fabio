@@ -18,8 +18,8 @@
   },
   "notes": "This is an LRO endpoint. workspaceChange values: Added, Modified, Deleted, None. remoteChange is null when no remote changes exist. Use fabio git commit to push workspace changes to the remote. Use fabio git pull (updateFromGit) to pull remote changes into the workspace.",
   "query_examples": [
-    {"query": "data.changes | length(@)", "description": "Count of pending changes."},
-    {"query": "data.changes[?workspaceChange=='Modified'].displayName", "description": "Names of locally modified items."},
-    {"query": "data.workspaceHead", "description": "Current workspace commit SHA."}
+    {"query": "changes | length(@)", "description": "Count of pending changes."},
+    {"query": "changes[?workspaceChange=='Modified'].displayName", "description": "Names of locally modified items."},
+    {"query": "workspaceHead", "description": "Current workspace commit SHA."}
   ]
 }

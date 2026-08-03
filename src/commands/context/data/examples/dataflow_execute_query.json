@@ -11,7 +11,7 @@
   },
   "notes": "Binary Arrow response saved to --file path. Without --file, reports metadata only (size in bytes). Use --arrow-version 1 (default) or 2 for format selection. Use --mashup for custom M expression override. LRO: server may return 202 for long queries; CLI polls automatically. Read Arrow files with Python: pyarrow.ipc.open_stream('output.arrow').read_all().",
   "query_examples": [
-    {"query": "data.sizeBytes", "description": "Size of the Arrow result file."},
-    {"query": "data.status", "description": "written (to file) or executed (metadata only)."}
+    {"query": "sizeBytes", "description": "Size of the Arrow result file."},
+    {"query": "status", "description": "written (to file) or executed (metadata only)."}
   ]
 }

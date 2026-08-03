@@ -11,8 +11,8 @@
   },
   "notes": "Never errors on 404 (unlike 'item show' which returns NOT_FOUND). When item does not exist, returns {\"exists\": false}. Useful for conditional logic in agent workflows (check before create, verify after delete).",
   "query_examples": [
-    {"query": "data.exists", "description": "Boolean existence check."},
-    {"query": "data.type", "description": "Item type (only present when exists=true)."},
-    {"query": "data.displayName", "description": "Item name (only present when exists=true)."}
+    {"query": "exists", "description": "Boolean existence check."},
+    {"query": "type", "description": "Item type (only present when exists=true)."},
+    {"query": "displayName", "description": "Item name (only present when exists=true)."}
   ]
 }

@@ -23,9 +23,9 @@
   },
   "notes": "Sections that fail due to permissions return {\"error\": \"...\"} instead of an array. All 5 sections (capacity, cluster, principal_roles, diagnostics, ingestion_failures) are attempted independently.",
   "query_examples": [
-    {"query": "data.capacity", "description": "Get resource capacity slots."},
-    {"query": "data.ingestion_failures", "description": "Get recent ingestion failures (last 24h)."},
-    {"query": "data.principal_roles[?Role=='Admin']", "description": "Find admin principals."},
-    {"query": "data.capacity[?Resource=='Ingestions'].Remaining | [0]", "description": "Get remaining ingestion slots."}
+    {"query": "capacity", "description": "Get resource capacity slots."},
+    {"query": "ingestion_failures", "description": "Get recent ingestion failures (last 24h)."},
+    {"query": "principal_roles[?Role=='Admin']", "description": "Find admin principals."},
+    {"query": "capacity[?Resource=='Ingestions'].Remaining | [0]", "description": "Get remaining ingestion slots."}
   ]
 }

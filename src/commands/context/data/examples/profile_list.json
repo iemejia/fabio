@@ -32,8 +32,8 @@
   },
   "notes": "Profile values are used as defaults (CLI flags and env vars override). Use 'fabio profile use --name X' to switch active profile. Use --profile X on any command for one-time override. private_link_workspace routes API calls through private endpoints.",
   "query_examples": [
-    {"query": "data[?active==`true`].name | [0]", "description": "Name of the active profile."},
-    {"query": "data[].name", "description": "All profile names."},
-    {"query": "data[?workspace!=null].name", "description": "Profiles with a default workspace set."}
+    {"query": "[?active==`true`].name | [0]", "description": "Name of the active profile."},
+    {"query": "[].name", "description": "All profile names."},
+    {"query": "[?workspace!=null].name", "description": "Profiles with a default workspace set."}
   ]
 }

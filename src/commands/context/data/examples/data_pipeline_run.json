@@ -15,9 +15,9 @@
   },
   "notes": "Without --wait, returns immediately with {\"status\":\"accepted\",\"jobId\":\"...\"}. Pipeline runs can also be triggered via schedule: fabio data-pipeline create-schedule. List past runs: fabio data-pipeline list-instances. Cancel a running job: fabio job-scheduler cancel-instance.",
   "query_examples": [
-    {"query": "data.status", "description": "Final job status (Completed/Failed/Cancelled)."},
-    {"query": "data.id", "description": "Job instance ID for monitoring."},
-    {"query": "data.failureReason", "description": "Error message if failed (null if succeeded)."},
-    {"query": "data.endTimeUtc", "description": "Completion timestamp."}
+    {"query": "status", "description": "Final job status (Completed/Failed/Cancelled)."},
+    {"query": "id", "description": "Job instance ID for monitoring."},
+    {"query": "failureReason", "description": "Error message if failed (null if succeeded)."},
+    {"query": "endTimeUtc", "description": "Completion timestamp."}
   ]
 }

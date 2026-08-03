@@ -11,7 +11,7 @@
   },
   "notes": "The previewRuntime boolean reports the effective runtime after the change (true = preview/Advanced NL2SQL, false = standard/NL2SQL). It maps to the nested settings field experimental.enableExperimentalFeatures. Only staging is modified; publish the agent to promote it — the runtime a published agent uses is fixed at publish time (republish to change it). --enable-preview-runtime and --disable-preview-runtime are mutually exclusive and can be combined with --instructions/--instructions-file. Verify with: fabio data-agent get-config -w $WS_ID --id $AGENT_ID (its previewRuntime field mirrors this).",
   "query_examples": [
-    {"query": "data.previewRuntime", "description": "Whether the preview runtime (Advanced NL2SQL) is now enabled."},
-    {"query": "data.status", "description": "Confirms the config was updated."}
+    {"query": "previewRuntime", "description": "Whether the preview runtime (Advanced NL2SQL) is now enabled."},
+    {"query": "status", "description": "Confirms the config was updated."}
   ]
 }

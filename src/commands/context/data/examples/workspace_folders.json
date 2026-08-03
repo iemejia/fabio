@@ -10,7 +10,7 @@
   },
   "notes": "Use --parent-folder-id for nested folders (omit for root-level). Move items into folders: fabio item move-to-folder --workspace $WS --id $ITEM --folder-id $FOLDER. List items in folder: fabio item list --workspace $WS --folder $FOLDER_ID. Delete requires empty folder (remove children first).",
   "query_examples": [
-    {"query": "data.id", "description": "New folder ID (use with --folder-id on other commands)."},
-    {"query": "data.displayName", "description": "Folder name as created."}
+    {"query": "id", "description": "New folder ID (use with --folder-id on other commands)."},
+    {"query": "displayName", "description": "Folder name as created."}
   ]
 }

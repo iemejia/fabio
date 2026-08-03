@@ -20,8 +20,8 @@
   },
   "notes": "Despite the path being 'notebook-content.py', the payload is base64-encoded Jupyter JSON (.ipynb). Use --strip-output to remove outputs/execution_count from cells (useful for git-friendly definitions). getDefinition is LRO (may take 2-6s). Decode payload with base64 decode to get the actual content.",
   "query_examples": [
-    {"query": "data.format", "description": "Definition format (ipynb or py)."},
-    {"query": "data.parts[0].path", "description": "Primary content file path."},
-    {"query": "data.parts | length(@)", "description": "Number of definition parts."}
+    {"query": "format", "description": "Definition format (ipynb or py)."},
+    {"query": "parts[0].path", "description": "Primary content file path."},
+    {"query": "parts | length(@)", "description": "Number of definition parts."}
   ]
 }

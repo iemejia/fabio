@@ -149,7 +149,7 @@ Object: {"data": {...fields...}}                 ← single object in "data"
 Error:  {"error": {"code": "...", "hint": "..."}} ← on stderr, non-zero exit
 ```
 
-Extract items: `--query 'data[].displayName'`. Extract count: `--query count`. Use `-o table` for human-readable output, `-o tsv` for Excel import.
+Extract items: `--query '[].displayName'`. Count with the JMESPath idiom `--query 'length([])'`. (`--query` runs JMESPath on the raw payload — the value under `data` — like Azure CLI; do NOT prefix with `data.`.) Use `-o table` for human-readable output, `-o tsv` for Excel import.
 
 Error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITED`, `CAPACITY_INACTIVE`, `INVALID_INPUT`, `API_ERROR`, `TIMEOUT`, `NETWORK_ERROR`, `READONLY_MODE`
 
@@ -341,7 +341,7 @@ fabio lakehouse refresh-materialized-views --workspace $WS --id $LH   # ad-hoc r
 # MLV execution definitions: scope + Spark environment for refresh jobs
 DEF_ID=$(fabio lakehouse create-execution-definition --workspace $WS --id $LH \
   --content '{"displayName":"nightly","currentLakehouseExecutionContext":{"mode":"All"}}' \
-  --query 'data.id' -o plain)
+  --query 'id' -o plain)
 fabio lakehouse list-execution-definitions --workspace $WS --id $LH   # discover existing definitions
 fabio lakehouse show-execution-definition --workspace $WS --id $LH --execution-definition-id $DEF_ID
 fabio lakehouse update-execution-definition --workspace $WS --id $LH \
@@ -626,7 +626,7 @@ These cause silent failures if ignored:
 
 ```bash
 # Extract a single value
-WS=$(fabio workspace list --query 'data[0].id' -o plain)
+WS=$(fabio workspace list --query '[0].id' -o plain)
 
 # Pipe SQL from file
 fabio warehouse query --workspace $WS --id $WH --sql @queries/report.sql
@@ -635,7 +635,7 @@ fabio warehouse query --workspace $WS --id $WH --sql @queries/report.sql
 echo "SELECT COUNT(*) FROM dbo.orders" | fabio warehouse query --workspace $WS --id $WH
 
 # Chain create + use
-ID=$(fabio lakehouse create --workspace $WS --name "Lake" --query 'data.id' -o plain)
+ID=$(fabio lakehouse create --workspace $WS --name "Lake" --query 'id' -o plain)
 fabio lakehouse upload --workspace $WS --id $ID --source "data/*.csv" --dest Files/raw/
 ```
 

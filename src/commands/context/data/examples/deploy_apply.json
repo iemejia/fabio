@@ -16,10 +16,10 @@
   },
   "notes": "Status values: 'succeeded' (all OK), 'partial_failure' (some items failed), 'no_changes' (everything already in sync). The 'failures' array contains per-item error details with 'change', 'error', and 'code' fields. Post-hooks fire after successful creates/updates (SemanticModel refresh, Environment publish).",
   "query_examples": [
-    {"query": "data.status", "description": "Get overall deployment status."},
-    {"query": "data.succeeded", "description": "Count of successfully deployed items."},
-    {"query": "data.failures[].error", "description": "Get error messages for failed items."},
-    {"query": "data.duration_ms", "description": "Get total deployment time in milliseconds."},
-    {"query": "data.post_hooks[?status!='ok']", "description": "Find post-hooks that failed."}
+    {"query": "status", "description": "Get overall deployment status."},
+    {"query": "succeeded", "description": "Count of successfully deployed items."},
+    {"query": "failures[].error", "description": "Get error messages for failed items."},
+    {"query": "duration_ms", "description": "Get total deployment time in milliseconds."},
+    {"query": "post_hooks[?status!='ok']", "description": "Find post-hooks that failed."}
   ]
 }

@@ -12,7 +12,7 @@
   },
   "notes": "Direct Lake models require TMDL format (model.bim cannot express mode:directLake). The --connection flag is the SQL Analytics Endpoint ID (not lakehouse ID). Creation is LRO. After creation, trigger a refresh: 'fabio semantic-model refresh --workspace $WS --id $ID'. For editable models, call 'fabio semantic-model takeover' to unlock portal editing.",
   "query_examples": [
-    {"query": "data.id", "description": "Semantic model ID (used for report binding, refresh, query)."},
-    {"query": "data.displayName", "description": "Model display name."}
+    {"query": "id", "description": "Semantic model ID (used for report binding, refresh, query)."},
+    {"query": "displayName", "description": "Model display name."}
   ]
 }

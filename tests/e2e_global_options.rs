@@ -59,6 +59,42 @@ fn query_extracts_field_from_list() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
+fn query_list_scalar_result_not_array_wrapped() {
+    // A --query on a list that yields a SCALAR (e.g. `[0].id`) must emit
+    // {"data": "<id>"} — not {"data": ["<id>"], "count": 1}. Regression test for
+    // the scalar-wrap quirk. Counts use the JMESPath idiom `length([])`.
+    let assert = fabio()
+        .args(["--query", "[0].id", "workspace", "list"])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    // `data` should be a bare string, and there should be no `count` field.
+    let data = extract_data(&json);
+    assert!(
+        data.is_string(),
+        "expected scalar string under data, got: {data}"
+    );
+    assert!(
+        json.get("count").is_none(),
+        "scalar query result must not carry a list `count`, got: {json}"
+    );
+
+    // `length([])` yields the item count as a bare number.
+    let assert = fabio()
+        .args(["--query", "length([])", "workspace", "list"])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(
+        extract_data(&json).is_number(),
+        "length([]) should yield a number, got: {json}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn query_nested_field() {
     let cfg = TestConfig::from_env();
 

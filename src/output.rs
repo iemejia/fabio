@@ -133,28 +133,31 @@ pub fn render_list_with_token(
 
     match cli.effective_output() {
         OutputFormat::Json => {
-            // Only construct Value::Array for the JSON path
+            // `--query` runs against the raw payload (the list), matching `az`
+            // (JMESPath over the response body). A query that yields an array keeps
+            // the list envelope (`data` + `count`); a query that yields a scalar or
+            // object is emitted as a bare `{"data": <value>}` — no array-wrapping,
+            // no `count` (so `[0].id` gives a string, not a 1-element list).
             let data = Value::Array(limited_items.to_vec());
             let output_data = match cli.query {
                 Some(ref q) => apply_query(&data, q),
                 None => data,
             };
-            let display_items = match output_data {
-                Value::Array(arr) => arr,
-                other => vec![other],
+            let mut envelope = if let Value::Array(arr) = output_data {
+                let count = arr.len();
+                let mut env = serde_json::json!({ "data": arr, "count": count });
+                if truncated {
+                    env["truncated"] = Value::Bool(true);
+                    env["total_available"] = serde_json::json!(items.len());
+                }
+                if let Some(token) = continuation_token {
+                    env["continuationToken"] = Value::from(token);
+                }
+                env
+            } else {
+                // Scalar/object/null query result: emit as a single-value envelope.
+                serde_json::json!({ "data": output_data })
             };
-            let count = display_items.len();
-            let mut envelope = serde_json::json!({
-                "data": display_items,
-                "count": count
-            });
-            if truncated {
-                envelope["truncated"] = Value::Bool(true);
-                envelope["total_available"] = serde_json::json!(items.len());
-            }
-            if let Some(token) = continuation_token {
-                envelope["continuationToken"] = Value::from(token);
-            }
             if cli.wrap_untrusted {
                 wrap_untrusted_fields(&mut envelope);
             }

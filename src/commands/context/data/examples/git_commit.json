@@ -10,8 +10,8 @@
   },
   "notes": "Commit is LRO (returns 202, polls until Succeeded/Failed). The --items flag selects specific items; omit to commit all changes. workspaceHead is auto-fetched from git status. Use 'fabio git status' first to see pending changes. If no changes exist, API may return error.",
   "query_examples": [
-    {"query": "data.status", "description": "Commit result (Succeeded/Failed)."},
-    {"query": "data.percentComplete", "description": "Should be 100 on completion."},
-    {"query": "data.error", "description": "Error details if failed (null on success)."}
+    {"query": "status", "description": "Commit result (Succeeded/Failed)."},
+    {"query": "percentComplete", "description": "Should be 100 on completion."},
+    {"query": "error", "description": "Error details if failed (null on success)."}
   ]
 }

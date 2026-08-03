@@ -18,9 +18,9 @@
   },
   "notes": "Validate runs entirely offline (no Fabric API calls, no auth required). Checks: .platform file presence and schema, item type validity, definition part structure, logical ID cross-references. Use before 'deploy plan' to catch structural issues early. Non-zero exit on errors; warnings are informational.",
   "query_examples": [
-    {"query": "data.status", "description": "Overall validation result (valid/invalid)."},
-    {"query": "data.errors", "description": "Fatal errors that would block deployment."},
-    {"query": "data.warnings", "description": "Non-fatal issues (e.g., unresolved references)."},
-    {"query": "data.items[?has_definition==`false`].name", "description": "Items without definition parts (Lakehouse, MLModel)."}
+    {"query": "status", "description": "Overall validation result (valid/invalid)."},
+    {"query": "errors", "description": "Fatal errors that would block deployment."},
+    {"query": "warnings", "description": "Non-fatal issues (e.g., unresolved references)."},
+    {"query": "items[?has_definition==`false`].name", "description": "Items without definition parts (Lakehouse, MLModel)."}
   ]
 }

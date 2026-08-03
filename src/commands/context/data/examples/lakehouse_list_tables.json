@@ -11,9 +11,9 @@
     "count": 4
   },
   "query_examples": [
-    {"query": "data[].name", "description": "Extract all table names as a flat array."},
-    {"query": "data[?name=='orders']", "description": "Find a specific table by name."},
-    {"query": "count", "description": "Get the total number of tables."},
-    {"query": "data[0].name", "description": "Get the first table name."}
+    {"query": "[].name", "description": "Extract all table names as a flat array."},
+    {"query": "[?name=='orders']", "description": "Find a specific table by name."},
+    {"query": "length([])", "description": "Get the total number of tables."},
+    {"query": "[0].name", "description": "Get the first table name."}
   ]
 }

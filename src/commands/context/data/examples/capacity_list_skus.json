@@ -10,7 +10,7 @@
   },
   "notes": "Requires --subscription (Azure subscription ID). Auth uses ARM scope (management.azure.com). SKU values: F2, F4, F8, F16, F32, F64, F128, F256, F512, F1024, F2048. Use 'fabio capacity check-name' to verify name availability before creation.",
   "query_examples": [
-    {"query": "data[*].name", "description": "All available SKU names."},
-    {"query": "data[?contains(locations, 'eastus')].name", "description": "SKUs available in East US."}
+    {"query": "[*].name", "description": "All available SKU names."},
+    {"query": "[?contains(locations, 'eastus')].name", "description": "SKUs available in East US."}
   ]
 }

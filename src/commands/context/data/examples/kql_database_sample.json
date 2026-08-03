@@ -11,9 +11,9 @@
   },
   "notes": "Output columns are dynamic — they match the table schema. Use --entity-type materialized-view|external-table|function for non-table entities. Results are always returned as a JSON array of objects keyed by column name.",
   "query_examples": [
-    {"query": "data[0]", "description": "Get the first row."},
-    {"query": "data[].State", "description": "Extract a single column from all rows."},
-    {"query": "data[?EventType=='Flood']", "description": "Filter rows by column value."},
-    {"query": "length(data)", "description": "Get the number of rows returned."}
+    {"query": "[0]", "description": "Get the first row."},
+    {"query": "[].State", "description": "Extract a single column from all rows."},
+    {"query": "[?EventType=='Flood']", "description": "Filter rows by column value."},
+    {"query": "length(@)", "description": "Get the number of rows returned."}
   ]
 }

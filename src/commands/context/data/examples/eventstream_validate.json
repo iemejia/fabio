@@ -15,9 +15,9 @@
   },
   "notes": "Use --file for local-only validation (no auth required). Use --workspace + --id to fetch and validate the live definition from the server.",
   "query_examples": [
-    {"query": "data.valid", "description": "Check if definition is valid (true/false)."},
-    {"query": "data.errors", "description": "Get validation errors."},
-    {"query": "data.warnings", "description": "Get validation warnings."},
-    {"query": "length(data.errors)", "description": "Count number of errors."}
+    {"query": "valid", "description": "Check if definition is valid (true/false)."},
+    {"query": "errors", "description": "Get validation errors."},
+    {"query": "warnings", "description": "Get validation warnings."},
+    {"query": "length(errors)", "description": "Count number of errors."}
   ]
 }

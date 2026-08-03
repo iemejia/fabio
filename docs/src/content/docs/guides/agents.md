@@ -60,7 +60,7 @@ fabio context tenant --resolve "Lakehouse:Sales"
 Use JMESPath projections to reduce tokens:
 
 ```bash
-fabio workspace list --query "data[].{id:id,name:displayName}"
+fabio workspace list --query "[].{id:id,name:displayName}"
 ```
 
 Use `--quiet` when an agent only needs the exit status.

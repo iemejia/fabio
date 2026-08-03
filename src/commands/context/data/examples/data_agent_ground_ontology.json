@@ -20,7 +20,7 @@
     "fabio data-agent select-tables --workspace $WS_ID --id $AGENT_ID --datasource ClinicalSupplyChain --elements Study,Site,Inventory"
   ],
   "query_examples": [
-    {"query": "data.fabricItemType", "description": "Should be 'Ontology' or 'GraphModel'."},
-    {"query": "data.id", "description": "Datasource ID (used for list-elements / select-tables)."}
+    {"query": "fabricItemType", "description": "Should be 'Ontology' or 'GraphModel'."},
+    {"query": "id", "description": "Datasource ID (used for list-elements / select-tables)."}
   ]
 }

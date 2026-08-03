@@ -18,7 +18,7 @@
   },
   "notes": "Personas hold no implementation depth — they route to Layer 3 mechanics (context agent/workflow/best-practices). Available personas: data-engineer, migration-engineer, fabric-admin, rti-engineer, bi-developer. Discover via 'fabio context list' or 'fabio context find <query>'.",
   "query_examples": [
-    {"query": "data.delegates_to[].request_type", "description": "List the request types this persona routes."},
-    {"query": "data.guardrails.avoid", "description": "See the anti-patterns to avoid for this role."}
+    {"query": "delegates_to[].request_type", "description": "List the request types this persona routes."},
+    {"query": "guardrails.avoid", "description": "See the anti-patterns to avoid for this role."}
   ]
 }

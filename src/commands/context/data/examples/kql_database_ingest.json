@@ -14,7 +14,7 @@
     "description": "Pull a 35 MB JSON file from OneLake into a KQL table. Resolves the lakehouse-relative path to a onelake.blob.fabric.microsoft.com URL and ingests it synchronously via '.ingest into'."
   },
   "query_examples": [
-    {"query": "data.status", "description": "Check ingestion status."},
-    {"query": "data.data_size_bytes", "description": "Get the size of inline data ingested."}
+    {"query": "status", "description": "Check ingestion status."},
+    {"query": "data_size_bytes", "description": "Get the size of inline data ingested."}
   ]
 }

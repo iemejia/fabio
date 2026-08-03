@@ -12,7 +12,7 @@
   },
   "notes": "The --lakehouse flag injects trident metadata for default lakehouse binding (available as 'lakehouse' in Spark session). Accepts .ipynb (Jupyter) or .py (Fabric notebook format) files. Cell source must be a list of strings in .ipynb format. Creation is LRO.",
   "query_examples": [
-    {"query": "data.id", "description": "Notebook ID for run/get-definition/delete."},
-    {"query": "data.displayName", "description": "Confirm notebook name."}
+    {"query": "id", "description": "Notebook ID for run/get-definition/delete."},
+    {"query": "displayName", "description": "Confirm notebook name."}
   ]
 }

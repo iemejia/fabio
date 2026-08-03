@@ -16,9 +16,9 @@
   },
   "notes": "Use --delete to remove files at destination not present at source. Use --checksum for Content-MD5 comparison (slower, requires HEAD per file). Use --local /path/to/dir for local-to-remote sync. Rename detection uses atomic DFS rename (O(1) metadata op). Use --itemize for per-file action logging on stderr.",
   "query_examples": [
-    {"query": "data.copied", "description": "Count of files copied."},
-    {"query": "data.deleted", "description": "Count of files deleted at destination."},
-    {"query": "data.renamed", "description": "Count of files detected as renamed (atomic rename)."},
-    {"query": "data.{new: copied, removed: deleted, unchanged: skipped}", "description": "Custom summary projection."}
+    {"query": "copied", "description": "Count of files copied."},
+    {"query": "deleted", "description": "Count of files deleted at destination."},
+    {"query": "renamed", "description": "Count of files detected as renamed (atomic rename)."},
+    {"query": "{new: copied, removed: deleted, unchanged: skipped}", "description": "Custom summary projection."}
   ]
 }

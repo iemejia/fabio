@@ -37,9 +37,9 @@
   },
   "notes": "Sources feed into streams, streams feed into destinations/operators. Status values: Creating, Running, Warning, Stopped. Destination itemId must be the KQL Database ID (NOT Eventhouse ID). CustomEndpoint sources expose Event Hub-compatible interface for sending events.",
   "query_examples": [
-    {"query": "data.sources[].name", "description": "List all source names."},
-    {"query": "data.destinations[?status=='Running'].name", "description": "Active destinations."},
-    {"query": "data.destinations[].properties.tableName", "description": "Target table names."},
-    {"query": "data.streams[].inputNodes", "description": "Stream input connections."}
+    {"query": "sources[].name", "description": "List all source names."},
+    {"query": "destinations[?status=='Running'].name", "description": "Active destinations."},
+    {"query": "destinations[].properties.tableName", "description": "Target table names."},
+    {"query": "streams[].inputNodes", "description": "Stream input connections."}
   ]
 }

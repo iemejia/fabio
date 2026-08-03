@@ -26,9 +26,9 @@
     }
   },
   "query_examples": [
-    {"query": "data.schemas[0].fields[].name", "description": "List all column names."},
-    {"query": "data.schemas[0].fields[?required==`true`].name", "description": "Required columns only."},
-    {"query": "data.snapshots[-1].summary.\"total-records\"", "description": "Record count from latest snapshot."},
-    {"query": "data.properties", "description": "All table properties."}
+    {"query": "schemas[0].fields[].name", "description": "List all column names."},
+    {"query": "schemas[0].fields[?required==`true`].name", "description": "Required columns only."},
+    {"query": "snapshots[-1].summary.\"total-records\"", "description": "Record count from latest snapshot."},
+    {"query": "properties", "description": "All table properties."}
   ]
 }

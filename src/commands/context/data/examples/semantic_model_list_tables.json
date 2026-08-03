@@ -17,7 +17,7 @@
     ],
     "count": 1
   },
-  "notes": "Keys are DAX-bracketed on the wire (`[Name]`, `[StorageMode]`); fabio strips the brackets for agent-friendly output. A model with no measures/relationships returns a clean `{\"data\":[],\"count\":0}`. Use `--query 'data[].{Name:Name,StorageMode:StorageMode}'` to project. Only the `INFO.VIEW.*` functions work over executeQueries — the raw `INFO.TABLES()`/`INFO.COLUMNS()` variants return HTTP 400.",
+  "notes": "Keys are DAX-bracketed on the wire (`[Name]`, `[StorageMode]`); fabio strips the brackets for agent-friendly output. A model with no measures/relationships returns a clean `{\"data\":[],\"count\":0}`. Use `--query '[].{Name:Name,StorageMode:StorageMode}'` to project. Only the `INFO.VIEW.*` functions work over executeQueries — the raw `INFO.TABLES()`/`INFO.COLUMNS()` variants return HTTP 400.",
   "query_examples": [
     "fabio semantic-model list-columns --workspace $WS --id $SM --query \"data[].{Name:Name,Table:Table,DataType:DataType,SummarizeBy:SummarizeBy}\"",
     "fabio semantic-model list-measures --workspace $WS --id $SM --query \"data[].{Name:Name,Table:Table,Expression:Expression}\"",

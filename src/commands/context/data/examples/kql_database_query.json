@@ -11,9 +11,9 @@
   },
   "notes": "KQL input via --kql (inline), @file.kql (file), or stdin pipe. Management commands (starting with '.') use /v1/rest/mgmt endpoint; data queries use /v2/rest/query. Token is scoped to the Kusto query URI (not standard Fabric scope). The query URI is auto-resolved from item properties.",
   "query_examples": [
-    {"query": "data[0]", "description": "First result row."},
-    {"query": "data[].avg_temperature", "description": "All temperature values."},
-    {"query": "data[?avg_temperature > `40`]", "description": "Filter rows above threshold."},
-    {"query": "count", "description": "Number of result rows."}
+    {"query": "[0]", "description": "First result row."},
+    {"query": "[].avg_temperature", "description": "All temperature values."},
+    {"query": "[?avg_temperature > `40`]", "description": "Filter rows above threshold."},
+    {"query": "length([])", "description": "Number of result rows."}
   ]
 }

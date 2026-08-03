@@ -11,7 +11,7 @@
   },
   "notes": "Known job types: RunNotebook, Pipeline, sparkjob, RefreshGraph, refreshMaterializedLakeViews, TableMaintenance. Without --wait, returns immediately with status=accepted and jobId. Use --cancel-on-timeout to auto-cancel if deadline is reached. Poll interval: 5 seconds.",
   "query_examples": [
-    {"query": "data.status", "description": "Terminal status (Completed/Failed/Cancelled)."},
-    {"query": "data.id", "description": "Job instance ID for further queries."}
+    {"query": "status", "description": "Terminal status (Completed/Failed/Cancelled)."},
+    {"query": "id", "description": "Job instance ID for further queries."}
   ]
 }

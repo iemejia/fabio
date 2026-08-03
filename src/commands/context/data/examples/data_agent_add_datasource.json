@@ -17,8 +17,8 @@
   },
   "notes": "Datasource creation is LRO (1-5 min for schema discovery). Use --lro-timeout 300 for reliability. After adding, schema elements may be empty for 1-5 minutes. Check with 'fabio data-agent list-elements'. Max 5 datasources per agent. Supported fabricItemType values: Report, SemanticModel, Lakehouse, KQLDatabase, Warehouse, MirroredDatabase, SQLDatabase, Ontology, GraphModel.",
   "query_examples": [
-    {"query": "data.id", "description": "Datasource ID (used for fewshots, elements, removal)."},
-    {"query": "data.fabricItemType", "description": "Type of the connected Fabric item."},
-    {"query": "data.itemReference.itemId", "description": "The underlying Fabric item ID."}
+    {"query": "id", "description": "Datasource ID (used for fewshots, elements, removal)."},
+    {"query": "fabricItemType", "description": "Type of the connected Fabric item."},
+    {"query": "itemReference.itemId", "description": "The underlying Fabric item ID."}
   ]
 }

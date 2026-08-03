@@ -38,13 +38,13 @@
   },
   "notes": "The sensitivityLabel field is only present on items with a label assigned. Items without labels omit the field. No --include parameter is needed — labels are returned by default.",
   "query_examples": [
-    {"query": "data[?type=='Lakehouse'].displayName", "description": "List all lakehouse names."},
-    {"query": "data[?type=='Notebook'].id", "description": "Get IDs of all notebooks."},
-    {"query": "data[].{name: displayName, type: type}", "description": "Project name and type only."},
-    {"query": "data | sort_by(@, &type)[].{type: type, name: displayName}", "description": "List items sorted by type."},
-    {"query": "data[?contains(displayName, 'Sales')]", "description": "Find items with 'Sales' in the name."},
-    {"query": "data[?sensitivityLabel].{name: displayName, type: type, label: sensitivityLabel.id}", "description": "List only labeled items with their label ID."},
-    {"query": "data[?!sensitivityLabel].{name: displayName, type: type}", "description": "Find unlabeled items (governance gap)."},
-    {"query": "length(data[?sensitivityLabel])", "description": "Count how many items have sensitivity labels."}
+    {"query": "[?type=='Lakehouse'].displayName", "description": "List all lakehouse names."},
+    {"query": "[?type=='Notebook'].id", "description": "Get IDs of all notebooks."},
+    {"query": "[].{name: displayName, type: type}", "description": "Project name and type only."},
+    {"query": "sort_by(@, &type)[].{type: type, name: displayName}", "description": "List items sorted by type."},
+    {"query": "[?contains(displayName, 'Sales')]", "description": "Find items with 'Sales' in the name."},
+    {"query": "[?sensitivityLabel].{name: displayName, type: type, label: sensitivityLabel.id}", "description": "List only labeled items with their label ID."},
+    {"query": "[?!sensitivityLabel].{name: displayName, type: type}", "description": "Find unlabeled items (governance gap)."},
+    {"query": "length([?sensitivityLabel])", "description": "Count how many items have sensitivity labels."}
   ]
 }

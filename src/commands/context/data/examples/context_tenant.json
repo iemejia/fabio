@@ -12,10 +12,10 @@
   },
   "notes": "The graph file contains: nodes (id, type, name, workspaceId), edges (source, target, relationship, confidence, discoveryMethod), workspaces, summary, and meta (scannedAt, scanDurationMs, etag, partial, scope). Edge confidence: high (structured property, connection API), medium (classified definition ref), low (generic GUID scan). The etag is a SHA-256 hash of sorted (id, name) pairs — agents can compare etags to detect workspace drift without a full re-scan. Use --summary-only for a lightweight inventory probe. Use --resolve Type:Name for fast name-to-ID lookups. Use --focus <id> --depth N for ego-centric subgraphs.",
   "query_examples": [
-    {"query": "data.nodes", "description": "Get all item nodes."},
-    {"query": "data.edges[?confidence=='high']", "description": "Get only high-confidence edges."},
-    {"query": "data.meta.etag", "description": "Get content fingerprint for drift detection."},
-    {"query": "data.meta.scannedAt", "description": "Get scan timestamp."},
-    {"query": "data.summary.itemTypes", "description": "Get item counts by type."}
+    {"query": "nodes", "description": "Get all item nodes."},
+    {"query": "edges[?confidence=='high']", "description": "Get only high-confidence edges."},
+    {"query": "meta.etag", "description": "Get content fingerprint for drift detection."},
+    {"query": "meta.scannedAt", "description": "Get scan timestamp."},
+    {"query": "summary.itemTypes", "description": "Get item counts by type."}
   ]
 }

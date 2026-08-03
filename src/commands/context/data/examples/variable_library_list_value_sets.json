@@ -31,7 +31,7 @@
   },
   "notes": "The 'overrides' field shows how many variables differ from the Default set. Only one value set can be active per workspace. Activate with: fabio variable-library activate-value-set --workspace <WS> --id <ID> --value-set <NAME>. During 'fabio deploy apply --env prod', the value set matching the env name is auto-activated.",
   "query_examples": [
-    {"query": "data[?active==`true`].name", "description": "Name of the currently active value set."},
-    {"query": "data[?type=='alternative'].{name: name, overrides: overrides}", "description": "Alternative value sets with override counts."}
+    {"query": "[?active==`true`].name", "description": "Name of the currently active value set."},
+    {"query": "[?type=='alternative'].{name: name, overrides: overrides}", "description": "Alternative value sets with override counts."}
   ]
 }

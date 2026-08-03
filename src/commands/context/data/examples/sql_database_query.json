@@ -11,9 +11,9 @@
   },
   "notes": "SQL input via --sql (inline), @file.sql (file), or stdin pipe. Uses TDS protocol with AAD token auth. Requires F4+ capacity (F2 returns error 18456). Cross-database queries NOT supported (unlike lakehouse SQL endpoint). Date columns return as ISO 8601 strings.",
   "query_examples": [
-    {"query": "data[0]", "description": "First result row."},
-    {"query": "data[].name", "description": "All name values."},
-    {"query": "data[?amount > `10000`]", "description": "Filter high-value rows."},
-    {"query": "count", "description": "Number of rows returned."}
+    {"query": "[0]", "description": "First result row."},
+    {"query": "[].name", "description": "All name values."},
+    {"query": "[?amount > `10000`]", "description": "Filter high-value rows."},
+    {"query": "length([])", "description": "Number of rows returned."}
   ]
 }

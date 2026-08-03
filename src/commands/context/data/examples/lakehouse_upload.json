@@ -15,9 +15,9 @@
   },
   "notes": "Upload uses DFS create+append+flush with Content-MD5 for integrity. Glob patterns expand locally. For large datasets, use lakehouse sync --local instead (only uploads new/changed files). Files are immediately accessible via the Files/ path in notebooks.",
   "query_examples": [
-    {"query": "data.totalFiles", "description": "Number of files uploaded."},
-    {"query": "data.totalBytes", "description": "Total bytes transferred."},
-    {"query": "data.files[].path", "description": "Remote paths of uploaded files."},
-    {"query": "data.files[?size > `1000000`].name", "description": "Files larger than 1MB."}
+    {"query": "totalFiles", "description": "Number of files uploaded."},
+    {"query": "totalBytes", "description": "Total bytes transferred."},
+    {"query": "files[].path", "description": "Remote paths of uploaded files."},
+    {"query": "files[?size > `1000000`].name", "description": "Files larger than 1MB."}
   ]
 }

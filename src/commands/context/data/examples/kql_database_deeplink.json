@@ -10,8 +10,8 @@
   },
   "notes": "Use --style fabric|adx to override auto-detection. ADX style generates https://dataexplorer.azure.com/... URLs.",
   "query_examples": [
-    {"query": "data.url", "description": "Get the deeplink URL to open in a browser."},
-    {"query": "data.style", "description": "Get the detected link style (fabric or adx)."},
-    {"query": "data.database", "description": "Get the database name."}
+    {"query": "url", "description": "Get the deeplink URL to open in a browser."},
+    {"query": "style", "description": "Get the detected link style (fabric or adx)."},
+    {"query": "database", "description": "Get the database name."}
   ]
 }

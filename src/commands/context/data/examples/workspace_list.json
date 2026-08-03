@@ -31,9 +31,9 @@
     "count": 3
   },
   "query_examples": [
-    {"query": "data[].displayName", "description": "List all workspace names."},
-    {"query": "data[?capacityId!=null].displayName", "description": "Workspaces with capacity assigned."},
-    {"query": "data[?displayName=='Production'].id | [0]", "description": "Get the Production workspace ID."},
-    {"query": "data[?capacityRegion=='westeurope'] | length(@)", "description": "Count workspaces in West Europe."}
+    {"query": "[].displayName", "description": "List all workspace names."},
+    {"query": "[?capacityId!=null].displayName", "description": "Workspaces with capacity assigned."},
+    {"query": "[?displayName=='Production'].id | [0]", "description": "Get the Production workspace ID."},
+    {"query": "[?capacityRegion=='westeurope'] | length(@)", "description": "Count workspaces in West Europe."}
   ]
 }

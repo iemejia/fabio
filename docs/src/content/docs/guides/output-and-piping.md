@@ -22,16 +22,22 @@ fabio workspace list --output table
 For shell pipelines:
 
 ```bash
-fabio workspace list --output plain --query "data[].id"
+fabio workspace list --output plain --query "[].id"
 ```
 
 ## Project with JMESPath
 
-`--query` supports full JMESPath expressions:
+`--query` supports full JMESPath expressions. Like Azure CLI, it runs against the
+**raw payload** — the value under `data` — so you do **not** prefix expressions with
+`data.`. Query a list command's array directly (`[].id`, `[?…]`, `[0].id`) and an
+object command's fields directly (`id`, `properties.status`). Count a list with the
+JMESPath idiom `length([])`.
 
 ```bash
-fabio workspace list --query "data[?contains(displayName, 'Prod')].{id:id,name:displayName}"
+fabio workspace list --query "[?contains(displayName, 'Prod')].{id:id,name:displayName}"
 ```
+
+(By contrast, `jq` operates on the whole envelope, so there you write `.data[].id`.)
 
 Project early to reduce output size and agent token use.
 

@@ -15,7 +15,7 @@
   },
   "notes": "Available terms: materialized-view, dataflow, semantic-model, sql-endpoint. Each meaning maps to a command_group so agents route to the right place. Discover via 'fabio context list' or surfaced automatically in 'fabio context find'.",
   "query_examples": [
-    {"query": "data.meanings[].command_group", "description": "Get the command group for each meaning."},
-    {"query": "data.meanings[?context=='Spark / Lakehouse'].artifact", "description": "Resolve the term for a specific workload."}
+    {"query": "meanings[].command_group", "description": "Get the command group for each meaning."},
+    {"query": "meanings[?context=='Spark / Lakehouse'].artifact", "description": "Resolve the term for a specific workload."}
   ]
 }

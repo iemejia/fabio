@@ -16,9 +16,9 @@
     }
   },
   "query_examples": [
-    {"query": "data.total_records", "description": "Get the total number of records."},
-    {"query": "data.total_files_size", "description": "Get total size in bytes."},
-    {"query": "data.operation", "description": "Get the last operation type (append/overwrite/delete)."},
-    {"query": "data.{records: total_records, files: total_data_files, size_bytes: total_files_size}", "description": "Project a custom summary object."}
+    {"query": "total_records", "description": "Get the total number of records."},
+    {"query": "total_files_size", "description": "Get total size in bytes."},
+    {"query": "operation", "description": "Get the last operation type (append/overwrite/delete)."},
+    {"query": "{records: total_records, files: total_data_files, size_bytes: total_files_size}", "description": "Project a custom summary object."}
   ]
 }

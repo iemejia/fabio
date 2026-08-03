@@ -12,8 +12,8 @@
   },
   "notes": "Load-table is fire-and-forget (returns immediately). Only Csv and Parquet formats are supported (NOT JSON). Mode values: Overwrite, Append (PascalCase). For Csv: include --header and --delimiter. For Parquet: omit header/delimiter (API rejects mixed options). Verify table creation with 'fabio lakehouse list-tables'.",
   "query_examples": [
-    {"query": "data.status", "description": "Should be 'accepted' on success."},
-    {"query": "data.table", "description": "Target table name."},
-    {"query": "data.mode", "description": "Write mode used."}
+    {"query": "status", "description": "Should be 'accepted' on success."},
+    {"query": "table", "description": "Target table name."},
+    {"query": "mode", "description": "Write mode used."}
   ]
 }

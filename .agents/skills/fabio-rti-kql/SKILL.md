@@ -57,7 +57,7 @@ Manage KQL databases (within eventhouses)
 | `fabio kql-database diagnostics` | no | Run cluster diagnostics (capacity, health, ingestion failures) |
 | `fabio kql-database get-definition` | no | Get the definition of a KQL database (KQL script) |
 | `fabio kql-database get-shortcut` | no | Get a shortcut in a KQL database |
-| `fabio kql-database ingest` | yes | Ingest inline data into a KQL table |
+| `fabio kql-database ingest` | yes | Ingest data into a KQL table — inline (small) or from OneLake/blob storage (large files) |
 | `fabio kql-database journal` | yes | Show the operations journal (completed operations history) |
 | `fabio kql-database list` | no | List KQL databases in a workspace |
 | `fabio kql-database list-entities` | no | List entities (tables, materialized views, external tables, functions) in a database |

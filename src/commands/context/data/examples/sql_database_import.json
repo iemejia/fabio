@@ -18,8 +18,8 @@
   },
   "notes": "Type inference: Int\u2192BigInt\u2192Float\u2192NVarChar (never narrows). JSON files infer from values; CSV infers from string parsing. Use --batch-size to control INSERT batch size (default 100). Use --no-create-table to skip DDL if table already exists. Requires F4+ capacity (F2 returns error 18456).",
   "query_examples": [
-    {"query": "data.rowsInserted", "description": "Total rows imported."},
-    {"query": "data.columns[*].name", "description": "Inferred column names."},
-    {"query": "data.columns[*].type", "description": "Inferred SQL types."}
+    {"query": "rowsInserted", "description": "Total rows imported."},
+    {"query": "columns[*].name", "description": "Inferred column names."},
+    {"query": "columns[*].type", "description": "Inferred SQL types."}
   ]
 }

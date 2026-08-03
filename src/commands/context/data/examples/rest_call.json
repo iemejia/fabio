@@ -15,8 +15,8 @@
   },
   "notes": "Use --body for inline JSON, --body @file.json for file, --body @- for stdin. Use --poll for LRO endpoints. Use --api powerbi to route to https://api.powerbi.com/v1.0/myorg. Use --query-params 'key=value' for URL parameters. Dry-run supported for mutating methods (POST/PUT/PATCH/DELETE).",
   "query_examples": [
-    {"query": "data.value[*].displayName", "description": "Extract item names from list response."},
-    {"query": "data.value | length(@)", "description": "Count items returned."},
-    {"query": "data.value[?type=='Lakehouse'].id", "description": "Filter by type."}
+    {"query": "value[*].displayName", "description": "Extract item names from list response."},
+    {"query": "value | length(@)", "description": "Count items returned."},
+    {"query": "value[?type=='Lakehouse'].id", "description": "Filter by type."}
   ]
 }

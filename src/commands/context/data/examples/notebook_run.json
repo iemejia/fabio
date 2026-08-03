@@ -15,9 +15,9 @@
   },
   "notes": "Without --wait, returns immediately with {\"status\":\"accepted\",\"jobId\":\"...\"}. Use --parameters for notebook parameters: --parameters '[{\"name\":\"p1\",\"value\":\"v1\",\"type\":\"Text\"}]'. First run on small capacity can take 2-5 min (Spark cold start). Use --cancel-on-timeout to auto-cancel if timeout is reached.",
   "query_examples": [
-    {"query": "data.status", "description": "Get final job status."},
-    {"query": "data.failureReason", "description": "Get failure reason (null if succeeded)."},
-    {"query": "data.id", "description": "Get the job instance ID for further queries."},
-    {"query": "data.endTimeUtc", "description": "Get completion timestamp."}
+    {"query": "status", "description": "Get final job status."},
+    {"query": "failureReason", "description": "Get failure reason (null if succeeded)."},
+    {"query": "id", "description": "Get the job instance ID for further queries."},
+    {"query": "endTimeUtc", "description": "Get completion timestamp."}
   ]
 }

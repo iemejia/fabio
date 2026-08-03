@@ -14,8 +14,8 @@
   },
   "notes": "Requires the semantic model to be refreshed (framed). Direct Lake models need at least one POST /refreshes call after creation. DAX query must use EVALUATE for table results or DEFINE + EVALUATE for measures. Use double quotes for DAX strings inside the query.",
   "query_examples": [
-    {"query": "data.rows", "description": "All result rows."},
-    {"query": "data.columns", "description": "Column names from the DAX result."},
-    {"query": "data.rowCount", "description": "Count of returned rows."}
+    {"query": "rows", "description": "All result rows."},
+    {"query": "columns", "description": "Column names from the DAX result."},
+    {"query": "rowCount", "description": "Count of returned rows."}
   ]
 }

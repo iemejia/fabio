@@ -13,8 +13,8 @@
   },
   "notes": "Without --file, outputs raw RDF/XML to stdout. The exported file can be re-imported with `fabio ontology import --file ontology.rdf`. Round-trip (Fabric → RDF → Fabric) preserves entity types, datatype properties, relationships, and the fabio-native property annotations: identifier parts (→ ont:isIdentifier), time-series properties (→ ont:isTimeSeries), untyped properties (valueType Any → ont:isUntyped), and property types (→ ont:propertyType). NOT exported to OWL: entity inheritance (baseEntityTypeId), entity Documents/Overviews/ResourceLinks, and data bindings/contextualizations (OWL has no equivalent). Re-apply bindings on import with --lakehouse/--eventhouse (+ --bindings) or `ontology bind`; re-supply inheritance via the binding map's baseEntityType or by keeping rdfs:subClassOf in the source RDF.",
   "query_examples": [
-    {"query": "data.entity_types", "description": "Count of exported entity types (owl:Class)."},
-    {"query": "data.relationship_types", "description": "Count of exported relationships (owl:ObjectProperty)."},
-    {"query": "data.properties", "description": "Total property count across all entity types."}
+    {"query": "entity_types", "description": "Count of exported entity types (owl:Class)."},
+    {"query": "relationship_types", "description": "Count of exported relationships (owl:ObjectProperty)."},
+    {"query": "properties", "description": "Total property count across all entity types."}
   ]
 }

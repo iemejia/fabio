@@ -16,8 +16,8 @@
   },
   "notes": "Each item becomes a directory named '{DisplayName}.{ItemType}/' containing .platform + definition files. Use --overwrite to replace existing directory contents. Items that don't support getDefinition are skipped (reported in output). Use --item-types to filter. The exported directory is the --source input for 'deploy plan/apply'.",
   "query_examples": [
-    {"query": "data.exported", "description": "Number of items successfully exported."},
-    {"query": "data.skipped", "description": "Items that could not be exported with reasons."},
-    {"query": "data.total_items", "description": "Total items found in workspace."}
+    {"query": "exported", "description": "Number of items successfully exported."},
+    {"query": "skipped", "description": "Items that could not be exported with reasons."},
+    {"query": "total_items", "description": "Total items found in workspace."}
   ]
 }

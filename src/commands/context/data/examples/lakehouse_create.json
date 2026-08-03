@@ -21,9 +21,9 @@
   },
   "notes": "Creation is LRO (may take 15-30s). The sqlEndpointProperties.id is the SQL Analytics Endpoint used for queries. Use --enable-schemas to create a multi-schema lakehouse.",
   "query_examples": [
-    {"query": "data.id", "description": "Get the lakehouse ID."},
-    {"query": "data.properties.oneLakeFilesPath", "description": "DFS path for file uploads."},
-    {"query": "data.properties.sqlEndpointProperties.id", "description": "SQL endpoint ID for queries."},
-    {"query": "data.properties.sqlEndpointProperties.connectionString", "description": "TDS connection string."}
+    {"query": "id", "description": "Get the lakehouse ID."},
+    {"query": "properties.oneLakeFilesPath", "description": "DFS path for file uploads."},
+    {"query": "properties.sqlEndpointProperties.id", "description": "SQL endpoint ID for queries."},
+    {"query": "properties.sqlEndpointProperties.connectionString", "description": "TDS connection string."}
   ]
 }

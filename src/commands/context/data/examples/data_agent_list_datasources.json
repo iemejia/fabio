@@ -32,8 +32,8 @@
   },
   "notes": "Use --stage staging (default) or --stage published to view the respective configuration. The datasource ID is needed for list-elements, add-fewshot, and remove-datasource commands.",
   "query_examples": [
-    {"query": "data[].displayName", "description": "List all datasource names."},
-    {"query": "data[?fabricItemType=='Lakehouse'].id", "description": "IDs of lakehouse datasources."},
-    {"query": "data[0].id", "description": "First datasource ID (for element/fewshot operations)."}
+    {"query": "[].displayName", "description": "List all datasource names."},
+    {"query": "[?fabricItemType=='Lakehouse'].id", "description": "IDs of lakehouse datasources."},
+    {"query": "[0].id", "description": "First datasource ID (for element/fewshot operations)."}
   ]
 }

@@ -29,9 +29,9 @@
   },
   "notes": "State values: Active (running), Inactive (suspended/paused). SKU values: F2, F4, F8, F16, F32, F64, F128, F256, F512, F1024, F2048. Use 'fabio capacity suspend/resume' for lifecycle management (requires ARM permissions). F2 has limitations (no SQL Database TDS, Spark throttling).",
   "query_examples": [
-    {"query": "data[?state=='Active'].displayName", "description": "Active capacities only."},
-    {"query": "data[?sku=='F64'].id | [0]", "description": "ID of the F64 capacity."},
-    {"query": "data[?region=='westeurope'] | length(@)", "description": "Count capacities in West Europe."},
-    {"query": "data[].{name: displayName, sku: sku, state: state}", "description": "Summary table of all capacities."}
+    {"query": "[?state=='Active'].displayName", "description": "Active capacities only."},
+    {"query": "[?sku=='F64'].id | [0]", "description": "ID of the F64 capacity."},
+    {"query": "[?region=='westeurope'] | length(@)", "description": "Count capacities in West Europe."},
+    {"query": "[].{name: displayName, sku: sku, state: state}", "description": "Summary table of all capacities."}
   ]
 }

@@ -13,7 +13,7 @@
   },
   "notes": "Workspace is created without capacity. Use 'fabio workspace assign-capacity --id $WS --capacity $CAP_ID' to assign. Capacity is required before creating items that need compute (notebooks, warehouses, SQL databases).",
   "query_examples": [
-    {"query": "data.id", "description": "Get the workspace ID for subsequent commands."},
-    {"query": "data.displayName", "description": "Confirm the workspace name."}
+    {"query": "id", "description": "Get the workspace ID for subsequent commands."},
+    {"query": "displayName", "description": "Confirm the workspace name."}
   ]
 }

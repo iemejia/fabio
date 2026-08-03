@@ -10,8 +10,8 @@
   },
   "notes": "Only --stage production (published, the default) is supported — querying a draft/sandbox agent is not available via the public Fabric API (publish first with `fabio data-agent publish`). The published consumption URL is auto-constructed; pass --published-url only to target a specific endpoint. MULTI-TURN: pass --keep-thread to retain the thread, then reuse its threadId on the next call with --thread-id to continue the conversation. FILES: pass --download-files <dir> to save any files the answer attaches (generated CSVs/charts) into <dir>; the response then includes a `files` array. Add --show-steps to include the SQL/tool-call run steps. Use --timeout to control max wait (default: 300s; Spark cold start can take minutes).",
   "query_examples": [
-    {"query": "data.answer", "description": "Get the natural language answer."},
-    {"query": "data.threadId", "description": "Thread id to reuse for a multi-turn follow-up (--thread-id)."},
-    {"query": "data.files[].path", "description": "Local paths of any downloaded answer files (with --download-files)."}
+    {"query": "answer", "description": "Get the natural language answer."},
+    {"query": "threadId", "description": "Thread id to reuse for a multi-turn follow-up (--thread-id)."},
+    {"query": "files[].path", "description": "Local paths of any downloaded answer files (with --download-files)."}
   ]
 }

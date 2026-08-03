@@ -13,8 +13,8 @@
   },
   "notes": "Connection string resolved automatically from item properties. Date columns may return as 'N days since 0001-01-01' format via TDS. Use three-part naming for cross-database queries within the same workspace: [OtherDB].[dbo].[table].",
   "query_examples": [
-    {"query": "data.rows[0]", "description": "First row of results."},
-    {"query": "data.rowCount", "description": "Number of rows returned."},
-    {"query": "data.columns", "description": "Column names array."}
+    {"query": "rows[0]", "description": "First row of results."},
+    {"query": "rowCount", "description": "Number of rows returned."},
+    {"query": "columns", "description": "Column names array."}
   ]
 }

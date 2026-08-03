@@ -21,7 +21,12 @@
   "extracting_ids": {
     "description": "After creating an item, extract its ID for use in subsequent commands",
     "pattern": "fabio <group> create ... | jq -r '.data.id'",
-    "with_query_flag": "fabio <group> create ... --query data.id"
+    "with_query_flag": "fabio <group> create ... --query id"
+  },
+  "query_flag": {
+    "description": "--query/-q runs a JMESPath expression against the raw payload (the value under 'data'), exactly like Azure CLI's --query. Do NOT prefix with 'data.'. Object commands: query the object fields directly (e.g. --query id, --query properties.status). List commands: query the array directly (e.g. --query '[].displayName', --query '[?type==`Lakehouse`].id', --query '[0].id'). Count a list with the JMESPath idiom --query 'length([])' (there is no bare 'count' field to query). Note the contrast with jq, which operates on the whole envelope and therefore DOES use '.data.id'.",
+    "correct": ["--query id", "--query '[].displayName'", "--query '[0].id'", "--query 'length([])'"],
+    "incorrect": ["--query data.id", "--query 'data[].displayName'", "--query count"]
   },
   "dry_run": {
     "description": "All mutating commands support --dry-run which returns the planned request without executing",

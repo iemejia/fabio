@@ -19,9 +19,9 @@
   },
   "notes": "Use the returned data.id as mlvExecutionDefinitionId when creating a refresh schedule. Omit currentLakehouseExecutionContext.selectedMlvs and set mode to All to refresh all views. extendedLineageExecutionContext is optional and used for cross-lakehouse lineage.",
   "query_examples": [
-    {"query": "data.id", "description": "Capture the execution definition ID to reference in a refresh schedule."},
-    {"query": "data.currentLakehouseExecutionContext.mode", "description": "Check whether All or Selected refresh scope is configured."},
-    {"query": "data.currentLakehouseExecutionContext.selectedMlvs", "description": "List the specific views that will be refreshed."},
-    {"query": "data.settings.refreshMode", "description": "Check the refresh strategy: Optimal (incremental) or Full."}
+    {"query": "id", "description": "Capture the execution definition ID to reference in a refresh schedule."},
+    {"query": "currentLakehouseExecutionContext.mode", "description": "Check whether All or Selected refresh scope is configured."},
+    {"query": "currentLakehouseExecutionContext.selectedMlvs", "description": "List the specific views that will be refreshed."},
+    {"query": "settings.refreshMode", "description": "Check the refresh strategy: Optimal (incremental) or Full."}
   ]
 }

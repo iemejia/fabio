@@ -21,8 +21,8 @@
   },
   "notes": "Admin-only endpoint. Uses 'workspaces' array key (not 'value'). --include encryption adds encryption details. --encryption-status filter only works WITH --include encryption. Max 10,000 per page. Rate limit: 200 requests/hour.",
   "query_examples": [
-    {"query": "data.workspaces[*].name", "description": "All workspace names."},
-    {"query": "data.workspaces[?encryption.status=='Active'].name", "description": "CMK-encrypted workspaces."},
-    {"query": "data.workspaces | length(@)", "description": "Count of workspaces returned."}
+    {"query": "workspaces[*].name", "description": "All workspace names."},
+    {"query": "workspaces[?encryption.status=='Active'].name", "description": "CMK-encrypted workspaces."},
+    {"query": "workspaces | length(@)", "description": "Count of workspaces returned."}
   ]
 }

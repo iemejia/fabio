@@ -28,9 +28,9 @@
   },
   "notes": "Combines three API calls (GET item, getDefinition LRO, list connections) into one response. Definition may be null for items that don't support getDefinition. Connections may be empty. Useful for understanding an item's full context in one call.",
   "query_examples": [
-    {"query": "data.metadata.type", "description": "Item type."},
-    {"query": "data.definition.parts[].path", "description": "Definition file paths."},
-    {"query": "data.connections[].displayName", "description": "Connected data sources."},
-    {"query": "data.definition.format", "description": "Definition format (ipynb, json, etc)."}
+    {"query": "metadata.type", "description": "Item type."},
+    {"query": "definition.parts[].path", "description": "Definition file paths."},
+    {"query": "connections[].displayName", "description": "Connected data sources."},
+    {"query": "definition.format", "description": "Definition format (ipynb, json, etc)."}
   ]
 }

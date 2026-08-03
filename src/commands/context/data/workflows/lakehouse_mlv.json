@@ -5,7 +5,7 @@
   "steps": [
     {
       "step_number": 1,
-      "command": "fabio lakehouse list --workspace $WS --query 'data[?displayName==`SalesLakehouse`].id | [0]'",
+      "command": "fabio lakehouse list --workspace $WS --query '[?displayName==`SalesLakehouse`].id | [0]'",
       "description": "Resolve the lakehouse ID by name if you don't already have it."
     },
     {
@@ -20,7 +20,7 @@
     },
     {
       "step_number": 4,
-      "command": "fabio lakehouse create-execution-definition ... --query data.id",
+      "command": "fabio lakehouse create-execution-definition ... --query id",
       "description": "Capture the execution definition ID from the previous step's response.",
       "notes": "Store the ID in $DEF_ID for the next step."
     },

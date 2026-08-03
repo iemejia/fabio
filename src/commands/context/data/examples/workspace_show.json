@@ -18,9 +18,9 @@
   },
   "notes": "The oneLakeEndpoints are used for direct storage access (DFS for file operations, Blob for copy). capacityAssignmentProgress shows 'Completed' when capacity is fully active.",
   "query_examples": [
-    {"query": "data.capacityId", "description": "Get assigned capacity ID."},
-    {"query": "data.oneLakeEndpoints.dfsEndpoint", "description": "Get DFS endpoint for direct file access."},
-    {"query": "data.capacityRegion", "description": "Check the capacity region."},
-    {"query": "data.capacityAssignmentProgress", "description": "Verify capacity assignment is complete."}
+    {"query": "capacityId", "description": "Get assigned capacity ID."},
+    {"query": "oneLakeEndpoints.dfsEndpoint", "description": "Get DFS endpoint for direct file access."},
+    {"query": "capacityRegion", "description": "Check the capacity region."},
+    {"query": "capacityAssignmentProgress", "description": "Verify capacity assignment is complete."}
   ]
 }

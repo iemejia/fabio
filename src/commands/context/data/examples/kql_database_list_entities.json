@@ -13,9 +13,9 @@
   },
   "notes": "Use --entity-type to filter: table, materialized-view, external-table, function.",
   "query_examples": [
-    {"query": "data[?type=='table'].name", "description": "Get only table names."},
-    {"query": "data[?type=='function'].name", "description": "Get only function names."},
-    {"query": "length(data)", "description": "Count total entities."},
-    {"query": "data | sort_by(@, &name)", "description": "Sort entities alphabetically."}
+    {"query": "[?type=='table'].name", "description": "Get only table names."},
+    {"query": "[?type=='function'].name", "description": "Get only function names."},
+    {"query": "length(@)", "description": "Count total entities."},
+    {"query": "sort_by(@, &name)", "description": "Sort entities alphabetically."}
   ]
 }

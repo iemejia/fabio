@@ -23,8 +23,8 @@
   },
   "notes": "Use --category destination to see destination types (Eventhouse, Lakehouse, CustomEndpoint, Activator). Use --category all for both.",
   "query_examples": [
-    {"query": "data[].type", "description": "Get just the type names."},
-    {"query": "data[?category=='source'].type", "description": "Filter to source types only."},
-    {"query": "length(data)", "description": "Count available components."}
+    {"query": "[].type", "description": "Get just the type names."},
+    {"query": "[?category=='source'].type", "description": "Filter to source types only."},
+    {"query": "length(@)", "description": "Count available components."}
   ]
 }

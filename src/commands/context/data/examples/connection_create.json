@@ -13,7 +13,7 @@
   },
   "notes": "Parameters format: user provides {\"key\": \"value\"} \u2192 CLI converts to [{\"dataType\": \"Text\", \"name\": \"key\", \"value\": \"value\"}]. Connectivity types: ShareableCloud, OnPremises, VirtualNetworkGateway, PersonalCloud. Credential types: Basic, OAuth2, Key, Anonymous, ServicePrincipal, WorkspaceIdentity. Use 'fabio connection list-supported-types' to see all available connection types.",
   "query_examples": [
-    {"query": "data.id", "description": "Connection ID (used by shortcuts, data sources)."},
-    {"query": "data.connectivityType", "description": "Connection category."}
+    {"query": "id", "description": "Connection ID (used by shortcuts, data sources)."},
+    {"query": "connectivityType", "description": "Connection category."}
   ]
 }

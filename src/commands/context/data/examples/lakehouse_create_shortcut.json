@@ -13,7 +13,7 @@
   },
   "notes": "Valid --target-type values (aliases accepted, any case): OneLake, AdlsGen2 (adls), AmazonS3 (s3), AzureBlobStorage (blob), GoogleCloudStorage (gcs), S3Compatible, Dataverse, ExternalDataShare (eds), OneDriveSharePoint (sharepoint). Required typed flags per type: OneLake -> --target-workspace/--target-item/--target-path; AdlsGen2/AmazonS3/AzureBlobStorage/GoogleCloudStorage -> --location + --connection-id (+ optional --subpath); S3Compatible -> --location + --connection-id + --bucket; Dataverse -> --connection-id + --environment-domain (+ --delta-lake-folder); ExternalDataShare -> --connection-id; OneDriveSharePoint -> --location + --connection-id (+ --update-sensitivity). An unknown --target-type fails with INVALID_INPUT and enumerates the valid values. List with `fabio lakehouse list-shortcuts` (hides DW-managed shortcuts unless --include-managed).",
   "query_examples": [
-    {"query": "data.name", "description": "The created shortcut name."},
-    {"query": "data.target.type", "description": "The target discriminator echoed back by the API."}
+    {"query": "name", "description": "The created shortcut name."},
+    {"query": "target.type", "description": "The target discriminator echoed back by the API."}
   ]
 }

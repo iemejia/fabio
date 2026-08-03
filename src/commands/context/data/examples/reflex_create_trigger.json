@@ -33,8 +33,8 @@
     }
   },
   "query_examples": [
-    {"query": "data.id", "description": "Get the created Reflex item ID."},
-    {"query": "data.status", "description": "Check creation status (trigger_created or created_but_definition_failed)."},
-    {"query": "data.recipients", "description": "Get the configured recipient list."}
+    {"query": "id", "description": "Get the created Reflex item ID."},
+    {"query": "status", "description": "Check creation status (trigger_created or created_but_definition_failed)."},
+    {"query": "recipients", "description": "Get the configured recipient list."}
   ]
 }

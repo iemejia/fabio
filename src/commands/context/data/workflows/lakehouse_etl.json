@@ -12,6 +12,6 @@
   "tips": [
     "Use --parameters for notebook run parameters.",
     "First Spark run takes 2-5 min (cold start) on small capacity.",
-    "Use --query 'data.status' to check run result."
+    "Use --query 'status' to check run result."
   ]
 }

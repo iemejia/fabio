@@ -29,8 +29,8 @@
   },
   "notes": "The LLM endpoint auto-detects flavor from the host: *.azure.com -> Azure OpenAI ({endpoint}/openai/deployments/{model}/chat/completions, api-key header); anything else -> OpenAI-compatible ({endpoint}/chat/completions, Bearer auth, model in body). For Azure, --llm-model is the DEPLOYMENT name (not the base model). Issue types: duplicate, conflict, ambiguous, low_quality, incorrect_query. --stage staging|published selects which config's few-shots to read. This is read-only: it does not modify the agent.",
   "query_examples": [
-    {"query": "data.issueCount", "description": "How many issues the judge found (0 = clean)."},
-    {"query": "data.issues[?severity=='high']", "description": "Only the high-severity issues."},
-    {"query": "data.overallQuality", "description": "good | fair | poor."}
+    {"query": "issueCount", "description": "How many issues the judge found (0 = clean)."},
+    {"query": "issues[?severity=='high']", "description": "Only the high-severity issues."},
+    {"query": "overallQuality", "description": "good | fair | poor."}
   ]
 }

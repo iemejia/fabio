@@ -11,8 +11,8 @@
   },
   "notes": "Types are matched by NAME within the 'usertypes' namespace (Fabric addresses types by name; renaming a mapped type is unsupported). Binding-map keys may use the original OWL label ('has site') or the sanitized name ('has_site'). Matching is STRICT: a map key that names no existing type is an error. Entities are bound by convention when the map has no 'entities' block, else only the listed ones; relationships are bound only when named in the map. Re-running is idempotent — prior DataBindings/Contextualizations for the (re)bound types are replaced, other parts are left untouched. DataBindings/Contextualizations conform to the official Fabric schemas; see 'fabio context examples ontology' (ontology/import) for the binding-map format.",
   "query_examples": [
-    {"query": "data.entity_bindings", "description": "Count of entity DataBindings written."},
-    {"query": "data.contextualizations", "description": "Count of relationship Contextualizations written."},
-    {"query": "data.status", "description": "'bound' on success."}
+    {"query": "entity_bindings", "description": "Count of entity DataBindings written."},
+    {"query": "contextualizations", "description": "Count of relationship Contextualizations written."},
+    {"query": "status", "description": "'bound' on success."}
   ]
 }

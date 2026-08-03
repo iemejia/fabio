@@ -17,9 +17,9 @@
     }
   },
   "query_examples": [
-    {"query": "data.summary", "description": "Get action counts."},
-    {"query": "data.changes[?action=='Create'].name", "description": "Items to be created."},
-    {"query": "data.changes[?action!='Skip']", "description": "Only actionable changes."},
-    {"query": "data.changes[?item_type=='Notebook']", "description": "Filter to notebooks."}
+    {"query": "summary", "description": "Get action counts."},
+    {"query": "changes[?action=='Create'].name", "description": "Items to be created."},
+    {"query": "changes[?action!='Skip']", "description": "Only actionable changes."},
+    {"query": "changes[?item_type=='Notebook']", "description": "Filter to notebooks."}
   ]
 }
