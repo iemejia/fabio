@@ -12819,8 +12819,11 @@
           },
           "--settings": {
             "type": "string",
-            "required": true,
-            "description": "Settings as JSON (merges with existing settings). Example: '{\"automaticLog\":{\"enabled\":true},\"highConcurrency\":{\"notebookInteractiveRunEnabled\":true}}'"
+            "description": "Settings as JSON (merges with existing settings; conflicts with --runtime-version). Example: '{\"automaticLog\":{\"enabled\":true},\"highConcurrency\":{\"notebookInteractiveRunEnabled\":true}}'"
+          },
+          "--runtime-version": {
+            "type": "string",
+            "description": "Set the workspace default Spark runtime version (e.g. \"1.3\" for Spark 3.5, \"2.0\" for the Spark 4.1 / Delta 4.2 preview). Merged into existing settings"
           }
         },
         "mutates": true,

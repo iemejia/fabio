@@ -137,6 +137,19 @@ tests:
       - type: contains
         value: "spark.native.enabled"
 
+  - description: "Workspace: set default Spark runtime to 2.0"
+    vars:
+      user_query: "Make Fabric Runtime 2.0 the default for all Spark workloads in my workspace"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('spark update-settings')
+        metric: workspace-runtime-command
+      - type: icontains
+        value: "--runtime-version"
+      - type: contains
+        value: "2.0"
+
   - description: "Load Parquet with PascalCase"
     vars:
       user_query: "Load a parquet file into the orders table in append mode"

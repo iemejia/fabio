@@ -26,10 +26,14 @@ pub enum SparkCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Settings as JSON (merges with existing settings).
+        /// Settings as JSON (merges with existing settings; conflicts with --runtime-version).
         /// Example: '{"automaticLog":{"enabled":true},"highConcurrency":{"notebookInteractiveRunEnabled":true}}'
         #[arg(long)]
-        settings: String,
+        settings: Option<String>,
+
+        /// Set the workspace default Spark runtime version (e.g. "1.3" for Spark 3.5, "2.0" for the Spark 4.1 / Delta 4.2 preview). Merged into existing settings.
+        #[arg(long, conflicts_with = "settings")]
+        runtime_version: Option<String>,
     },
 
     // ── Custom Pools ─────────────────────────────────────────────────────
@@ -242,7 +246,17 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SparkCommand) -
         SparkCommand::UpdateSettings {
             workspace,
             settings,
-        } => update_settings(cli, client, workspace, settings).await,
+            runtime_version,
+        } => {
+            update_settings(
+                cli,
+                client,
+                workspace,
+                settings.as_deref(),
+                runtime_version.as_deref(),
+            )
+            .await
+        }
         SparkCommand::ListPools { workspace } => list_pools(cli, client, workspace).await,
         SparkCommand::GetPool { workspace, pool_id } => {
             get_pool(cli, client, workspace, pool_id).await
@@ -366,26 +380,80 @@ async fn update_settings(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
-    settings: &str,
+    settings: Option<&str>,
+    runtime_version: Option<&str>,
 ) -> Result<()> {
-    let body: Value = serde_json::from_str(settings).map_err(|e| {
-        FabioError::with_hint(
+    let path = format!("/workspaces/{workspace}/spark/settings");
+
+    // Two mutually-exclusive modes:
+    //   (a) raw JSON via --settings (merges with existing settings server-side)
+    //   (b) typed --runtime-version (read-merge-write, preserving all other settings
+    //       and any sibling keys under `environment`)
+    let body = if let Some(settings) = settings {
+        serde_json::from_str::<Value>(settings).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid --settings JSON: {e}"),
+                "Provide valid JSON, e.g.: --settings '{\"automaticLog\":{\"enabled\":true}}'",
+            )
+        })?
+    } else if let Some(rv) = runtime_version {
+        if output::dry_run_guard(
+            cli,
+            "spark update-settings",
+            &serde_json::json!({ "workspace": workspace, "runtimeVersion": rv }),
+        ) {
+            return Ok(());
+        }
+        let current = client
+            .get(&path)
+            .await
+            .map_err(|e| enrich_forbidden(e, "spark update-settings", "Admin"))?;
+        let updated = apply_workspace_runtime_version(current, rv);
+        let data = client
+            .patch(&path, &updated)
+            .await
+            .map_err(|e| enrich_forbidden(e, "spark update-settings", "Admin"))?;
+        output::render_object(cli, &data, "workspace");
+        return Ok(());
+    } else {
+        return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
-            format!("Invalid --settings JSON: {e}"),
-            "Provide valid JSON, e.g.: --settings '{\"automaticLog\":{\"enabled\":true}}'",
+            "Provide either --settings or --runtime-version".to_string(),
+            "Example: fabio spark update-settings --workspace <WS> --runtime-version 2.0",
         )
-    })?;
+        .into());
+    };
 
     if output::dry_run_guard(cli, "spark update-settings", &body) {
         return Ok(());
     }
 
     let data = client
-        .patch(&format!("/workspaces/{workspace}/spark/settings"), &body)
+        .patch(&path, &body)
         .await
         .map_err(|e| enrich_forbidden(e, "spark update-settings", "Admin"))?;
     output::render_object(cli, &data, "workspace");
     Ok(())
+}
+
+/// Set `environment.runtimeVersion` on a workspace Spark-settings object, preserving
+/// all other settings and any sibling keys under `environment`. Pure for testing.
+fn apply_workspace_runtime_version(mut current: Value, runtime_version: &str) -> Value {
+    if !current.is_object() {
+        current = Value::Object(serde_json::Map::new());
+    }
+    let obj = current.as_object_mut().expect("ensured object above");
+    let env = obj
+        .entry("environment".to_string())
+        .or_insert_with(|| Value::Object(serde_json::Map::new()));
+    if !env.is_object() {
+        *env = Value::Object(serde_json::Map::new());
+    }
+    env.as_object_mut()
+        .expect("ensured object above")
+        .insert("runtimeVersion".to_string(), Value::from(runtime_version));
+    current
 }
 
 // ─── Custom Pools ────────────────────────────────────────────────────────────
@@ -734,5 +802,44 @@ fn read_json_body(file: Option<&str>, content: Option<&str>, command: &str) -> R
             format!("Example: fabio spark {command} --capacity-id <ID> --file settings.json"),
         )
         .into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn apply_runtime_version_sets_nested_field() {
+        let current = json!({
+            "automaticLog": { "enabled": true },
+            "environment": { "runtimeVersion": "1.3" }
+        });
+        let out = apply_workspace_runtime_version(current, "2.0");
+        assert_eq!(out["environment"]["runtimeVersion"], json!("2.0"));
+        // Sibling top-level settings preserved.
+        assert_eq!(out["automaticLog"]["enabled"], json!(true));
+    }
+
+    #[test]
+    fn apply_runtime_version_preserves_environment_siblings() {
+        let current = json!({ "environment": { "runtimeVersion": "1.3", "otherKey": "keep" } });
+        let out = apply_workspace_runtime_version(current, "2.0");
+        assert_eq!(out["environment"]["runtimeVersion"], json!("2.0"));
+        assert_eq!(out["environment"]["otherKey"], json!("keep"));
+    }
+
+    #[test]
+    fn apply_runtime_version_creates_environment_when_absent() {
+        let current = json!({ "automaticLog": { "enabled": false } });
+        let out = apply_workspace_runtime_version(current, "2.0");
+        assert_eq!(out["environment"]["runtimeVersion"], json!("2.0"));
+    }
+
+    #[test]
+    fn apply_runtime_version_recovers_from_non_object() {
+        let out = apply_workspace_runtime_version(json!("nope"), "2.0");
+        assert_eq!(out["environment"]["runtimeVersion"], json!("2.0"));
     }
 }
