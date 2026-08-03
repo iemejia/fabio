@@ -3424,6 +3424,23 @@
           "fabio lakehouse refresh-materialized-views --workspace $WS --id $LAKEHOUSE_ID"
         ]
       },
+      "list-materialized-views-schedules": {
+        "description": "List materialized lake view refresh schedules (named schedules for this lakehouse)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
       "create-materialized-views-schedule": {
         "description": "Create a schedule for materialized lake view refresh",
         "flags": {

@@ -66,6 +66,7 @@ Manage lakehouses (tables, files, shortcuts)
 | `fabio lakehouse list-execution-definitions` | no | List materialized lake view execution definitions for a lakehouse |
 | `fabio lakehouse list-files` | no | List files in a lakehouse |
 | `fabio lakehouse list-livy-sessions` | no | List Livy sessions for a lakehouse |
+| `fabio lakehouse list-materialized-views-schedules` | no | List materialized lake view refresh schedules (named schedules for this lakehouse) |
 | `fabio lakehouse list-shortcuts` | no | List shortcuts in an item (hides DW-managed shortcuts by default) |
 | `fabio lakehouse list-tables` | no | List tables in a lakehouse |
 | `fabio lakehouse load-table` | yes | Load a file (already in the lakehouse) into a Delta table |

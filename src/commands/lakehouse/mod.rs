@@ -825,8 +825,19 @@ pub enum LakehouseCommand {
         #[arg(long, visible_alias = "lakehouse")]
         id: String,
     },
-    /// Create a schedule for materialized lake view refresh
+    /// List materialized lake view refresh schedules (named schedules for this lakehouse)
     #[command(display_order = 61)]
+    ListMaterializedViewsSchedules {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+    },
+    /// Create a schedule for materialized lake view refresh
+    #[command(display_order = 62)]
     CreateMaterializedViewsSchedule {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
@@ -1670,6 +1681,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
         }
         LakehouseCommand::RefreshMaterializedViews { workspace, id } => {
             maintenance::refresh_materialized_views(cli, client, workspace, id).await
+        }
+        LakehouseCommand::ListMaterializedViewsSchedules { workspace, id } => {
+            maintenance::list_materialized_views_schedules(cli, client, workspace, id).await
         }
         LakehouseCommand::CreateMaterializedViewsSchedule {
             workspace,

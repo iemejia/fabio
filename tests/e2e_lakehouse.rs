@@ -1236,6 +1236,32 @@ fn lakehouse_pool_insights() {
     assert!(json.get("data").is_some());
 }
 
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_list_materialized_views_schedules() {
+    let cfg = TestConfig::from_env();
+
+    // Lists the named MLV refresh schedules (empty array when none are configured).
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "list-materialized-views-schedules",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(
+        extract_data(&json).is_array(),
+        "expected a list of schedules"
+    );
+}
+
 // ─── Table Health ────────────────────────────────────────────────────────────
 
 #[test]
