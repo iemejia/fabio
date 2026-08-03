@@ -37,7 +37,7 @@ pub enum ConnectionCommand {
         #[arg(long, visible_alias = "type", value_name = "TYPE")]
         connection_type: String,
 
-        /// Creation method (`connectionDetails.creationMethod`). Defaults to the connection type, but many types differ — e.g. `EventHub.Contents`, `ConfluentCloud.Contents`, `MQTT.Contents`. Discover via `connection list-supported-types -o json`.
+        /// Creation method (`connectionDetails.creationMethod`). If omitted, fabio auto-resolves it from the connection type via `supportedConnectionTypes` (most types differ, e.g. `SQL`→`Sql`, `EventHub`→`EventHub.Contents`). Specify explicitly only for types with multiple methods (e.g. `AzureDataExplorer`, `Spark`).
         #[arg(long, value_name = "METHOD")]
         creation_method: Option<String>,
 
@@ -334,6 +334,7 @@ async fn create(
             "connectivityType": connectivity_type,
             "connectionType": connection_type,
             "creationMethod": creation_method.unwrap_or(connection_type),
+            "creationMethodResolution": if creation_method.is_some() { "explicit" } else { "auto (resolved from supportedConnectionTypes at execution)" },
         });
         output::render_object(cli, &preview, "status");
         return Ok(());
@@ -392,11 +393,21 @@ async fn create(
         bail!("--parameters must be a JSON object (e.g., '{{\"server\":\"host\"}}')");
     };
 
+    // When --creation-method is omitted, auto-resolve it from the connection type
+    // via supportedConnectionTypes (most types differ from the type name, e.g.
+    // SQL -> Sql, EventHub -> EventHub.Contents). Falls back to the type name if the
+    // catalog is unreachable or the type isn't found; errors (teaching the valid
+    // values) for the few types with multiple creation methods.
+    let resolved_method: String = match creation_method {
+        Some(m) => m.to_string(),
+        None => resolve_creation_method_via_api(client, connection_type).await?,
+    };
+
     let body = build_connection_body(
         name,
         connectivity_type,
         connection_type,
-        creation_method,
+        Some(&resolved_method),
         &connection_params,
         &cred_details,
         privacy_level,
@@ -408,8 +419,96 @@ async fn create(
     Ok(())
 }
 
+/// Outcome of resolving a connection type's canonical `creationMethod` from the
+/// `supportedConnectionTypes` catalog.
+#[derive(Debug, PartialEq)]
+enum MethodResolution {
+    /// Exactly one canonical method (or one matching the type name).
+    Resolved(String),
+    /// The type advertises multiple creation methods — the caller must choose one.
+    Ambiguous(Vec<String>),
+    /// The type is not present in the catalog (caller falls back to the type name).
+    Unknown,
+}
+
+/// Resolve a connection type's `creationMethod` from the supportedConnectionTypes
+/// catalog items. Pure function for testing.
+fn resolve_creation_method(types: &[Value], connection_type: &str) -> MethodResolution {
+    let entry = types
+        .iter()
+        .find(|t| t.get("type").and_then(Value::as_str) == Some(connection_type))
+        .or_else(|| {
+            types.iter().find(|t| {
+                t.get("type")
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| s.eq_ignore_ascii_case(connection_type))
+            })
+        });
+    let Some(entry) = entry else {
+        return MethodResolution::Unknown;
+    };
+    let methods: Vec<String> = entry
+        .get("creationMethods")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| m.get("name").and_then(Value::as_str))
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+
+    match methods.as_slice() {
+        [] => MethodResolution::Unknown,
+        [only] => MethodResolution::Resolved(only.clone()),
+        many => {
+            // Prefer a method that exactly matches the type name if present.
+            many.iter()
+                .find(|m| m.as_str() == connection_type)
+                .map_or_else(
+                    || MethodResolution::Ambiguous(many.to_vec()),
+                    |exact| MethodResolution::Resolved(exact.clone()),
+                )
+        }
+    }
+}
+
+/// Fetch the supportedConnectionTypes catalog and resolve the canonical creation
+/// method for `connection_type`. Non-blocking: falls back to the type name if the
+/// catalog can't be fetched or the type is unknown; errors (with the valid values)
+/// only when the type genuinely has multiple creation methods.
+async fn resolve_creation_method_via_api(
+    client: &FabricClient,
+    connection_type: &str,
+) -> Result<String> {
+    let Ok(resp) = client
+        .get_list("/connections/supportedConnectionTypes", "value", true, None)
+        .await
+    else {
+        // Don't block connection creation on a catalog-fetch failure.
+        return Ok(connection_type.to_string());
+    };
+
+    match resolve_creation_method(&resp.items, connection_type) {
+        MethodResolution::Resolved(m) => Ok(m),
+        MethodResolution::Unknown => Ok(connection_type.to_string()),
+        MethodResolution::Ambiguous(methods) => Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!(
+                "Connection type '{connection_type}' has multiple creation methods; specify one with --creation-method"
+            ),
+            format!(
+                "Valid creation methods: {}. Example: --creation-method {}",
+                methods.join(", "),
+                methods.first().map_or("", String::as_str)
+            ),
+        )
+        .into()),
+    }
+}
+
 /// Build the `POST /connections` request body. `creation_method` defaults to
-/// `connection_type` when `None` (many types differ, e.g. `EventHub.Contents`).
+/// `connection_type` when `None` (callers normally pass the auto-resolved method).
 /// Pure function for testing.
 #[allow(clippy::too_many_arguments)]
 fn build_connection_body(
@@ -832,5 +931,68 @@ mod tests {
             Some("gw-123"),
         );
         assert_eq!(body["gatewayId"], "gw-123");
+    }
+
+    fn catalog() -> Vec<Value> {
+        vec![
+            json!({"type": "SQL", "creationMethods": [{"name": "Sql"}]}),
+            json!({"type": "EventHub", "creationMethods": [{"name": "EventHub.Contents"}]}),
+            json!({"type": "Web", "creationMethods": [{"name": "Web"}]}),
+            json!({"type": "AzureDataExplorer", "creationMethods": [
+                {"name": "AzureDataExplorer.Contents"}, {"name": "AzureDataExplorer.KqlDatabase"}
+            ]}),
+            json!({"type": "NoMethods", "creationMethods": []}),
+        ]
+    }
+
+    #[test]
+    fn resolve_single_method_differing_from_type() {
+        assert_eq!(
+            resolve_creation_method(&catalog(), "SQL"),
+            MethodResolution::Resolved("Sql".to_string())
+        );
+        assert_eq!(
+            resolve_creation_method(&catalog(), "EventHub"),
+            MethodResolution::Resolved("EventHub.Contents".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_method_matching_type_name() {
+        assert_eq!(
+            resolve_creation_method(&catalog(), "Web"),
+            MethodResolution::Resolved("Web".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_case_insensitive_type_match() {
+        assert_eq!(
+            resolve_creation_method(&catalog(), "eventhub"),
+            MethodResolution::Resolved("EventHub.Contents".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_ambiguous_multiple_methods() {
+        assert_eq!(
+            resolve_creation_method(&catalog(), "AzureDataExplorer"),
+            MethodResolution::Ambiguous(vec![
+                "AzureDataExplorer.Contents".to_string(),
+                "AzureDataExplorer.KqlDatabase".to_string(),
+            ])
+        );
+    }
+
+    #[test]
+    fn resolve_unknown_type_or_no_methods() {
+        assert_eq!(
+            resolve_creation_method(&catalog(), "NotInCatalog"),
+            MethodResolution::Unknown
+        );
+        assert_eq!(
+            resolve_creation_method(&catalog(), "NoMethods"),
+            MethodResolution::Unknown
+        );
     }
 }

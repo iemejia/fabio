@@ -18637,7 +18637,7 @@
           },
           "--creation-method": {
             "type": "string",
-            "description": "Creation method (`connectionDetails.creationMethod`). Defaults to the connection type, but many types differ — e.g. `EventHub.Contents`, `ConfluentCloud.Contents`, `MQTT.Contents`. Discover via `connection list-supported-types -o json`"
+            "description": "Creation method (`connectionDetails.creationMethod`). If omitted, fabio auto-resolves it from the connection type via `supportedConnectionTypes` (most types differ, e.g. `SQL`→`Sql`, `EventHub`→`EventHub.Contents`). Specify explicitly only for types with multiple methods (e.g. `AzureDataExplorer`, `Spark`)"
           },
           "--parameters": {
             "type": "string",

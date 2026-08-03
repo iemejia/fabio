@@ -582,11 +582,12 @@ fn connection_create_dry_run_creation_method_defaults_to_type() {
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn connection_creation_method_accepted_by_api() {
-    // Proves the creationMethod fix at the API-contract level without needing a real
-    // Event Hub: EventHub's creation method is EventHub.Contents. With the WRONG method
-    // (the old hardcoded behaviour = the type name) the API rejects the connection
-    // details; with the correct method it accepts them and proceeds to test the
-    // (unreachable, fake) endpoint identity.
+    // Proves the creationMethod handling at the API-contract level without needing a
+    // real Event Hub. EventHub's creation method is EventHub.Contents.
+    //
+    // (1) An EXPLICITLY wrong method (the type name) is rejected by the API.
+    // (2) Auto-resolution (no --creation-method) picks EventHub.Contents, so the
+    //     connection details are accepted and the API proceeds to test the identity.
     let bad_name = common::unique_name("eh_badcm");
     let bad = fabio()
         .args([
@@ -598,6 +599,8 @@ fn connection_creation_method_accepted_by_api() {
             "ShareableCloud",
             "--connection-type",
             "EventHub",
+            "--creation-method",
+            "EventHub", // wrong on purpose (real method is EventHub.Contents)
             "--parameters",
             r#"{"endpoint":"sb://example.servicebus.windows.net","entityPath":"h"}"#,
             "--credential-type",
@@ -609,22 +612,21 @@ fn connection_creation_method_accepted_by_api() {
         + String::from_utf8_lossy(&bad.get_output().stderr);
     assert!(
         bad_err.contains("InvalidConnectionDetails"),
-        "without --creation-method the EventHub connection details should be rejected, got: {bad_err}"
+        "an explicitly wrong creation method should be rejected, got: {bad_err}"
     );
 
-    let good_name = common::unique_name("eh_goodcm");
+    // Auto-resolution: omit --creation-method; fabio resolves EventHub -> EventHub.Contents.
+    let auto_name = common::unique_name("eh_autocm");
     let good = fabio()
         .args([
             "connection",
             "create",
             "--name",
-            &good_name,
+            &auto_name,
             "--connectivity-type",
             "ShareableCloud",
             "--connection-type",
             "EventHub",
-            "--creation-method",
-            "EventHub.Contents",
             "--parameters",
             r#"{"endpoint":"sb://example.servicebus.windows.net","entityPath":"h"}"#,
             "--credential-type",
@@ -634,10 +636,44 @@ fn connection_creation_method_accepted_by_api() {
         .failure();
     let good_err = String::from_utf8_lossy(&good.get_output().stdout)
         + String::from_utf8_lossy(&good.get_output().stderr);
-    // With the correct creation method the connection details are accepted; the failure
-    // is now about the unreachable fake endpoint, not invalid connection details.
+    // Auto-resolved method makes the connection details valid; the failure is now the
+    // unreachable fake endpoint, NOT invalid connection details.
     assert!(
         !good_err.contains("InvalidConnectionDetails"),
-        "with --creation-method EventHub.Contents the connection details should be accepted, got: {good_err}"
+        "auto-resolution should pick EventHub.Contents so the details are accepted, got: {good_err}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn connection_creation_method_ambiguous_type_teaches() {
+    // AzureDataExplorer has multiple creation methods; without --creation-method fabio
+    // must fail fast and enumerate the valid values instead of guessing.
+    let name = common::unique_name("adx_ambig");
+    let assert = fabio()
+        .args([
+            "connection",
+            "create",
+            "--name",
+            &name,
+            "--connectivity-type",
+            "ShareableCloud",
+            "--connection-type",
+            "AzureDataExplorer",
+            "--parameters",
+            r#"{"cluster":"https://example.kusto.windows.net"}"#,
+            "--credential-type",
+            "OAuth2",
+        ])
+        .assert()
+        .failure();
+    let err = String::from_utf8_lossy(&assert.get_output().stdout)
+        + String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        err.contains("multiple creation methods")
+            && err.contains("AzureDataExplorer.Contents")
+            && err.contains("AzureDataExplorer.KqlDatabase"),
+        "ambiguous type should enumerate valid creation methods, got: {err}"
     );
 }
