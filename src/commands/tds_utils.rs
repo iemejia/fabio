@@ -158,76 +158,84 @@ pub async fn execute_sql_rows(
     database: &str,
     sql_text: &str,
 ) -> anyhow::Result<(Vec<String>, Vec<Value>)> {
-    // Acquire AAD token for SQL scope
-    let token = client.require_sql_auth().await?;
+    // Heap-allocate the TDS connect+execute+collect future. The tiberius client
+    // state machine is large (~16KB), so embedding it inline would trip
+    // clippy::large_futures in every caller on windows-msvc (where the future is
+    // a few hundred bytes larger than on Linux). Boxing it here at the single
+    // leaf shrinks this fn's future to a pointer and keeps ALL transitive
+    // callers small. See clippy.toml (future-size-threshold) and AGENTS.md.
+    Box::pin(async move {
+        // Acquire AAD token for SQL scope
+        let token = client.require_sql_auth().await?;
 
-    // Build TDS connection
-    let data_source = format!("tcp:{server},1433");
-    let mut context = ClientContext::with_data_source(&data_source);
-    context.database = database.to_string();
-    context.tds_authentication_method = TdsAuthenticationMethod::AccessToken;
-    context.access_token = Some(token);
-    context.application_name = "fabio".to_string();
-    context.connect_timeout = 30;
+        // Build TDS connection
+        let data_source = format!("tcp:{server},1433");
+        let mut context = ClientContext::with_data_source(&data_source);
+        context.database = database.to_string();
+        context.tds_authentication_method = TdsAuthenticationMethod::AccessToken;
+        context.access_token = Some(token);
+        context.application_name = "fabio".to_string();
+        context.connect_timeout = 30;
 
-    let provider = TdsConnectionProvider {};
-    let mut tds_client = provider
-        .create_client(context, &data_source, None)
-        .await
-        .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("TDS connection failed: {e}")))?;
+        let provider = TdsConnectionProvider {};
+        let mut tds_client = provider
+            .create_client(context, &data_source, None)
+            .await
+            .map_err(|e| {
+                FabioError::new(ErrorCode::ApiError, format!("TDS connection failed: {e}"))
+            })?;
 
-    // Execute SQL
-    tds_client
-        .execute(sql_text.to_string(), Some(60), None)
-        .await
-        .map_err(|e| {
-            let msg = e.to_string();
-            let hint = if msg.contains("Invalid object name") && msg.contains("sys.") {
-                ". Hint: Fabric Warehouse/Lakehouse SQL does not support all SQL Server \
-                 system views. Supported: sys.tables, sys.columns, sys.schemas, \
-                 INFORMATION_SCHEMA.TABLES, INFORMATION_SCHEMA.COLUMNS"
-            } else {
-                ""
-            };
-            FabioError::new(
-                ErrorCode::ApiError,
-                format!("SQL execution failed: {e}{hint}"),
-            )
+        // Execute SQL
+        tds_client
+            .execute(sql_text.to_string(), Some(60), None)
+            .await
+            .map_err(|e| {
+                let msg = e.to_string();
+                let hint = if msg.contains("Invalid object name") && msg.contains("sys.") {
+                    ". Hint: Fabric Warehouse/Lakehouse SQL does not support all SQL Server \
+                     system views. Supported: sys.tables, sys.columns, sys.schemas, \
+                     INFORMATION_SCHEMA.TABLES, INFORMATION_SCHEMA.COLUMNS"
+                } else {
+                    ""
+                };
+                FabioError::new(
+                    ErrorCode::ApiError,
+                    format!("SQL execution failed: {e}{hint}"),
+                )
+            })?;
+
+        // Collect results
+        let mut all_rows: Vec<Value> = Vec::new();
+        let mut columns: Vec<String> = Vec::new();
+
+        if let Some(rs) = tds_client.get_current_resultset() {
+            columns = rs
+                .get_metadata()
+                .iter()
+                .map(|col| col.column_name.clone())
+                .collect();
+
+            while let Some(row) = rs.next_row().await.map_err(|e| {
+                FabioError::new(ErrorCode::ApiError, format!("Failed to read row: {e}"))
+            })? {
+                let mut obj = serde_json::Map::with_capacity(columns.len());
+                for (i, val) in row.into_iter().enumerate() {
+                    let col_name = columns
+                        .get(i)
+                        .map_or_else(|| format!("column{i}"), std::clone::Clone::clone);
+                    obj.insert(col_name, column_value_to_json(&val));
+                }
+                all_rows.push(Value::Object(obj));
+            }
+        }
+
+        tds_client.close_query().await.map_err(|e| {
+            FabioError::new(ErrorCode::ApiError, format!("Failed to close query: {e}"))
         })?;
 
-    // Collect results
-    let mut all_rows: Vec<Value> = Vec::new();
-    let mut columns: Vec<String> = Vec::new();
-
-    if let Some(rs) = tds_client.get_current_resultset() {
-        columns = rs
-            .get_metadata()
-            .iter()
-            .map(|col| col.column_name.clone())
-            .collect();
-
-        while let Some(row) = rs
-            .next_row()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("Failed to read row: {e}")))?
-        {
-            let mut obj = serde_json::Map::with_capacity(columns.len());
-            for (i, val) in row.into_iter().enumerate() {
-                let col_name = columns
-                    .get(i)
-                    .map_or_else(|| format!("column{i}"), std::clone::Clone::clone);
-                obj.insert(col_name, column_value_to_json(&val));
-            }
-            all_rows.push(Value::Object(obj));
-        }
-    }
-
-    tds_client
-        .close_query()
-        .await
-        .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("Failed to close query: {e}")))?;
-
-    Ok((columns, all_rows))
+        Ok((columns, all_rows))
+    })
+    .await
 }
 
 /// Convert a TDS `ColumnValues` to a `serde_json::Value`.
@@ -327,83 +335,91 @@ pub async fn capture_query_plan(
     database: &str,
     sql_text: &str,
 ) -> anyhow::Result<Vec<String>> {
-    let token = client.require_sql_auth().await?;
+    // Heap-allocate the TDS future (see execute_sql_rows for the rationale):
+    // the tiberius client state machine would otherwise trip
+    // clippy::large_futures in every caller on windows-msvc.
+    Box::pin(async move {
+        let token = client.require_sql_auth().await?;
 
-    let data_source = format!("tcp:{server},1433");
-    let mut context = ClientContext::with_data_source(&data_source);
-    context.database = database.to_string();
-    context.tds_authentication_method = TdsAuthenticationMethod::AccessToken;
-    context.access_token = Some(token);
-    context.application_name = "fabio".to_string();
-    context.connect_timeout = 30;
+        let data_source = format!("tcp:{server},1433");
+        let mut context = ClientContext::with_data_source(&data_source);
+        context.database = database.to_string();
+        context.tds_authentication_method = TdsAuthenticationMethod::AccessToken;
+        context.access_token = Some(token);
+        context.application_name = "fabio".to_string();
+        context.connect_timeout = 30;
 
-    let provider = TdsConnectionProvider {};
-    let mut tds_client = provider
-        .create_client(context, &data_source, None)
-        .await
-        .map_err(|e| FabioError::new(ErrorCode::ApiError, format!("TDS connection failed: {e}")))?;
+        let provider = TdsConnectionProvider {};
+        let mut tds_client = provider
+            .create_client(context, &data_source, None)
+            .await
+            .map_err(|e| {
+                FabioError::new(ErrorCode::ApiError, format!("TDS connection failed: {e}"))
+            })?;
 
-    // Enable SHOWPLAN_XML — the server returns plan XML instead of executing the query
-    tds_client
-        .execute("SET SHOWPLAN_XML ON".to_string(), Some(10), None)
-        .await
-        .map_err(|e| {
-            FabioError::new(
-                ErrorCode::ApiError,
-                format!("Failed to enable SHOWPLAN_XML: {e}"),
-            )
-        })?;
-    // Consume any result from SET command
-    tds_client.close_query().await.ok();
+        // Enable SHOWPLAN_XML — the server returns plan XML instead of executing the query
+        tds_client
+            .execute("SET SHOWPLAN_XML ON".to_string(), Some(10), None)
+            .await
+            .map_err(|e| {
+                FabioError::new(
+                    ErrorCode::ApiError,
+                    format!("Failed to enable SHOWPLAN_XML: {e}"),
+                )
+            })?;
+        // Consume any result from SET command
+        tds_client.close_query().await.ok();
 
-    // Execute the user's SQL — server returns plan XML as a result set
-    tds_client
-        .execute(sql_text.to_string(), Some(60), None)
-        .await
-        .map_err(|e| {
-            FabioError::new(
-                ErrorCode::ApiError,
-                format!("Failed to get execution plan: {e}"),
-            )
-        })?;
+        // Execute the user's SQL — server returns plan XML as a result set
+        tds_client
+            .execute(sql_text.to_string(), Some(60), None)
+            .await
+            .map_err(|e| {
+                FabioError::new(
+                    ErrorCode::ApiError,
+                    format!("Failed to get execution plan: {e}"),
+                )
+            })?;
 
-    // Each statement in the batch produces one row with one XML column
-    let mut plans: Vec<String> = Vec::new();
-    if let Some(rs) = tds_client.get_current_resultset() {
-        while let Some(row) = rs.next_row().await.map_err(|e| {
-            FabioError::new(ErrorCode::ApiError, format!("Failed to read plan row: {e}"))
-        })? {
-            for val in &row {
-                let xml = match val {
-                    ColumnValues::Xml(xml) => xml.as_string(),
-                    ColumnValues::String(s) => s.to_utf8_string(),
-                    _ => continue,
-                };
-                if !xml.is_empty() {
-                    plans.push(xml);
+        // Each statement in the batch produces one row with one XML column
+        let mut plans: Vec<String> = Vec::new();
+        if let Some(rs) = tds_client.get_current_resultset() {
+            while let Some(row) = rs.next_row().await.map_err(|e| {
+                FabioError::new(ErrorCode::ApiError, format!("Failed to read plan row: {e}"))
+            })? {
+                for val in &row {
+                    let xml = match val {
+                        ColumnValues::Xml(xml) => xml.as_string(),
+                        ColumnValues::String(s) => s.to_utf8_string(),
+                        _ => continue,
+                    };
+                    if !xml.is_empty() {
+                        plans.push(xml);
+                    }
                 }
             }
         }
-    }
 
-    tds_client.close_query().await.ok();
+        tds_client.close_query().await.ok();
 
-    // Disable SHOWPLAN_XML (cleanup, best-effort)
-    tds_client
-        .execute("SET SHOWPLAN_XML OFF".to_string(), Some(10), None)
-        .await
-        .ok();
-    tds_client.close_query().await.ok();
+        // Disable SHOWPLAN_XML (cleanup, best-effort)
+        tds_client
+            .execute("SET SHOWPLAN_XML OFF".to_string(), Some(10), None)
+            .await
+            .ok();
+        tds_client.close_query().await.ok();
 
-    if plans.is_empty() {
-        return Err(FabioError::new(
-            ErrorCode::ApiError,
-            "No execution plan returned. The query may be invalid or unsupported.",
-        )
-        .into());
-    }
+        if plans.is_empty() {
+            return Err(FabioError::new(
+                ErrorCode::ApiError,
+                "No execution plan returned. The query may be invalid or unsupported.",
+            )
+            .into());
+        }
 
-    Ok(plans)
+        Ok(plans)
+    })
+    .await
 }
 
 #[cfg(test)]

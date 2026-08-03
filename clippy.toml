@@ -1,0 +1,17 @@
+# Lower the `clippy::large_futures` threshold below clippy's 16384-byte default
+# so oversized async state machines are caught by the HOST (Linux) clippy that
+# every developer and the pre-commit hook runs — before they reach the
+# Windows/macOS CI matrix.
+#
+# Rationale: an `async fn` compiles to a state machine whose size is
+# target-dependent (OS handle/socket types, TLS backend state, `cfg(windows)`
+# fields, wider path/OsString layouts). A future that is just under 16384 bytes
+# on linux-x64 can exceed it on windows-msvc and fail `cargo clippy -D warnings`
+# there only. Setting the threshold to 16000 gives ~384 bytes of headroom
+# (observed cross-platform deltas are on the order of tens of bytes), so such a
+# regression trips Linux clippy locally first. The fix is to `Box::pin` the
+# oversized future to move it to the heap.
+#
+# This value is currently clean (zero warnings). If you lower it further you
+# must box the newly-flagged futures. See AGENTS.md "large future" note.
+future-size-threshold = 16000

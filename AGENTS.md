@@ -180,7 +180,7 @@ Before committing, you MUST perform a deep, thoughtful review of ALL changes you
 
 ## Pre-Push Validation (MANDATORY)
 
-Before pushing changes to the remote, you MUST run the cross-compilation check to catch platform-specific issues (Windows/macOS quirks, conditional compilation errors):
+Before pushing changes to the remote, you MUST run the cross-target lint to catch platform-specific issues (Windows/macOS quirks, conditional compilation errors, and target-dependent lints):
 
 ```bash
 ./scripts/cross-check.sh
@@ -191,6 +191,15 @@ Before pushing changes to the remote, you MUST run the cross-compilation check t
 - Fix any cross-compilation errors (e.g., `cfg(windows)` blocks, platform-specific imports, path handling) before pushing.
 - You can target a single platform to iterate faster: `./scripts/cross-check.sh --target windows-x64`
 - This catches issues that local clippy/tests miss: Windows-only code paths (`windows-sys`, `windows` crates), macOS Darwin targets, and ARM64 variants.
+- **The script runs the EXACT CI lint (`cargo clippy --tests -- -D warnings`) per target, not just `cargo check`.** This is required to catch lints whose verdict is target-dependent — most notably `clippy::large_futures`, whose async-state-machine size differs by platform (OS handle/socket types, TLS backend state, `cfg(windows)` fields, wider path/`OsString` layouts). A future just under the threshold on Linux can exceed it on `windows-msvc`/`apple-darwin` and fail there only. See the "large future" note below.
+
+### `clippy::large_futures` (target-dependent lint)
+
+An `async fn` compiles to a state machine whose size = the live locals across `.await` points (including the sizes of nested futures). That size is **target-dependent**, so an oversized future can trip `clippy::large_futures` on `windows-msvc`/`apple-darwin` while the host Linux clippy passes.
+
+- **Local early warning:** `clippy.toml` sets `future-size-threshold = 16000` (below clippy's 16384 default) so the host clippy (and the pre-commit hook) trips on oversized futures with ~384 bytes of headroom before they reach the Windows/macOS CI matrix. `clippy.toml` is repo-global, so it also applies in CI — keep it clean on ALL targets (verify with `./scripts/cross-check.sh`), not just the host.
+- **The fix is to `Box::pin` the oversized future** to move it off the caller's stack frame onto the heap. Prefer boxing at the single **leaf** helper that builds the big future (e.g. the TDS/tiberius connect+execute path in `src/commands/tds_utils.rs` wraps its body in `Box::pin(async move { … }).await`) — that shrinks every transitive caller at once, rather than boxing many scattered call sites.
+- If you lower the threshold further you MUST box every newly-flagged future on the strictest target (Windows), or CI will fail.
 
 ## Git History & Merge Strategy (MANDATORY)
 

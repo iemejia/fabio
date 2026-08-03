@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# scripts/cross-check.sh — Validate compilation across all CI targets from Linux.
+# scripts/cross-check.sh — Validate lint + compilation across all CI targets from Linux.
 #
-# Uses cargo check (type-check + borrow-check, no linking) with:
+# Runs `cargo clippy --tests -- -D warnings` per target (the EXACT command CI
+# runs) so platform-specific lints are caught locally before pushing. This is
+# what catches lints like `clippy::large_futures`, whose future-size verdict is
+# target-dependent and can fire ONLY on windows-msvc / apple-darwin while the
+# host Linux clippy passes. Uses:
 #   - cargo-zigbuild: provides zig as the C cross-compiler for macOS and linux-arm64-musl
 #   - cargo-xwin: provides Windows SDK headers for Windows MSVC targets
 #   - OpenSSL stub directory: satisfies openssl-sys build script for Windows target
@@ -153,7 +157,7 @@ check_prereqs() {
 
 # ── OpenSSL stub directory (Windows target only) ────────────────────────────
 # The Windows target needs OpenSSL headers/libs for client_certificate feature.
-# Since we only do `cargo check` (no linking), stub .lib files suffice.
+# Since clippy is check-based (no linking), stub .lib files suffice.
 # Linux/macOS targets do NOT use OpenSSL.
 setup_openssl_stub() {
   OPENSSL_STUB=$(mktemp -d)
@@ -170,7 +174,7 @@ setup_openssl_stub() {
     cp "$arch_dir"/*.h "$OPENSSL_STUB/include/openssl/" 2>/dev/null || true
   fi
 
-  # Create empty .lib stubs for Windows (cargo check won't link)
+  # Create empty .lib stubs for Windows (clippy is check-based, no linking)
   touch "$OPENSSL_STUB/lib/libssl.lib" "$OPENSSL_STUB/lib/libcrypto.lib"
   touch "$OPENSSL_STUB/lib/ssl.lib" "$OPENSSL_STUB/lib/crypto.lib"
 
@@ -185,29 +189,32 @@ cleanup_openssl_stub() {
 trap cleanup_openssl_stub EXIT
 
 # ── Check functions ─────────────────────────────────────────────────────────
+# Each runs the exact lint CI runs (`cargo clippy --tests -- -D warnings`) for
+# the given target, so platform-specific lints (e.g. clippy::large_futures) are
+# caught before pushing — not just type/borrow errors.
 run_native() {
   local triple=$1
-  cargo check --target "$triple" 2>&1
+  cargo clippy --tests --target "$triple" -- -D warnings 2>&1
 }
 
 run_zigbuild() {
   local triple=$1
-  # cargo-zigbuild check: zig provides the C cross-compiler for build scripts
-  cargo-zigbuild check --target "$triple" 2>&1
+  # cargo-zigbuild clippy: zig provides the C cross-compiler for build scripts
+  cargo-zigbuild clippy --tests --target "$triple" -- -D warnings 2>&1
 }
 
 run_xwin() {
   local triple=$1
-  # cargo xwin check: xwin provides Windows SDK; OpenSSL stub satisfies
+  # cargo xwin clippy: xwin provides Windows SDK; OpenSSL stub satisfies
   # the openssl-sys build script for the client_certificate feature
   OPENSSL_NO_VENDOR=1 OPENSSL_DIR="$OPENSSL_STUB" \
-    cargo xwin check --target "$triple" 2>&1
+    cargo xwin clippy --tests --target "$triple" -- -D warnings 2>&1
 }
 
 # ── Main ────────────────────────────────────────────────────────────────────
 START_TIME=$SECONDS
 
-header "Fabio cross-compilation check"
+header "Fabio cross-target lint (clippy -D warnings)"
 check_prereqs
 setup_openssl_stub
 

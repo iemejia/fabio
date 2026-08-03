@@ -1,5 +1,6 @@
 ## Relevant Files
 - `Cargo.toml`: Project config, dependencies, clippy/lints config, release profile (LTO+strip)
+- `clippy.toml`: Clippy tuning — lowers `future-size-threshold` to 16000 (below the 16384 default) so `clippy::large_futures` is caught by the host clippy before it trips the Windows/macOS CI matrix
 - `rust-toolchain.toml`: stable channel, rustfmt+clippy components
 - `prek.toml`: Pre-commit hook configuration (prek — Rust-native pre-commit runner)
 - `.agents/skills/fabio/SKILL.md`: Agent skill bootstrapping document (330 lines, loaded by agent frameworks on activation)
