@@ -55,6 +55,7 @@ Manage KQL databases (within eventhouses)
 | `fabio kql-database describe` | no | Get schema for all entities in a database |
 | `fabio kql-database describe-entity` | no | Get detailed schema for a specific entity (table, view, function) |
 | `fabio kql-database diagnostics` | no | Run cluster diagnostics (capacity, health, ingestion failures) |
+| `fabio kql-database examples` | no | Retrieve KQL example pairs relevant to a natural-language prompt (via the eventhouse remote MCP server) |
 | `fabio kql-database get-definition` | no | Get the definition of a KQL database (KQL script) |
 | `fabio kql-database get-shortcut` | no | Get a shortcut in a KQL database |
 | `fabio kql-database ingest` | yes | Ingest data into a KQL table — inline (small) or from OneLake/blob storage (large files) |

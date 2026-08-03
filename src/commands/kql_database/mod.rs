@@ -317,6 +317,29 @@ pub enum KqlDatabaseCommand {
         #[arg(long)]
         id: String,
     },
+    /// Retrieve KQL example pairs relevant to a natural-language prompt (via the eventhouse remote MCP server)
+    #[command(display_order = 20)]
+    Examples {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// KQL database ID
+        #[arg(long)]
+        id: String,
+
+        /// Natural-language description of the query you want to author
+        #[arg(long)]
+        prompt: String,
+
+        /// Only fetch general (public, curated) KQL examples
+        #[arg(long, conflicts_with = "specific_only")]
+        general_only: bool,
+
+        /// Only fetch database-specific (curated/learned) KQL examples
+        #[arg(long)]
+        specific_only: bool,
+    },
 
     // ── Query Monitoring ─────────────────────────────────────────────────
     /// Show currently running queries on the KQL database
@@ -675,6 +698,24 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &KqlDatabaseComm
         }
         KqlDatabaseCommand::McpUrl { workspace, id } => {
             mcp::mcp_url(cli, client, workspace, id).await
+        }
+        KqlDatabaseCommand::Examples {
+            workspace,
+            id,
+            prompt,
+            general_only,
+            specific_only,
+        } => {
+            mcp::examples(
+                cli,
+                client,
+                workspace,
+                id,
+                prompt,
+                *general_only,
+                *specific_only,
+            )
+            .await
         }
         KqlDatabaseCommand::QueriesRunning {
             workspace,

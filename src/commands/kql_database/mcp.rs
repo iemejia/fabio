@@ -14,6 +14,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::{self, FabricClient};
+use crate::mcp_client::McpClient;
 use crate::output;
 
 /// Build the canonical eventhouse/KQL-database remote MCP server URL.
@@ -68,6 +69,107 @@ pub(super) async fn mcp_url(
     Ok(())
 }
 
+// ─── KQL example retrieval (MCP client) ──────────────────────────────────────
+
+/// The eventhouse MCP server's two example-retrieval tools, driven by `examples`.
+const TOOL_GENERAL: &str = "getGeneralKQLExamples";
+const TOOL_SPECIFIC: &str = "getSpecificKQLExamples";
+
+/// Which example tools to call, given the `--general-only` / `--specific-only`
+/// scope flags. Pure function for testing. Returns `(want_general, want_specific)`.
+const fn select_example_scope(general_only: bool, specific_only: bool) -> (bool, bool) {
+    match (general_only, specific_only) {
+        (true, false) => (true, false),
+        (false, true) => (false, true),
+        // Neither (default) or both → return both.
+        _ => (true, true),
+    }
+}
+
+/// Retrieve KQL example pairs relevant to a natural-language prompt from the
+/// eventhouse remote MCP server. This is the KQL analog of `ontology search`:
+/// it drives the server's `getGeneralKQLExamples` (curated public NL→KQL pairs)
+/// and `getSpecificKQLExamples` (examples curated/learned from THIS database) tools
+/// — grounding for authoring KQL that fabio has no offline equivalent for
+/// (schema is available via `describe`, execution via `query`, generation via
+/// `rti nl-to-kql`).
+pub(super) async fn examples(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    prompt: &str,
+    general_only: bool,
+    specific_only: bool,
+) -> Result<()> {
+    let (want_general, want_specific) = select_example_scope(general_only, specific_only);
+    let url = build_mcp_url(client::fabric_base_url(), workspace, id);
+    // HTTPS + trusted-Microsoft-host check before sending the Fabric bearer token.
+    client::validate_trusted_url(&url, "kql-database examples endpoint")?;
+
+    if output::dry_run_guard(
+        cli,
+        "kql-database examples",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "endpoint": url,
+            "prompt": prompt,
+            "tools": {
+                "getGeneralKQLExamples": want_general,
+                "getSpecificKQLExamples": want_specific,
+            },
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let auth = client.require_auth().await?;
+    let mcp = McpClient::connect(&url, Some(auth)).await?;
+
+    // Confirm the server exposes the requested tools (guards against renames).
+    let tools = mcp.list_tools().await?;
+    let available: Vec<&str> = tools
+        .iter()
+        .filter_map(|t| t.get("name").and_then(Value::as_str))
+        .collect();
+    for (want, name) in [(want_general, TOOL_GENERAL), (want_specific, TOOL_SPECIFIC)] {
+        if want && !available.contains(&name) {
+            anyhow::bail!(
+                "The eventhouse MCP server does not expose a '{name}' tool (available: {available:?})."
+            );
+        }
+    }
+
+    let mut out = serde_json::json!({ "prompt": prompt, "endpoint": url });
+    let mut any_error = false;
+    for (want, name, key) in [
+        (want_general, TOOL_GENERAL, "generalExamples"),
+        (want_specific, TOOL_SPECIFIC, "specificExamples"),
+    ] {
+        if !want {
+            continue;
+        }
+        let result = mcp
+            .call_tool(name, serde_json::json!({ "referenceText": prompt }))
+            .await?;
+        any_error |= result.is_error;
+        out[key] = serde_json::json!({
+            "text": result.text(),
+            "isError": result.is_error,
+        });
+    }
+
+    output::render_object(cli, &out, "prompt");
+    if any_error {
+        // A common cause is an empty database (the tools ground on schema/data).
+        anyhow::bail!(
+            "One or more example tools returned an error (an empty database is a common cause)."
+        );
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -97,5 +199,20 @@ mod tests {
             url,
             "https://example.test/v1/mcp/dataPlane/workspaces/w/items/k/kqlEndpoint"
         );
+    }
+
+    #[test]
+    fn select_example_scope_defaults_to_both() {
+        assert_eq!(select_example_scope(false, false), (true, true));
+    }
+
+    #[test]
+    fn select_example_scope_honors_general_only() {
+        assert_eq!(select_example_scope(true, false), (true, false));
+    }
+
+    #[test]
+    fn select_example_scope_honors_specific_only() {
+        assert_eq!(select_example_scope(false, true), (false, true));
     }
 }
