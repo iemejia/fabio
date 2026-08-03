@@ -68,6 +68,7 @@ Manage KQL databases (within eventhouses)
 | `fabio kql-database queries-running` | yes | Show currently running queries on the KQL database |
 | `fabio kql-database query` | no | Execute a KQL query against a KQL database |
 | `fabio kql-database sample` | no | Sample rows from a table, materialized view, external table, or function |
+| `fabio kql-database schema-context` | no | Retrieve relevant schema context (with column samples + stats) for a natural-language prompt (via the eventhouse remote MCP server) |
 | `fabio kql-database show` | no | Show details of a KQL database |
 | `fabio kql-database show-queryplan` | no | Show execution plan for a KQL query without running it |
 | `fabio kql-database update` | yes | Update KQL database properties (name and/or description) |

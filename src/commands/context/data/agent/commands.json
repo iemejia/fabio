@@ -11356,6 +11356,28 @@
         "mutates": false,
         "returns": "object"
       },
+      "schema-context": {
+        "description": "Retrieve relevant schema context (with column samples + stats) for a natural-language prompt (via the eventhouse remote MCP server)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "KQL database ID"
+          },
+          "--prompt": {
+            "type": "string",
+            "required": true,
+            "description": "Natural-language description of the query you want to author"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
       "queries-running": {
         "description": "Show currently running queries on the KQL database",
         "flags": {

@@ -1317,3 +1317,130 @@ fn kql_database_examples_lifecycle() {
         .assert()
         .success();
 }
+
+// ─── Schema context (eventhouse remote MCP getSchema) ────────────────────────
+
+#[test]
+fn kql_database_schema_context_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "kql-database",
+            "schema-context",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--prompt",
+            "total amount by product",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "kql-database schema-context");
+    assert_eq!(data["details"]["tool"], "getSchema");
+    assert!(
+        data["details"]["endpoint"]
+            .as_str()
+            .unwrap()
+            .ends_with("/kqlEndpoint")
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn kql_database_schema_context_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("kql_sc_eh");
+
+    let assert = fabio()
+        .args([
+            "eventhouse",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let eh_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    std::thread::sleep(std::time::Duration::from_secs(8));
+    let assert = fabio()
+        .args(["kql-database", "list", "--workspace", &cfg.source_workspace])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let kql_id = extract_data(&json)
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["displayName"].as_str() == Some(name.as_str()))
+        .and_then(|d| d["id"].as_str())
+        .expect("auto-created KQL database")
+        .to_string();
+
+    // Seed a table (the getSchema tool grounds on schema/data).
+    for kql in [
+        ".create table Sales (Timestamp: datetime, Product: string, Amount: real)",
+        ".ingest inline into table Sales <| 2026-01-01T00:00:00,Widget,10.5",
+    ] {
+        fabio()
+            .args([
+                "kql-database",
+                "query",
+                "--workspace",
+                &cfg.source_workspace,
+                "--id",
+                &kql_id,
+                "--kql",
+                kql,
+            ])
+            .assert()
+            .success();
+    }
+    std::thread::sleep(std::time::Duration::from_secs(5));
+
+    let assert = fabio()
+        .args([
+            "kql-database",
+            "schema-context",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &kql_id,
+            "--prompt",
+            "total amount by product",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["schema"]["isError"], false);
+    let text = data["schema"]["text"].as_str().unwrap();
+    assert!(
+        text.contains("Sales") && text.contains("COLUMN SAMPLES AND STATS"),
+        "expected rich schema context with samples/stats, got: {text}"
+    );
+
+    fabio()
+        .args([
+            "eventhouse",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &eh_id,
+        ])
+        .assert()
+        .success();
+}

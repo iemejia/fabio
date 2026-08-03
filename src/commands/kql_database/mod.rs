@@ -340,6 +340,21 @@ pub enum KqlDatabaseCommand {
         #[arg(long)]
         specific_only: bool,
     },
+    /// Retrieve relevant schema context (with column samples + stats) for a natural-language prompt (via the eventhouse remote MCP server)
+    #[command(display_order = 21)]
+    SchemaContext {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// KQL database ID
+        #[arg(long)]
+        id: String,
+
+        /// Natural-language description of the query you want to author
+        #[arg(long)]
+        prompt: String,
+    },
 
     // ── Query Monitoring ─────────────────────────────────────────────────
     /// Show currently running queries on the KQL database
@@ -717,6 +732,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &KqlDatabaseComm
             )
             .await
         }
+        KqlDatabaseCommand::SchemaContext {
+            workspace,
+            id,
+            prompt,
+        } => mcp::schema_context(cli, client, workspace, id, prompt).await,
         KqlDatabaseCommand::QueriesRunning {
             workspace,
             id,

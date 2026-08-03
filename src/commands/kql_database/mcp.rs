@@ -74,6 +74,32 @@ pub(super) async fn mcp_url(
 /// The eventhouse MCP server's two example-retrieval tools, driven by `examples`.
 const TOOL_GENERAL: &str = "getGeneralKQLExamples";
 const TOOL_SPECIFIC: &str = "getSpecificKQLExamples";
+/// The eventhouse MCP server's schema-context tool, driven by `schema-context`.
+const TOOL_SCHEMA: &str = "getSchema";
+
+/// Connect to the eventhouse remote MCP server and confirm it exposes every tool
+/// in `required` (guards against a renamed/removed tool, surfacing what's available).
+async fn connect_require_tools(
+    client: &FabricClient,
+    url: &str,
+    required: &[&str],
+) -> Result<McpClient> {
+    let auth = client.require_auth().await?;
+    let mcp = McpClient::connect(url, Some(auth)).await?;
+    let tools = mcp.list_tools().await?;
+    let available: Vec<&str> = tools
+        .iter()
+        .filter_map(|t| t.get("name").and_then(Value::as_str))
+        .collect();
+    for name in required {
+        if !available.contains(name) {
+            anyhow::bail!(
+                "The eventhouse MCP server does not expose a '{name}' tool (available: {available:?})."
+            );
+        }
+    }
+    Ok(mcp)
+}
 
 /// Which example tools to call, given the `--general-only` / `--specific-only`
 /// scope flags. Pure function for testing. Returns `(want_general, want_specific)`.
@@ -124,22 +150,14 @@ pub(super) async fn examples(
         return Ok(());
     }
 
-    let auth = client.require_auth().await?;
-    let mcp = McpClient::connect(&url, Some(auth)).await?;
-
-    // Confirm the server exposes the requested tools (guards against renames).
-    let tools = mcp.list_tools().await?;
-    let available: Vec<&str> = tools
-        .iter()
-        .filter_map(|t| t.get("name").and_then(Value::as_str))
-        .collect();
-    for (want, name) in [(want_general, TOOL_GENERAL), (want_specific, TOOL_SPECIFIC)] {
-        if want && !available.contains(&name) {
-            anyhow::bail!(
-                "The eventhouse MCP server does not expose a '{name}' tool (available: {available:?})."
-            );
-        }
+    let mut required = Vec::new();
+    if want_general {
+        required.push(TOOL_GENERAL);
     }
+    if want_specific {
+        required.push(TOOL_SPECIFIC);
+    }
+    let mcp = connect_require_tools(client, &url, &required).await?;
 
     let mut out = serde_json::json!({ "prompt": prompt, "endpoint": url });
     let mut any_error = false;
@@ -166,6 +184,59 @@ pub(super) async fn examples(
         anyhow::bail!(
             "One or more example tools returned an error (an empty database is a common cause)."
         );
+    }
+    Ok(())
+}
+
+/// Retrieve the relevant schema CONTEXT for a natural-language prompt from the
+/// eventhouse remote MCP server's `getSchema` tool. Unlike the offline `describe`
+/// (raw schema), this returns a semantically-scoped bundle: relevant tables /
+/// materialized-views / external-tables + functions, plus COLUMN VALUE SAMPLES,
+/// cardinality/distinct-value STATS, and KQL-authoring guidance — grounding for
+/// writing KQL that fabio has no offline equivalent for (the samples come from
+/// real data).
+pub(super) async fn schema_context(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    prompt: &str,
+) -> Result<()> {
+    let url = build_mcp_url(client::fabric_base_url(), workspace, id);
+    // HTTPS + trusted-Microsoft-host check before sending the Fabric bearer token.
+    client::validate_trusted_url(&url, "kql-database schema-context endpoint")?;
+
+    if output::dry_run_guard(
+        cli,
+        "kql-database schema-context",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "endpoint": url,
+            "prompt": prompt,
+            "tool": TOOL_SCHEMA,
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let mcp = connect_require_tools(client, &url, &[TOOL_SCHEMA]).await?;
+    let result = mcp
+        .call_tool(TOOL_SCHEMA, serde_json::json!({ "referenceText": prompt }))
+        .await?;
+
+    let out = serde_json::json!({
+        "prompt": prompt,
+        "endpoint": url,
+        "schema": {
+            "text": result.text(),
+            "isError": result.is_error,
+        },
+    });
+    output::render_object(cli, &out, "prompt");
+    if result.is_error {
+        // A common cause is an empty database (the tool grounds on schema/data).
+        anyhow::bail!("getSchema returned an error result (an empty database is a common cause).");
     }
     Ok(())
 }
