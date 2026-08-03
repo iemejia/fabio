@@ -18680,6 +18680,14 @@
           "--skip-test-connection": {
             "type": "bool",
             "description": "Skip connection test during creation"
+          },
+          "--allow-code-first-artifacts": {
+            "type": "bool",
+            "description": "Allow this connection to be used by code-first artifacts such as Notebooks (`allowUsageInUserControlledCode`). Can ONLY be set at creation time; cannot be changed later"
+          },
+          "--allow-gateway-usage": {
+            "type": "bool",
+            "description": "Allow this connection to be used with on-premises or virtual-network data gateways (`allowConnectionUsageInGateway`)"
           }
         },
         "mutates": true,

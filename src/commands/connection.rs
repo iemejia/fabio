@@ -64,6 +64,14 @@ pub enum ConnectionCommand {
         /// Skip connection test during creation
         #[arg(long)]
         skip_test_connection: bool,
+
+        /// Allow this connection to be used by code-first artifacts such as Notebooks (`allowUsageInUserControlledCode`). Can ONLY be set at creation time; cannot be changed later.
+        #[arg(long, visible_alias = "allow-usage-in-user-controlled-code")]
+        allow_code_first_artifacts: bool,
+
+        /// Allow this connection to be used with on-premises or virtual-network data gateways (`allowConnectionUsageInGateway`).
+        #[arg(long)]
+        allow_gateway_usage: bool,
     },
     /// Update a connection's name, credentials, or privacy level
     #[command(display_order = 4)]
@@ -185,6 +193,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ConnectionComma
             credentials,
             privacy_level,
             skip_test_connection,
+            allow_code_first_artifacts,
+            allow_gateway_usage,
         } => {
             create(
                 cli,
@@ -199,6 +209,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ConnectionComma
                 credentials.as_deref(),
                 privacy_level,
                 *skip_test_connection,
+                *allow_code_first_artifacts,
+                *allow_gateway_usage,
             )
             .await
         }
@@ -316,6 +328,8 @@ async fn create(
     credentials: Option<&str>,
     privacy_level: &str,
     skip_test_connection: bool,
+    allow_code_first_artifacts: bool,
+    allow_gateway_usage: bool,
 ) -> Result<()> {
     if connectivity_type_requires_gateway_id(connectivity_type) && gateway_id.is_none() {
         return Err(FabioError::with_hint(
@@ -335,6 +349,8 @@ async fn create(
             "connectionType": connection_type,
             "creationMethod": creation_method.unwrap_or(connection_type),
             "creationMethodResolution": if creation_method.is_some() { "explicit" } else { "auto (resolved from supportedConnectionTypes at execution)" },
+            "allowUsageInUserControlledCode": allow_code_first_artifacts,
+            "allowConnectionUsageInGateway": allow_gateway_usage,
         });
         output::render_object(cli, &preview, "status");
         return Ok(());
@@ -412,6 +428,8 @@ async fn create(
         &cred_details,
         privacy_level,
         gateway_id,
+        allow_code_first_artifacts,
+        allow_gateway_usage,
     );
 
     let data = client.post("/connections", &body, false).await?;
@@ -520,6 +538,8 @@ fn build_connection_body(
     cred_details: &Value,
     privacy_level: &str,
     gateway_id: Option<&str>,
+    allow_code_first_artifacts: bool,
+    allow_gateway_usage: bool,
 ) -> Value {
     let method = creation_method.unwrap_or(connection_type);
     let mut body = json!({
@@ -535,6 +555,13 @@ fn build_connection_body(
     });
     if let Some(gw_id) = gateway_id {
         body["gatewayId"] = json!(gw_id);
+    }
+    // Top-level booleans (default false server-side); only send when enabled.
+    if allow_code_first_artifacts {
+        body["allowUsageInUserControlledCode"] = json!(true);
+    }
+    if allow_gateway_usage {
+        body["allowConnectionUsageInGateway"] = json!(true);
     }
     body
 }
@@ -885,9 +912,13 @@ mod tests {
             &creds,
             "Organizational",
             None,
+            false,
+            false,
         );
         assert_eq!(body["connectionDetails"]["type"], "SQL");
         assert_eq!(body["connectionDetails"]["creationMethod"], "SQL");
+        assert!(body.get("allowUsageInUserControlledCode").is_none());
+        assert!(body.get("allowConnectionUsageInGateway").is_none());
         assert!(body.get("gatewayId").is_none());
     }
 
@@ -905,8 +936,11 @@ mod tests {
             &creds,
             "Organizational",
             None,
+            true,
+            false,
         );
         assert_eq!(body["connectionDetails"]["type"], "EventHub");
+        assert_eq!(body["allowUsageInUserControlledCode"], true);
         assert_eq!(
             body["connectionDetails"]["creationMethod"],
             "EventHub.Contents"
@@ -929,8 +963,11 @@ mod tests {
             &creds,
             "Organizational",
             Some("gw-123"),
+            false,
+            true,
         );
         assert_eq!(body["gatewayId"], "gw-123");
+        assert_eq!(body["allowConnectionUsageInGateway"], true);
     }
 
     fn catalog() -> Vec<Value> {

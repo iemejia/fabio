@@ -30,7 +30,9 @@
     "--credentials": "Credential fields as JSON (shape depends on credential type)",
     "--gateway-id": "Required when connectivity type is VirtualNetworkGateway or StreamingVirtualNetworkGateway",
     "--privacy-level": "None | Public | Organizational | Private (default Organizational)",
-    "--skip-test-connection": "Skip the connection test during creation (not supported by all type/connectivity combinations)"
+    "--skip-test-connection": "Skip the connection test during creation (not supported by all type/connectivity combinations)",
+    "--allow-code-first-artifacts": "Set allowUsageInUserControlledCode=true so code-first artifacts (Notebooks) can use this connection. CREATE-TIME ONLY — cannot be changed later (alias --allow-usage-in-user-controlled-code).",
+    "--allow-gateway-usage": "Set allowConnectionUsageInGateway=true so the connection can be used with on-premises / VNet data gateways."
   },
   "notes": [
     "Tenant-level scope: endpoints at /connections/{id} (NO workspace prefix)",
@@ -41,7 +43,8 @@
     "creationMethod usually differs from the connection type (SQL->Sql, EventHub->EventHub.Contents, ConfluentCloud->ConfluentCloud.Contents, MQTT->MQTT.Contents; only ~12 of ~276 types match the type name). fabio auto-resolves it from supportedConnectionTypes when --creation-method is omitted, so create just works. Only types with MULTIPLE creation methods (AzureDataExplorer, Spark) require --creation-method; fabio errors and enumerates the valid values for those.",
     "VirtualNetworkGateway and StreamingVirtualNetworkGateway connections require --gateway-id (the gateway's object ID)",
     "Azure Event Hubs connections support the WorkspaceIdentity credential type: create with --connection-type EventHub --creation-method EventHub.Contents --credential-type WorkspaceIdentity (params: endpoint, entityPath). This is the connection an Eventstream 'AzureEventHub' extended-features source references for Workspace Identity authentication (no shared access key).",
-    "list-supported-types -o json returns each type's creationMethods (with required parameters) and supportedCredentialTypes — the source of truth for --creation-method, --parameters, and --credential-type"
+    "list-supported-types -o json returns each type's creationMethods (with required parameters) and supportedCredentialTypes — the source of truth for --creation-method, --parameters, and --credential-type",
+    "allowUsageInUserControlledCode (--allow-code-first-artifacts) is the 'Allow Code-First Artifacts like Notebooks to access this connection' toggle. It can ONLY be set at creation time and is not modifiable afterward; the created connection reflects it in show/list output."
   ],
   "related_commands": [
     "fabio connection list",

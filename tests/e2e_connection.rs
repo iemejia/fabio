@@ -677,3 +677,85 @@ fn connection_creation_method_ambiguous_type_teaches() {
         "ambiguous type should enumerate valid creation methods, got: {err}"
     );
 }
+
+// ─── Code-first (allowUsageInUserControlledCode) toggle ──────────────────────
+
+#[test]
+fn connection_create_dry_run_shows_code_first_flags() {
+    let assert = fabio()
+        .args([
+            "connection",
+            "create",
+            "--name",
+            "cf-conn",
+            "--connectivity-type",
+            "ShareableCloud",
+            "--connection-type",
+            "Web",
+            "--parameters",
+            r#"{"url":"https://example.com"}"#,
+            "--credential-type",
+            "Anonymous",
+            "--allow-code-first-artifacts",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["allowUsageInUserControlledCode"], true);
+    // Not requested -> false.
+    assert_eq!(data["allowConnectionUsageInGateway"], false);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn connection_allow_code_first_artifacts_lifecycle() {
+    let name = common::unique_name("conn_codefirst");
+
+    // Create a Web connection with the code-first toggle enabled.
+    let assert = fabio()
+        .args([
+            "connection",
+            "create",
+            "--name",
+            &name,
+            "--connectivity-type",
+            "ShareableCloud",
+            "--connection-type",
+            "Web",
+            "--parameters",
+            r#"{"url":"https://example.com"}"#,
+            "--credential-type",
+            "Anonymous",
+            "--skip-test-connection",
+            "--allow-code-first-artifacts",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let id = data["id"]
+        .as_str()
+        .expect("created connection id")
+        .to_string();
+
+    // The connection must report allowUsageInUserControlledCode = true.
+    let assert = fabio()
+        .args(["connection", "show", "--id", &id])
+        .assert()
+        .success();
+    let show = parse_json(&assert);
+    let show_data = extract_data(&show);
+    assert_eq!(
+        show_data["allowUsageInUserControlledCode"], true,
+        "connection created with --allow-code-first-artifacts should report the flag, got: {show_data}"
+    );
+
+    // Clean up.
+    fabio()
+        .args(["connection", "delete", "--id", &id])
+        .assert()
+        .success();
+}
