@@ -95,6 +95,33 @@ fn query_list_scalar_result_not_array_wrapped() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
+fn query_list_scalar_plain_prints_single_value() {
+    // `-o plain` on a list query that yields a SCALAR must print exactly that one
+    // value — NOT fall back to printing the whole un-projected list. Regression
+    // test for the plain-path analog of the scalar-wrap bug.
+    let assert = fabio()
+        .args([
+            "--query",
+            "[0].id",
+            "--output",
+            "plain",
+            "workspace",
+            "list",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+    assert_eq!(
+        lines.len(),
+        1,
+        "scalar query in plain mode must print exactly one line, got: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn query_nested_field() {
     let cfg = TestConfig::from_env();
 

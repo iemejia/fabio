@@ -167,14 +167,15 @@ pub fn render_list_with_token(
             );
         }
         OutputFormat::Table => {
-            // For table/plain with query, we need to apply query to each item
+            // When a query is present, render its result: an array as a table, a
+            // scalar/object directly (do NOT fall back to the un-projected list).
             if let Some(ref q) = cli.query {
                 let data = Value::Array(limited_items.to_vec());
                 let output_data = apply_query(&data, q);
-                if let Value::Array(ref arr) = output_data {
-                    render_table(arr, columns, headers);
-                } else {
-                    render_table(limited_items, columns, headers);
+                match output_data {
+                    Value::Array(ref arr) => render_table(arr, columns, headers),
+                    Value::Null => {}
+                    ref other => println!("{}", format_value(other)),
                 }
             } else {
                 render_table(limited_items, columns, headers);
@@ -194,25 +195,10 @@ pub fn render_list_with_token(
             if let Some(ref q) = cli.query {
                 let data = Value::Array(limited_items.to_vec());
                 let output_data = apply_query(&data, q);
-                let arr = if let Value::Array(ref a) = output_data {
-                    a.as_slice()
-                } else {
-                    limited_items
-                };
-                for item in arr {
-                    if let Some(val) = item.get(plain_key) {
-                        println!("{}", format_value(val));
-                    } else {
-                        println!("{}", format_value(item));
-                    }
-                }
+                render_plain_value(&output_data, plain_key);
             } else {
                 for item in limited_items {
-                    if let Some(val) = item.get(plain_key) {
-                        println!("{}", format_value(val));
-                    } else {
-                        println!("{}", format_value(item));
-                    }
+                    render_plain_item(item, plain_key);
                 }
             }
         }
@@ -222,7 +208,23 @@ pub fn render_list_with_token(
             } else {
                 ','
             };
-            print!("{}", format_delimited_list(limited_items, columns, sep));
+            // Respect --query: emit the projected rows, not the raw list.
+            if let Some(ref q) = cli.query {
+                let data = Value::Array(limited_items.to_vec());
+                match apply_query(&data, q) {
+                    Value::Array(ref arr) => print!("{}", format_delimited_list(arr, columns, sep)),
+                    Value::Null => {}
+                    Value::Object(ref o) => {
+                        print!(
+                            "{}",
+                            format_delimited_object(&Value::Object(o.clone()), sep)
+                        );
+                    }
+                    ref other => println!("{}", format_csv_value(other, sep)),
+                }
+            } else {
+                print!("{}", format_delimited_list(limited_items, columns, sep));
+            }
         }
     }
 }
@@ -399,6 +401,31 @@ pub fn dry_run_guard(cli: &Cli, operation: &str, details: &Value) -> bool {
     });
     render_object(cli, &obj, "would_execute");
     true
+}
+
+/// Print one item in plain mode: the `plain_key` field if the item is an object
+/// that has it, otherwise the item value itself.
+fn render_plain_item(item: &Value, plain_key: &str) {
+    if let Some(val) = item.get(plain_key) {
+        println!("{}", format_value(val));
+    } else {
+        println!("{}", format_value(item));
+    }
+}
+
+/// Render a (possibly query-projected) value in plain mode. Arrays print one
+/// element per line; a scalar prints directly; an object prints its `plain_key`
+/// (or itself); null prints nothing.
+fn render_plain_value(value: &Value, plain_key: &str) {
+    match value {
+        Value::Array(arr) => {
+            for item in arr {
+                render_plain_item(item, plain_key);
+            }
+        }
+        Value::Null => {}
+        _ => render_plain_item(value, plain_key),
+    }
 }
 
 /// Render items as an ASCII table.
