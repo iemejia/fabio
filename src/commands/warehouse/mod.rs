@@ -12,6 +12,7 @@ mod crud;
 mod insights;
 mod query;
 mod restore_points;
+mod retention;
 mod statistics;
 
 #[derive(Debug, Subcommand)]
@@ -477,6 +478,32 @@ pub enum WarehouseCommand {
         #[arg(long)]
         name: String,
     },
+    /// Report the configured data-retention (time-travel) period, in days
+    #[command(display_order = 60)]
+    GetRetention {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Warehouse ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Configure the data-retention (time-travel) period, in days (1-120)
+    #[command(display_order = 61)]
+    SetRetention {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Warehouse ID
+        #[arg(long)]
+        id: String,
+
+        /// Retention period in days (1-120). Decreasing it is irreversible (older history is garbage-collected).
+        #[arg(long)]
+        days: u32,
+    },
 }
 
 #[allow(clippy::too_many_lines, clippy::large_stack_frames)]
@@ -710,6 +737,14 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
             id,
             name,
         } => Box::pin(statistics::delete(cli, client, workspace, id, name)).await,
+        WarehouseCommand::GetRetention { workspace, id } => {
+            Box::pin(retention::get_retention(cli, client, workspace, id)).await
+        }
+        WarehouseCommand::SetRetention {
+            workspace,
+            id,
+            days,
+        } => Box::pin(retention::set_retention(cli, client, workspace, id, *days)).await,
     }
 }
 
@@ -792,6 +827,26 @@ pub(super) async fn execute_insights_query(
         item_name
     };
     execute_and_render_sql(cli, client, &server, &database, sql_text).await
+}
+
+/// Helper: resolve connection and execute a TDS statement WITHOUT rendering its
+/// result set (for DDL/config statements that return no rows). The caller renders
+/// its own status object.
+pub(super) async fn execute_insights_statement(
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    sql_text: &str,
+) -> Result<()> {
+    let (connection_string, item_name) = get_connection_string(client, workspace, id).await?;
+    let (server, parsed_db) = parse_connection_string(&connection_string);
+    let database = if item_name.is_empty() {
+        parsed_db
+    } else {
+        item_name
+    };
+    crate::commands::tds_utils::execute_sql_rows(client, &server, &database, sql_text).await?;
+    Ok(())
 }
 
 #[cfg(test)]

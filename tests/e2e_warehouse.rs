@@ -815,3 +815,137 @@ fn warehouse_queries_kill_dry_run() {
     let data = extract_data(&json);
     assert_eq!(data["dry_run"], true);
 }
+
+// ---------------------------------------------------------------------------
+// warehouse get-retention / set-retention (configurable data retention)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn warehouse_set_retention_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "set-retention",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--days",
+            "45",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "warehouse set-retention");
+    assert_eq!(data["details"]["retentionDays"], 45);
+}
+
+#[test]
+fn warehouse_set_retention_rejects_out_of_range() {
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "set-retention",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--days",
+            "0",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("between 1 and 120"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_retention_get_set_roundtrip() {
+    let cfg = TestConfig::from_env();
+
+    // Find a warehouse (retention is a warehouse feature; needs ALTER DATABASE).
+    let assert = fabio()
+        .args(["warehouse", "list", "--workspace", &cfg.source_workspace])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    if items.is_empty() {
+        eprintln!("No warehouses found, skipping retention test");
+        return;
+    }
+    let wh_id = items[0]["id"].as_str().unwrap().to_string();
+
+    // Read the current retention.
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "get-retention",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &wh_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let original = extract_data(&json).as_array().unwrap()[0]["time_travel_retention_period_days"]
+        .as_u64()
+        .expect("retention days");
+
+    // Set a different value and confirm it took effect.
+    let target: u64 = if original == 45 { 60 } else { 45 };
+    fabio()
+        .args([
+            "warehouse",
+            "set-retention",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &wh_id,
+            "--days",
+            &target.to_string(),
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "get-retention",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &wh_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let now = extract_data(&json).as_array().unwrap()[0]["time_travel_retention_period_days"]
+        .as_u64()
+        .unwrap();
+    assert_eq!(now, target, "retention should reflect the new value");
+
+    // Restore the original value.
+    fabio()
+        .args([
+            "warehouse",
+            "set-retention",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &wh_id,
+            "--days",
+            &original.to_string(),
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+}

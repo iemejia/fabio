@@ -38,6 +38,7 @@ Manage warehouses and run SQL queries
 | `fabio warehouse delete` | yes | Delete a warehouse |
 | `fabio warehouse delete-restore-point` | yes | Delete a restore point |
 | `fabio warehouse get-audit-settings` | no | Get SQL audit settings for a warehouse |
+| `fabio warehouse get-retention` | no | Report the configured data-retention (time-travel) period, in days |
 | `fabio warehouse get-sql-pools-config` | no | Get SQL pools configuration for a workspace |
 | `fabio warehouse list` | no | List warehouses in a workspace |
 | `fabio warehouse list-restore-points` | no | List restore points for a warehouse |
@@ -51,6 +52,7 @@ Manage warehouses and run SQL queries
 | `fabio warehouse query` | yes | Execute a SQL query against a warehouse or SQL endpoint |
 | `fabio warehouse restore-to-point` | yes | Restore a warehouse to a restore point |
 | `fabio warehouse set-audit-actions` | yes | Set audit actions and groups for a warehouse |
+| `fabio warehouse set-retention` | yes | Configure the data-retention (time-travel) period, in days (1-120) |
 | `fabio warehouse show` | no | Show details of a warehouse |
 | `fabio warehouse show-restore-point` | no | Show details of a restore point |
 | `fabio warehouse statistics-create` | yes | Create a user-defined statistic on a column |

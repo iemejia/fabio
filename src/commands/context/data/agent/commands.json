@@ -5563,6 +5563,46 @@
         },
         "mutates": true,
         "returns": "object"
+      },
+      "get-retention": {
+        "description": "Report the configured data-retention (time-travel) period, in days",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "set-retention": {
+        "description": "Configure the data-retention (time-travel) period, in days (1-120)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse ID"
+          },
+          "--days": {
+            "type": "string",
+            "required": true,
+            "description": "Retention period in days (1-120). Decreasing it is irreversible (older history is garbage-collected)"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
       }
     }
   },
