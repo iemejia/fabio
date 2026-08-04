@@ -37,6 +37,14 @@ cargo test
 
 All tests must pass. If you added new code, verify it has tests.
 
+> If you added or renamed a subcommand flag, the `no_subcommand_flag_collides_with_global`
+> test (in `cli.rs`) will FAIL if the flag shadows a global flag (`--query`,
+> `--output`/`-o`, `--json`, `--quiet`, `--force`, `--dry-run`, `--limit`,
+> `--all`, `--continuation-token`, `--profile`, `--verbose`/`-v`, `--lro-timeout`,
+> `--readonly`, `--wrap-untrusted`, `--enable-commands`, `--disable-commands`).
+> Rename the local flag or read the global instead — never let a subcommand
+> redefine a global (it silently captures/transforms the value).
+
 ## Step 4: Regenerate auto-generated files (if commands changed)
 
 Only needed if you added, modified, or removed commands/flags:

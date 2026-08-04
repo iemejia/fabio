@@ -70,7 +70,12 @@ GROUP was added without a skill family (`data/skills/*.json` `command_groups`) o
 the cross-cutting allowlist — i.e. some subcommands would have no generated
 sub-skill command table, so skills + context would be inconsistent with the CLI
 down to the subcommand level. If it fails, add the group to the right family and
-regenerate. Optionally sanity-check the
+regenerate. A fifth gate, `no_subcommand_flag_collides_with_global` (in
+`cli.rs`), blocks a release where a subcommand flag shadows a global flag (e.g.
+a local `--query`/`--force`/`--all`) — a latent bug where the global silently
+captures the value. If it fails, rename the local flag or read the global (see
+the "No subcommand flag may shadow a global flag" decision in AGENTS.md).
+Optionally sanity-check the
 site build locally with `npm --prefix docs run check` (needs `npm ci` in
 `docs/` first).
 
@@ -89,7 +94,8 @@ ALL must pass with zero errors, zero warnings, and zero vulnerabilities.
 > This is also enforced automatically: the `release.yml` workflow runs a
 > `validate` job (fmt + clippy + full `cargo test`, including the
 > skills/context consistency gates such as `every_command_group_has_a_knowledge_home`
-> and `subskills_match_generated`) that ALL build/publish jobs `needs:`. A tag
+> and `subskills_match_generated`, and the CLI-invariant gate
+> `no_subcommand_flag_collides_with_global`) that ALL build/publish jobs `needs:`. A tag
 > whose commit fails the suite produces NO artifacts — the release hard-stops.
 > Running Step 4 locally first just avoids a failed tag build.
 
