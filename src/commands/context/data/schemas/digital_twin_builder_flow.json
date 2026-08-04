@@ -1,0 +1,37 @@
+{
+  "type": "DigitalTwinBuilderFlow",
+  "description": "A Digital Twin Builder Flow (preview) is a CHILD item of a Digital Twin Builder that executes its mapping and contextualization (relationship) operations, on-demand or on a schedule. Each DTB auto-creates an on-demand flow named '<dtb-name>OnDemand'; scheduling a mapping/contextualization operation creates additional scheduled flows. Flow execution is portal-driven (the Run button / a schedule); the public REST surface is item CRUD + definition only.",
+  "create_command": "fabio digital-twin-builder-flow create --workspace <WS> --name <NAME> --dtb-id <PARENT_DTB_ID>",
+  "definition_format": "json",
+  "definition_parts": [
+    {"path": "definition.json", "description": "Single JSON part: {\"DigitalTwinBuilderId\": \"<parent-dtb-id>\", \"OperationIds\": [], \"IsOnDemand\": false}."}
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}",
+    "creationPayload": {
+      "digitalTwinBuilderItemReference": {
+        "referenceType": "ById",
+        "itemId": "{{dtb_id}}",
+        "workspaceId": "{{workspace}}"
+      }
+    }
+  },
+  "flags": {
+    "--name": "Display name (letters, numbers, underscores only — NO hyphens)",
+    "--dtb-id": "Parent Digital Twin Builder item id (REQUIRED — the flow is a child of a DTB)",
+    "--description": "Optional description",
+    "--sensitivity-label": "Optional sensitivity label UUID"
+  },
+  "notes": [
+    "create requires the parent DTB via --dtb-id (creationPayload.digitalTwinBuilderItemReference, referenceType 'ById'); otherwise the API returns 'Parent artifact is inaccessible or required fields are missing.'",
+    "Item name allows only letters, numbers, and underscores — hyphens are NOT allowed.",
+    "Flows run mappings first, then contextualization operations; a failed operation cancels downstream operations. Prefer separate flows/schedules per operation to isolate failures.",
+    "On-demand vs scheduled: an on-demand flow is auto-created with the DTB; scheduled flows are created when you schedule a mapping/contextualization operation.",
+    "Flow run/execution is not exposed via a guessable public jobs job-type; it is triggered from the portal (Run button / schedule) or by fabric-managed schedules."
+  ],
+  "related_commands": [
+    "fabio digital-twin-builder-flow list --workspace <WS>",
+    "fabio digital-twin-builder-flow get-definition --workspace <WS> --id <ID> --decode",
+    "fabio digital-twin-builder show-lakehouse --workspace <WS> --id <DTB_ID>"
+  ]
+}

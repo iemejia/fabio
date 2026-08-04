@@ -146,4 +146,12 @@ const ITEM_SCHEMAS: &[(&str, &str)] = &[
         "VariableLibrary",
         include_str!("data/schemas/variable_library.json"),
     ),
+    (
+        "DigitalTwinBuilder",
+        include_str!("data/schemas/digital_twin_builder.json"),
+    ),
+    (
+        "DigitalTwinBuilderFlow",
+        include_str!("data/schemas/digital_twin_builder_flow.json"),
+    ),
 ];

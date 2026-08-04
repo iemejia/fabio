@@ -90,7 +90,9 @@ Manage Digital Twin Builder models
 | `fabio digital-twin-builder delete` | yes | Delete a Digital Twin Builder |
 | `fabio digital-twin-builder get-definition` | no | Get the definition of a Digital Twin Builder |
 | `fabio digital-twin-builder list` | no | List Digital Twin Builders in a workspace |
+| `fabio digital-twin-builder query` | no | Run a T-SQL query against the twin's data (the associated `dtdm` lakehouse SQL endpoint). Query the `dom` domain views (recommended) or `dbo` base tables |
 | `fabio digital-twin-builder show` | no | Show details of a Digital Twin Builder |
+| `fabio digital-twin-builder show-lakehouse` | no | Resolve the associated data lakehouse (the `<name>dtdm` lakehouse where the twin's ontology/instance data lives) and its SQL analytics endpoint |
 | `fabio digital-twin-builder update` | yes | Update Digital Twin Builder properties |
 | `fabio digital-twin-builder update-definition` | yes | Update the definition of a Digital Twin Builder |
 
@@ -135,6 +137,9 @@ Manage Digital Twin Builder flows
 - Ontology needs a capacity with the Ontology/Digital Twin Builder preview enabled; each create/import/getDefinition is an LRO taking ~60-100s.
 - An ontology can be consumed as an MCP server by external agents. 'fabio ontology mcp-url --workspace <WS> --id <ID>' prints the canonical endpoint ({fabricBase}/mcp/dataPlane/workspaces/{ws}/items/{id}/ontologyEndpoint) — a deterministic URL agents cannot guess. Distinct from grounding a fabio data-agent on the ontology; this exposes the ontology itself over MCP (HTTP transport, Fabric auth) to VS Code agent mode/Claude/Copilot Studio. Requires F2+/P1 capacity and the Ontology-item preview tenant setting.
 - The ontology MCP server exposes two tools: list_ontology_entity_types (schema) and search_ontology (natural-language query over the ontology data estate). Both now have pure-fabio equivalents: 'fabio ontology list-entity-types' reproduces the first EXACTLY (offline, byte-for-byte), and 'fabio ontology search --prompt "..."' drives the second by consuming the ontology MCP server as an MCP CLIENT (fabio's first MCP-client feature). search returns raw JSON results + an optional derived NL answer; a successful answer needs the ontology bound to data AND server-side Fabric IQ NL reasoning provisioned on the capacity.
+- Digital Twin Builder (DTB) modeling — entity types, data mapping, contextualization (relationships), and the Explorer — is PORTAL-ONLY (no public REST API). fabio's REST surface for `digital-twin-builder` / `digital-twin-builder-flow` is item CRUD + get/update-definition only; the definition.json (`{"LakehouseId"}` for a DTB, `{"DigitalTwinBuilderId","OperationIds","IsOnDemand"}` for a flow) is authored by the portal.
+- DTB DATA is queryable though: each DTB auto-provisions a '<name>dtdm' lakehouse (LakehouseId in its definition). Query the twin's instances with `fabio digital-twin-builder query --id <DTB> --sql "SELECT * FROM dom.<View>"` (fabio resolves the dtdm lakehouse); the `dom` schema holds the domain views (recommended), `dbo` holds base-layer tables. `fabio digital-twin-builder show-lakehouse --id <DTB>` returns the linked lakehouse + SQL endpoint.
+- Deleting a DTB does NOT delete its '<name>dtdm' data lakehouse — use `digital-twin-builder delete --id <DTB> --delete-lakehouse` to cascade, or delete the lakehouse manually. DTB/flow item names allow only letters/numbers/underscores (NO hyphens).
 
 ## Troubleshooting
 | Symptom | Fix |

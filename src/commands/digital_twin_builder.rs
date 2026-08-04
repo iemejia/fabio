@@ -6,6 +6,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
+use crate::commands::tds_utils;
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
@@ -77,6 +78,11 @@ pub enum DigitalTwinBuilderCommand {
         /// Permanently delete (cannot be recovered)
         #[arg(long)]
         hard_delete: bool,
+
+        /// Also delete the associated `<name>dtdm` data lakehouse (NOT removed
+        /// automatically). Resolves it from the definition before deleting.
+        #[arg(long)]
+        delete_lakehouse: bool,
     },
     /// Get the definition of a Digital Twin Builder
     #[command(display_order = 6)]
@@ -106,6 +112,33 @@ pub enum DigitalTwinBuilderCommand {
         /// Inline definition content
         #[arg(long)]
         content: Option<String>,
+    },
+
+    /// Resolve the associated data lakehouse (the `<name>dtdm` lakehouse where the
+    /// twin's ontology/instance data lives) and its SQL analytics endpoint.
+    #[command(name = "show-lakehouse", display_order = 8)]
+    ShowLakehouse {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Digital Twin Builder ID
+        #[arg(long)]
+        id: String,
+    },
+
+    /// Run a T-SQL query against the twin's data (the associated `dtdm` lakehouse
+    /// SQL endpoint). Query the `dom` domain views (recommended) or `dbo` base tables.
+    #[command(display_order = 9)]
+    Query {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Digital Twin Builder ID
+        #[arg(long)]
+        id: String,
+        /// SQL query text (use `@file.sql` to read from a file, or omit to pipe via stdin)
+        #[arg(long)]
+        sql: Option<String>,
     },
 }
 
@@ -153,7 +186,8 @@ pub async fn execute(
             workspace,
             id,
             hard_delete,
-        } => delete(cli, client, workspace, id, *hard_delete).await,
+            delete_lakehouse,
+        } => delete(cli, client, workspace, id, *hard_delete, *delete_lakehouse).await,
         DigitalTwinBuilderCommand::GetDefinition {
             workspace,
             id,
@@ -174,6 +208,12 @@ pub async fn execute(
                 content.as_deref(),
             )
             .await
+        }
+        DigitalTwinBuilderCommand::ShowLakehouse { workspace, id } => {
+            show_lakehouse(cli, client, workspace, id).await
+        }
+        DigitalTwinBuilderCommand::Query { workspace, id, sql } => {
+            query(cli, client, workspace, id, sql.as_deref()).await
         }
     }
 }
@@ -332,14 +372,25 @@ async fn delete(
     workspace: &str,
     id: &str,
     hard_delete: bool,
+    delete_lakehouse: bool,
 ) -> Result<()> {
     if output::dry_run_guard(
         cli,
         "digital-twin-builder delete",
-        &serde_json::json!({ "workspace": workspace, "id": id, "hardDelete": hard_delete }),
+        &serde_json::json!({ "workspace": workspace, "id": id, "hardDelete": hard_delete, "deleteLakehouse": delete_lakehouse }),
     ) {
         return Ok(());
     }
+
+    // Resolve the linked data lakehouse BEFORE deleting the DTB (getDefinition is
+    // unavailable once the item is gone). Best-effort: an unmodeled/odd DTB may
+    // not expose a LakehouseId, in which case we skip the cascade.
+    let lakehouse_id = if delete_lakehouse {
+        resolve_lakehouse_id(client, workspace, id).await.ok()
+    } else {
+        None
+    };
+
     let url = if hard_delete {
         format!("/workspaces/{workspace}/digitalTwinBuilders/{id}?hardDelete=true")
     } else {
@@ -350,7 +401,36 @@ async fn delete(
         .delete(&url)
         .await
         .map_err(|e| enrich_forbidden(e, "digital-twin-builder delete", "Contributor"))?;
-    let obj = serde_json::json!({ "id": id, "status": "deleted" });
+
+    let mut obj = serde_json::json!({ "id": id, "status": "deleted" });
+    if delete_lakehouse {
+        if let Some(lh) = &lakehouse_id {
+            // Best-effort cleanup of the orphaned data lakehouse.
+            let deleted = client
+                .delete(&format!("/workspaces/{workspace}/lakehouses/{lh}"))
+                .await
+                .is_ok();
+            obj["dataLakehouseId"] = Value::from(lh.as_str());
+            obj["dataLakehouseDeleted"] = Value::from(deleted);
+            if !deleted {
+                obj["note"] = Value::from(format!(
+                    "Could not delete the data lakehouse '{lh}' automatically; remove it with: \
+                     fabio lakehouse delete --workspace {workspace} --id {lh}"
+                ));
+            }
+        } else {
+            obj["note"] = Value::from(
+                "Could not resolve the associated data lakehouse from the definition; \
+                 delete the '<name>dtdm' lakehouse manually if it remains.",
+            );
+        }
+    } else {
+        obj["note"] = Value::from(
+            "The associated data lakehouse ('<name>dtdm', where the twin's ontology/instance \
+             data lives) is NOT deleted automatically. Re-run with --delete-lakehouse to remove \
+             it, or delete it with: fabio lakehouse delete.",
+        );
+    }
     output::render_object(cli, &obj, "status");
     Ok(())
 }
@@ -428,4 +508,151 @@ async fn update_definition(
         output::render_object(cli, &data, "id");
     }
     Ok(())
+}
+
+/// Resolve the `LakehouseId` from a Digital Twin Builder's definition. The DTB
+/// item stores its associated `<name>dtdm` data lakehouse in the single
+/// `definition.json` part as `{"LakehouseId": "<uuid>"}` (auto-provisioned at
+/// create time).
+async fn resolve_lakehouse_id(client: &FabricClient, workspace: &str, id: &str) -> Result<String> {
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/digitalTwinBuilders/{id}/getDefinition"),
+            &serde_json::json!({}),
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "digital-twin-builder show-lakehouse", "Contributor"))?;
+    lakehouse_id_from_definition(&data)
+}
+
+/// Extract the linked `LakehouseId` from a `getDefinition` response (pure).
+fn lakehouse_id_from_definition(data: &Value) -> Result<String> {
+    let parts = data
+        .pointer("/definition/parts")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            FabioError::api_error("Unexpected getDefinition response (no definition.parts)")
+        })?;
+    let payload = parts
+        .iter()
+        .find(|p| p.get("path").and_then(Value::as_str) == Some("definition.json"))
+        .and_then(|p| p.get("payload").and_then(Value::as_str))
+        .ok_or_else(|| FabioError::not_found("Digital Twin Builder has no definition.json part"))?;
+    let decoded = BASE64
+        .decode(payload)
+        .map_err(|e| FabioError::api_error(format!("Failed to decode definition.json: {e}")))?;
+    let def: Value = serde_json::from_slice(&decoded)
+        .map_err(|e| FabioError::api_error(format!("Invalid definition.json: {e}")))?;
+    def.get("LakehouseId")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(ToString::to_string)
+        .ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::NotFound,
+                "This Digital Twin Builder has no linked data lakehouse (LakehouseId) yet.",
+                "The data lakehouse is provisioned when the item is created and modeled. \
+                 If this is a brand-new or unmodeled item, retry after modeling in the portal.",
+            )
+            .into()
+        })
+}
+
+async fn show_lakehouse(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let lakehouse_id = resolve_lakehouse_id(client, workspace, id).await?;
+    let lh = client
+        .get(&format!(
+            "/workspaces/{workspace}/lakehouses/{lakehouse_id}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "lakehouse show", "Viewer"))?;
+
+    let name = lh.get("displayName").and_then(Value::as_str).unwrap_or("");
+    let sql = lh.pointer("/properties/sqlEndpointProperties");
+    let connection_string = sql
+        .and_then(|s| s.get("connectionString"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let (server, _db) = tds_utils::parse_connection_string(connection_string);
+
+    let out = serde_json::json!({
+        "digitalTwinBuilderId": id,
+        "lakehouseId": lakehouse_id,
+        "lakehouseName": name,
+        "sqlEndpoint": {
+            "id": sql.and_then(|s| s.get("id")).and_then(Value::as_str),
+            "connectionString": connection_string,
+            "server": server,
+            "database": name,
+        },
+        "note": "Query the twin's data via this lakehouse's SQL endpoint: the 'dom' schema \
+                 holds the domain views (recommended for analytics) and 'dbo' holds the base-layer \
+                 tables. Use: fabio digital-twin-builder query --id <DTB> --sql \"SELECT * FROM dom.<View>\".",
+    });
+    output::render_object(cli, &out, "lakehouseId");
+    Ok(())
+}
+
+async fn query(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    sql: Option<&str>,
+) -> Result<()> {
+    let sql_text = tds_utils::resolve_sql_input(sql)?;
+    let lakehouse_id = resolve_lakehouse_id(client, workspace, id).await?;
+    let (server, database) =
+        tds_utils::resolve_lakehouse_sql(client, workspace, &lakehouse_id).await?;
+    tds_utils::execute_and_render_sql(cli, client, &server, &database, &sql_text).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::lakehouse_id_from_definition;
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as BASE64;
+    use serde_json::json;
+
+    fn get_definition_response(def_json: &str) -> serde_json::Value {
+        let payload = BASE64.encode(def_json.as_bytes());
+        json!({
+            "definition": {
+                "parts": [
+                    { "path": ".platform", "payload": "e30=", "payloadType": "InlineBase64" },
+                    { "path": "definition.json", "payload": payload, "payloadType": "InlineBase64" }
+                ]
+            }
+        })
+    }
+
+    #[test]
+    fn extracts_lakehouse_id_from_definition() {
+        let data =
+            get_definition_response(r#"{"LakehouseId":"de93a958-5ae6-4721-a791-81c2d07ed59e"}"#);
+        assert_eq!(
+            lakehouse_id_from_definition(&data).unwrap(),
+            "de93a958-5ae6-4721-a791-81c2d07ed59e"
+        );
+    }
+
+    #[test]
+    fn missing_lakehouse_id_is_a_helpful_error() {
+        // Definition present but no LakehouseId (unmodeled item).
+        let data = get_definition_response(r"{}");
+        let err = lakehouse_id_from_definition(&data).unwrap_err().to_string();
+        assert!(err.contains("no linked data lakehouse"), "got: {err}");
+    }
+
+    #[test]
+    fn missing_definition_part_errors() {
+        let data = json!({"definition": {"parts": [{"path": ".platform", "payload": "e30="}]}});
+        assert!(lakehouse_id_from_definition(&data).is_err());
+    }
+
+    #[test]
+    fn malformed_response_errors() {
+        assert!(lakehouse_id_from_definition(&json!({})).is_err());
+    }
 }

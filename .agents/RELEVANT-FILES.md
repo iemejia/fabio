@@ -83,7 +83,7 @@
 - `src/commands/event_schema_set.rs`: list/show/create/update/delete/get-definition/update-definition (EventSchemaSetDefinition.json)
 - `src/commands/user_data_function.rs`: list/show/create/update/delete/get-definition/update-definition (definition.json, Python runtime)
 - `src/commands/operations_agent.rs`: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
-- `src/commands/digital_twin_builder.rs`: list/show/create/update/delete/get-definition/update-definition (definition.json, links to lakehouse)
+- `src/commands/digital_twin_builder.rs`: list/show/create/update/delete/get-definition/update-definition + show-lakehouse (resolve linked `dtdm` lakehouse) + query (T-SQL over the twin's `dom`/`dbo` SQL endpoint) + delete `--delete-lakehouse` cascade
 - `src/commands/digital_twin_builder_flow.rs`: list/show/create/update/delete/get-definition/update-definition (requires parent DTB)
 - `src/commands/cosmos_db_database.rs`: list/show/create/update/delete/get-definition/update-definition (definition.json)
 - `src/commands/snowflake_database.rs`: list/show/create/update/delete/get-definition/update-definition (requires connection payload)

@@ -14380,11 +14380,18 @@
           "--hard-delete": {
             "type": "bool",
             "description": "Permanently delete (cannot be recovered)"
+          },
+          "--delete-lakehouse": {
+            "type": "bool",
+            "description": "Also delete the associated `<name>dtdm` data lakehouse (NOT removed automatically). Resolves it from the definition before deleting"
           }
         },
         "mutates": true,
         "returns": "void",
-        "destructive": true
+        "destructive": true,
+        "examples": [
+          "fabio digital-twin-builder delete --workspace $WS --id $DTB --delete-lakehouse"
+        ]
       },
       "get-definition": {
         "description": "Get the definition of a Digital Twin Builder",
@@ -14433,6 +14440,50 @@
         "mutates": true,
         "returns": "void",
         "async": true
+      },
+      "show-lakehouse": {
+        "description": "Resolve the associated data lakehouse (the `<name>dtdm` lakehouse where the twin's ontology/instance data lives) and its SQL analytics endpoint",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Digital Twin Builder ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio digital-twin-builder show-lakehouse --workspace $WS --id $DTB"
+        ]
+      },
+      "query": {
+        "description": "Run a T-SQL query against the twin's data (the associated `dtdm` lakehouse SQL endpoint). Query the `dom` domain views (recommended) or `dbo` base tables",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Digital Twin Builder ID"
+          },
+          "--sql": {
+            "type": "string",
+            "description": "SQL query text (use `@file.sql` to read from a file, or omit to pipe via stdin)"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio digital-twin-builder query --workspace $WS --id $DTB --sql \"SELECT TOP 100 * FROM dom.Equipment\""
+        ]
       }
     }
   },

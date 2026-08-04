@@ -2,7 +2,13 @@
   "family": "ontology",
   "title": "Ontology, Graph & Digital Twins — Fabric IQ ontologies, graph models, digital twin builder",
   "description": "Intent-scoped fabio skill for Fabric knowledge/graph and digital-twin modeling: ontology items (entity/relationship types and bindings), graph models, graph querysets, and Digital Twin Builder models/flows. Use to define/evolve ontologies, query graphs for agent grounding, and build operational digital twins. fabio can also export a tenant scan as OWL (context tenant --format owl) and import it. Triggers: \"ontology\", \"fabric iq ontology\", \"knowledge graph\", \"graph model\", \"graph query\", \"entity type\", \"relationship type\", \"digital twin\", \"digital twin builder\", \"owl\".",
-  "command_groups": ["ontology", "graph-model", "graph-query-set", "digital-twin-builder", "digital-twin-builder-flow"],
+  "command_groups": [
+    "ontology",
+    "graph-model",
+    "graph-query-set",
+    "digital-twin-builder",
+    "digital-twin-builder-flow"
+  ],
   "when_to_use": [
     "Creating/evolving an ontology item (entity types, relationship types, data bindings).",
     "Generating an ontology FROM a Power BI semantic model OR a lakehouse ('ontology generate') — client-side reproduction of the portal's 'Generate Ontology' (which has no REST API): with --semantic-model it reads the model's tables/columns/relationships; with --lakehouse (no --semantic-model) it reads the lakehouse SQL endpoint's INFORMATION_SCHEMA. Either way it synthesizes entity types + typed properties + (relationships, model source only) + keys + lakehouse bindings.",
@@ -45,18 +51,37 @@
     "Fabric does NOT check that a bound Lakehouse table/column exists at updateDefinition time (deferred to query time) — a missing table imports fine and is never the cause of an import failure.",
     "Ontology needs a capacity with the Ontology/Digital Twin Builder preview enabled; each create/import/getDefinition is an LRO taking ~60-100s.",
     "An ontology can be consumed as an MCP server by external agents. 'fabio ontology mcp-url --workspace <WS> --id <ID>' prints the canonical endpoint ({fabricBase}/mcp/dataPlane/workspaces/{ws}/items/{id}/ontologyEndpoint) — a deterministic URL agents cannot guess. Distinct from grounding a fabio data-agent on the ontology; this exposes the ontology itself over MCP (HTTP transport, Fabric auth) to VS Code agent mode/Claude/Copilot Studio. Requires F2+/P1 capacity and the Ontology-item preview tenant setting.",
-    "The ontology MCP server exposes two tools: list_ontology_entity_types (schema) and search_ontology (natural-language query over the ontology data estate). Both now have pure-fabio equivalents: 'fabio ontology list-entity-types' reproduces the first EXACTLY (offline, byte-for-byte), and 'fabio ontology search --prompt \"...\"' drives the second by consuming the ontology MCP server as an MCP CLIENT (fabio's first MCP-client feature). search returns raw JSON results + an optional derived NL answer; a successful answer needs the ontology bound to data AND server-side Fabric IQ NL reasoning provisioned on the capacity."
+    "The ontology MCP server exposes two tools: list_ontology_entity_types (schema) and search_ontology (natural-language query over the ontology data estate). Both now have pure-fabio equivalents: 'fabio ontology list-entity-types' reproduces the first EXACTLY (offline, byte-for-byte), and 'fabio ontology search --prompt \"...\"' drives the second by consuming the ontology MCP server as an MCP CLIENT (fabio's first MCP-client feature). search returns raw JSON results + an optional derived NL answer; a successful answer needs the ontology bound to data AND server-side Fabric IQ NL reasoning provisioned on the capacity.",
+    "Digital Twin Builder (DTB) modeling — entity types, data mapping, contextualization (relationships), and the Explorer — is PORTAL-ONLY (no public REST API). fabio's REST surface for `digital-twin-builder` / `digital-twin-builder-flow` is item CRUD + get/update-definition only; the definition.json (`{\"LakehouseId\"}` for a DTB, `{\"DigitalTwinBuilderId\",\"OperationIds\",\"IsOnDemand\"}` for a flow) is authored by the portal.",
+    "DTB DATA is queryable though: each DTB auto-provisions a '<name>dtdm' lakehouse (LakehouseId in its definition). Query the twin's instances with `fabio digital-twin-builder query --id <DTB> --sql \"SELECT * FROM dom.<View>\"` (fabio resolves the dtdm lakehouse); the `dom` schema holds the domain views (recommended), `dbo` holds base-layer tables. `fabio digital-twin-builder show-lakehouse --id <DTB>` returns the linked lakehouse + SQL endpoint.",
+    "Deleting a DTB does NOT delete its '<name>dtdm' data lakehouse — use `digital-twin-builder delete --id <DTB> --delete-lakehouse` to cascade, or delete the lakehouse manually. DTB/flow item names allow only letters/numbers/underscores (NO hyphens)."
   ],
   "troubleshooting": [
-    {"symptom": "ALMOperationImportFailed / generic 'import failed' on import/bind/update-definition", "fix": "The top-level message is often an unfilled '{0} {1} {2}' template — read error.errorCode + error.moreDetails (fabio flattens these into the message + hint). Check in order: (1) no untyped property is bound, (2) every entityTypeId/propertyId/relationshipTypeId referenced by a binding or contextualization is defined in the same push and case-matches, (3) TimeSeries bindings have a timestampColumn, (4) contextualization source/target entity ids match the relationship endpoints. A missing Lakehouse table is NOT a cause."},
-    {"symptom": "'Entity X has a TimeSeries binding but no timestampColumn'", "fix": "Provide a timestampColumn for that entity (import --entities map / bind config), or model it as a non-time-series entity."},
-    {"symptom": "Ontology import rejected before push", "fix": "Validate the OWL/JSON-LD against the ontology schema (context schema ontology); ensure entity types precede bindings."},
-    {"symptom": "Ontology query returns no data although import succeeded", "fix": "updateDefinition does not validate table/column existence — verify the bound Lakehouse table and columns actually exist and the binding names match (import success != queryable)."}
+    {
+      "symptom": "ALMOperationImportFailed / generic 'import failed' on import/bind/update-definition",
+      "fix": "The top-level message is often an unfilled '{0} {1} {2}' template — read error.errorCode + error.moreDetails (fabio flattens these into the message + hint). Check in order: (1) no untyped property is bound, (2) every entityTypeId/propertyId/relationshipTypeId referenced by a binding or contextualization is defined in the same push and case-matches, (3) TimeSeries bindings have a timestampColumn, (4) contextualization source/target entity ids match the relationship endpoints. A missing Lakehouse table is NOT a cause."
+    },
+    {
+      "symptom": "'Entity X has a TimeSeries binding but no timestampColumn'",
+      "fix": "Provide a timestampColumn for that entity (import --entities map / bind config), or model it as a non-time-series entity."
+    },
+    {
+      "symptom": "Ontology import rejected before push",
+      "fix": "Validate the OWL/JSON-LD against the ontology schema (context schema ontology); ensure entity types precede bindings."
+    },
+    {
+      "symptom": "Ontology query returns no data although import succeeded",
+      "fix": "updateDefinition does not validate table/column existence — verify the bound Lakehouse table and columns actually exist and the binding names match (import success != queryable)."
+    }
   ],
   "safety": [
     "Overwriting an ontology definition replaces its type system and bindings — confirm with the user."
   ],
-  "shared_references": ["throttling", "pagination", "lro"],
+  "shared_references": [
+    "throttling",
+    "pagination",
+    "lro"
+  ],
   "see_also": [
     "fabio context schema ontology",
     "fabio context workflow ontology_tutorial",

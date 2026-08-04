@@ -1,0 +1,32 @@
+{
+  "type": "DigitalTwinBuilder",
+  "description": "Digital Twin Builder (preview, Real-Time Intelligence) creates digital representations of real-world environments by modeling an ontology (namespaces, entity types, properties, relationship types) and mapping source data to entity instances. The ontology/instance data is stored in an auto-provisioned Fabric lakehouse named '<item-name>dtdm' and queried via that lakehouse's SQL analytics endpoint. Modeling/mapping/contextualization are portal-only (no public REST API); the REST surface is item CRUD + definition only.",
+  "create_command": "fabio digital-twin-builder create --workspace <WS> --name <NAME>",
+  "definition_format": "json",
+  "definition_parts": [
+    {"path": "definition.json", "description": "Single JSON part: {\"LakehouseId\": \"<uuid>\"} linking the DTB to its auto-provisioned '<name>dtdm' data lakehouse."}
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}"
+  },
+  "flags": {
+    "--name": "Display name (must start with a letter; letters, numbers, underscores only — NO hyphens; < 90 chars)",
+    "--description": "Optional description",
+    "--sensitivity-label": "Optional sensitivity label UUID"
+  },
+  "notes": [
+    "Item name allows only letters, numbers, and underscores — hyphens are NOT allowed (unlike most item types).",
+    "create / getDefinition / updateDefinition are long-running (LRO) operations (~60-100s).",
+    "A '<name>dtdm' lakehouse is auto-created and linked (LakehouseId in the definition). Its SQL endpoint exposes the base layer (dbo Tables) and the domain layer (dom Views, recommended for querying).",
+    "The twin's DATA is queryable with T-SQL: use 'fabio digital-twin-builder query --id <DTB> --sql \"SELECT * FROM dom.<View>\"' (fabio resolves the dtdm lakehouse automatically), or 'fabio digital-twin-builder show-lakehouse --id <DTB>' to get the SQL endpoint.",
+    "Deleting the DTB does NOT delete the '<name>dtdm' lakehouse automatically — use 'fabio digital-twin-builder delete --id <DTB> --delete-lakehouse' to cascade.",
+    "Ontology modeling, data mapping, contextualization (relationships), and the Explorer are low-code/no-code PORTAL experiences with no public REST API; the definition.json blob is authored by the portal.",
+    "Flows (child items) execute the mapping/contextualization operations; see the DigitalTwinBuilderFlow schema. Flow execution is portal-driven (Run button / schedule)."
+  ],
+  "related_commands": [
+    "fabio digital-twin-builder show-lakehouse --workspace <WS> --id <ID>",
+    "fabio digital-twin-builder query --workspace <WS> --id <ID> --sql \"SELECT TOP 100 * FROM dom.<View>\"",
+    "fabio digital-twin-builder get-definition --workspace <WS> --id <ID> --decode",
+    "fabio digital-twin-builder-flow list --workspace <WS>"
+  ]
+}
