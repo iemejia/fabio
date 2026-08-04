@@ -3766,3 +3766,184 @@ fn dataagent_llm_validate_and_grade_lifecycle() {
         .assert()
         .success();
 }
+
+/// Live validation of **NL2DAX**: a data agent grounded on a Semantic Model
+/// generates and executes DAX to answer a natural-language question.
+///
+/// Requires a semantic model WITH DATA in the tenant, provided via the optional
+/// `FABIO_TEST_SEMANTIC_MODEL` env var (item id or name in the source
+/// workspace); the test is skipped when it is not set.
+///
+/// Also validates the critical gotcha that a Semantic Model data source's TABLES
+/// are NOT auto-selected by `add-datasource` (only columns) — without
+/// `select-tables`, the agent hallucinates instead of doing NL2DAX.
+#[test]
+#[ignore = "requires live Fabric tenant + a semantic model with data (FABIO_TEST_SEMANTIC_MODEL)"]
+#[serial]
+fn dataagent_semantic_model_nl2dax_lifecycle() {
+    let Ok(model) = std::env::var("FABIO_TEST_SEMANTIC_MODEL") else {
+        eprintln!("FABIO_TEST_SEMANTIC_MODEL not set — skipping NL2DAX validation");
+        return;
+    };
+    let cfg = TestConfig::from_env();
+    let name = unique_name("nl2dax");
+
+    // 1) Create the agent.
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let created = parse_json(&assert);
+    let id = extract_data(&created)["id"].as_str().unwrap().to_string();
+
+    // 2) Add the Semantic Model data source (this is what enables NL2DAX).
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "add-datasource",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &id,
+            "--artifact",
+            &model,
+            "--artifact-type",
+            "SemanticModel",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let ds = parse_json(&assert);
+    assert_eq!(
+        extract_data(&ds)["fabricItemType"],
+        "SemanticModel",
+        "datasource must be a SemanticModel: {ds}"
+    );
+
+    // 3) The datasource id equals the model id; discover its tables and select
+    //    the first one (tables are NOT auto-selected — required for grounding).
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "list-datasources",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &id,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let dss = parse_json(&assert);
+    let ds_id = extract_data(&dss)[0]["id"].as_str().unwrap().to_string();
+
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "list-elements",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &id,
+            "--datasource",
+            &ds_id,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let elements = parse_json(&assert);
+    let table = extract_data(&elements)
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["type"] == "Table")
+        .and_then(|e| e["name"].as_str())
+        .expect("semantic model must expose at least one table")
+        .to_string();
+
+    fabio()
+        .args([
+            "data-agent",
+            "select-tables",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &id,
+            "--datasource",
+            &ds_id,
+            "--tables",
+            &table,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    // 4) Publish (snapshots the selected config).
+    fabio()
+        .args([
+            "data-agent",
+            "publish",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &id,
+            "--description",
+            "NL2DAX e2e",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // 5) Ask a counting question and inspect the run steps: a grounded answer
+    //    must generate DAX via the SemanticModel NL2DAX tool.
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &id,
+            "--prompt",
+            &format!("How many rows are in {table}? Return a single count."),
+            "--show-steps",
+        ])
+        .timeout(std::time::Duration::from_mins(4))
+        .assert()
+        .success();
+    let result = parse_json(&assert);
+    let blob = serde_json::to_string(&result).unwrap();
+    assert!(
+        blob.contains("SemanticModel"),
+        "run steps must reference the SemanticModel datasource: {blob}"
+    );
+    let did_nl2dax = blob.contains("nl2code")
+        || blob.contains("analyze_semantic_model")
+        || blob.to_uppercase().contains("EVALUATE")
+        || blob.to_lowercase().contains("dax");
+    assert!(
+        did_nl2dax,
+        "expected evidence of NL2DAX (a generated DAX query) in the run steps: {blob}"
+    );
+
+    // Cleanup.
+    fabio()
+        .args([
+            "data-agent",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &id,
+        ])
+        .assert()
+        .success();
+}

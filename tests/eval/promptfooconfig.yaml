@@ -799,6 +799,22 @@ tests:
           output.includes('publish')
         metric: publish-step
 
+  - description: "Data agent NL2DAX: ground on a semantic model + select tables"
+    vars:
+      user_query: "I want a Fabric data agent that answers natural-language questions over my Power BI semantic model 'SalesModel' using DAX. Set it up."
+    assert:
+      - type: javascript
+        value: |
+          output.includes('add-datasource') && /--artifact-type\s+SemanticModel/i.test(output)
+        metric: nl2dax-semanticmodel-source
+      - type: javascript
+        value: |
+          output.includes('select-tables') || output.toLowerCase().includes('select the table')
+        metric: nl2dax-select-tables
+      - type: llm-rubric
+        value: "The response adds the semantic model as a data source (fabricItemType SemanticModel) AND selects the model's tables (via select-tables) before publishing/querying, because semantic-model tables are not auto-selected and the agent would otherwise not ground on the data. It does NOT claim to write DAX itself — the agent generates DAX (NL2DAX) server-side."
+        metric: nl2dax-guidance
+
   # ============================================================
   # ERROR RECOVERY (error codes, retry behavior)
   # ============================================================

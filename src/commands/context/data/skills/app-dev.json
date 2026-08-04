@@ -2,7 +2,15 @@
   "family": "app-dev",
   "title": "Application Development — data agents, data APIs, functions, org apps",
   "description": "Intent-scoped fabio skill for building application and API workloads on Microsoft Fabric: AI data agents (natural-language Q&A over data), GraphQL data APIs, User Data Functions (serverless), app backends (Power Apps), Cosmos DB databases (NoSQL OLTP), and Organizational Apps for distribution. Use to expose, query, and package Fabric data as apps/APIs/agents. Triggers: \"data agent\", \"graphql api\", \"user data function\", \"serverless function\", \"app backend\", \"power app\", \"cosmos db\", \"organizational app\", \"publish app\", \"nl q&a\".",
-  "command_groups": ["data-agent", "graphql-api", "user-data-function", "app-backend", "cosmos-db-database", "org-app", "org-app-audience"],
+  "command_groups": [
+    "data-agent",
+    "graphql-api",
+    "user-data-function",
+    "app-backend",
+    "cosmos-db-database",
+    "org-app",
+    "org-app-audience"
+  ],
   "when_to_use": [
     "Building an AI Data Agent for natural-language Q&A over lakehouse/warehouse data (add datasources, select tables, few-shots, publish, query).",
     "Exposing Fabric data over a GraphQL API item.",
@@ -37,20 +45,37 @@
     "Data Agent preview runtime (Advanced NL2SQL) is toggled via 'update-config --enable-preview-runtime'; a published agent's runtime is fixed at publish time (republish to change).",
     "'user-data-function invoke' needs a PUBLISHED function with public access enabled in the portal; fabio SSRF-guards the URL (HTTPS + trusted Microsoft host) and attaches the Fabric bearer token.",
     "Cosmos DB and SQL Database backends require F4+ capacity.",
-    "app-backend has aliases (rayfin-app, data-app); org-app distribution pairs org-app with org-app-audience."
+    "app-backend has aliases (rayfin-app, data-app); org-app distribution pairs org-app with org-app-audience.",
+    "Data agent query languages are chosen by the DATA SOURCE type, and the agent generates the query itself: Lakehouse/Warehouse/SQLDatabase/MirroredDatabase -> NL2SQL, KQLDatabase -> NL2KQL, SemanticModel -> NL2DAX (Power BI datasets), Ontology/GraphModel -> graph. To do NL2DAX, `add-datasource --artifact-type SemanticModel`. CRITICAL: `add-datasource` does NOT auto-select a semantic model's TABLES (only columns) — you MUST `select-tables` for the source or the agent hallucinates instead of generating DAX. Re-`publish` after changing sources/selection (published config is a snapshot)."
   ],
   "troubleshooting": [
-    {"symptom": "data-agent query returns an error / not published", "fix": "Publish first (data-agent publish); only published agents are queryable. Confirm datasources + select-tables were configured before publishing."},
-    {"symptom": "Data Agent gives wrong answers", "fix": "Add few-shots (add-fewshot), tighten instructions (update-config), and validate with 'data-agent evaluate' / 'validate-fewshots' (add --llm-* for a judge model)."},
-    {"symptom": "user-data-function invoke fails", "fix": "Ensure the function is published with public access; pass the exact portal-copied --url (HTTPS *.fabric.microsoft.com). fabio rejects non-trusted/non-HTTPS URLs."},
-    {"symptom": "SQL Database / Cosmos DB create fails on small capacity", "fix": "These need F4+ capacity; resume/scale the capacity first."}
+    {
+      "symptom": "data-agent query returns an error / not published",
+      "fix": "Publish first (data-agent publish); only published agents are queryable. Confirm datasources + select-tables were configured before publishing."
+    },
+    {
+      "symptom": "Data Agent gives wrong answers",
+      "fix": "Add few-shots (add-fewshot), tighten instructions (update-config), and validate with 'data-agent evaluate' / 'validate-fewshots' (add --llm-* for a judge model)."
+    },
+    {
+      "symptom": "user-data-function invoke fails",
+      "fix": "Ensure the function is published with public access; pass the exact portal-copied --url (HTTPS *.fabric.microsoft.com). fabio rejects non-trusted/non-HTTPS URLs."
+    },
+    {
+      "symptom": "SQL Database / Cosmos DB create fails on small capacity",
+      "fix": "These need F4+ capacity; resume/scale the capacity first."
+    }
   ],
   "safety": [
     "Publishing a Data Agent makes it available to consumers — confirm datasources/table scope and validate answers first.",
     "Deleting a data-agent with --hard-delete is irreversible; confirm with the user.",
     "Exposing a GraphQL API / org-app shares underlying data — confirm the audience and least-privilege scope."
   ],
-  "shared_references": ["throttling", "pagination", "lro"],
+  "shared_references": [
+    "throttling",
+    "pagination",
+    "lro"
+  ],
   "see_also": [
     "fabio context persona app-developer",
     "fabio context workflow data-agent-setup",

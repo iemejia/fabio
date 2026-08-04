@@ -166,6 +166,7 @@ Manage org app audiences (audience definitions for org apps)
 - 'user-data-function invoke' needs a PUBLISHED function with public access enabled in the portal; fabio SSRF-guards the URL (HTTPS + trusted Microsoft host) and attaches the Fabric bearer token.
 - Cosmos DB and SQL Database backends require F4+ capacity.
 - app-backend has aliases (rayfin-app, data-app); org-app distribution pairs org-app with org-app-audience.
+- Data agent query languages are chosen by the DATA SOURCE type, and the agent generates the query itself: Lakehouse/Warehouse/SQLDatabase/MirroredDatabase -> NL2SQL, KQLDatabase -> NL2KQL, SemanticModel -> NL2DAX (Power BI datasets), Ontology/GraphModel -> graph. To do NL2DAX, `add-datasource --artifact-type SemanticModel`. CRITICAL: `add-datasource` does NOT auto-select a semantic model's TABLES (only columns) — you MUST `select-tables` for the source or the agent hallucinates instead of generating DAX. Re-`publish` after changing sources/selection (published config is a snapshot).
 
 ## Troubleshooting
 | Symptom | Fix |

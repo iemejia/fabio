@@ -444,6 +444,9 @@ fabio paginated-report export --workspace $WS --id $PR --format XLSX --out data.
 fabio data-agent create --workspace $WS --name "SalesAgent"
 fabio data-agent add-datasource --workspace $WS --id $AGENT --artifact $LH --artifact-type Lakehouse   # add lakehouse as data source
 fabio data-agent select-tables --workspace $WS --id $AGENT --datasource $DS --tables "orders,customers"
+```
+**Data sources & query languages (the agent generates the query — NL2SQL/NL2KQL/NL2DAX):** `add-datasource --artifact-type` accepts `Lakehouse`/`Warehouse`/`SQLDatabase`/`MirroredDatabase` (NL2SQL), `KQLDatabase` (NL2KQL), **`SemanticModel` (NL2DAX — Power BI datasets)**, `Ontology`/`GraphModel` (graph). To let an agent answer questions over a **Power BI semantic model with DAX**, add it as a `SemanticModel` source. **You MUST also `select-tables` for the source** — `add-datasource` does NOT auto-select a semantic model's tables (only columns), and without a selected table the agent hallucinates instead of generating DAX. You author the *data model*; the *agent* writes the DAX/SQL/KQL. Re-`publish` after changing sources/selection.
+```bash
 fabio data-agent update-config --workspace $WS --id $AGENT --instructions "Use total revenue, not quantity"
 fabio data-agent add-fewshot --workspace $WS --id $AGENT --datasource $DS --question "Top products?" --sql "SELECT ..."
 fabio data-agent publish --workspace $WS --id $AGENT                              # make agent available (only published agents are queryable)
