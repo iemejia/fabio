@@ -147,6 +147,7 @@ Manage Digital Twin Builder flows
 - Digital Twin Builder (DTB) modeling — entity types, data mapping, contextualization (relationships), and the Explorer — is PORTAL-ONLY (no public REST API). fabio's REST surface for `digital-twin-builder` / `digital-twin-builder-flow` is item CRUD + get/update-definition only; the definition.json (`{"LakehouseId"}` for a DTB, `{"DigitalTwinBuilderId","OperationIds","IsOnDemand"}` for a flow) is authored by the portal.
 - DTB DATA is queryable though: each DTB auto-provisions a '<name>dtdm' lakehouse (LakehouseId in its definition). Query the twin's instances with `fabio digital-twin-builder query --id <DTB> --sql "SELECT * FROM dom.<View>"` (fabio resolves the dtdm lakehouse); the `dom` schema holds the domain views (recommended), `dbo` holds base-layer tables. `fabio digital-twin-builder show-lakehouse --id <DTB>` returns the linked lakehouse + SQL endpoint.
 - Deleting a DTB does NOT delete its '<name>dtdm' data lakehouse — use `digital-twin-builder delete --id <DTB> --delete-lakehouse` to cascade, or delete the lakehouse manually. DTB/flow item names allow only letters/numbers/underscores (NO hyphens).
+- ONTOLOGY "RULES" ARE NOT AN ONTOLOGY OBJECT. The Fabric IQ ontology portal surfaces a Rules/alerts experience, but the ontology DEFINITION has no rules concept — verified against the published JSON schemas, the only part types are entityType, relationshipType, dataBinding, contextualization, document, resourceLinks, overviews (a per-entity dashboard). The relationshipType schema doesn't even have a cardinality field. So there is no `ontology add-rule`/`list-rules` and none is possible. Those "rules" are Reflex (Data Activator) monitoring rules on the data the ontology binds — use the `reflex` command group: `reflex create-rule`/`list-rules`/`start-rule`/`stop-rule`/`delete-rule`/`rule-activations`. fabio's ontology editing commands cover exactly what the definition holds: entity types, relationship types, data bindings (`bind`), and report links.
 
 ## Troubleshooting
 | Symptom | Fix |
@@ -155,6 +156,7 @@ Manage Digital Twin Builder flows
 | 'Entity X has a TimeSeries binding but no timestampColumn' | Provide a timestampColumn for that entity (import --entities map / bind config), or model it as a non-time-series entity. |
 | Ontology import rejected before push | Validate the OWL/JSON-LD against the ontology schema (context schema ontology); ensure entity types precede bindings. |
 | Ontology query returns no data although import succeeded | updateDefinition does not validate table/column existence — verify the bound Lakehouse table and columns actually exist and the binding names match (import success != queryable). |
+| Want to add/remove/change rules or alerts on an ontology (the portal shows a Rules area) | Ontology rules are not an ontology-definition object; they are Reflex (Data Activator) monitoring rules. Create/point a Reflex at the KQL/eventstream source the ontology binds, then use `fabio reflex create-rule`/`list-rules`/`start-rule`/`stop-rule`/`delete-rule`/`rule-activations`. The ontology commands only edit entity/relationship types, bindings, and report links (no rules). |
 
 ## Safety
 - Overwriting an ontology definition replaces its type system and bindings — confirm with the user.
@@ -174,3 +176,4 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 - fabio context persona data-engineer
 - fabio ontology mcp-url --workspace <WS> --id <ID> (consume the ontology as an MCP server)
 - fabio data-agent add-datasource --artifact-type Ontology (ground an agent on the ontology; scope with select-tables --elements)
+- fabio reflex create-rule (the ontology portal's "Rules"/alerts map to Reflex/Data Activator monitoring rules, NOT to any ontology command)

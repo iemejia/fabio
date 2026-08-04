@@ -12,7 +12,11 @@
     "alerts",
     "monitoring rule",
     "monitoring rules",
-    "detect and act"
+    "detect and act",
+    "ontology rule",
+    "ontology rules",
+    "ontology alert",
+    "ontology alerts"
   ],
   "meanings": [
     {
@@ -43,6 +47,16 @@
       "command_group": "data-agent",
       "example_commands": [
         "fabio data-agent query --workspace $WS --id $AGENT --prompt \"...\""
+      ]
+    },
+    {
+      "context": "The Fabric IQ ontology portal's \"Rules\"/alerts experience",
+      "artifact": "Reflex (a.k.a. Data Activator)",
+      "description": "The ontology UI uses \"rules\" terminology, but ontology DEFINITIONS have no rules object (the published schema's part types are entityType, relationshipType, dataBinding, contextualization, document, resourceLinks, overviews — no rule). Those alerting rules are Reflex monitoring rules on the data the ontology binds. Point a Reflex at the same KQL/eventstream source and author rules there. fabio's `ontology` commands only edit entity/relationship types, bindings, and report links.",
+      "command_group": "reflex",
+      "example_commands": [
+        "fabio reflex create-rule --workspace $WS --id $REFLEX --name \"Freezer too warm\" --kql \"FreezerTelemetry | project temperature, freezerId\" --eventhouse-id $KQLDB --column temperature --condition isGreaterThan --value 5 --recipients ops@contoso.com",
+        "fabio reflex list-rules --workspace $WS --id $REFLEX"
       ]
     }
   ],
