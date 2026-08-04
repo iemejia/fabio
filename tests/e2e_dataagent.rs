@@ -4157,3 +4157,110 @@ fn eh_id_from(ws: &str, name: &str) -> String {
         .unwrap_or("")
         .to_string()
 }
+
+/// Live validation of **NL2GQL**: a data agent grounded on a `GraphModel`
+/// translates a natural-language question into GQL (a `MATCH ... RETURN` query).
+///
+/// Requires a portal-LOADED graph model (REST-created graphs cannot load),
+/// provided via `FABIO_TEST_LOADED_GRAPH_ID`; skipped when unset. Asserts NL2GQL
+/// GENERATION (the agent's `analyze_graph` tool emits a GQL query) — NOT a final
+/// answer: the data-agent's server-side GQL EXECUTION currently fails ("Unable
+/// to process the request") even though the generated GQL runs fine via the
+/// direct executeQuery API. That execution gap is server-side, not fabio.
+#[test]
+#[ignore = "requires live Fabric tenant + a portal-loaded graph (FABIO_TEST_LOADED_GRAPH_ID)"]
+#[serial]
+fn dataagent_graph_model_nl2gql_generation_lifecycle() {
+    let Ok(graph) = std::env::var("FABIO_TEST_LOADED_GRAPH_ID") else {
+        eprintln!("FABIO_TEST_LOADED_GRAPH_ID not set — skipping NL2GQL validation");
+        return;
+    };
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "create",
+            "--workspace",
+            ws,
+            "--name",
+            &unique_name("nl2gql"),
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Graph sources add cleanly and auto-select their node types (unlike SQL /
+    // semantic-model tables, which start unselected).
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "add-datasource",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--artifact",
+            &graph,
+            "--artifact-type",
+            "GraphModel",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+    assert_eq!(
+        extract_data(&parse_json(&assert))["fabricItemType"],
+        "GraphModel",
+        "datasource must be a GraphModel"
+    );
+
+    fabio()
+        .args([
+            "data-agent",
+            "publish",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--description",
+            "NL2GQL e2e",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "query",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--prompt",
+            "Using the graph, list the DimStore node StoreName values.",
+            "--show-steps",
+        ])
+        .timeout(std::time::Duration::from_mins(4))
+        .assert()
+        .success();
+    let blob = serde_json::to_string(&parse_json(&assert)).unwrap();
+    assert!(
+        blob.contains("analyze_graph"),
+        "run steps must invoke the NL2GQL graph tool: {blob}"
+    );
+    assert!(
+        blob.contains("MATCH"),
+        "expected a generated GQL query (MATCH ... RETURN) in the steps: {blob}"
+    );
+
+    fabio()
+        .args(["data-agent", "delete", "--workspace", ws, "--id", &id])
+        .assert()
+        .success();
+}
