@@ -656,6 +656,7 @@ mod tests {
         for t in [
             "Warehouse",
             "SQLDatabase",
+            "MirroredDatabase",
             "KQLDatabase",
             "SemanticModel",
             "GraphModel",

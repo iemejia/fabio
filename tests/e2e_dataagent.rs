@@ -4265,43 +4265,38 @@ fn dataagent_graph_model_nl2gql_generation_lifecycle() {
         .success();
 }
 
-/// Live validation of **NL2SQL** over a Lakehouse: a data agent grounded on a
-/// `Lakehouse` translates a natural-language question into T-SQL (over the
-/// lakehouse SQL analytics endpoint) and returns a grounded answer.
+/// Shared **NL2SQL** lifecycle for any SQL-backed data-agent source: a data
+/// agent grounded on the given artifact translates a natural-language question
+/// into a query (T-SQL) and returns a grounded answer.
 ///
-/// Requires a PRE-POPULATED, schema-enabled lakehouse (so its SQL schema is
-/// already discoverable), provided via `FABIO_TEST_LOADED_LAKEHOUSE`; skipped
-/// when unset.
+/// Parameterized by the fixture env var (holding a PRE-POPULATED artifact id —
+/// a freshly-provisioned source's schema-discovery LRO is slow/flaky) and the
+/// `--artifact-type`. Skips when the fixture is unset or `az` is unavailable.
 ///
-/// It also acquires an **Azure-CLI-issued Fabric token** (via `az`) and runs
-/// every fabio call with it, skipping if `az` is unavailable. This is required
-/// because the data-agent server fetches the lakehouse SQL-endpoint schema
-/// *on-behalf-of the caller's token*, and that on-behalf-of exchange only
-/// succeeds for a broadly-trusted client app (Azure CLI) — fabio's own
+/// It acquires an **Azure-CLI-issued Fabric token** (via `az`) and runs every
+/// fabio call with it, because the data-agent server fetches a SQL source's
+/// schema *on-behalf-of the caller's token*, and that on-behalf-of exchange
+/// only succeeds for a broadly-trusted client app (Azure CLI) — fabio's own
 /// device-code login token is rejected with "Failed to fetch schema for the
-/// data source". See API-BEHAVIORS-DISCOVERED "Data agent SQL-source schema
-/// fetch is on-behalf-of the caller".
+/// data source" (see API-BEHAVIORS-DISCOVERED "Data-agent SQL-source schema
+/// fetch is on-behalf-of the caller").
 ///
 /// Regression guard for two fixed bugs:
-///   1. `add-datasource` MUST send a Lakehouse as `LakehouseTables` (with a
-///      `lakehouseReference`), NOT `FabricItem` — a lakehouse item is not itself
-///      the SQL database, so `FabricItem` fails schema discovery with
-///      "Failed to fetch schema for the data source". (Non-lakehouse sources
-///      like Warehouse/KQLDatabase/SemanticModel correctly use `FabricItem`,
-///      covered by the NL2KQL/NL2DAX lifecycles.)
+///   1. `add-datasource` MUST send a **Lakehouse** as `LakehouseTables` (a
+///      lakehouse item is not itself the SQL database), while every other SQL
+///      source (`Warehouse`/`SQLDatabase`/`MirroredDatabase`) is `FabricItem`.
+///      The wrong discriminator fails schema discovery.
 ///   2. `select-tables` MUST drill through the 3-level `Schemas → Schema →
-///      Tables → Table` nesting to reach the tables. The previous single-level
-///      drill never reached them and failed with "No matching elements".
-#[test]
-#[ignore = "requires live Fabric tenant + a populated lakehouse (FABIO_TEST_LOADED_LAKEHOUSE)"]
-#[serial]
-fn dataagent_lakehouse_nl2sql_lifecycle() {
-    let Ok(lakehouse) = std::env::var("FABIO_TEST_LOADED_LAKEHOUSE") else {
-        eprintln!("FABIO_TEST_LOADED_LAKEHOUSE not set — skipping NL2SQL validation");
+///      Tables → Table` nesting to reach the tables (the previous single-level
+///      drill failed with "No matching elements").
+#[allow(clippy::too_many_lines)]
+fn run_nl2sql_source_lifecycle(fixture_env: &str, artifact_type: &str) {
+    let Ok(artifact) = std::env::var(fixture_env) else {
+        eprintln!("{fixture_env} not set — skipping {artifact_type} NL2SQL validation");
         return;
     };
     let Some(token) = az_fabric_token() else {
-        eprintln!("az Fabric token unavailable — skipping NL2SQL validation");
+        eprintln!("az Fabric token unavailable — skipping {artifact_type} NL2SQL validation");
         return;
     };
     let cfg = TestConfig::from_env();
@@ -4314,7 +4309,7 @@ fn dataagent_lakehouse_nl2sql_lifecycle() {
         c
     };
 
-    // 1) Agent grounded on the populated lakehouse (the LakehouseTables branch).
+    // 1) Agent grounded on the pre-populated source.
     let assert = fb()
         .args([
             "data-agent",
@@ -4332,9 +4327,11 @@ fn dataagent_lakehouse_nl2sql_lifecycle() {
         .unwrap()
         .to_string();
 
-    // Add the lakehouse as a datasource (the LakehouseTables branch). A
-    // regression to the FabricItem body would fail this with "Failed to fetch
-    // schema".
+    // Add the source. A regression to the wrong discriminator (a Lakehouse sent
+    // as FabricItem, or vice-versa) would fail this with "Failed to fetch
+    // schema". A LakehouseTables datasource reports `fabricItemType: null`, so
+    // the shape-agnostic success signal is `status: datasource_added` — reaching
+    // it proves schema discovery succeeded.
     let assert = fb()
         .args([
             "data-agent",
@@ -4344,24 +4341,19 @@ fn dataagent_lakehouse_nl2sql_lifecycle() {
             "--id",
             &id,
             "--artifact",
-            &lakehouse,
+            &artifact,
             "--artifact-type",
-            "Lakehouse",
+            artifact_type,
             "--lro-timeout",
             "300",
         ])
         .timeout(std::time::Duration::from_mins(6))
         .assert()
         .success();
-    // A LakehouseTables datasource reports `fabricItemType: null` (its type is
-    // carried by the `lakehouseReference`, not the FabricItem fields), so the
-    // reliable success signal is `status: datasource_added`. Reaching here at
-    // all proves schema discovery succeeded — a regression to the FabricItem
-    // body would have failed `.success()` above with "Failed to fetch schema".
     assert_eq!(
         extract_data(&parse_json(&assert))["status"],
         "datasource_added",
-        "a lakehouse datasource must be added (via LakehouseTables) without a schema-fetch error"
+        "{artifact_type} datasource must be added without a schema-fetch error"
     );
 
     // 2) Select ALL tables — exercises the recursive walk through the 3-level
@@ -4376,7 +4368,7 @@ fn dataagent_lakehouse_nl2sql_lifecycle() {
             "--id",
             &id,
             "--datasource",
-            &lakehouse,
+            &artifact,
             "--all-tables",
         ])
         .timeout(std::time::Duration::from_mins(2))
@@ -4428,10 +4420,50 @@ fn dataagent_lakehouse_nl2sql_lifecycle() {
         "expected evidence of NL2SQL (a generated T-SQL query): {blob}"
     );
 
-    // Cleanup: the agent only — the lakehouse fixture is pre-existing.
+    // Cleanup: the agent only — the source fixture is pre-existing.
     fb().args(["data-agent", "delete", "--workspace", ws, "--id", &id])
         .assert()
         .success();
+}
+
+/// NL2SQL over a **Lakehouse** (the `LakehouseTables` discriminator branch).
+/// Fixture: `FABIO_TEST_LOADED_LAKEHOUSE` (a pre-populated, schema-enabled
+/// lakehouse).
+#[test]
+#[ignore = "requires live Fabric tenant + a populated lakehouse (FABIO_TEST_LOADED_LAKEHOUSE)"]
+#[serial]
+fn dataagent_lakehouse_nl2sql_lifecycle() {
+    run_nl2sql_source_lifecycle("FABIO_TEST_LOADED_LAKEHOUSE", "Lakehouse");
+}
+
+/// NL2SQL over a **Warehouse** (the `FabricItem` discriminator branch).
+/// Fixture: `FABIO_TEST_LOADED_WAREHOUSE` (a pre-populated warehouse; a freshly
+/// created warehouse's SQL schema takes ~60-180 s to become discoverable).
+#[test]
+#[ignore = "requires live Fabric tenant + a populated warehouse (FABIO_TEST_LOADED_WAREHOUSE)"]
+#[serial]
+fn dataagent_warehouse_nl2sql_lifecycle() {
+    run_nl2sql_source_lifecycle("FABIO_TEST_LOADED_WAREHOUSE", "Warehouse");
+}
+
+/// NL2SQL over a **SQL Database** (the `FabricItem` discriminator branch;
+/// requires F4+ capacity). Fixture: `FABIO_TEST_LOADED_SQLDATABASE` (a
+/// pre-populated Fabric SQL database).
+#[test]
+#[ignore = "requires live Fabric tenant + a populated SQL database (FABIO_TEST_LOADED_SQLDATABASE)"]
+#[serial]
+fn dataagent_sql_database_nl2sql_lifecycle() {
+    run_nl2sql_source_lifecycle("FABIO_TEST_LOADED_SQLDATABASE", "SQLDatabase");
+}
+
+/// NL2SQL over a **Mirrored Database** (the `FabricItem` discriminator branch;
+/// requires an external mirror source actively replicating data). Fixture:
+/// `FABIO_TEST_LOADED_MIRRORED_DATABASE` (a mirrored database with tables).
+#[test]
+#[ignore = "requires live Fabric tenant + a populated mirrored database (FABIO_TEST_LOADED_MIRRORED_DATABASE)"]
+#[serial]
+fn dataagent_mirrored_database_nl2sql_lifecycle() {
+    run_nl2sql_source_lifecycle("FABIO_TEST_LOADED_MIRRORED_DATABASE", "MirroredDatabase");
 }
 
 /// Acquire an Azure-CLI-issued Fabric access token (`az account
