@@ -268,6 +268,33 @@ pub(super) fn execute_find(cli: &Cli, query: &str) {
     }
 }
 
+/// True if the (normalized) query equals this entry's `term` or any of its
+/// `aliases` (spaces/hyphens/underscores ignored). Used to boost a
+/// disambiguation table when an agent searches an overloaded term by name.
+fn query_matches_term_or_alias(content: &str, query_lower: &str) -> bool {
+    let norm = |s: &str| s.to_lowercase().replace(['-', '_', ' '], "");
+    let q = norm(query_lower);
+    if q.is_empty() {
+        return false;
+    }
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(content) else {
+        return false;
+    };
+    if v.get("term")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|t| norm(t) == q)
+    {
+        return true;
+    }
+    v.get("aliases")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|arr| {
+            arr.iter()
+                .filter_map(serde_json::Value::as_str)
+                .any(|a| norm(a) == q)
+        })
+}
+
 /// Search knowledge base entries (best-practices, workflows) and add matches to results.
 fn search_knowledge_entries(
     entries: &[(&str, &str)],
@@ -285,6 +312,14 @@ fn search_knowledge_entries(
         // Exact name match (highest).
         if name_lower.contains(query_lower) {
             score += 5.0;
+        }
+
+        // Authoritative-term boost: if the whole query matches this entry's
+        // canonical `term` or a declared `alias`, it should dominate generic
+        // keyword hits (this is exactly what a disambiguation table is for —
+        // e.g. "Data Activator" -> the `activator` table -> the `reflex` group).
+        if query_matches_term_or_alias(content, query_lower) {
+            score += 10.0;
         }
 
         // Token-based matching in name and content.
@@ -1572,6 +1607,25 @@ fn infer_destructive(cmd_name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn query_matches_term_or_alias_boosts_term_and_aliases() {
+        let content = r#"{"term":"activator","aliases":["data activator","reflex","trigger"]}"#;
+        // Canonical term (normalization-insensitive).
+        assert!(query_matches_term_or_alias(content, "activator"));
+        assert!(query_matches_term_or_alias(content, "Activator"));
+        // Declared aliases, including a multi-word one via normalization.
+        assert!(query_matches_term_or_alias(content, "data activator"));
+        assert!(query_matches_term_or_alias(content, "data-activator"));
+        assert!(query_matches_term_or_alias(content, "reflex"));
+        // Non-matches: partial words or unrelated terms must NOT boost.
+        assert!(!query_matches_term_or_alias(content, "data"));
+        assert!(!query_matches_term_or_alias(content, "activ"));
+        assert!(!query_matches_term_or_alias(content, "warehouse"));
+        // Non-JSON / empty query are safe.
+        assert!(!query_matches_term_or_alias("not json", "activator"));
+        assert!(!query_matches_term_or_alias(content, ""));
+    }
 
     /// Run a closure on a thread with 8 MB stack (clap `Command` tree is deeply nested).
     fn with_large_stack<F: FnOnce() + Send + 'static>(f: F) {

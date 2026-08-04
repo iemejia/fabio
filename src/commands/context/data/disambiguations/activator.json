@@ -1,0 +1,54 @@
+{
+  "term": "activator",
+  "summary": "\"Data Activator\" and \"Reflex\" are the SAME Fabric feature — the item type is Reflex and the fabio command group is `reflex`. Data Activator is the product name; a Reflex is the artifact that watches real-time data and fires actions (email/Teams) when conditions are met. Do NOT confuse it with Data Agent (natural-language Q&A over data, `data-agent`) or Operations Agent (AI-driven RTI monitoring, `operations-agent`).",
+  "aliases": [
+    "activator",
+    "data activator",
+    "data-activator",
+    "reflex",
+    "trigger",
+    "triggers",
+    "alert",
+    "alerts",
+    "monitoring rule",
+    "monitoring rules",
+    "detect and act"
+  ],
+  "meanings": [
+    {
+      "context": "Watch real-time data and trigger actions (the whole feature)",
+      "artifact": "Reflex (a.k.a. Data Activator)",
+      "description": "The Reflex item IS Data Activator. Create the item, then author monitoring rules that watch a KQL source (Fabric eventhouse or Azure Data Explorer) and send email/Teams alerts when a condition is met. In fabio this is the `reflex` command group (aliased `activator`/`data-activator`).",
+      "command_group": "reflex",
+      "example_commands": [
+        "fabio reflex create --workspace $WS --name Alerts",
+        "fabio reflex create-rule --workspace $WS --id $REFLEX --name \"High CPU\" --kql \"Metrics | project cpu, machineId\" --eventhouse-id $KQLDB --column cpu --condition isGreaterThan --value 90 --recipients alice@contoso.com",
+        "fabio reflex list-rules --workspace $WS --id $REFLEX",
+        "fabio reflex mcp-url --workspace $WS --id $REFLEX"
+      ]
+    },
+    {
+      "context": "AI-powered monitoring/operations over Real-Time Intelligence",
+      "artifact": "Operations Agent",
+      "description": "A DIFFERENT item: an AI agent that monitors RTI signals and runs a playbook. Not a Reflex. Use when you want AI reasoning over operational data, not a deterministic condition->action rule.",
+      "command_group": "operations-agent",
+      "example_commands": [
+        "fabio operations-agent status --workspace $WS --id $AGENT"
+      ]
+    },
+    {
+      "context": "Natural-language questions over your data",
+      "artifact": "Data Agent",
+      "description": "Also DIFFERENT (and easily confused by name): a conversational agent that answers NL questions by querying data sources. Not a Reflex trigger.",
+      "command_group": "data-agent",
+      "example_commands": [
+        "fabio data-agent query --workspace $WS --id $AGENT --prompt \"...\""
+      ]
+    }
+  ],
+  "default_action": "\"Data Activator\", \"Activator\", \"Reflex\", \"trigger\", or \"alert on data\" -> the `reflex` command group (aliases: `activator`, `data-activator`). Author rules with `reflex create-rule`; manage them with `reflex list-rules`/`start-rule`/`stop-rule`/`delete-rule`/`rule-activations`. For AI monitoring use `operations-agent`; for NL Q&A use `data-agent`.",
+  "related": [
+    "fabio context persona rti-engineer",
+    "fabio context disambiguate mirroring"
+  ]
+}

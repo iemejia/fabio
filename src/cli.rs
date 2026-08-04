@@ -402,7 +402,11 @@ pub enum Command {
         command: mirrored_database::MirroredDatabaseCommand,
     },
     /// Manage Reflex items (Data Activator triggers and alerts)
-    #[command(display_order = 26)]
+    #[command(
+        visible_alias = "activator",
+        visible_alias = "data-activator",
+        display_order = 26
+    )]
     Reflex {
         #[command(subcommand)]
         command: reflex::ReflexCommand,
