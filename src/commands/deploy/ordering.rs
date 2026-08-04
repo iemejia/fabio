@@ -10,68 +10,65 @@ use crate::errors::{ErrorCode, FabioError};
 /// This ensures dependencies are satisfied (e.g., Lakehouses exist before Notebooks
 /// that reference them, Notebooks exist before `DataPipelines` that invoke them).
 ///
-/// Based on fabric-cicd's `SERIAL_ITEM_PUBLISH_ORDER` extended with additional
-/// types supported by fabio.
+/// This is **aligned 1:1 with fabric-cicd's `SERIAL_ITEM_PUBLISH_ORDER`**: every
+/// item type that both tools share appears in the exact same relative order as
+/// fabric-cicd. fabio supports a superset of item types, so the fabio-only types
+/// are slotted *between* shared types (marked `fabio-only`), which never changes
+/// the relative order of the shared ones. The `fabric-cicd N` comments give the
+/// position of each shared type in fabric-cicd's list.
+///
+/// One deliberate placement: `DataAgent` binds to `GraphModel` (a fabio-only
+/// data-source type) in addition to `Ontology`, so `GraphModel` (and the other
+/// graph types) are slotted between `Ontology` and `DataAgent`. `DataAgent` still
+/// lands in fabric-cicd's relative position (after `Ontology`, before
+/// `MLExperiment`), while staying after every data source it can reference.
 pub const DEPLOY_ORDER: &[&str] = &[
-    // --- Data storage layer (foundation, no dependencies) ---
-    "VariableLibrary",
-    "Warehouse",
-    "WarehouseSnapshot",
-    "MirroredDatabase",
-    "MirroredAzureDatabricksCatalog",
-    "AzureDatabricksStorage",
-    "Lakehouse",
-    "SQLDatabase",
-    "CosmosDbDatabase",
-    "SnowflakeDatabase",
-    // --- Compute & runtime environments ---
-    "Environment",
-    "UserDataFunction",
-    "Eventhouse",
-    "KQLDatabase",
-    // --- Code & logic (depends on storage + runtime) ---
-    "SparkJobDefinition",
-    "Notebook",
-    // --- Models & analytics (depends on storage) ---
-    "SemanticModel",
-    "Report",
-    "PaginatedReport",
-    "Dashboard",
-    "CopyJob",
-    "DataBuildToolJob",
-    "KQLQueryset",
-    "KQLDashboard",
-    // --- Reactive & streaming (depends on storage + compute) ---
-    "Reflex",
-    "Eventstream",
-    "EventSchemaSet",
-    "Dataflow",
-    "DataPipeline",
-    // --- APIs & integration ---
-    "GraphQLApi",
-    "ApacheAirflowJob",
-    "MountedDataFactory",
-    "OperationsAgent",
-    "AnomalyDetector",
-    // --- ML & experimentation ---
-    "MLExperiment",
-    "MLModel",
-    // --- Graph & ontology (depends on storage + models) ---
-    "Ontology",
-    "GraphModel",
-    "GraphQuerySet",
-    "DigitalTwinBuilder",
-    "DigitalTwinBuilderFlow",
-    // --- Consumers of any data source (must come last) ---
-    // A DataAgent binds to Lakehouse / Warehouse / KQLDatabase / SemanticModel /
-    // Ontology / GraphModel / MirroredDatabase / SQLDatabase data sources, so it
-    // must deploy AFTER all of them for its datasource references to resolve.
-    "DataAgent",
-    // --- Visualization & cross-cutting ---
-    "Map",
-    "Connection",
-    "OrgApp",
-    "OrgAppAudience",
+    "VariableLibrary",                // fabric-cicd 1
+    "Warehouse",                      // fabric-cicd 2
+    "WarehouseSnapshot",              // fabio-only (after Warehouse)
+    "MirroredDatabase",               // fabric-cicd 3
+    "MirroredAzureDatabricksCatalog", // fabio-only (mirrored family)
+    "AzureDatabricksStorage",         // fabio-only (storage family)
+    "Lakehouse",                      // fabric-cicd 4
+    "SQLDatabase",                    // fabric-cicd 5
+    "CosmosDbDatabase",               // fabio-only (database family)
+    "SnowflakeDatabase",              // fabio-only (database family)
+    "Environment",                    // fabric-cicd 6
+    "UserDataFunction",               // fabric-cicd 7
+    "Eventhouse",                     // fabric-cicd 8
+    "SparkJobDefinition",             // fabric-cicd 9
+    "Notebook",                       // fabric-cicd 10
+    "SemanticModel",                  // fabric-cicd 11
+    "Report",                         // fabric-cicd 12
+    "PaginatedReport",                // fabric-cicd 13
+    "Dashboard",                      // fabio-only (reports family)
+    "CopyJob",                        // fabric-cicd 14
+    "DataBuildToolJob",               // fabric-cicd 15
+    "KQLDatabase",                    // fabric-cicd 16
+    "KQLQueryset",                    // fabric-cicd 17
+    "Dataflow",                       // fabric-cicd 18
+    "DataPipeline",                   // fabric-cicd 19
+    "Reflex",                         // fabric-cicd 20
+    "Eventstream",                    // fabric-cicd 21
+    "EventSchemaSet",                 // fabio-only (eventstream family)
+    "KQLDashboard",                   // fabric-cicd 22
+    "GraphQLApi",                     // fabric-cicd 23
+    "ApacheAirflowJob",               // fabric-cicd 24
+    "MountedDataFactory",             // fabric-cicd 25
+    "OperationsAgent",                // fabio-only (RTI)
+    "AnomalyDetector",                // fabio-only (RTI)
+    "Ontology",                       // fabric-cicd 26
+    "GraphModel",                     // fabio-only (after Ontology; a DataAgent data source)
+    "GraphQuerySet",                  // fabio-only
+    "DigitalTwinBuilder",             // fabio-only
+    "DigitalTwinBuilderFlow",         // fabio-only
+    "DataAgent",                      // fabric-cicd 27 (after GraphModel — a DataAgent data source)
+    "MLExperiment",                   // fabric-cicd 28
+    "MLModel",                        // fabio-only (after MLExperiment)
+    "Map",                            // fabric-cicd 29
+    "Connection",                     // fabio-only (cross-cutting, last)
+    "OrgApp",                         // fabio-only
+    "OrgAppAudience",                 // fabio-only
 ];
 
 /// Returns the deploy priority for a given item type.
@@ -87,36 +84,40 @@ pub fn deploy_priority(item_type: &str) -> usize {
 /// Returns the dependency tier for a given item type.
 ///
 /// Types in the same tier have no dependencies on each other and can be deployed
-/// concurrently. Types in tier N depend on types in tiers 0..N-1.
+/// concurrently. Types in tier N depend on types in tiers 0..N-1. Tier boundaries
+/// track the fabric-cicd-aligned `DEPLOY_ORDER` above.
 ///
 /// Tiers correspond to dependency layers:
 /// - Tier 0: Data storage layer (foundation)
 /// - Tier 1: Compute & runtime (`Environment`, `UserDataFunction`, `Eventhouse`)
-/// - Tier 2: Compute children (`KQLDatabase` depends on `Eventhouse`)
-/// - Tier 3: Code & logic (`Notebook`, `SparkJobDefinition`)
-/// - Tier 4: Models & analytics (`SemanticModel`, `Report`, `KQLQueryset`, etc.)
-/// - Tier 5: Reactive & streaming (`Reflex`, `Eventstream`, `DataPipeline`, etc.)
-/// - Tier 6: APIs & integration
-/// - Tier 7: ML & experimentation
-/// - Tier 8: Graph & ontology
-/// - Tier 9: `DataAgent` (binds any data source; must come after all of them)
-/// - Tier 10: Visualization & cross-cutting
+/// - Tier 2: Code & logic (`SparkJobDefinition`, `Notebook`)
+/// - Tier 3: `SemanticModel` (needs refresh before reports can use it)
+/// - Tier 4: Reports, jobs & `KQLDatabase` (`Report`..`KQLDatabase`)
+/// - Tier 5: Reactive & streaming (`KQLQueryset`..`KQLDashboard`)
+/// - Tier 6: APIs & integration (`GraphQLApi`..`MountedDataFactory`)
+/// - Tier 7: RTI agents (`OperationsAgent`, `AnomalyDetector`)
+/// - Tier 8: `Ontology`
+/// - Tier 9: Graph (`GraphModel`..`DigitalTwinBuilderFlow`)
+/// - Tier 10: `DataAgent` (binds any data source; must come after all of them)
+/// - Tier 11: `MLExperiment`
+/// - Tier 12: `MLModel`, visualization & cross-cutting (+ unknown)
 #[inline]
 pub fn deploy_tier(item_type: &str) -> usize {
     let priority = deploy_priority(item_type);
     match priority {
         0..=9 => 0,   // Storage: VariableLibrary..SnowflakeDatabase
         10..=12 => 1, // Compute: Environment, UserDataFunction, Eventhouse
-        13 => 2,      // Compute children: KQLDatabase (depends on Eventhouse)
-        14..=15 => 3, // Code: SparkJobDefinition, Notebook
-        16 => 4,      // SemanticModel (needs refresh before Reports can use it)
-        17..=23 => 5, // Visuals: Report..KQLDashboard (depend on refreshed SemanticModel)
-        24..=28 => 6, // Reactive: Reflex..DataPipeline
-        29..=33 => 7, // APIs: GraphQLApi..AnomalyDetector
-        34..=35 => 8, // ML: MLExperiment, MLModel
-        36..=40 => 9, // Graph: Ontology..DigitalTwinBuilderFlow
-        41 => 10,     // DataAgent: binds any data source, must come after all of them
-        _ => 11,      // Visualization & cross-cutting + unknown
+        13..=14 => 2, // Code: SparkJobDefinition, Notebook
+        15 => 3,      // SemanticModel (needs refresh before Reports can use it)
+        16..=21 => 4, // Reports, jobs & KQLDatabase: Report..KQLDatabase
+        22..=28 => 5, // Reactive: KQLQueryset..KQLDashboard
+        29..=31 => 6, // APIs: GraphQLApi..MountedDataFactory
+        32..=33 => 7, // RTI agents: OperationsAgent, AnomalyDetector
+        34 => 8,      // Ontology
+        35..=38 => 9, // Graph: GraphModel..DigitalTwinBuilderFlow
+        39 => 10,     // DataAgent: binds any data source, must come after all of them
+        40 => 11,     // MLExperiment
+        _ => 12,      // MLModel, Map, Connection, OrgApp, OrgAppAudience + unknown
     }
 }
 
@@ -273,22 +274,73 @@ mod tests {
     fn test_deploy_tier_kql_database_after_eventhouse() {
         // KQLDatabase depends on Eventhouse (parent container), must be in a later tier
         assert!(deploy_tier("Eventhouse") < deploy_tier("KQLDatabase"));
-        assert_eq!(deploy_tier("KQLDatabase"), 2);
+        assert_eq!(deploy_tier("KQLDatabase"), 4);
     }
 
     #[test]
     fn test_deploy_tier_ordering() {
-        // Storage (0) < Compute (1) < Compute-children (2) < Code (3) < Models (4)
+        // Aligned-order dependency layering:
+        // Storage (0) < Compute (1) < Code (2) < SemanticModel (3) < Reports/KQLDatabase (4)
         assert!(deploy_tier("Lakehouse") < deploy_tier("Eventhouse"));
         assert!(deploy_tier("Eventhouse") < deploy_tier("KQLDatabase"));
-        assert!(deploy_tier("KQLDatabase") < deploy_tier("Notebook"));
         assert!(deploy_tier("Notebook") < deploy_tier("SemanticModel"));
+        assert!(deploy_tier("SemanticModel") < deploy_tier("KQLDatabase"));
         assert!(deploy_tier("SemanticModel") < deploy_tier("DataPipeline"));
+        // Ontology (8) < Graph (9) < DataAgent (10)
+        assert!(deploy_tier("Ontology") < deploy_tier("GraphModel"));
+        assert!(deploy_tier("GraphModel") < deploy_tier("DataAgent"));
     }
 
     #[test]
     fn test_deploy_tier_unknown_type_in_last_tier() {
-        assert_eq!(deploy_tier("UnknownType"), 11);
+        assert_eq!(deploy_tier("UnknownType"), 12);
+    }
+
+    #[test]
+    fn test_shared_types_match_fabric_cicd_order() {
+        // The item types fabio shares with fabric-cicd must appear in the exact
+        // same relative order as fabric-cicd's SERIAL_ITEM_PUBLISH_ORDER. fabio-only
+        // types are interleaved but must never reorder the shared ones.
+        const FABRIC_CICD_ORDER: &[&str] = &[
+            "VariableLibrary",
+            "Warehouse",
+            "MirroredDatabase",
+            "Lakehouse",
+            "SQLDatabase",
+            "Environment",
+            "UserDataFunction",
+            "Eventhouse",
+            "SparkJobDefinition",
+            "Notebook",
+            "SemanticModel",
+            "Report",
+            "PaginatedReport",
+            "CopyJob",
+            "DataBuildToolJob",
+            "KQLDatabase",
+            "KQLQueryset",
+            "Dataflow",
+            "DataPipeline",
+            "Reflex",
+            "Eventstream",
+            "KQLDashboard",
+            "GraphQLApi",
+            "ApacheAirflowJob",
+            "MountedDataFactory",
+            "Ontology",
+            "DataAgent",
+            "MLExperiment",
+            "Map",
+        ];
+        let shared: Vec<&str> = DEPLOY_ORDER
+            .iter()
+            .copied()
+            .filter(|t| FABRIC_CICD_ORDER.contains(t))
+            .collect();
+        assert_eq!(
+            shared, FABRIC_CICD_ORDER,
+            "shared item types must follow fabric-cicd's relative order exactly"
+        );
     }
 
     #[test]
