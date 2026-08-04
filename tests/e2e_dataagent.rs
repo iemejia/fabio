@@ -3947,3 +3947,213 @@ fn dataagent_semantic_model_nl2dax_lifecycle() {
         .assert()
         .success();
 }
+
+/// Live validation of **NL2KQL**: a data agent grounded on a KQL database
+/// generates and executes KQL to answer a natural-language question.
+///
+/// Self-seeding (no external fixture): creates an eventhouse + KQL database +
+/// a small table with data, runs the agent flow, and cleans up. Also guards the
+/// `select-tables` fix for KQL sources (their tables are nested under grouping
+/// containers, so `--tables <name>` must drill one level in).
+#[test]
+#[ignore = "requires live Fabric tenant (creates an eventhouse + KQL DB)"]
+#[serial]
+fn dataagent_kql_database_nl2kql_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+    let eh_name = unique_name("nl2kql_eh");
+
+    // 1) Eventhouse (auto-creates a same-named KQL database).
+    fabio()
+        .args([
+            "eventhouse",
+            "create",
+            "--workspace",
+            ws,
+            "--name",
+            &eh_name,
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+    // Resolve the auto-created KQL database by name.
+    let assert = fabio()
+        .args(["kql-database", "list", "--workspace", ws])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let dbs = parse_json(&assert);
+    let kdb = extract_data(&dbs)
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["displayName"] == eh_name.as_str())
+        .and_then(|d| d["id"].as_str())
+        .expect("eventhouse should auto-create a KQL database")
+        .to_string();
+
+    // 2) Seed a table with data.
+    fabio()
+        .args([
+            "kql-database",
+            "query",
+            "--workspace",
+            ws,
+            "--id",
+            &kdb,
+            "--kql",
+            ".create table Sales (Product: string, Region: string, Amount: int)",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    fabio()
+        .args([
+            "kql-database",
+            "ingest",
+            "--workspace",
+            ws,
+            "--id",
+            &kdb,
+            "--table",
+            "Sales",
+            "--data",
+            "Widget,France,100\nGadget,Germany,200\nWidget,Germany,150",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    std::thread::sleep(std::time::Duration::from_secs(8));
+
+    // 3) Data agent grounded on the KQL database.
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "create",
+            "--workspace",
+            ws,
+            "--name",
+            &unique_name("nl2kql"),
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "add-datasource",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--artifact",
+            &kdb,
+            "--artifact-type",
+            "KQLDatabase",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+    assert_eq!(
+        extract_data(&parse_json(&assert))["fabricItemType"],
+        "KQLDatabase",
+        "datasource must be a KQLDatabase"
+    );
+
+    // 4) Select the table (regression guard: KQL tables are nested under a
+    //    "Tables" container, which select-tables must drill into).
+    fabio()
+        .args([
+            "data-agent",
+            "select-tables",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--datasource",
+            &kdb,
+            "--tables",
+            "Sales",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    fabio()
+        .args([
+            "data-agent",
+            "publish",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--description",
+            "NL2KQL e2e",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // 5) Ask a question requiring aggregation and confirm KQL was generated.
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "query",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--prompt",
+            "What is the total Amount per Region?",
+            "--show-steps",
+        ])
+        .timeout(std::time::Duration::from_mins(4))
+        .assert()
+        .success();
+    let blob = serde_json::to_string(&parse_json(&assert)).unwrap();
+    let did_nl2kql = blob.contains("analyze_kusto_database")
+        || blob.contains("nl2code")
+        || blob.to_lowercase().contains("summarize");
+    assert!(
+        did_nl2kql,
+        "expected evidence of NL2KQL (a generated KQL query): {blob}"
+    );
+
+    // Cleanup: agent + eventhouse (cascades the KQL database).
+    fabio()
+        .args(["data-agent", "delete", "--workspace", ws, "--id", &id])
+        .assert()
+        .success();
+    fabio()
+        .args([
+            "eventhouse",
+            "delete",
+            "--workspace",
+            ws,
+            "--id",
+            &eh_id_from(ws, &eh_name),
+        ])
+        .assert()
+        .success();
+}
+
+/// Resolve an eventhouse id by name (cleanup helper).
+fn eh_id_from(ws: &str, name: &str) -> String {
+    let assert = fabio()
+        .args(["eventhouse", "list", "--workspace", ws])
+        .assert()
+        .success();
+    extract_data(&parse_json(&assert))
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["displayName"] == name)
+        .and_then(|e| e["id"].as_str())
+        .unwrap_or("")
+        .to_string()
+}

@@ -285,6 +285,21 @@ pub(super) async fn update_datasource(
     Ok(())
 }
 
+/// A grouping (container) staging-element type that `select-tables` must drill
+/// one level into to reach the selectable leaves nested beneath it.
+///
+/// Lakehouse/Warehouse sources group tables under `Schema`/`Schemas`; KQL
+/// database sources group their tables/functions/etc. under `Tables`,
+/// `Functions`, `Shortcuts`, and `MaterializedViews` containers. Without
+/// recognizing the KQL containers, `--tables Sales` never reaches the nested
+/// `Sales` table (regression this guards against).
+fn is_grouping_container(t: &str) -> bool {
+    matches!(
+        t.to_ascii_lowercase().as_str(),
+        "schema" | "schemas" | "tables" | "functions" | "shortcuts" | "materializedviews"
+    )
+}
+
 /// Select or unselect elements in a data source via the elements API.
 ///
 /// Tables mode (`--tables`/`--all-tables`) restricts to table-typed elements.
@@ -354,8 +369,7 @@ pub(super) async fn select_tables(
     // restrict to table-typed elements to preserve the table-only semantics.
     let restrict_to_tables = elements.is_none() && !all_elements;
     let table_types = ["Table", "ExternalTable", "MaterializedView", "View"];
-    let is_container =
-        |t: &str| t.eq_ignore_ascii_case("Schema") || t.eq_ignore_ascii_case("Schemas");
+    let is_container = |t: &str| is_grouping_container(t);
     let is_selectable = |t: &str| -> bool {
         if restrict_to_tables {
             table_types.iter().any(|x| x.eq_ignore_ascii_case(t))
@@ -586,5 +600,25 @@ mod tests {
         let already = json!({"fabricItemType": "Lakehouse", "id": "x"});
         let got = camel_case_keys(already.clone());
         assert_eq!(got, already);
+    }
+
+    #[test]
+    fn is_grouping_container_recognizes_schema_and_kql_containers() {
+        // Lakehouse/Warehouse grouping.
+        assert!(is_grouping_container("Schema"));
+        assert!(is_grouping_container("Schemas"));
+        // KQL database grouping containers (the bug this guards): tables are
+        // nested under these, so select-tables must drill in.
+        assert!(is_grouping_container("Tables"));
+        assert!(is_grouping_container("Functions"));
+        assert!(is_grouping_container("Shortcuts"));
+        assert!(is_grouping_container("MaterializedViews"));
+        // Case-insensitive.
+        assert!(is_grouping_container("tables"));
+        // Leaf/selectable types are NOT containers (singular vs plural).
+        assert!(!is_grouping_container("Table"));
+        assert!(!is_grouping_container("MaterializedView"));
+        assert!(!is_grouping_container("Column"));
+        assert!(!is_grouping_container("View"));
     }
 }
