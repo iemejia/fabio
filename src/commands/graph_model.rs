@@ -145,7 +145,7 @@ pub enum GraphModelCommand {
         timeout: u64,
     },
     /// Execute a GQL query against the graph
-    #[command(display_order = 11)]
+    #[command(visible_alias = "query", display_order = 11)]
     ExecuteQuery {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
@@ -155,10 +155,11 @@ pub enum GraphModelCommand {
         #[arg(long)]
         id: String,
 
-        /// GQL query string (ISO/IEC 39075). Named `--gql` to avoid clashing
-        /// with the global `--query` `JMESPath` projection flag.
+        /// GQL query text (ISO/IEC 39075). Use `@file.gql` to read from a file,
+        /// or omit to pipe via stdin. Named `--gql` to avoid clashing with the
+        /// global `--query` `JMESPath` projection flag.
         #[arg(long)]
-        gql: String,
+        gql: Option<String>,
     },
     /// Get the queryable graph type
     #[command(display_order = 12)]
@@ -254,7 +255,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GraphModelComma
             workspace,
             id,
             gql,
-        } => execute_query(cli, client, workspace, id, gql).await,
+        } => execute_query(cli, client, workspace, id, gql.as_deref()).await,
         GraphModelCommand::GetQueryableGraphType { workspace, id } => {
             get_queryable_graph_type(cli, client, workspace, id).await
         }
@@ -653,9 +654,15 @@ async fn execute_query(
     client: &FabricClient,
     workspace: &str,
     id: &str,
-    gql: &str,
+    gql: Option<&str>,
 ) -> Result<()> {
-    let body = serde_json::json!({ "query": gql });
+    let query = crate::commands::query_input::resolve_query_input(
+        gql,
+        "GQL",
+        "--gql",
+        "Example: fabio graph-model execute-query --workspace <WS> --id <ID> --gql \"MATCH (n) RETURN n LIMIT 10\"",
+    )?;
+    let body = serde_json::json!({ "query": query });
 
     let data = client
         .post(

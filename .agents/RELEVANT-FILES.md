@@ -58,6 +58,7 @@
 - `src/commands/kql_database/mod.rs`: list/show/create/update/delete/get-definition/update-definition/shortcuts
 - `src/commands/kql_database/intelligence.rs`: query/list-entities/describe/describe-entity/sample/ingest/show-queryplan/diagnostics/deeplink
 - `src/commands/kql_utils.rs`: Shared KQL utilities (resolve_kql_input, resolve_query_uri, execute_kql, parse v1/v2 responses, render results)
+- `src/commands/query_input.rs`: Shared query-text resolver (resolve_query_input) — inline / `@file` / stdin, used by graph-model and graphql-api; the uniform convention for all query commands
 - `src/commands/kql_queryset.rs`: CRUD + get-definition/update-definition + run (fetch definition, select tab, execute against Kusto REST API)
 - `src/commands/kql_dashboard.rs`: list/show/create/update/delete/get-definition/update-definition (RealTimeDashboard.json)
 - `src/commands/mirrored_database.rs`: list/show/create/update/delete/get-definition/update-definition/start/stop/status/table-status

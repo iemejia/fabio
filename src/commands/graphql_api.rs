@@ -1,5 +1,3 @@
-use std::io;
-
 use anyhow::Result;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -514,33 +512,13 @@ async fn graphql_query(
     variables: Option<&str>,
     operation_name: Option<&str>,
 ) -> Result<()> {
-    // Resolve GraphQL query text: --gql flag, @file prefix, or stdin
-    let query_text = match gql {
-        Some(s) if s.starts_with('@') => {
-            let file_path = &s[1..];
-            std::fs::read_to_string(file_path).map_err(|e| {
-                FabioError::not_found(format!("GraphQL file not found: {file_path}: {e}"))
-            })?
-        }
-        Some(s) => s.to_string(),
-        None => {
-            let buf = io::read_to_string(io::stdin()).map_err(|e| {
-                FabioError::new(
-                    ErrorCode::ApiError,
-                    format!("Failed to read GraphQL query from stdin: {e}"),
-                )
-            })?;
-            if buf.trim().is_empty() {
-                return Err(FabioError::with_hint(
-                    ErrorCode::InvalidInput,
-                    "No GraphQL query provided. Use --gql, @file, or pipe via stdin.".to_string(),
-                    "Example: fabio graphql-api query --workspace <WS> --id <ID> --gql \"{ __schema { types { name } } }\"".to_string(),
-                )
-                .into());
-            }
-            buf
-        }
-    };
+    // Resolve GraphQL query text: --gql flag, @file prefix, or stdin.
+    let query_text = crate::commands::query_input::resolve_query_input(
+        gql,
+        "GraphQL",
+        "--gql",
+        "Example: fabio graphql-api query --workspace <WS> --id <ID> --gql \"{ __schema { types { name } } }\"",
+    )?;
 
     // Parse variables if provided
     let variables_value: Value = match variables {

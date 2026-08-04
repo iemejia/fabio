@@ -526,10 +526,6 @@ pub enum LakehouseCommand {
         #[arg(long)]
         no_overwrite: bool,
 
-        /// Force overwrite all files regardless of comparison result
-        #[arg(long)]
-        force: bool,
-
         /// Sync only top-level files (do not recurse into subdirectories)
         #[arg(long)]
         no_recursive: bool,
@@ -1546,7 +1542,6 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             exclude,
             size_only,
             no_overwrite,
-            force,
             no_recursive,
             max_delete,
             existing,
@@ -1570,7 +1565,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             exclude.as_deref(),
             *size_only,
             *no_overwrite,
-            *force,
+            cli.force,
             *no_recursive,
             *max_delete,
             *existing,

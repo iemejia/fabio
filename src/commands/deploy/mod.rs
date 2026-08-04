@@ -175,10 +175,6 @@ pub enum DeployCommand {
         #[arg(long)]
         fail_fast: bool,
 
-        /// Apply saved plan even if workspace state changed
-        #[arg(long)]
-        force: bool,
-
         /// Skip content-hash comparison, redeploy all items
         #[arg(long)]
         force_all: bool,
@@ -401,7 +397,6 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
             delete_orphans,
             allow_unresolved,
             fail_fast,
-            force,
             force_all,
             concurrency,
             parameters,
@@ -438,7 +433,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
                 *delete_orphans,
                 *allow_unresolved,
                 *fail_fast,
-                *force,
+                cli.force,
                 *force_all,
                 *concurrency,
                 resolved.parameters.as_deref(),

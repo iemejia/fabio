@@ -56,7 +56,9 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub quiet: bool,
 
-    /// Skip confirmation prompts (for destructive operations)
+    /// Force the operation past safety guards. Skips confirmations and enables
+    /// each command's force behavior (e.g. apply a stale `deploy` plan, overwrite
+    /// on `lakehouse sync`, reinstall on `upgrade`).
     #[arg(long, global = true)]
     pub force: bool,
 
@@ -141,6 +143,99 @@ pub enum OutputFormat {
     Plain,
     Csv,
     Tsv,
+}
+
+#[cfg(test)]
+mod collision_tests {
+    use super::Cli;
+    use clap::CommandFactory;
+    use std::collections::{BTreeSet, HashSet};
+
+    /// Collect the long and short names of every GLOBAL argument on the root command.
+    fn global_names(cmd: &clap::Command) -> (HashSet<String>, HashSet<char>) {
+        let mut longs = HashSet::new();
+        let mut shorts = HashSet::new();
+        for a in cmd.get_arguments() {
+            if a.is_global_set() {
+                if let Some(l) = a.get_long() {
+                    longs.insert(l.to_string());
+                }
+                if let Some(s) = a.get_short() {
+                    shorts.insert(s);
+                }
+            }
+        }
+        (longs, shorts)
+    }
+
+    /// Walk subcommands iteratively; record any NON-global argument whose long or
+    /// short name collides with a global flag. Such a flag makes the global
+    /// silently capture the value (e.g. `--query` fed the GQL string into the
+    /// global `JMESPath` projection), corrupting output.
+    fn find_collisions(
+        root: &clap::Command,
+        glongs: &HashSet<String>,
+        gshorts: &HashSet<char>,
+    ) -> BTreeSet<String> {
+        let mut out = BTreeSet::new();
+        // Iterative worklist (path, command) with a depth guard to avoid any
+        // pathological recursion in the auto-generated command tree.
+        let mut stack: Vec<(String, &clap::Command, u32)> = vec![("fabio".to_string(), root, 0)];
+        while let Some((path, cmd, depth)) = stack.pop() {
+            if depth > 8 {
+                continue;
+            }
+            for sub in cmd.get_subcommands() {
+                let name = sub.get_name();
+                if name == "help" {
+                    continue; // auto-generated, mirrors siblings
+                }
+                let subpath = format!("{path} {name}");
+                for a in sub.get_arguments() {
+                    if a.is_global_set() {
+                        continue;
+                    }
+                    if let Some(l) = a.get_long()
+                        && glongs.contains(l)
+                    {
+                        out.insert(format!("`{subpath}`: --{l} collides with the global --{l}"));
+                    }
+                    if let Some(s) = a.get_short()
+                        && gshorts.contains(&s)
+                    {
+                        out.insert(format!("`{subpath}`: -{s} collides with the global -{s}"));
+                    }
+                }
+                stack.push((subpath, sub, depth + 1));
+            }
+        }
+        out
+    }
+
+    /// No subcommand may define a flag whose long/short name shadows a global
+    /// flag. Regression guard for the `graph-model execute-query --query` bug.
+    #[test]
+    fn no_subcommand_flag_collides_with_global() {
+        // Build the full command tree on a large-stack thread: the derived
+        // `Cli::command()` for 77 groups is deep enough to overflow the default
+        // 2 MB test-thread stack.
+        let collisions = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let cmd = Cli::command();
+                let (glongs, gshorts) = global_names(&cmd);
+                find_collisions(&cmd, &glongs, &gshorts)
+            })
+            .expect("spawn audit thread")
+            .join()
+            .expect("audit thread panicked");
+        assert!(
+            collisions.is_empty(),
+            "Flag collisions with global flags found ({} total):\n{}",
+            collisions.len(),
+            collisions.into_iter().collect::<Vec<_>>().join("\n")
+        );
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -619,9 +714,6 @@ pub enum Command {
         /// Install a specific version (e.g., 0.24.0)
         #[arg(long = "target-version")]
         target_version: Option<String>,
-        /// Force reinstall even if already on the latest version
-        #[arg(long)]
-        force: bool,
     },
     /// Generate shell completion scripts
     #[command(display_order = 67)]

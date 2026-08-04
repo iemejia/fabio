@@ -175,7 +175,7 @@ pub enum DataflowCommand {
         id: String,
     },
     /// Execute a query against a dataflow (returns Apache Arrow IPC)
-    #[command(display_order = 15)]
+    #[command(visible_alias = "query", display_order = 15)]
     ExecuteQuery {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]

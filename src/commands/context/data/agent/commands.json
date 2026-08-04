@@ -3030,10 +3030,6 @@
             "type": "bool",
             "description": "Only copy files that don't exist at destination (skip existing)"
           },
-          "--force": {
-            "type": "bool",
-            "description": "Force overwrite all files regardless of comparison result"
-          },
           "--no-recursive": {
             "type": "bool",
             "description": "Sync only top-level files (do not recurse into subdirectories)"
@@ -8888,13 +8884,13 @@
             "required": true,
             "description": "Copy job ID"
           },
-          "--all": {
+          "--all-entities": {
             "type": "bool",
             "description": "Reset all copy job entities (mutually exclusive with --entity-ids)"
           },
           "--entity-ids": {
             "type": "string",
-            "description": "Comma-separated list of entity IDs to reset (mutually exclusive with --all)"
+            "description": "Comma-separated list of entity IDs to reset (mutually exclusive with --all-entities)"
           }
         },
         "mutates": true,
@@ -15758,8 +15754,7 @@
           },
           "--gql": {
             "type": "string",
-            "required": true,
-            "description": "GQL query string (ISO/IEC 39075). Named `--gql` to avoid clashing with the global `--query` `JMESPath` projection flag"
+            "description": "GQL query text (ISO/IEC 39075). Use `@file.gql` to read from a file, or omit to pipe via stdin. Named `--gql` to avoid clashing with the global `--query` `JMESPath` projection flag"
           }
         },
         "mutates": false,
@@ -19722,10 +19717,6 @@
           "--fail-fast": {
             "type": "bool",
             "description": "Stop on first failure (default: continue remaining items)"
-          },
-          "--force": {
-            "type": "bool",
-            "description": "Apply saved plan even if workspace state changed"
           },
           "--force-all": {
             "type": "bool",

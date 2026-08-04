@@ -113,11 +113,11 @@ pub enum CopyJobCommand {
         id: String,
 
         /// Reset all copy job entities (mutually exclusive with --entity-ids)
-        #[arg(long, conflicts_with = "entity_ids")]
-        all: bool,
+        #[arg(long = "all-entities", conflicts_with = "entity_ids")]
+        all_entities: bool,
 
-        /// Comma-separated list of entity IDs to reset (mutually exclusive with --all)
-        #[arg(long, value_delimiter = ',', conflicts_with = "all")]
+        /// Comma-separated list of entity IDs to reset (mutually exclusive with --all-entities)
+        #[arg(long, value_delimiter = ',', conflicts_with = "all_entities")]
         entity_ids: Vec<String>,
     },
 
@@ -191,9 +191,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &CopyJobCommand)
         CopyJobCommand::Reset {
             workspace,
             id,
-            all,
+            all_entities,
             entity_ids,
-        } => reset(cli, client, workspace, id, *all, entity_ids).await,
+        } => reset(cli, client, workspace, id, *all_entities, entity_ids).await,
         CopyJobCommand::UpdateDefinition {
             workspace,
             id,
@@ -482,8 +482,8 @@ fn build_reset_body(reset_all: bool, entity_ids: &[String]) -> Result<Value> {
     if !reset_all && entity_ids.is_empty() {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
-            "Either --all or --entity-ids must be provided".to_string(),
-            "Example: fabio copy-job reset --workspace <WS> --id <ID> --all".to_string(),
+            "Either --all-entities or --entity-ids must be provided".to_string(),
+            "Example: fabio copy-job reset --workspace <WS> --id <ID> --all-entities".to_string(),
         )
         .into());
     }

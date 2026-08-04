@@ -35,7 +35,7 @@
     "fabio copy-job get-definition --workspace <WS> --id <ID>",
     "fabio copy-job update-definition --workspace <WS> --id <ID> --file <FILE>",
     "fabio item validate-definition --type CopyJob --dir <FOLDER>",
-    "fabio copy-job reset --workspace <WS> --id <ID> --all",
+    "fabio copy-job reset --workspace <WS> --id <ID> --all-entities",
     "fabio copy-job list --workspace <WS>",
     "fabio copy-job delete --workspace <WS> --id <ID>"
   ]

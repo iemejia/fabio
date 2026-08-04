@@ -60,6 +60,7 @@ pub mod org_app_audience;
 pub mod paginated_report;
 pub mod powerbi_export;
 pub mod profile;
+pub mod query_input;
 pub mod reflex;
 pub mod report;
 pub mod rest;
@@ -254,8 +255,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Upgrade {
             check,
             target_version,
-            force,
-        } => upgrade::execute(&cli, *check, target_version.as_deref(), *force).await,
+        } => upgrade::execute(&cli, *check, target_version.as_deref(), cli.force).await,
         Command::Completions { shell } => completions::execute(*shell),
         Command::Mcp { command } => mcp::execute(&cli, command).await,
     }
