@@ -1830,10 +1830,6 @@
             "type": "string",
             "required": true,
             "description": "Item ID"
-          },
-          "--type": {
-            "type": "string",
-            "description": "Item type (auto-detected if omitted). Endorsement-readable types: `SemanticModel`, Report, `PaginatedReport`, Dashboard, Dataflow, Datamart"
           }
         },
         "mutates": false,
@@ -1849,7 +1845,7 @@
           },
           "--endorsement": {
             "type": "string",
-            "description": "Only show items with this endorsement: Certified, Promoted, or None"
+            "description": "Only show items with this endorsement: Certified, Promoted, Master, or None"
           },
           "--type": {
             "type": "string",

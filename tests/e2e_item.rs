@@ -1761,9 +1761,10 @@ fn lakehouse_create_dry_run_with_sensitivity_label() {
 /// Endorsement is READ-ONLY (no public set API). Validate the read commands:
 /// `list-endorsements` returns Power BI-lineage items with an endorsement
 /// field, the `--endorsement` filter works, and `show-endorsement` on a
-/// Fabric-native (non-endorsable-via-API) type returns a clear error.
+/// Fabric-native (non-endorsable-via-API) item returns a clear error. Uses the
+/// admin metadata scanner, so the test identity must be a Fabric admin.
 #[test]
-#[ignore = "requires live Fabric tenant"]
+#[ignore = "requires live Fabric tenant + Fabric-admin (metadata scanner)"]
 #[serial]
 fn item_endorsement_read_lifecycle() {
     let cfg = TestConfig::from_env();
@@ -1823,16 +1824,7 @@ fn item_endorsement_read_lifecycle() {
         .and_then(|i| i["id"].as_str())
     {
         fabio()
-            .args([
-                "item",
-                "show-endorsement",
-                "--workspace",
-                ws,
-                "--id",
-                lh,
-                "--type",
-                "Lakehouse",
-            ])
+            .args(["item", "show-endorsement", "--workspace", ws, "--id", lh])
             .assert()
             .failure();
     }

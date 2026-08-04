@@ -176,11 +176,6 @@ pub enum ItemCommand {
         /// Item ID
         #[arg(long)]
         id: String,
-
-        /// Item type (auto-detected if omitted). Endorsement-readable types:
-        /// `SemanticModel`, Report, `PaginatedReport`, Dashboard, Dataflow, Datamart
-        #[arg(short = 't', long = "type")]
-        item_type: Option<String>,
     },
     /// List items with their endorsement status, optionally filtered [read-only]
     ListEndorsements {
@@ -188,7 +183,7 @@ pub enum ItemCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Only show items with this endorsement: Certified, Promoted, or None
+        /// Only show items with this endorsement: Certified, Promoted, Master, or None
         #[arg(long)]
         endorsement: Option<String>,
 
@@ -624,11 +619,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
         ItemCommand::ListUpstreamRelations { workspace, id } => {
             crud::list_relations(cli, client, workspace, id, "upstream").await
         }
-        ItemCommand::ShowEndorsement {
-            workspace,
-            id,
-            item_type,
-        } => endorsement::show_endorsement(cli, client, workspace, id, item_type.as_deref()).await,
+        ItemCommand::ShowEndorsement { workspace, id } => {
+            endorsement::show_endorsement(cli, client, workspace, id).await
+        }
         ItemCommand::ListEndorsements {
             workspace,
             endorsement,
