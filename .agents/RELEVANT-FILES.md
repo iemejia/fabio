@@ -63,6 +63,7 @@
 - `src/commands/kql_dashboard.rs`: list/show/create/update/delete/get-definition/update-definition (RealTimeDashboard.json)
 - `src/commands/mirrored_database.rs`: list/show/create/update/delete/get-definition/update-definition/start/stop/status/table-status
 - `src/commands/reflex.rs`: list/show/create/update/delete/get-definition/update-definition/create-trigger (Data Activator)
+- `src/commands/reflex_mcp.rs`: Activator remote MCP server — `mcp-url` + native rule management (list-rules/start-rule/stop-rule/delete-rule/rule-activations) via the generic MCP client
 - `src/commands/ml_model.rs`: list/show/create/update/delete (CRUD only)
 - `src/commands/ml_experiment.rs`: list/show/create/update/delete (CRUD only)
 - `src/commands/copy_job.rs`: list/show/create/update/delete/get-definition/update-definition/reset

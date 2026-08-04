@@ -846,3 +846,162 @@ fn reflex_create_trigger_live_email() {
         .assert()
         .success();
 }
+
+// ─── Activator MCP server: rule management ──────────────────────────────────
+
+/// `--readonly` must block a mutating MCP tool BEFORE any auth/network call.
+/// Fully offline (the readonly guard fires before the MCP client connects).
+#[test]
+fn reflex_delete_rule_readonly_blocked() {
+    let assert = fabio()
+        .args([
+            "--readonly",
+            "reflex",
+            "delete-rule",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--rule-id",
+            "00000000-0000-0000-0000-000000000002",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let line = stderr
+        .lines()
+        .find(|l| l.starts_with('{'))
+        .expect("json error on stderr");
+    let err: serde_json::Value = serde_json::from_str(line).unwrap();
+    assert_eq!(err["error"]["code"], "READONLY_MODE");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn reflex_dry_run_start_rule() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "reflex",
+            "start-rule",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--rule-id",
+            "00000000-0000-0000-0000-000000000001",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "reflex start-rule");
+    assert!(data["dry_run"].as_bool().unwrap());
+    assert_eq!(data["details"]["tool"], "start_rule");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn reflex_dry_run_delete_rule() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "reflex",
+            "delete-rule",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--rule-id",
+            "00000000-0000-0000-0000-000000000001",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "reflex delete-rule");
+    assert!(data["dry_run"].as_bool().unwrap());
+}
+
+/// Live: create a reflex, resolve its Activator MCP URL, and list its rules
+/// (empty for a fresh reflex) through the MCP client, then clean up.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn reflex_mcp_url_and_list_rules_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("rx_mcp");
+
+    let assert = fabio()
+        .args([
+            "reflex",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let created = parse_json(&assert);
+    let id = extract_data(&created)["id"].as_str().unwrap().to_string();
+
+    // mcp-url: deterministic URL shape + existence check.
+    let assert = fabio()
+        .args([
+            "reflex",
+            "mcp-url",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &id,
+        ])
+        .assert()
+        .success();
+    let url_json = parse_json(&assert);
+    let data = extract_data(&url_json);
+    let expected = format!("/mcp/workspaces/{}/reflexes/{id}", cfg.source_workspace);
+    assert!(
+        data["mcpUrl"].as_str().unwrap().ends_with(&expected),
+        "unexpected mcpUrl: {data}"
+    );
+    assert_eq!(data["exists"], true);
+
+    // list-rules: a fresh reflex has no rules (empty array via the MCP client).
+    let assert = fabio()
+        .args([
+            "reflex",
+            "list-rules",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &id,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let rules_json = parse_json(&assert);
+    let data = extract_data(&rules_json);
+    assert!(data["rules"].is_array(), "expected a rules array: {data}");
+
+    // Cleanup.
+    fabio()
+        .args([
+            "reflex",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &id,
+        ])
+        .assert()
+        .success();
+}

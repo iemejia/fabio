@@ -10,6 +10,9 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
+#[path = "reflex_mcp.rs"]
+mod mcp;
+
 #[derive(Debug, Subcommand)]
 #[command(
     after_help = "Before using this command, run: fabio context examples reflex\nReturns response shapes, required parameters, and JMESPath queries as JSON."
@@ -175,8 +178,109 @@ pub enum ReflexCommand {
         #[arg(long)]
         id: String,
     },
+
+    /// Print the Activator remote MCP server URL for this reflex
+    #[command(name = "mcp-url", display_order = 30)]
+    McpUrl {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Reflex (Activator artifact) ID
+        #[arg(long)]
+        id: String,
+    },
+
+    /// List monitoring rules in a reflex (via the Activator MCP server)
+    #[command(name = "list-rules", display_order = 31)]
+    ListRules {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Reflex (Activator artifact) ID
+        #[arg(long)]
+        id: String,
+    },
+
+    /// Start (enable) a monitoring rule (via the Activator MCP server)
+    #[command(name = "start-rule", display_order = 32)]
+    StartRule {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Reflex (Activator artifact) ID
+        #[arg(long)]
+        id: String,
+
+        /// Rule ID to start (from `reflex list-rules`)
+        #[arg(long)]
+        rule_id: String,
+    },
+
+    /// Stop (disable) a monitoring rule (via the Activator MCP server)
+    #[command(name = "stop-rule", display_order = 33)]
+    StopRule {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Reflex (Activator artifact) ID
+        #[arg(long)]
+        id: String,
+
+        /// Rule ID to stop (from `reflex list-rules`)
+        #[arg(long)]
+        rule_id: String,
+    },
+
+    /// Delete a monitoring rule (via the Activator MCP server) — irreversible
+    #[command(name = "delete-rule", display_order = 34)]
+    DeleteRule {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Reflex (Activator artifact) ID
+        #[arg(long)]
+        id: String,
+
+        /// Rule ID to delete (from `reflex list-rules`)
+        #[arg(long)]
+        rule_id: String,
+    },
+
+    /// Show the activation (fired-alert) history for a rule (via the Activator MCP server)
+    #[command(name = "rule-activations", display_order = 35)]
+    RuleActivations {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Reflex (Activator artifact) ID
+        #[arg(long)]
+        id: String,
+
+        /// Rule ID to inspect (from `reflex list-rules`)
+        #[arg(long)]
+        rule_id: String,
+
+        /// Start of the window (ISO 8601; default: 24 hours ago)
+        #[arg(long)]
+        start_time: Option<String>,
+
+        /// End of the window (ISO 8601; default: now)
+        #[arg(long)]
+        end_time: Option<String>,
+
+        /// Maximum activations to return (default 100, max 2000)
+        #[arg(long)]
+        max_results: Option<u32>,
+    },
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReflexCommand) -> Result<()> {
     match command {
         ReflexCommand::List { workspace } => list(cli, client, workspace).await,
@@ -275,6 +379,45 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReflexCommand) 
                  programmatically with: fabio reflex get-definition / update-definition",
         )
         .into()),
+        ReflexCommand::McpUrl { workspace, id } => mcp::mcp_url(cli, client, workspace, id).await,
+        ReflexCommand::ListRules { workspace, id } => {
+            mcp::list_rules(cli, client, workspace, id).await
+        }
+        ReflexCommand::StartRule {
+            workspace,
+            id,
+            rule_id,
+        } => mcp::set_rule_state(cli, client, workspace, id, rule_id, true).await,
+        ReflexCommand::StopRule {
+            workspace,
+            id,
+            rule_id,
+        } => mcp::set_rule_state(cli, client, workspace, id, rule_id, false).await,
+        ReflexCommand::DeleteRule {
+            workspace,
+            id,
+            rule_id,
+        } => mcp::delete_rule(cli, client, workspace, id, rule_id).await,
+        ReflexCommand::RuleActivations {
+            workspace,
+            id,
+            rule_id,
+            start_time,
+            end_time,
+            max_results,
+        } => {
+            mcp::rule_activations(
+                cli,
+                client,
+                workspace,
+                id,
+                rule_id,
+                start_time.as_deref(),
+                end_time.as_deref(),
+                *max_results,
+            )
+            .await
+        }
     }
 }
 

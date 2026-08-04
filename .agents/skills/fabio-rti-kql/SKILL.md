@@ -140,9 +140,15 @@ Manage Reflex items (Data Activator triggers and alerts)
 | `fabio reflex create` | yes | Create a new reflex |
 | `fabio reflex create-trigger` | yes | Create a trigger with auto-generated Reflex definition (KQL source + email/Teams alert) |
 | `fabio reflex delete` | yes | Delete a reflex |
+| `fabio reflex delete-rule` | yes | Delete a monitoring rule (via the Activator MCP server) — irreversible |
 | `fabio reflex get-definition` | no | Get the definition of a reflex |
 | `fabio reflex list` | no | List reflexes in a workspace |
+| `fabio reflex list-rules` | no | List monitoring rules in a reflex (via the Activator MCP server) |
+| `fabio reflex mcp-url` | no | Print the Activator remote MCP server URL for this reflex |
+| `fabio reflex rule-activations` | no | Show the activation (fired-alert) history for a rule (via the Activator MCP server) |
 | `fabio reflex show` | no | Show details of a reflex |
+| `fabio reflex start-rule` | yes | Start (enable) a monitoring rule (via the Activator MCP server) |
+| `fabio reflex stop-rule` | yes | Stop (disable) a monitoring rule (via the Activator MCP server) |
 | `fabio reflex update` | yes | Update reflex properties (name and/or description) |
 | `fabio reflex update-definition` | yes | Update the definition of a reflex |
 
@@ -202,6 +208,7 @@ Manage operations agents (AI-powered operations)
 - KQL Queryset definitions use RealTimeQueryset.json (NOT RawQueryset.kql).
 - KQL queries use a separate auth scope ({kusto_uri}/.default), not the standard Fabric scope (fabio handles this).
 - Operations agents have no dedicated start/stop endpoint: activation is the shouldRun flag inside Configurations.json. Use operations-agent start/stop/status (fabio flips the flag for you) instead of hand-editing the definition.
+- Reflex/Activator: `reflex create` makes the item, but individual monitoring rules live on the Activator MCP server (no REST API). Manage them with `reflex list-rules` / `start-rule` / `stop-rule` / `delete-rule` / `rule-activations` (fabio drives the MCP server), or print `reflex mcp-url` for an agent to author rules via natural language. Rules support KQL sources (ADX cluster or eventhouse) and email/Teams actions only.
 
 ## Troubleshooting
 | Symptom | Fix |

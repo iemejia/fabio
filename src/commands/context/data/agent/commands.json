@@ -12506,6 +12506,159 @@
         },
         "mutates": true,
         "returns": "object"
+      },
+      "mcp-url": {
+        "description": "Print the Activator remote MCP server URL for this reflex",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Reflex (Activator artifact) ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio reflex mcp-url --workspace $WS --id $REFLEX"
+        ]
+      },
+      "list-rules": {
+        "description": "List monitoring rules in a reflex (via the Activator MCP server)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Reflex (Activator artifact) ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio reflex list-rules --workspace $WS --id $REFLEX"
+        ]
+      },
+      "start-rule": {
+        "description": "Start (enable) a monitoring rule (via the Activator MCP server)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Reflex (Activator artifact) ID"
+          },
+          "--rule-id": {
+            "type": "string",
+            "required": true,
+            "description": "Rule ID to start (from `reflex list-rules`)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio reflex start-rule --workspace $WS --id $REFLEX --rule-id $RULE"
+        ]
+      },
+      "stop-rule": {
+        "description": "Stop (disable) a monitoring rule (via the Activator MCP server)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Reflex (Activator artifact) ID"
+          },
+          "--rule-id": {
+            "type": "string",
+            "required": true,
+            "description": "Rule ID to stop (from `reflex list-rules`)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio reflex stop-rule --workspace $WS --id $REFLEX --rule-id $RULE"
+        ]
+      },
+      "delete-rule": {
+        "description": "Delete a monitoring rule (via the Activator MCP server) — irreversible",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Reflex (Activator artifact) ID"
+          },
+          "--rule-id": {
+            "type": "string",
+            "required": true,
+            "description": "Rule ID to delete (from `reflex list-rules`)"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true,
+        "examples": [
+          "fabio reflex delete-rule --workspace $WS --id $REFLEX --rule-id $RULE --dry-run"
+        ]
+      },
+      "rule-activations": {
+        "description": "Show the activation (fired-alert) history for a rule (via the Activator MCP server)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Reflex (Activator artifact) ID"
+          },
+          "--rule-id": {
+            "type": "string",
+            "required": true,
+            "description": "Rule ID to inspect (from `reflex list-rules`)"
+          },
+          "--start-time": {
+            "type": "string",
+            "description": "Start of the window (ISO 8601; default: 24 hours ago)"
+          },
+          "--end-time": {
+            "type": "string",
+            "description": "End of the window (ISO 8601; default: now)"
+          },
+          "--max-results": {
+            "type": "string",
+            "description": "Maximum activations to return (default 100, max 2000)"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio reflex rule-activations --workspace $WS --id $REFLEX --rule-id $RULE --max-results 50"
+        ]
       }
     }
   },

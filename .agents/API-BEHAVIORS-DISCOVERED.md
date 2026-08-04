@@ -805,6 +805,16 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
   - Real-time Hub source with workspace events (HTTP 200, creates subscription)
   - `updateDefinition` replaces entire entity set atomically (not incremental)
 
+### Activator remote MCP server (rule management, live-verified)
+- **URL & transport**: `{fabricBase}/mcp/workspaces/{ws}/reflexes/{artifactId}` — server identifies as `"Reflex Mcp Server" v0.0.1`, OAuth (Fabric bearer token), streamable-HTTP with `text/event-stream` (SSE) responses, **stateless** (no `Mcp-Session-Id`). The URL follows the data-agent shape (`/mcp/workspaces/{ws}/dataagents/{id}/...`), NOT the ontology/kql `dataPlane/.../items/...` shape.
+- **Six tools** (`tools/list`) — the docs list only four; `delete_rule` and `get_activations_for_rule` are UNDOCUMENTED but present:
+  - `list_rules` — `{listRulesParams:{artifactId, workspaceId}}` → `{"rules":[...]}` (both as a JSON `text` content block and `structuredContent`). Empty reflex → `{"rules":[]}`.
+  - `start_rule` / `stop_rule` / `delete_rule` — `{<name>Params:{artifactId, workspaceId, ruleId}}`. Mutating.
+  - `get_activations_for_rule` — `{getActivationsParams:{artifactId, workspaceId, ruleId, startTime?, endTime?, objectIds?, maxResults?}}`. Fired-alert history; `maxResults` default 100 / max 2000; window defaults to last 24h. A bad `ruleId` returns an MCP tool error (`isError`) carrying the server's `FailedToResolveEntity` BadRequest.
+  - `create_rule` — `{createRuleParams:{...}}`, a large NL-oriented schema (stream/detection/action). Designed to be driven by an LLM, not deterministically; fabio does NOT wrap it (use `reflex create-trigger` for scripted creation, or the MCP server via `reflex mcp-url` for NL authoring).
+- **fabio coverage**: `reflex mcp-url` (prints the URL + existence check) and native MCP-client commands `reflex list-rules` / `start-rule` / `stop-rule` / `delete-rule` / `rule-activations` (in `src/commands/reflex_mcp.rs`). Errors from a tool come back as HTTP-200 MCP responses with `isError:true`; fabio maps them to a non-zero `API_ERROR`.
+- **Server limitations** (from the doc): KQL data sources only (ADX cluster URL, or Fabric eventhouse KQL DB item id + workspace); email/Teams actions only (no webhooks/Power Automate); one eventstream per rule (no cross-stream correlation); no aggregation/summarization (per-event detection only).
+
 ## Workspace API Behaviors Discovered
 - **Endpoint scope**: All workspace operations are tenant-level at `/workspaces/{id}` (no parent scope).
 - **Capacity assignment body**: `POST /workspaces/{id}/assignToCapacity` with `{"capacityId": "<id>"}`. Unassign uses empty body `{}` to `POST /workspaces/{id}/unassignFromCapacity`.
