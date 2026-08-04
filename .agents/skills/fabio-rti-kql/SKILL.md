@@ -138,6 +138,7 @@ Manage Reflex items (Data Activator triggers and alerts)
 |---|---|---|
 | `fabio reflex configure-kql-source` | yes | Configure a KQL data source (portal-only operation) |
 | `fabio reflex create` | yes | Create a new reflex |
+| `fabio reflex create-rule` | yes | Create a monitoring rule in an existing reflex (via the Activator MCP server) |
 | `fabio reflex create-trigger` | yes | Create a trigger with auto-generated Reflex definition (KQL source + email/Teams alert) |
 | `fabio reflex delete` | yes | Delete a reflex |
 | `fabio reflex delete-rule` | yes | Delete a monitoring rule (via the Activator MCP server) — irreversible |
@@ -208,7 +209,7 @@ Manage operations agents (AI-powered operations)
 - KQL Queryset definitions use RealTimeQueryset.json (NOT RawQueryset.kql).
 - KQL queries use a separate auth scope ({kusto_uri}/.default), not the standard Fabric scope (fabio handles this).
 - Operations agents have no dedicated start/stop endpoint: activation is the shouldRun flag inside Configurations.json. Use operations-agent start/stop/status (fabio flips the flag for you) instead of hand-editing the definition.
-- Reflex/Activator: `reflex create` makes the item, but individual monitoring rules live on the Activator MCP server (no REST API). Manage them with `reflex list-rules` / `start-rule` / `stop-rule` / `delete-rule` / `rule-activations` (fabio drives the MCP server), or print `reflex mcp-url` for an agent to author rules via natural language. Rules support KQL sources (ADX cluster or eventhouse) and email/Teams actions only.
+- Reflex/Activator: `reflex create` makes the item; individual monitoring rules live on the Activator MCP server (no REST API). Create rules RELIABLY with `reflex create-rule` (typed flags for the common KQL+email/Teams case, or `--rule @file.json` for full control incl. Ontology sources) — prefer it over `reflex create-trigger` (REST, fragile). Manage rules with `reflex list-rules` / `start-rule` / `stop-rule` / `delete-rule` / `rule-activations` (fabio drives the MCP server), or print `reflex mcp-url` for an agent to author rules via natural language. CHANGE conditions (increasesAbove/decreasesBelow) require --split-column; STATE conditions (isGreaterThan) do not. Rules support KQL sources (ADX cluster or eventhouse) and email/Teams actions only.
 
 ## Troubleshooting
 | Symptom | Fix |

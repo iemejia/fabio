@@ -12507,6 +12507,103 @@
         "mutates": true,
         "returns": "object"
       },
+      "create-rule": {
+        "description": "Create a monitoring rule in an existing reflex (via the Activator MCP server)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Reflex (Activator artifact) ID"
+          },
+          "--rule": {
+            "type": "string",
+            "description": "Full createRuleParams JSON (inline, @file, or stdin). Takes precedence over the typed flags; fabio injects artifactId/workspaceId"
+          },
+          "--name": {
+            "type": "string",
+            "description": "Rule name (typed mode)"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Rule description (typed mode; defaults to the name)"
+          },
+          "--kql": {
+            "type": "string",
+            "description": "KQL query text defining the monitored stream (typed mode)"
+          },
+          "--interval": {
+            "type": "string",
+            "description": "Query execution interval in seconds (typed mode)"
+          },
+          "--eventhouse-id": {
+            "type": "string",
+            "description": "Fabric eventhouse KQL database item id (source; mutually exclusive with --cluster)"
+          },
+          "--eventhouse-workspace": {
+            "type": "string",
+            "description": "Workspace of the eventhouse (defaults to --workspace)"
+          },
+          "--cluster": {
+            "type": "string",
+            "description": "Azure Data Explorer cluster host (source; use with --database)"
+          },
+          "--database": {
+            "type": "string",
+            "description": "Azure Data Explorer database name (use with --cluster)"
+          },
+          "--split-column": {
+            "type": "string",
+            "description": "Column to group by for per-entity monitoring (required by CHANGE conditions)"
+          },
+          "--column": {
+            "type": "string",
+            "description": "Column to monitor (typed mode)"
+          },
+          "--condition": {
+            "type": "string",
+            "description": "Condition function, e.g. isGreaterThan / increasesAbove / decreasesBelow / changesTo (typed mode)"
+          },
+          "--value": {
+            "type": "string",
+            "description": "Threshold value for the condition (number, boolean, or string) (typed mode)"
+          },
+          "--action": {
+            "type": "string",
+            "description": "Action to trigger: email or teams (typed mode)"
+          },
+          "--recipients": {
+            "type": "string",
+            "description": "Recipient email(s), comma-separated (typed mode)"
+          },
+          "--subject": {
+            "type": "string",
+            "description": "Email subject (email action; defaults to the name)"
+          },
+          "--message": {
+            "type": "string",
+            "description": "Message body (email body / Teams message; supports {columnName} placeholders)"
+          },
+          "--headline": {
+            "type": "string",
+            "description": "Headline shown in the alert (defaults to the name)"
+          },
+          "--locale": {
+            "type": "string",
+            "description": "Message locale (typed mode)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio reflex create-rule --workspace $WS --id $REFLEX --name \"High CPU\" --kql \"Metrics | project cpu, machineId\" --eventhouse-id $KQLDB --column cpu --condition isGreaterThan --value 90 --recipients alice@contoso.com",
+          "fabio reflex create-rule --workspace $WS --id $REFLEX --rule @rule.json"
+        ]
+      },
       "mcp-url": {
         "description": "Print the Activator remote MCP server URL for this reflex",
         "flags": {

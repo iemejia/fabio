@@ -14,6 +14,10 @@ use crate::output;
 mod mcp;
 
 #[derive(Debug, Subcommand)]
+// The `create-rule` variant carries the full typed rule-authoring surface, so it
+// is much larger than the CRUD variants; boxing clap-derive arg fields fights the
+// derive, so allow the size disparity here.
+#[allow(clippy::large_enum_variant)]
 #[command(
     after_help = "Before using this command, run: fabio context examples reflex\nReturns response shapes, required parameters, and JMESPath queries as JSON."
 )]
@@ -177,6 +181,98 @@ pub enum ReflexCommand {
         /// Reflex ID
         #[arg(long)]
         id: String,
+    },
+
+    /// Create a monitoring rule in an existing reflex (via the Activator MCP server).
+    ///
+    /// Provide `--rule <json|@file>` for full control (the createRuleParams payload),
+    /// or the typed flags for the common single-condition KQL case.
+    #[command(name = "create-rule", display_order = 29)]
+    CreateRule {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Reflex (Activator artifact) ID
+        #[arg(long)]
+        id: String,
+
+        /// Full createRuleParams JSON (inline, @file, or stdin). Takes precedence
+        /// over the typed flags; fabio injects artifactId/workspaceId.
+        #[arg(long, conflicts_with_all = ["kql", "column"])]
+        rule: Option<String>,
+
+        /// Rule name (typed mode)
+        #[arg(long)]
+        name: Option<String>,
+
+        /// Rule description (typed mode; defaults to the name)
+        #[arg(long)]
+        description: Option<String>,
+
+        /// KQL query text defining the monitored stream (typed mode)
+        #[arg(long)]
+        kql: Option<String>,
+
+        /// Query execution interval in seconds (typed mode)
+        #[arg(long, default_value_t = 300)]
+        interval: u32,
+
+        /// Fabric eventhouse KQL database item id (source; mutually exclusive with --cluster)
+        #[arg(long, conflicts_with = "cluster")]
+        eventhouse_id: Option<String>,
+
+        /// Workspace of the eventhouse (defaults to --workspace)
+        #[arg(long)]
+        eventhouse_workspace: Option<String>,
+
+        /// Azure Data Explorer cluster host (source; use with --database)
+        #[arg(long)]
+        cluster: Option<String>,
+
+        /// Azure Data Explorer database name (use with --cluster)
+        #[arg(long)]
+        database: Option<String>,
+
+        /// Column to group by for per-entity monitoring (required by CHANGE conditions)
+        #[arg(long)]
+        split_column: Option<String>,
+
+        /// Column to monitor (typed mode)
+        #[arg(long)]
+        column: Option<String>,
+
+        /// Condition function, e.g. isGreaterThan / increasesAbove / decreasesBelow / changesTo (typed mode)
+        #[arg(long)]
+        condition: Option<String>,
+
+        /// Threshold value for the condition (number, boolean, or string) (typed mode)
+        #[arg(long)]
+        value: Option<String>,
+
+        /// Action to trigger: email or teams (typed mode)
+        #[arg(long, default_value = "email")]
+        action: String,
+
+        /// Recipient email(s), comma-separated (typed mode)
+        #[arg(long, value_delimiter = ',')]
+        recipients: Vec<String>,
+
+        /// Email subject (email action; defaults to the name)
+        #[arg(long)]
+        subject: Option<String>,
+
+        /// Message body (email body / Teams message; supports {columnName} placeholders)
+        #[arg(long)]
+        message: Option<String>,
+
+        /// Headline shown in the alert (defaults to the name)
+        #[arg(long)]
+        headline: Option<String>,
+
+        /// Message locale (typed mode)
+        #[arg(long, default_value = "en-US")]
+        locale: String,
     },
 
     /// Print the Activator remote MCP server URL for this reflex
@@ -379,6 +475,56 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReflexCommand) 
                  programmatically with: fabio reflex get-definition / update-definition",
         )
         .into()),
+        ReflexCommand::CreateRule {
+            workspace,
+            id,
+            rule,
+            name,
+            description,
+            kql,
+            interval,
+            eventhouse_id,
+            eventhouse_workspace,
+            cluster,
+            database,
+            split_column,
+            column,
+            condition,
+            value,
+            action,
+            recipients,
+            subject,
+            message,
+            headline,
+            locale,
+        } => {
+            let spec = match (name, kql, column, condition, value) {
+                (Some(name), Some(kql), Some(column), Some(condition), Some(value)) => {
+                    Some(mcp::TypedRuleSpec {
+                        name,
+                        description: description.as_deref(),
+                        kql,
+                        interval: *interval,
+                        eventhouse_id: eventhouse_id.as_deref(),
+                        eventhouse_workspace: eventhouse_workspace.as_deref(),
+                        cluster: cluster.as_deref(),
+                        database: database.as_deref(),
+                        split_column: split_column.as_deref(),
+                        column,
+                        condition,
+                        value,
+                        action,
+                        recipients,
+                        subject: subject.as_deref(),
+                        message: message.as_deref(),
+                        headline: headline.as_deref(),
+                        locale,
+                    })
+                }
+                _ => None,
+            };
+            mcp::create_rule(cli, client, workspace, id, rule.as_deref(), spec).await
+        }
         ReflexCommand::McpUrl { workspace, id } => mcp::mcp_url(cli, client, workspace, id).await,
         ReflexCommand::ListRules { workspace, id } => {
             mcp::list_rules(cli, client, workspace, id).await

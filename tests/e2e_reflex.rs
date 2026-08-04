@@ -849,6 +849,92 @@ fn reflex_create_trigger_live_email() {
 
 // ─── Activator MCP server: rule management ──────────────────────────────────
 
+/// Typed `create-rule` builds the createRuleParams and the dry-run guard fires
+/// before any network call (fully offline).
+#[test]
+fn reflex_create_rule_dry_run_typed() {
+    let assert = fabio()
+        .args([
+            "reflex",
+            "create-rule",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--name",
+            "High CPU",
+            "--kql",
+            "Metrics | project cpu",
+            "--eventhouse-id",
+            "00000000-0000-0000-0000-000000000002",
+            "--column",
+            "cpu",
+            "--condition",
+            "isGreaterThan",
+            "--value",
+            "90",
+            "--recipients",
+            "alice@contoso.com",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "reflex create-rule");
+    let params = &data["details"]["params"];
+    assert_eq!(params["name"], "High CPU");
+    assert_eq!(
+        params["source"]["eventhouseItem"]["itemType"],
+        "KustoDatabase"
+    );
+    assert_eq!(
+        params["model"]["detection"]["condition"]["conditionType"],
+        "isGreaterThan"
+    );
+    assert_eq!(params["model"]["action"]["actionType"], "email");
+}
+
+/// `--readonly` blocks create-rule (mutation) before connecting. Offline.
+#[test]
+fn reflex_create_rule_readonly_blocked() {
+    let assert = fabio()
+        .args([
+            "--readonly",
+            "reflex",
+            "create-rule",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--name",
+            "X",
+            "--kql",
+            "T | take 1",
+            "--eventhouse-id",
+            "00000000-0000-0000-0000-000000000002",
+            "--column",
+            "c",
+            "--condition",
+            "isGreaterThan",
+            "--value",
+            "1",
+            "--recipients",
+            "a@b.com",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let line = stderr
+        .lines()
+        .find(|l| l.starts_with('{'))
+        .expect("json error on stderr");
+    let err: serde_json::Value = serde_json::from_str(line).unwrap();
+    assert_eq!(err["error"]["code"], "READONLY_MODE");
+}
+
 /// `--readonly` must block a mutating MCP tool BEFORE any auth/network call.
 /// Fully offline (the readonly guard fires before the MCP client connects).
 #[test]
