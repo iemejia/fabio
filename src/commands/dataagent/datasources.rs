@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use anyhow::Result;
 use serde_json::Value;
 
@@ -7,6 +9,11 @@ use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
 use super::resolve_datasource_id;
+
+/// Maximum depth `select-tables` walks the element container tree. The real
+/// nesting is ~3 (`Schemas → Schema → Tables → Table`); this only guards
+/// against a pathological or cyclic tree.
+const MAX_DEPTH: usize = 12;
 
 /// List configured data sources via the datasources API.
 ///
@@ -100,19 +107,9 @@ pub(super) async fn add_datasource(
         return Ok(());
     }
 
-    // Build request body per the new API schema
-    // The API uses DatasourceType discriminator: "FabricItem" or "LakehouseTables"
-    let mut body = serde_json::json!({
-        "type": "FabricItem",
-        "itemReference": {
-            "itemId": artifact_id,
-            "workspaceId": ds_workspace,
-        },
-        "fabricItemType": resolved_type,
-    });
-    if let Some(instr) = instructions {
-        body["instructions"] = Value::from(instr);
-    }
+    // Build request body per the datasource API schema. The discriminator is
+    // source-specific (see `build_add_datasource_body`).
+    let body = build_add_datasource_body(&resolved_type, &artifact_id, ds_workspace, instructions);
 
     // Datasource creation triggers async schema discovery (LRO).
     // The server may take 1-3 minutes to complete schema indexing.
@@ -146,6 +143,52 @@ pub(super) async fn add_datasource(
     };
     output::render_object(cli, &result, "status");
     Ok(())
+}
+
+/// Build the `POST .../staging/datasources` request body for a Fabric item.
+///
+/// The datasource API uses a `type` discriminator that is source-specific:
+///
+/// - **Lakehouse** → `"LakehouseTables"` with a `lakehouseReference`. A Lakehouse
+///   *item* is not itself the SQL database — its tables live on a separate
+///   auto-provisioned SQL analytics endpoint — so `FabricItem` (which points at
+///   the lakehouse item) fails schema discovery with
+///   `BadRequest: Failed to fetch schema for the data source`. `LakehouseTables`
+///   tells the agent to index the lakehouse's Delta tables. (Live-verified.)
+/// - **Everything else** (`Warehouse`, `SQLDatabase`, `MirroredDatabase`,
+///   `KQLDatabase`, `SemanticModel`, `GraphModel`, `Ontology`, …) → `"FabricItem"`
+///   with an `itemReference` + `fabricItemType`. For these the item *is* the
+///   queryable surface, so schema discovery reads it directly. (Warehouse
+///   live-verified — note its SQL analytics endpoint needs ~60–90 s to finish
+///   provisioning before schema discovery succeeds.)
+fn build_add_datasource_body(
+    resolved_type: &str,
+    artifact_id: &str,
+    ds_workspace: &str,
+    instructions: Option<&str>,
+) -> Value {
+    let mut body = if resolved_type.eq_ignore_ascii_case("Lakehouse") {
+        serde_json::json!({
+            "type": "LakehouseTables",
+            "lakehouseReference": {
+                "itemId": artifact_id,
+                "workspaceId": ds_workspace,
+            },
+        })
+    } else {
+        serde_json::json!({
+            "type": "FabricItem",
+            "itemReference": {
+                "itemId": artifact_id,
+                "workspaceId": ds_workspace,
+            },
+            "fabricItemType": resolved_type,
+        })
+    };
+    if let Some(instr) = instructions {
+        body["instructions"] = Value::from(instr);
+    }
+    body
 }
 
 /// Recursively lower-case the first character of every object key.
@@ -380,63 +423,54 @@ pub(super) async fn select_tables(
 
     let mut modified = 0;
 
-    for elem in &elements_resp.items {
+    // The element tree nests containers several levels deep — for a
+    // lakehouse/warehouse the selectable tables sit three containers down
+    // (`Schemas` → `Schema` → `Tables` → `Table`); KQL grouping containers
+    // nest similarly. Walk the tree breadth-first, expanding every container
+    // via `?rootId={id}` until the selectable leaves are reached. A single
+    // level of drilling (the previous behavior) never reached schema-nested
+    // tables, so `--tables factsales` failed with "No matching elements".
+    // Guard against a pathological/cyclic tree; the real depth is ~3.
+    let mut queue: VecDeque<(Value, usize)> = elements_resp
+        .items
+        .into_iter()
+        .map(|e| (e, 0usize))
+        .collect();
+
+    while let Some((elem, depth)) = queue.pop_front() {
         let elem_type = elem.get("type").and_then(Value::as_str).unwrap_or("");
-        if !is_selectable(elem_type) {
-            // Drill one level into schema containers to reach nested elements.
-            if is_container(elem_type) {
-                let elem_id = elem.get("id").and_then(Value::as_str).unwrap_or("");
-                if !elem_id.is_empty() {
-                    let sub_resp = client
-                        .get_list(
-                            &format!("{base_path}?rootId={elem_id}"),
-                            "value",
-                            true,
-                            None,
-                        )
-                        .await?;
-                    for sub_elem in &sub_resp.items {
-                        let sub_type = sub_elem.get("type").and_then(Value::as_str).unwrap_or("");
-                        if !is_selectable(sub_type) {
-                            continue;
-                        }
-                        let display_name = sub_elem
-                            .get("displayName")
-                            .and_then(Value::as_str)
-                            .unwrap_or("");
-                        let sub_id = sub_elem.get("id").and_then(Value::as_str).unwrap_or("");
-                        let should_modify =
-                            select_all || names.iter().any(|t| t == &display_name.to_lowercase());
-                        if should_modify && !sub_id.is_empty() {
-                            client
-                                .patch(
-                                    &format!("{base_path}?id={sub_id}"),
-                                    &serde_json::json!({ "isSelected": target_selected }),
-                                )
-                                .await?;
-                            modified += 1;
-                        }
-                    }
+        if is_selectable(elem_type) {
+            let display_name = elem
+                .get("displayName")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let elem_id = elem.get("id").and_then(Value::as_str).unwrap_or("");
+            let should_modify =
+                select_all || names.iter().any(|t| t == &display_name.to_lowercase());
+            if should_modify && !elem_id.is_empty() {
+                client
+                    .patch(
+                        &format!("{base_path}?id={elem_id}"),
+                        &serde_json::json!({ "isSelected": target_selected }),
+                    )
+                    .await?;
+                modified += 1;
+            }
+        } else if is_container(elem_type) && depth < MAX_DEPTH {
+            let elem_id = elem.get("id").and_then(Value::as_str).unwrap_or("");
+            if !elem_id.is_empty() {
+                let sub_resp = client
+                    .get_list(
+                        &format!("{base_path}?rootId={elem_id}"),
+                        "value",
+                        true,
+                        None,
+                    )
+                    .await?;
+                for sub in sub_resp.items {
+                    queue.push_back((sub, depth + 1));
                 }
             }
-            continue;
-        }
-
-        let display_name = elem
-            .get("displayName")
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        let elem_id = elem.get("id").and_then(Value::as_str).unwrap_or("");
-        let should_modify = select_all || names.iter().any(|t| t == &display_name.to_lowercase());
-
-        if should_modify && !elem_id.is_empty() {
-            client
-                .patch(
-                    &format!("{base_path}?id={elem_id}"),
-                    &serde_json::json!({ "isSelected": target_selected }),
-                )
-                .await?;
-            modified += 1;
         }
     }
 
@@ -600,6 +634,47 @@ mod tests {
         let already = json!({"fabricItemType": "Lakehouse", "id": "x"});
         let got = camel_case_keys(already.clone());
         assert_eq!(got, already);
+    }
+
+    #[test]
+    fn build_add_datasource_body_uses_lakehousetables_for_lakehouse() {
+        let body = build_add_datasource_body("Lakehouse", "lh-id", "ws-id", None);
+        assert_eq!(body["type"], "LakehouseTables");
+        assert_eq!(body["lakehouseReference"]["itemId"], "lh-id");
+        assert_eq!(body["lakehouseReference"]["workspaceId"], "ws-id");
+        // Lakehouse sources must NOT carry the FabricItem fields — the API
+        // rejects schema discovery when a lakehouse is sent as a FabricItem.
+        assert!(body.get("itemReference").is_none());
+        assert!(body.get("fabricItemType").is_none());
+        // Case-insensitive on the resolved type.
+        let lower = build_add_datasource_body("lakehouse", "lh-id", "ws-id", None);
+        assert_eq!(lower["type"], "LakehouseTables");
+    }
+
+    #[test]
+    fn build_add_datasource_body_uses_fabricitem_for_non_lakehouse() {
+        for t in [
+            "Warehouse",
+            "SQLDatabase",
+            "KQLDatabase",
+            "SemanticModel",
+            "GraphModel",
+        ] {
+            let body = build_add_datasource_body(t, "item-id", "ws-id", None);
+            assert_eq!(body["type"], "FabricItem", "{t} should use FabricItem");
+            assert_eq!(body["itemReference"]["itemId"], "item-id");
+            assert_eq!(body["itemReference"]["workspaceId"], "ws-id");
+            assert_eq!(body["fabricItemType"], t);
+            assert!(body.get("lakehouseReference").is_none());
+        }
+    }
+
+    #[test]
+    fn build_add_datasource_body_attaches_instructions_to_either_shape() {
+        let lh = build_add_datasource_body("Lakehouse", "lh", "ws", Some("only sales"));
+        assert_eq!(lh["instructions"], "only sales");
+        let wh = build_add_datasource_body("Warehouse", "wh", "ws", Some("only sales"));
+        assert_eq!(wh["instructions"], "only sales");
     }
 
     #[test]

@@ -4264,3 +4264,198 @@ fn dataagent_graph_model_nl2gql_generation_lifecycle() {
         .assert()
         .success();
 }
+
+/// Live validation of **NL2SQL** over a Lakehouse: a data agent grounded on a
+/// `Lakehouse` translates a natural-language question into T-SQL (over the
+/// lakehouse SQL analytics endpoint) and returns a grounded answer.
+///
+/// Requires a PRE-POPULATED, schema-enabled lakehouse (so its SQL schema is
+/// already discoverable), provided via `FABIO_TEST_LOADED_LAKEHOUSE`; skipped
+/// when unset.
+///
+/// It also acquires an **Azure-CLI-issued Fabric token** (via `az`) and runs
+/// every fabio call with it, skipping if `az` is unavailable. This is required
+/// because the data-agent server fetches the lakehouse SQL-endpoint schema
+/// *on-behalf-of the caller's token*, and that on-behalf-of exchange only
+/// succeeds for a broadly-trusted client app (Azure CLI) — fabio's own
+/// device-code login token is rejected with "Failed to fetch schema for the
+/// data source". See API-BEHAVIORS-DISCOVERED "Data agent SQL-source schema
+/// fetch is on-behalf-of the caller".
+///
+/// Regression guard for two fixed bugs:
+///   1. `add-datasource` MUST send a Lakehouse as `LakehouseTables` (with a
+///      `lakehouseReference`), NOT `FabricItem` — a lakehouse item is not itself
+///      the SQL database, so `FabricItem` fails schema discovery with
+///      "Failed to fetch schema for the data source". (Non-lakehouse sources
+///      like Warehouse/KQLDatabase/SemanticModel correctly use `FabricItem`,
+///      covered by the NL2KQL/NL2DAX lifecycles.)
+///   2. `select-tables` MUST drill through the 3-level `Schemas → Schema →
+///      Tables → Table` nesting to reach the tables. The previous single-level
+///      drill never reached them and failed with "No matching elements".
+#[test]
+#[ignore = "requires live Fabric tenant + a populated lakehouse (FABIO_TEST_LOADED_LAKEHOUSE)"]
+#[serial]
+fn dataagent_lakehouse_nl2sql_lifecycle() {
+    let Ok(lakehouse) = std::env::var("FABIO_TEST_LOADED_LAKEHOUSE") else {
+        eprintln!("FABIO_TEST_LOADED_LAKEHOUSE not set — skipping NL2SQL validation");
+        return;
+    };
+    let Some(token) = az_fabric_token() else {
+        eprintln!("az Fabric token unavailable — skipping NL2SQL validation");
+        return;
+    };
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+
+    // Every fabio invocation must carry the OBO-capable Fabric token.
+    let fb = || {
+        let mut c = fabio();
+        c.env("FABIO_ACCESS_TOKEN", &token);
+        c
+    };
+
+    // 1) Agent grounded on the populated lakehouse (the LakehouseTables branch).
+    let assert = fb()
+        .args([
+            "data-agent",
+            "create",
+            "--workspace",
+            ws,
+            "--name",
+            &unique_name("nl2sql"),
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Add the lakehouse as a datasource (the LakehouseTables branch). A
+    // regression to the FabricItem body would fail this with "Failed to fetch
+    // schema".
+    let assert = fb()
+        .args([
+            "data-agent",
+            "add-datasource",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--artifact",
+            &lakehouse,
+            "--artifact-type",
+            "Lakehouse",
+            "--lro-timeout",
+            "300",
+        ])
+        .timeout(std::time::Duration::from_mins(6))
+        .assert()
+        .success();
+    // A LakehouseTables datasource reports `fabricItemType: null` (its type is
+    // carried by the `lakehouseReference`, not the FabricItem fields), so the
+    // reliable success signal is `status: datasource_added`. Reaching here at
+    // all proves schema discovery succeeded — a regression to the FabricItem
+    // body would have failed `.success()` above with "Failed to fetch schema".
+    assert_eq!(
+        extract_data(&parse_json(&assert))["status"],
+        "datasource_added",
+        "a lakehouse datasource must be added (via LakehouseTables) without a schema-fetch error"
+    );
+
+    // 2) Select ALL tables — exercises the recursive walk through the 3-level
+    //    Schemas → Schema → Tables → Table nesting (the deep-drill fix). A
+    //    single-level drill would select nothing.
+    let assert = fb()
+        .args([
+            "data-agent",
+            "select-tables",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--datasource",
+            &lakehouse,
+            "--all-tables",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let modified = extract_data(&parse_json(&assert))["modified"]
+        .as_u64()
+        .unwrap_or(0);
+    assert!(
+        modified >= 1,
+        "select-tables --all-tables must reach the schema-nested tables (got modified={modified})"
+    );
+
+    fb().args([
+        "data-agent",
+        "publish",
+        "--workspace",
+        ws,
+        "--id",
+        &id,
+        "--description",
+        "NL2SQL e2e",
+    ])
+    .timeout(std::time::Duration::from_mins(3))
+    .assert()
+    .success();
+
+    // 3) Ask a question and confirm a grounded NL2SQL answer (a generated
+    //    T-SQL query in the run steps).
+    let assert = fb()
+        .args([
+            "data-agent",
+            "query",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--prompt",
+            "List the tables available and how many rows each one has.",
+            "--show-steps",
+        ])
+        .timeout(std::time::Duration::from_mins(4))
+        .assert()
+        .success();
+    let blob = serde_json::to_string(&parse_json(&assert)).unwrap();
+    let did_nl2sql = blob.contains("nl2code") || blob.to_lowercase().contains("select");
+    assert!(
+        did_nl2sql,
+        "expected evidence of NL2SQL (a generated T-SQL query): {blob}"
+    );
+
+    // Cleanup: the agent only — the lakehouse fixture is pre-existing.
+    fb().args(["data-agent", "delete", "--workspace", ws, "--id", &id])
+        .assert()
+        .success();
+}
+
+/// Acquire an Azure-CLI-issued Fabric access token (`az account
+/// get-access-token --resource https://api.fabric.microsoft.com`). Returns
+/// `None` if `az` is missing, not logged in, or the token is empty — the caller
+/// then skips. Used by NL2SQL tests whose data-agent schema fetch needs an
+/// on-behalf-of-capable token (see `dataagent_lakehouse_nl2sql_lifecycle`).
+fn az_fabric_token() -> Option<String> {
+    let output = std::process::Command::new("az")
+        .args([
+            "account",
+            "get-access-token",
+            "--resource",
+            "https://api.fabric.microsoft.com",
+            "--query",
+            "accessToken",
+            "-o",
+            "tsv",
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let token = String::from_utf8(output.stdout).ok()?.trim().to_string();
+    (!token.is_empty()).then_some(token)
+}

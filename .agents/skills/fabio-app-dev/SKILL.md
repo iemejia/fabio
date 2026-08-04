@@ -171,6 +171,7 @@ Manage org app audiences (audience definitions for org apps)
 ## Troubleshooting
 | Symptom | Fix |
 |---|---|
+| data-agent add-datasource fails 'BadRequest: Failed to fetch schema for the data source' for a Lakehouse/Warehouse/SQLDatabase/MirroredDatabase | The data-agent server fetches a SQL source's schema on-behalf-of YOUR token, and fabio's own device-code login token is not authorized for that SQL-endpoint exchange. Run with an Azure-CLI Fabric token: FABIO_ACCESS_TOKEN=$(az account get-access-token --resource https://api.fabric.microsoft.com --query accessToken -o tsv) fabio data-agent add-datasource ... . Non-SQL sources (KQLDatabase/SemanticModel/GraphModel) are unaffected. |
 | data-agent query returns an error / not published | Publish first (data-agent publish); only published agents are queryable. Confirm datasources + select-tables were configured before publishing. |
 | Data Agent gives wrong answers | Add few-shots (add-fewshot), tighten instructions (update-config), and validate with 'data-agent evaluate' / 'validate-fewshots' (add --llm-* for a judge model). |
 | user-data-function invoke fails | Ensure the function is published with public access; pass the exact portal-copied --url (HTTPS *.fabric.microsoft.com). fabio rejects non-trusted/non-HTTPS URLs. |
