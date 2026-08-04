@@ -144,7 +144,7 @@ pub enum GraphModelCommand {
         #[arg(long, default_value_t = 600)]
         timeout: u64,
     },
-    /// Execute a graph query
+    /// Execute a GQL query against the graph
     #[command(display_order = 11)]
     ExecuteQuery {
         /// Workspace ID
@@ -155,9 +155,10 @@ pub enum GraphModelCommand {
         #[arg(long)]
         id: String,
 
-        /// Graph query string
+        /// GQL query string (ISO/IEC 39075). Named `--gql` to avoid clashing
+        /// with the global `--query` `JMESPath` projection flag.
         #[arg(long)]
-        query: String,
+        gql: String,
     },
     /// Get the queryable graph type
     #[command(display_order = 12)]
@@ -252,8 +253,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GraphModelComma
         GraphModelCommand::ExecuteQuery {
             workspace,
             id,
-            query,
-        } => execute_query(cli, client, workspace, id, query).await,
+            gql,
+        } => execute_query(cli, client, workspace, id, gql).await,
         GraphModelCommand::GetQueryableGraphType { workspace, id } => {
             get_queryable_graph_type(cli, client, workspace, id).await
         }
@@ -652,9 +653,9 @@ async fn execute_query(
     client: &FabricClient,
     workspace: &str,
     id: &str,
-    query: &str,
+    gql: &str,
 ) -> Result<()> {
-    let body = serde_json::json!({ "query": query });
+    let body = serde_json::json!({ "query": gql });
 
     let data = client
         .post(
@@ -664,8 +665,49 @@ async fn execute_query(
         )
         .await
         .map_err(|e| enrich_forbidden(e, "graph-model execute-query", "Contributor"))?;
+
+    // The GQL Query API returns HTTP 200 even for failed queries, encoding the
+    // outcome in the `status` object. Surface application-level errors as a
+    // non-zero exit instead of silently succeeding.
+    if let Some(message) = gql_status_error(&data) {
+        return Err(FabioError::new(ErrorCode::ApiError, message).into());
+    }
+
     output::render_object(cli, &data, "data");
     Ok(())
+}
+
+/// Inspect a GQL `executeQuery` response for an application-level error.
+///
+/// The GQL Query API always responds with HTTP 200; success or failure is
+/// carried in `status.code` (a GQL status code per ISO/IEC 39075). Codes whose
+/// first two characters are `00`/`01`/`02`/`03` are success/warning/no-data/info;
+/// anything else (e.g. `42000` syntax error) is an error. Returns `Some(message)`
+/// describing the failure (including the `cause` chain when present), or `None`
+/// when the query completed successfully.
+fn gql_status_error(data: &Value) -> Option<String> {
+    let status = data.get("status")?;
+    let code = status.get("code").and_then(Value::as_str)?;
+    let is_success = code
+        .get(..2)
+        .is_some_and(|c| matches!(c, "00" | "01" | "02" | "03"));
+    if is_success {
+        return None;
+    }
+    let desc = status
+        .get("description")
+        .and_then(Value::as_str)
+        .unwrap_or("query failed");
+    let mut message = format!("GQL error {code}: {desc}");
+    if let Some(cause_desc) = status
+        .get("cause")
+        .and_then(|c| c.get("description"))
+        .and_then(Value::as_str)
+    {
+        use std::fmt::Write as _;
+        let _ = write!(message, " (cause: {cause_desc})");
+    }
+    Some(message)
 }
 
 async fn get_queryable_graph_type(
@@ -681,4 +723,72 @@ async fn get_queryable_graph_type(
         .await?;
     output::render_object(cli, &data, "data");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::gql_status_error;
+    use serde_json::json;
+
+    #[test]
+    fn success_status_yields_no_error() {
+        // A completed query returns code 00000 — must NOT be treated as an error.
+        let data = json!({
+            "status": {"code": "00000", "description": "note: successful completion"},
+            "result": {"kind": "TABLE", "columns": [], "data": [{"n.StoreName": "Berlin"}]}
+        });
+        assert_eq!(gql_status_error(&data), None);
+    }
+
+    #[test]
+    fn warning_no_data_and_info_prefixes_are_success() {
+        for code in ["01001", "02000", "03000"] {
+            let data = json!({ "status": {"code": code, "description": "ok"} });
+            assert_eq!(
+                gql_status_error(&data),
+                None,
+                "code {code} should be success"
+            );
+        }
+    }
+
+    #[test]
+    fn syntax_error_status_is_reported_with_cause() {
+        // The exact shape returned live for an invalid GQL query (HTTP 200).
+        let data = json!({
+            "status": {
+                "code": "42000",
+                "description": "error: syntax error or access rule violation",
+                "cause": {
+                    "code": "22000",
+                    "description": "error: data exception; Syntax error at line 1:1"
+                }
+            }
+        });
+        let msg = gql_status_error(&data).expect("error must be surfaced");
+        assert!(
+            msg.contains("42000"),
+            "message must include the status code: {msg}"
+        );
+        assert!(
+            msg.contains("syntax error"),
+            "message must include the description: {msg}"
+        );
+        assert!(
+            msg.contains("cause:"),
+            "message must include the cause chain: {msg}"
+        );
+    }
+
+    #[test]
+    fn missing_or_malformed_status_is_not_a_false_success() {
+        // No status object at all -> treat as success (nothing to report).
+        assert_eq!(
+            gql_status_error(&json!({"result": {"kind": "NOTHING"}})),
+            None
+        );
+        // A status with a non-string / too-short code is treated as an error (fail safe).
+        let short = json!({ "status": {"code": "4"} });
+        assert!(gql_status_error(&short).is_some());
+    }
 }

@@ -58,7 +58,7 @@ Manage graph models (knowledge graph)
 |---|---|---|
 | `fabio graph-model create` | yes | Create a new graph model |
 | `fabio graph-model delete` | yes | Delete a graph model |
-| `fabio graph-model execute-query` | no | Execute a graph query |
+| `fabio graph-model execute-query` | no | Execute a GQL query against the graph |
 | `fabio graph-model get-definition` | no | Get the definition of a graph model |
 | `fabio graph-model get-queryable-graph-type` | no | Get the queryable graph type |
 | `fabio graph-model initialize` | yes | Initialize a graph model for querying (portal-only operation) |

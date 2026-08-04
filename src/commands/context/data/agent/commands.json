@@ -15744,7 +15744,7 @@
         "async": true
       },
       "execute-query": {
-        "description": "Execute a graph query",
+        "description": "Execute a GQL query against the graph",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -15756,16 +15756,16 @@
             "required": true,
             "description": "Graph model ID"
           },
-          "--query": {
+          "--gql": {
             "type": "string",
             "required": true,
-            "description": "Graph query string"
+            "description": "GQL query string (ISO/IEC 39075). Named `--gql` to avoid clashing with the global `--query` `JMESPath` projection flag"
           }
         },
         "mutates": false,
         "returns": "object",
         "examples": [
-          "fabio graph-model execute-query --workspace $WS --id $GM --query \"nodes('Equipment') | where status == 'Offline'\""
+          "fabio graph-model execute-query --workspace $WS --id $GM --gql \"MATCH (e:Equipment) WHERE e.status = 'Offline' RETURN e LIMIT 100\""
         ]
       },
       "get-queryable-graph-type": {
