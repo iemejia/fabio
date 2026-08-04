@@ -1818,6 +1818,47 @@
           "fabio item list-upstream-relations --workspace $WS --id $ITEM_ID"
         ]
       },
+      "show-endorsement": {
+        "description": "Show an item's endorsement (certification) status [read-only — setting is portal-only]",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Item ID"
+          },
+          "--type": {
+            "type": "string",
+            "description": "Item type (auto-detected if omitted). Endorsement-readable types: `SemanticModel`, Report, `PaginatedReport`, Dashboard, Dataflow, Datamart"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "list-endorsements": {
+        "description": "List items with their endorsement status, optionally filtered [read-only]",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--endorsement": {
+            "type": "string",
+            "description": "Only show items with this endorsement: Certified, Promoted, or None"
+          },
+          "--type": {
+            "type": "string",
+            "description": "Only query this item type (else all endorsement-readable types)"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
       "create": {
         "description": "Create a new item",
         "flags": {

@@ -1757,3 +1757,83 @@ fn lakehouse_create_dry_run_with_sensitivity_label() {
         "cccccccc-1111-2222-3333-444444444444"
     );
 }
+
+/// Endorsement is READ-ONLY (no public set API). Validate the read commands:
+/// `list-endorsements` returns Power BI-lineage items with an endorsement
+/// field, the `--endorsement` filter works, and `show-endorsement` on a
+/// Fabric-native (non-endorsable-via-API) type returns a clear error.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_endorsement_read_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+
+    // list-endorsements: every row has an endorsement field (None when unset).
+    let assert = fabio()
+        .args(["item", "list-endorsements", "--workspace", ws])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let rows_json = parse_json(&assert);
+    let rows = extract_data(&rows_json);
+    for r in rows.as_array().unwrap() {
+        assert!(
+            r.get("endorsement").is_some(),
+            "each row must carry an endorsement field: {r}"
+        );
+    }
+
+    // Filter by a valid level (Certified) — succeeds (may be empty).
+    fabio()
+        .args([
+            "item",
+            "list-endorsements",
+            "--workspace",
+            ws,
+            "--endorsement",
+            "Certified",
+        ])
+        .assert()
+        .success();
+
+    // An invalid endorsement filter is rejected.
+    fabio()
+        .args([
+            "item",
+            "list-endorsements",
+            "--workspace",
+            ws,
+            "--endorsement",
+            "Gold",
+        ])
+        .assert()
+        .failure();
+
+    // show-endorsement on a Fabric-native type (Lakehouse) returns a clear
+    // error — endorsement isn't readable for it via the Power BI API.
+    let assert = fabio()
+        .args(["item", "list", "--workspace", ws, "--type", "Lakehouse"])
+        .assert()
+        .success();
+    let lh_json = parse_json(&assert);
+    if let Some(lh) = extract_data(&lh_json)
+        .as_array()
+        .and_then(|a| a.first())
+        .and_then(|i| i["id"].as_str())
+    {
+        fabio()
+            .args([
+                "item",
+                "show-endorsement",
+                "--workspace",
+                ws,
+                "--id",
+                lh,
+                "--type",
+                "Lakehouse",
+            ])
+            .assert()
+            .failure();
+    }
+}

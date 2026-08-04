@@ -12,6 +12,7 @@ mod bulk;
 mod copy_move;
 mod crud;
 mod definitions;
+mod endorsement;
 mod tags;
 
 #[derive(Debug, Subcommand)]
@@ -165,6 +166,35 @@ pub enum ItemCommand {
         /// Item ID
         #[arg(long)]
         id: String,
+    },
+    /// Show an item's endorsement (certification) status [read-only — setting is portal-only]
+    ShowEndorsement {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Item ID
+        #[arg(long)]
+        id: String,
+
+        /// Item type (auto-detected if omitted). Endorsement-readable types:
+        /// `SemanticModel`, Report, `PaginatedReport`, Dashboard, Dataflow, Datamart
+        #[arg(short = 't', long = "type")]
+        item_type: Option<String>,
+    },
+    /// List items with their endorsement status, optionally filtered [read-only]
+    ListEndorsements {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Only show items with this endorsement: Certified, Promoted, or None
+        #[arg(long)]
+        endorsement: Option<String>,
+
+        /// Only query this item type (else all endorsement-readable types)
+        #[arg(short = 't', long = "type")]
+        item_type: Option<String>,
     },
 
     // ── Create/Update/Delete ─────────────────────────────────────────────
@@ -593,6 +623,25 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
         }
         ItemCommand::ListUpstreamRelations { workspace, id } => {
             crud::list_relations(cli, client, workspace, id, "upstream").await
+        }
+        ItemCommand::ShowEndorsement {
+            workspace,
+            id,
+            item_type,
+        } => endorsement::show_endorsement(cli, client, workspace, id, item_type.as_deref()).await,
+        ItemCommand::ListEndorsements {
+            workspace,
+            endorsement,
+            item_type,
+        } => {
+            endorsement::list_endorsements(
+                cli,
+                client,
+                workspace,
+                endorsement.as_deref(),
+                item_type.as_deref(),
+            )
+            .await
         }
         ItemCommand::Create {
             workspace,
