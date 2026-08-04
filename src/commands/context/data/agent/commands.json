@@ -7921,6 +7921,195 @@
         },
         "mutates": true,
         "returns": "object"
+      },
+      "add-entity-type": {
+        "description": "Add an entity type (with typed properties) to an existing ontology",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Ontology ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Entity type name (e.g. `Product`)"
+          },
+          "--property": {
+            "type": "string",
+            "description": "A typed property as `name:type` (repeatable). Types: String, Long, `BigInt`, Double, Decimal, Boolean, `DateTime`, Any (aliases accepted)"
+          },
+          "--key": {
+            "type": "string",
+            "description": "Mark a property (by name) as an identifier / key (repeatable)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "delete-entity-type": {
+        "description": "Delete an entity type (cascades relationship types referencing it)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Ontology ID"
+          },
+          "--entity": {
+            "type": "string",
+            "required": true,
+            "description": "Entity type name or id to delete"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "add-relationship-type": {
+        "description": "Add a relationship type between two entity types",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Ontology ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Relationship type name (e.g. `sells`)"
+          },
+          "--source": {
+            "type": "string",
+            "required": true,
+            "description": "Source entity type name or id"
+          },
+          "--target": {
+            "type": "string",
+            "required": true,
+            "description": "Target entity type name or id"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "delete-relationship-type": {
+        "description": "Delete a relationship type",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Ontology ID"
+          },
+          "--relationship": {
+            "type": "string",
+            "required": true,
+            "description": "Relationship type name or id to delete"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "add-report-link": {
+        "description": "Add a Power BI report link (`ResourceLink`) to an entity type",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Ontology ID"
+          },
+          "--entity": {
+            "type": "string",
+            "required": true,
+            "description": "Entity type name or id to link the report to"
+          },
+          "--report-workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID of the Power BI report"
+          },
+          "--report": {
+            "type": "string",
+            "required": true,
+            "description": "Item id of the Power BI report"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "list-report-links": {
+        "description": "List report (resource) links on an ontology's entity types",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Ontology ID"
+          },
+          "--entity": {
+            "type": "string",
+            "description": "Only list links for this entity type name or id (optional)"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "delete-report-link": {
+        "description": "Delete a report link from an entity type",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Ontology ID"
+          },
+          "--entity": {
+            "type": "string",
+            "required": true,
+            "description": "Entity type name or id"
+          },
+          "--report": {
+            "type": "string",
+            "required": true,
+            "description": "Item id of the Power BI report to unlink"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
       }
     }
   },

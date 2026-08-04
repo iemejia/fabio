@@ -36,15 +36,22 @@ Manage ontologies (entity types, data bindings)
 
 | Command | Mutates | Description |
 |---|---|---|
+| `fabio ontology add-entity-type` | yes | Add an entity type (with typed properties) to an existing ontology |
+| `fabio ontology add-relationship-type` | yes | Add a relationship type between two entity types |
+| `fabio ontology add-report-link` | yes | Add a Power BI report link (`ResourceLink`) to an entity type |
 | `fabio ontology bind` | yes | Bind an existing ontology's types to data sources (no OWL re-import) |
 | `fabio ontology create` | yes | Create an ontology |
 | `fabio ontology delete` | yes | Delete an ontology |
+| `fabio ontology delete-entity-type` | yes | Delete an entity type (cascades relationship types referencing it) |
+| `fabio ontology delete-relationship-type` | yes | Delete a relationship type |
+| `fabio ontology delete-report-link` | yes | Delete a report link from an entity type |
 | `fabio ontology export` | no | Export a Fabric Ontology to OWL format (RDF/XML or JSON-LD) |
 | `fabio ontology generate` | yes | Generate an ontology from a semantic model or lakehouse (entity types, properties, relationships) |
 | `fabio ontology get-definition` | no | Get the ontology definition (entity types, bindings) |
 | `fabio ontology import` | yes | Import an OWL ontology (RDF/XML or JSON-LD) and convert to Fabric format |
 | `fabio ontology list` | no | List ontologies in a workspace |
 | `fabio ontology list-entity-types` | no | List the ontology's entity types and their properties (schema exploration) |
+| `fabio ontology list-report-links` | no | List report (resource) links on an ontology's entity types |
 | `fabio ontology mcp-url` | no | Print the Model Context Protocol (MCP) server URL for consuming this ontology |
 | `fabio ontology search` | no | Ask a natural-language question over the ontology's data (MCP `search_ontology` tool) |
 | `fabio ontology show` | no | Show details of an ontology |

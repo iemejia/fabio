@@ -4227,3 +4227,246 @@ fn ontology_generate_from_lakehouse() {
         .args(["lakehouse", "delete", "--workspace", ws, "--id", &lh_id])
         .assert();
 }
+
+// ---------------------------------------------------------------------------
+// Granular element editing (add/delete entity types, relationship types,
+// report links) — client-side read-modify-write on the definition.
+// ---------------------------------------------------------------------------
+
+/// Self-seeding lifecycle for the granular ontology-editing commands: create an
+/// empty ontology, add two entity types + a relationship + a report link,
+/// verify via list-entity-types / list-report-links, then delete each element
+/// (checking the entity-type delete cascades the relationship type).
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn ontology_granular_elements_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+    let name = unique_name("ont_granular");
+
+    // Create an empty ontology.
+    let assert = fabio()
+        .args(["ontology", "create", "--workspace", ws, "--name", &name])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let ont_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Add two entity types with typed properties + a key.
+    let assert = fabio()
+        .args([
+            "ontology",
+            "add-entity-type",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--name",
+            "Product",
+            "--property",
+            "ProductId:String",
+            "--property",
+            "Price:Double",
+            "--key",
+            "ProductId",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let d = parse_json(&assert);
+    assert_eq!(extract_data(&d)["status"], "entity_type_added");
+    assert_eq!(extract_data(&d)["keys"].as_array().unwrap().len(), 1);
+
+    fabio()
+        .args([
+            "ontology",
+            "add-entity-type",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--name",
+            "Store",
+            "--property",
+            "StoreId:String",
+            "--key",
+            "StoreId",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    // Duplicate entity type name is rejected.
+    fabio()
+        .args([
+            "ontology",
+            "add-entity-type",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--name",
+            "Product",
+            "--property",
+            "X:String",
+        ])
+        .assert()
+        .failure();
+
+    // Add a relationship type between them.
+    let assert = fabio()
+        .args([
+            "ontology",
+            "add-relationship-type",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--name",
+            "soldAt",
+            "--source",
+            "Product",
+            "--target",
+            "Store",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    assert_eq!(
+        extract_data(&parse_json(&assert))["status"],
+        "relationship_type_added"
+    );
+
+    // Verify both entity types are present.
+    let assert = fabio()
+        .args([
+            "ontology",
+            "list-entity-types",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+        ])
+        .assert()
+        .success();
+    let names: Vec<String> = extract_data(&parse_json(&assert))["values"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["name"].as_str().map(str::to_string))
+        .collect();
+    assert!(names.contains(&"Product".to_string()) && names.contains(&"Store".to_string()));
+
+    // Add + list + delete a report link on Product.
+    fabio()
+        .args([
+            "ontology",
+            "add-report-link",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--entity",
+            "Product",
+            "--report-workspace",
+            ws,
+            "--report",
+            "11111111-1111-4111-8111-111111111111",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    let assert = fabio()
+        .args([
+            "ontology",
+            "list-report-links",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+        ])
+        .assert()
+        .success();
+    assert_eq!(extract_count(&parse_json(&assert)), 1);
+
+    fabio()
+        .args([
+            "ontology",
+            "delete-report-link",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--entity",
+            "Product",
+            "--report",
+            "11111111-1111-4111-8111-111111111111",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    // delete-entity-type cascades the relationship type referencing it.
+    let assert = fabio()
+        .args([
+            "ontology",
+            "delete-entity-type",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--entity",
+            "Store",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let cascaded = parse_json(&assert);
+    assert_eq!(cascaded["data"]["dry_run"], true);
+    assert_eq!(
+        cascaded["data"]["details"]["cascadedRelationshipTypes"][0],
+        "soldAt"
+    );
+
+    fabio()
+        .args([
+            "ontology",
+            "delete-entity-type",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--entity",
+            "Store",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    // Only Product remains; the relationship type is gone.
+    let assert = fabio()
+        .args([
+            "ontology",
+            "list-entity-types",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+        ])
+        .assert()
+        .success();
+    let remaining: Vec<String> = extract_data(&parse_json(&assert))["values"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["name"].as_str().map(str::to_string))
+        .collect();
+    assert_eq!(remaining, vec!["Product".to_string()]);
+
+    delete_ontology(ws, &ont_id);
+}

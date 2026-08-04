@@ -10,6 +10,7 @@ use crate::errors::{enrich_forbidden, enrich_ontology_definition_error};
 
 mod crud;
 mod definitions;
+mod elements;
 mod entity_types;
 mod generate;
 pub mod import;
@@ -362,6 +363,133 @@ pub enum OntologyCommand {
         #[arg(long)]
         output_owl: Option<String>,
     },
+    /// Add an entity type (with typed properties) to an existing ontology
+    AddEntityType {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Ontology ID
+        #[arg(long)]
+        id: String,
+
+        /// Entity type name (e.g. `Product`)
+        #[arg(long)]
+        name: String,
+
+        /// A typed property as `name:type` (repeatable). Types: String, Long,
+        /// `BigInt`, Double, Decimal, Boolean, `DateTime`, Any (aliases accepted)
+        #[arg(long = "property", value_name = "NAME:TYPE")]
+        properties: Vec<String>,
+
+        /// Mark a property (by name) as an identifier / key (repeatable)
+        #[arg(long = "key", value_name = "PROPERTY_NAME")]
+        keys: Vec<String>,
+    },
+    /// Delete an entity type (cascades relationship types referencing it)
+    DeleteEntityType {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Ontology ID
+        #[arg(long)]
+        id: String,
+
+        /// Entity type name or id to delete
+        #[arg(long)]
+        entity: String,
+    },
+    /// Add a relationship type between two entity types
+    AddRelationshipType {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Ontology ID
+        #[arg(long)]
+        id: String,
+
+        /// Relationship type name (e.g. `sells`)
+        #[arg(long)]
+        name: String,
+
+        /// Source entity type name or id
+        #[arg(long)]
+        source: String,
+
+        /// Target entity type name or id
+        #[arg(long)]
+        target: String,
+    },
+    /// Delete a relationship type
+    DeleteRelationshipType {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Ontology ID
+        #[arg(long)]
+        id: String,
+
+        /// Relationship type name or id to delete
+        #[arg(long)]
+        relationship: String,
+    },
+    /// Add a Power BI report link (`ResourceLink`) to an entity type
+    AddReportLink {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Ontology ID
+        #[arg(long)]
+        id: String,
+
+        /// Entity type name or id to link the report to
+        #[arg(long)]
+        entity: String,
+
+        /// Workspace ID of the Power BI report
+        #[arg(long)]
+        report_workspace: String,
+
+        /// Item id of the Power BI report
+        #[arg(long)]
+        report: String,
+    },
+    /// List report (resource) links on an ontology's entity types
+    ListReportLinks {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Ontology ID
+        #[arg(long)]
+        id: String,
+
+        /// Only list links for this entity type name or id (optional)
+        #[arg(long)]
+        entity: Option<String>,
+    },
+    /// Delete a report link from an entity type
+    DeleteReportLink {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Ontology ID
+        #[arg(long)]
+        id: String,
+
+        /// Entity type name or id
+        #[arg(long)]
+        entity: String,
+
+        /// Item id of the Power BI report to unlink
+        #[arg(long)]
+        report: String,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -557,6 +685,67 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
         ))
         .await
         .map_err(|e| enrich_forbidden(e, "ontology generate", "Member")),
+        OntologyCommand::AddEntityType {
+            workspace,
+            id,
+            name,
+            properties,
+            keys,
+        } => elements::add_entity_type(cli, client, workspace, id, name, properties, keys)
+            .await
+            .map_err(|e| enrich_forbidden(e, "ontology add-entity-type", "Contributor"))
+            .map_err(|e| enrich_ontology_definition_error(e, "ontology add-entity-type")),
+        OntologyCommand::DeleteEntityType {
+            workspace,
+            id,
+            entity,
+        } => elements::delete_entity_type(cli, client, workspace, id, entity)
+            .await
+            .map_err(|e| enrich_forbidden(e, "ontology delete-entity-type", "Contributor")),
+        OntologyCommand::AddRelationshipType {
+            workspace,
+            id,
+            name,
+            source,
+            target,
+        } => elements::add_relationship_type(cli, client, workspace, id, name, source, target)
+            .await
+            .map_err(|e| enrich_forbidden(e, "ontology add-relationship-type", "Contributor"))
+            .map_err(|e| enrich_ontology_definition_error(e, "ontology add-relationship-type")),
+        OntologyCommand::DeleteRelationshipType {
+            workspace,
+            id,
+            relationship,
+        } => elements::delete_relationship_type(cli, client, workspace, id, relationship)
+            .await
+            .map_err(|e| enrich_forbidden(e, "ontology delete-relationship-type", "Contributor")),
+        OntologyCommand::AddReportLink {
+            workspace,
+            id,
+            entity,
+            report_workspace,
+            report,
+        } => {
+            elements::add_report_link(cli, client, workspace, id, entity, report_workspace, report)
+                .await
+                .map_err(|e| enrich_forbidden(e, "ontology add-report-link", "Contributor"))
+                .map_err(|e| enrich_ontology_definition_error(e, "ontology add-report-link"))
+        }
+        OntologyCommand::ListReportLinks {
+            workspace,
+            id,
+            entity,
+        } => elements::list_report_links(cli, client, workspace, id, entity.as_deref())
+            .await
+            .map_err(|e| enrich_forbidden(e, "ontology list-report-links", "Viewer")),
+        OntologyCommand::DeleteReportLink {
+            workspace,
+            id,
+            entity,
+            report,
+        } => elements::delete_report_link(cli, client, workspace, id, entity, report)
+            .await
+            .map_err(|e| enrich_forbidden(e, "ontology delete-report-link", "Contributor")),
     }
 }
 
