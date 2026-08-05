@@ -11066,6 +11066,127 @@
         "returns": "void",
         "destructive": true
       },
+      "list-partitions": {
+        "description": "List a table's partitions (name + mode) — read-only",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--table": {
+            "type": "string",
+            "description": "Only list partitions of this table"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "add-partition": {
+        "description": "Add a partition to a table (an extra data-source query, e.g. for incremental refresh) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Table to add the partition to"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Partition name (must be unique in the table)"
+          },
+          "--m": {
+            "type": "string",
+            "description": "Power Query M source expression (mutually exclusive with --dax)"
+          },
+          "--dax": {
+            "type": "string",
+            "description": "DAX table expression for a calculated partition (mutually exclusive with --m)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "update-partition": {
+        "description": "Update a partition's source expression by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Table containing the partition"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Partition name to update"
+          },
+          "--m": {
+            "type": "string",
+            "description": "New Power Query M source expression (mutually exclusive with --dax)"
+          },
+          "--dax": {
+            "type": "string",
+            "description": "New DAX expression for a calculated partition (mutually exclusive with --m)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "delete-partition": {
+        "description": "Delete a partition from a table by editing the model definition (a table must keep at least one). Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Table containing the partition"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Partition name to delete"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
       "update-parameters": {
         "description": "Update parameters of a semantic model",
         "flags": {

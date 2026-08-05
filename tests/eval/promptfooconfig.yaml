@@ -1836,6 +1836,18 @@ tests:
         value: "The response uses 'fabio semantic-model add-hierarchy' with --table Geo, --name Geography, and two --level flags (Country then City, top-to-bottom). It does not invent an XMLA/TOM tool."
         metric: add-hierarchy-approach
 
+  - description: "Power BI: repoint a table's source query (partition)"
+    vars:
+      user_query: "Change the Power Query source of the Sales table's partition in my semantic model to a new M expression"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('semantic-model update-partition') || output.includes('semantic-model list-partitions')
+        metric: semantic-model-partition-command
+      - type: llm-rubric
+        value: "The response uses 'fabio semantic-model update-partition' with --table Sales, the partition --name, and --m (the new Power Query M expression). It may first run list-partitions to find the partition name. It does not invent an XMLA/TOM tool."
+        metric: update-partition-approach
+
   - description: "Power BI: generate a Direct Lake semantic model from a lakehouse (no TMDL authoring)"
     vars:
       user_query: "Generate a Direct Lake semantic model called 'SalesModel' from my lakehouse — I don't want to hand-write any TMDL, just pull in all the tables"

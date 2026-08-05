@@ -2159,6 +2159,198 @@ fn semantic_model_hierarchy_lifecycle() {
         .success();
 }
 
+// ─── Partitions: add / update / list / delete ────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_partition_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("sm_part");
+
+    let mut tmp = NamedTempFile::with_suffix(".bim").unwrap();
+    tmp.write_all(three_table_model_bim().as_bytes()).unwrap();
+    let file_path = tmp.path().to_str().unwrap().to_string();
+
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--file",
+            &file_path,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let sm_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // add-partition (a second M partition on Sales) — dry-run then live
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "add-partition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--table",
+            "Sales",
+            "--name",
+            "Sales2024",
+            "--m",
+            "let Source = #table({\"CustomerKey\",\"ProductKey\",\"Amount\"}, {{2,2,20.0}}) in Source",
+            "--dry-run",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&assert))["dry_run"], true);
+
+    fabio()
+        .args([
+            "semantic-model",
+            "add-partition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--table",
+            "Sales",
+            "--name",
+            "Sales2024",
+            "--m",
+            "let Source = #table({\"CustomerKey\",\"ProductKey\",\"Amount\"}, {{2,2,20.0}}) in Source",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // list-partitions → Sales should have 2
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "list-partitions",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--table",
+            "Sales",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let ps = data.as_array().unwrap();
+    assert_eq!(ps.len(), 2, "expected 2 partitions, got {ps:?}");
+
+    // update-partition: change the new partition's source
+    fabio()
+        .args([
+            "semantic-model",
+            "update-partition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--table",
+            "Sales",
+            "--name",
+            "Sales2024",
+            "--m",
+            "let Source = #table({\"CustomerKey\",\"ProductKey\",\"Amount\"}, {{9,9,99.0}}) in Source",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // Verify the updated source in the definition
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "get-definition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let parts = data["definition"]["parts"].as_array().unwrap();
+    let sales = parts
+        .iter()
+        .find(|p| p["path"].as_str() == Some("definition/tables/Sales.tmdl"))
+        .and_then(|p| p["payload"].as_str())
+        .map(|b| {
+            String::from_utf8(base64::engine::general_purpose::STANDARD.decode(b).unwrap()).unwrap()
+        })
+        .expect("Sales.tmdl");
+    assert!(sales.contains("partition Sales2024 = m"), "sales:\n{sales}");
+    assert!(sales.contains("{{9,9,99.0}}"), "sales:\n{sales}");
+
+    // delete-partition
+    fabio()
+        .args([
+            "semantic-model",
+            "delete-partition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--table",
+            "Sales",
+            "--name",
+            "Sales2024",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // deleting the last remaining partition → INVALID_INPUT
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "delete-partition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--table",
+            "Sales",
+            "--name",
+            "Sales",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert_eq!(error_json(&stderr)["error"]["code"], "INVALID_INPUT");
+
+    // Cleanup
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+}
+
 // ─── Dry Run ─────────────────────────────────────────────────────────────────
 
 #[test]

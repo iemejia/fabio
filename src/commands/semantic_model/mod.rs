@@ -6,6 +6,7 @@ mod definitions;
 mod generate;
 mod hierarchies;
 pub mod operations;
+mod partitions;
 mod powerbi;
 mod relationships;
 mod roles;
@@ -1074,6 +1075,99 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         name: String,
     },
+    /// List a table's partitions (name + mode) — read-only.
+    #[command(name = "list-partitions", display_order = 13)]
+    ListPartitions {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Only list partitions of this table
+        #[arg(long)]
+        table: Option<String>,
+    },
+    /// Add a partition to a table (an extra data-source query, e.g. for
+    /// incremental refresh) by editing the model definition. Overwrites the
+    /// definition (irreversible) — dry-run guarded.
+    #[command(name = "add-partition", display_order = 13)]
+    AddPartition {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Table to add the partition to
+        #[arg(long)]
+        table: String,
+
+        /// Partition name (must be unique in the table)
+        #[arg(long)]
+        name: String,
+
+        /// Power Query M source expression (mutually exclusive with --dax)
+        #[arg(long, conflicts_with = "dax")]
+        m: Option<String>,
+
+        /// DAX table expression for a calculated partition (mutually exclusive with --m)
+        #[arg(long)]
+        dax: Option<String>,
+    },
+    /// Update a partition's source expression by editing the model definition.
+    /// Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "update-partition", display_order = 13)]
+    UpdatePartition {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Table containing the partition
+        #[arg(long)]
+        table: String,
+
+        /// Partition name to update
+        #[arg(long)]
+        name: String,
+
+        /// New Power Query M source expression (mutually exclusive with --dax)
+        #[arg(long, conflicts_with = "dax")]
+        m: Option<String>,
+
+        /// New DAX expression for a calculated partition (mutually exclusive with --m)
+        #[arg(long)]
+        dax: Option<String>,
+    },
+    /// Delete a partition from a table by editing the model definition (a table
+    /// must keep at least one). Overwrites the definition (irreversible) —
+    /// dry-run guarded.
+    #[command(name = "delete-partition", display_order = 13)]
+    DeletePartition {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Table containing the partition
+        #[arg(long)]
+        table: String,
+
+        /// Partition name to delete
+        #[arg(long)]
+        name: String,
+    },
     /// Update parameters of a semantic model
     #[command(name = "update-parameters", display_order = 14)]
     UpdateParameters {
@@ -2033,6 +2127,39 @@ async fn execute_authoring(
             table,
             name,
         } => hierarchies::delete_hierarchy(cli, client, workspace, id, table, name).await,
+        SemanticModelCommand::ListPartitions {
+            workspace,
+            id,
+            table,
+        } => partitions::list_partitions(cli, client, workspace, id, table.as_deref()).await,
+        SemanticModelCommand::AddPartition {
+            workspace,
+            id,
+            table,
+            name,
+            m,
+            dax,
+        } => {
+            let (kind, expr) = resolve_partition_source(m.as_deref(), dax.as_deref())?;
+            partitions::add_partition(cli, client, workspace, id, table, name, kind, expr).await
+        }
+        SemanticModelCommand::UpdatePartition {
+            workspace,
+            id,
+            table,
+            name,
+            m,
+            dax,
+        } => {
+            let (kind, expr) = resolve_partition_source(m.as_deref(), dax.as_deref())?;
+            partitions::update_partition(cli, client, workspace, id, table, name, kind, expr).await
+        }
+        SemanticModelCommand::DeletePartition {
+            workspace,
+            id,
+            table,
+            name,
+        } => partitions::delete_partition(cli, client, workspace, id, table, name).await,
         _ => unreachable!("execute_authoring only handles granular-authoring commands"),
     }
 }
@@ -2073,6 +2200,23 @@ fn build_rel_spec(
             "Incomplete relationship column selector.".to_string(),
             "When matching by columns, pass ALL of --from-table/--from-column/--to-table/--to-column."
                 .to_string(),
+        )
+        .into()),
+    }
+}
+
+/// Resolve the `--m` / `--dax` choice for partition add/update (exactly one).
+fn resolve_partition_source<'a>(
+    m: Option<&'a str>,
+    dax: Option<&'a str>,
+) -> Result<(partitions::SourceKind, &'a str)> {
+    match (m, dax) {
+        (Some(expr), None) => Ok((partitions::SourceKind::M, expr)),
+        (None, Some(expr)) => Ok((partitions::SourceKind::Calculated, expr)),
+        _ => Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Specify exactly one partition source.".to_string(),
+            "Pass --m <M expression> (Power Query) OR --dax <expression> (calculated).".to_string(),
         )
         .into()),
     }
