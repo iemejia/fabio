@@ -16003,6 +16003,10 @@
           "--sensitivity-label": {
             "type": "string",
             "description": "Sensitivity label ID to apply on creation"
+          },
+          "--folder-id": {
+            "type": "string",
+            "description": "Folder ID to create the plan in (defaults to the workspace root)"
           }
         },
         "mutates": true,
@@ -16034,7 +16038,7 @@
           }
         },
         "mutates": true,
-        "returns": "void",
+        "returns": "object",
         "examples": [
           "fabio plan update --workspace $WS --id $PLAN_ID --name \"Renamed Plan\""
         ]
@@ -16084,6 +16088,7 @@
         },
         "mutates": false,
         "returns": "object",
+        "async": true,
         "examples": [
           "fabio plan get-definition --workspace $WS --id $PLAN_ID --decode"
         ]
@@ -16112,6 +16117,8 @@
         },
         "mutates": true,
         "returns": "void",
+        "async": true,
+        "destructive": true,
         "examples": [
           "fabio plan update-definition --workspace $WS --id $PLAN_ID --file connectedPlanning/infobridge.json"
         ]

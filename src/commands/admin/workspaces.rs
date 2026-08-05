@@ -256,11 +256,7 @@ pub(super) async fn list_network_policies(
     client: &FabricClient,
     filter: Option<&str>,
 ) -> Result<()> {
-    let mut url = "/admin/workspaces/networking/communicationpolicies".to_string();
-    if let Some(f) = filter {
-        url.push_str("?filter=");
-        url.push_str(&urlencoding::encode(f));
-    }
+    let url = network_policies_url(filter);
 
     let resp = client
         .get_list(&url, "value", cli.all, cli.continuation_token.as_deref())
@@ -275,4 +271,37 @@ pub(super) async fn list_network_policies(
         resp.continuation_token.as_deref(),
     );
     Ok(())
+}
+
+/// Build the URL for the admin network communication-policies list endpoint,
+/// appending an URL-encoded `OData` `?filter=` query parameter only when supplied.
+fn network_policies_url(filter: Option<&str>) -> String {
+    let mut url = "/admin/workspaces/networking/communicationpolicies".to_string();
+    if let Some(f) = filter {
+        url.push_str("?filter=");
+        url.push_str(&urlencoding::encode(f));
+    }
+    url
+}
+
+#[cfg(test)]
+mod tests {
+    use super::network_policies_url;
+
+    #[test]
+    fn network_policies_url_omits_filter_when_absent() {
+        assert_eq!(
+            network_policies_url(None),
+            "/admin/workspaces/networking/communicationpolicies"
+        );
+    }
+
+    #[test]
+    fn network_policies_url_appends_encoded_filter() {
+        let url = network_policies_url(Some("inbound/publicAccessRules/defaultAction eq 'deny'"));
+        assert_eq!(
+            url,
+            "/admin/workspaces/networking/communicationpolicies?filter=inbound%2FpublicAccessRules%2FdefaultAction%20eq%20%27deny%27"
+        );
+    }
 }
