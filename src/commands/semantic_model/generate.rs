@@ -29,9 +29,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::commands::tds_utils::{
-    execute_sql_rows, parse_connection_string, resolve_lakehouse_sql,
-};
+use crate::commands::tds_utils::{execute_sql_rows, parse_connection_string};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
@@ -64,7 +62,10 @@ pub(super) async fn generate(
     sensitivity_label: Option<&str>,
 ) -> Result<()> {
     // Resolve the schema source (exactly one of --lakehouse / --warehouse).
-    let (server, database, source) =
+    // `database` is the SQL catalog used to READ the schema over TDS (the display
+    // name works); `catalog` is the SQL analytics endpoint item id that the
+    // portal embeds in the Direct Lake `Sql.Database(...)` expression.
+    let (server, database, catalog, source) =
         resolve_source_sql(client, workspace, lakehouse, warehouse).await?;
 
     // Optional table allow-list (case-insensitive, comma-separated).
@@ -92,7 +93,9 @@ pub(super) async fn generate(
         .into());
     }
 
-    let model_bim = build_direct_lake_bim(&server, &database, schema, &gen_tables);
+    // Byte-for-byte the shape the Fabric portal's "New semantic model" produces:
+    // a TMDL definition folder (model/database/expressions + one file per table).
+    let parts = build_tmdl_parts(&server, &catalog, schema, &gen_tables);
     let summary = summarize(&gen_tables, &dropped, schema);
 
     if output::dry_run_guard(
@@ -113,7 +116,7 @@ pub(super) async fn generate(
         client,
         workspace,
         name,
-        &model_bim,
+        &parts,
         description,
         sensitivity_label,
         no_refresh,
@@ -137,8 +140,8 @@ pub(super) async fn generate(
     Ok(())
 }
 
-/// Create the semantic model from the synthesized `model.bim` (+ `definition.pbism`)
-/// and frame it with a `Full` refresh (unless `no_refresh`). Returns
+/// Create the semantic model from the synthesized TMDL definition parts and
+/// frame it with a `Full` refresh (unless `no_refresh`). Returns
 /// `(id, framed, note)`. A freshly created Direct Lake model errors on DAX until
 /// framed, so framing is triggered by default but is NON-FATAL — the note
 /// records what happened so the caller can retry with `semantic-model refresh`.
@@ -146,26 +149,24 @@ async fn create_and_frame(
     client: &FabricClient,
     workspace: &str,
     name: &str,
-    model_bim: &Value,
+    parts: &[(String, String)],
     description: Option<&str>,
     sensitivity_label: Option<&str>,
     no_refresh: bool,
 ) -> Result<(String, bool, String)> {
-    let parts = vec![
-        serde_json::json!({
-            "path": "model.bim",
-            "payload": BASE64.encode(model_bim.to_string().as_bytes()),
-            "payloadType": "InlineBase64"
-        }),
-        serde_json::json!({
-            "path": "definition.pbism",
-            "payload": BASE64.encode(pbism().to_string().as_bytes()),
-            "payloadType": "InlineBase64"
-        }),
-    ];
+    let definition_parts: Vec<Value> = parts
+        .iter()
+        .map(|(path, content)| {
+            serde_json::json!({
+                "path": path,
+                "payload": BASE64.encode(content.as_bytes()),
+                "payloadType": "InlineBase64"
+            })
+        })
+        .collect();
     let mut body = serde_json::json!({
         "displayName": name,
-        "definition": { "parts": parts }
+        "definition": { "parts": definition_parts }
     });
     if let Some(desc) = description {
         body["description"] = Value::from(desc);
@@ -214,18 +215,23 @@ async fn create_and_frame(
     Ok((id, framed, note))
 }
 
-/// Resolve the source item to `(sql_server_host, database, source_json)`.
+/// Resolve the source item to `(sql_server_host, database, catalog, source_json)`.
 ///
-/// Exactly one of `--lakehouse` / `--warehouse` must be set. The server is the
-/// SQL analytics endpoint host and the database is the item's catalog name
-/// (both needed to read the schema over TDS AND to bind the Direct Lake
-/// `Sql.Database(...)` expression).
+/// Exactly one of `--lakehouse` / `--warehouse` must be set.
+/// * `server` — the SQL analytics endpoint host.
+/// * `database` — the SQL catalog used to READ the schema over TDS (the item's
+///   display name works reliably for this).
+/// * `catalog` — the **SQL analytics endpoint item id**, which is what the
+///   Fabric portal embeds as the second argument of `Sql.Database(...)` in the
+///   Direct Lake expression (a GUID is rename-stable; the display name is not).
+///   For a lakehouse it is `properties.sqlEndpointProperties.id`; for a
+///   warehouse the warehouse item is itself the SQL endpoint, so it is `wh`.
 async fn resolve_source_sql(
     client: &FabricClient,
     workspace: &str,
     lakehouse: Option<&str>,
     warehouse: Option<&str>,
-) -> Result<(String, String, Value)> {
+) -> Result<(String, String, String, Value)> {
     match (lakehouse, warehouse) {
         (Some(_), Some(_)) => Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
@@ -234,8 +240,42 @@ async fn resolve_source_sql(
         )
         .into()),
         (Some(lh), None) => {
-            let (server, database) = resolve_lakehouse_sql(client, workspace, lh).await?;
-            Ok((server, database, serde_json::json!({ "lakehouse": lh })))
+            let data = client
+                .get(&format!("/workspaces/{workspace}/lakehouses/{lh}"))
+                .await
+                .map_err(|e| enrich_forbidden(e, "lakehouse", "Viewer"))?;
+            let sep = data
+                .get("properties")
+                .and_then(|p| p.get("sqlEndpointProperties"));
+            let conn = sep
+                .and_then(|s| s.get("connectionString"))
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| {
+                    FabioError::with_hint(
+                        ErrorCode::NotFound,
+                        "Lakehouse SQL endpoint not available.",
+                        "Wait for provisioning to complete, then retry.",
+                    )
+                })?;
+            let (server, _parsed_db) = parse_connection_string(conn);
+            let database = data
+                .get("displayName")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            // The SQL analytics endpoint item id is the portal's Sql.Database catalog.
+            let catalog = sep
+                .and_then(|s| s.get("id"))
+                .and_then(Value::as_str)
+                .unwrap_or(lh)
+                .to_string();
+            Ok((
+                server,
+                database,
+                catalog,
+                serde_json::json!({ "lakehouse": lh }),
+            ))
         }
         (None, Some(wh)) => {
             let data = client
@@ -260,7 +300,13 @@ async fn resolve_source_sql(
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string();
-            Ok((server, database, serde_json::json!({ "warehouse": wh })))
+            // A warehouse is itself the SQL endpoint, so its item id is the catalog.
+            Ok((
+                server,
+                database,
+                wh.to_string(),
+                serde_json::json!({ "warehouse": wh }),
+            ))
         }
         (None, None) => Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
@@ -359,73 +405,95 @@ fn plan_tables(rows: &[Value], filter: Option<&HashSet<String>>) -> (Vec<GenTabl
     (tables, dropped)
 }
 
-/// The `definition.pbism` for a model.bim (TMSL v3) model.
+/// The `definition.pbism` for a TMDL semantic model — byte-identical to what the
+/// Fabric portal emits (`version: "4.2"`, empty `settings`).
 fn pbism() -> Value {
     serde_json::json!({
         "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/semanticModel/definitionProperties/1.0.0/schema.json",
-        "version": "3.0"
+        "version": "4.2",
+        "settings": {}
     })
 }
 
-/// Build a Direct Lake `model.bim` (TMSL) from the planned tables.
+/// Build the full TMDL definition parts — the exact multi-file shape the Fabric
+/// portal's "New semantic model" produces for a Direct Lake model:
 ///
-/// Key requirements (see AGENTS.md / `direct_lake_report` workflow):
-/// `compatibilityLevel 1604`, `defaultPowerBIDataSourceVersion: powerBI_V3`,
-/// `defaultMode: directLake`, one `directLake` entity partition per table
-/// bound to the shared `DatabaseQuery` expression, which is
-/// `Sql.Database("<server>", "<database>")`.
-fn build_direct_lake_bim(server: &str, database: &str, schema: &str, tables: &[GenTable]) -> Value {
-    let table_specs: Vec<Value> = tables
-        .iter()
-        .map(|t| {
-            let columns: Vec<Value> = t
-                .columns
-                .iter()
-                .map(|c| {
-                    serde_json::json!({
-                        "name": c.name,
-                        "dataType": c.data_type,
-                        "sourceColumn": c.name,
-                        "summarizeBy": "none"
-                    })
-                })
-                .collect();
-            serde_json::json!({
-                "name": t.name,
-                "columns": columns,
-                "partitions": [{
-                    "name": t.name,
-                    "mode": "directLake",
-                    "source": {
-                        "type": "entity",
-                        "entityName": t.name,
-                        "schemaName": schema,
-                        "expressionSource": "DatabaseQuery"
-                    }
-                }]
-            })
-        })
-        .collect();
+/// * `definition.pbism` — version 4.2
+/// * `definition/model.tmdl` — model settings + `ref table` lines
+/// * `definition/database.tmdl` — `compatibilityLevel: 1604`
+/// * `definition/expressions.tmdl` — the `DatabaseQuery = Sql.Database(...)` expr
+/// * `definition/tables/<name>.tmdl` — one per table (columns + directLake entity partition)
+///
+/// Returns `(path, content)` pairs; the caller base64-encodes them into
+/// `definition.parts`.
+fn build_tmdl_parts(
+    server: &str,
+    catalog: &str,
+    schema: &str,
+    tables: &[GenTable],
+) -> Vec<(String, String)> {
+    let mut parts = vec![
+        ("definition.pbism".to_string(), pbism().to_string()),
+        ("definition/model.tmdl".to_string(), tmdl_model(tables)),
+        ("definition/database.tmdl".to_string(), tmdl_database()),
+        (
+            "definition/expressions.tmdl".to_string(),
+            tmdl_expression(server, catalog),
+        ),
+    ];
+    for t in tables {
+        parts.push((
+            format!("definition/tables/{}.tmdl", t.name),
+            tmdl_table(t, schema),
+        ));
+    }
+    parts
+}
 
-    // The shared M expression that binds Direct Lake to the SQL analytics
-    // endpoint. Sql.Database(server, database) — the server FQDN + catalog name.
-    let expression =
-        format!("let\n    database = Sql.Database(\"{server}\", \"{database}\")\nin\n    database");
+/// `definition/model.tmdl` — Direct Lake model settings + one `ref table` per table.
+fn tmdl_model(tables: &[GenTable]) -> String {
+    let mut s = String::from(
+        "model Model\n\tdefaultMode: directLake\n\tculture: en-US\n\tdefaultPowerBIDataSourceVersion: powerBI_V3\n\n",
+    );
+    for t in tables {
+        let _ = writeln!(s, "ref table {}", t.name);
+    }
+    s
+}
 
-    serde_json::json!({
-        "compatibilityLevel": 1604,
-        "model": {
-            "culture": "en-US",
-            "defaultPowerBIDataSourceVersion": "powerBI_V3",
-            "defaultMode": "directLake",
-            "tables": table_specs,
-            "expressions": [{
-                "name": "DatabaseQuery",
-                "kind": "m",
-                "expression": expression
-            }]
-        }
-    })
+/// `definition/database.tmdl` — the compatibility level lives here (not in model.tmdl).
+fn tmdl_database() -> String {
+    "database\n\tcompatibilityLevel: 1604\n".to_string()
+}
+
+/// `definition/expressions.tmdl` — the shared `DatabaseQuery` M expression that
+/// binds Direct Lake to the SQL analytics endpoint. `catalog` is the SQL endpoint
+/// item id (the portal's exact convention), NOT the display name.
+fn tmdl_expression(server: &str, catalog: &str) -> String {
+    format!(
+        "expression DatabaseQuery =\n\t\tlet\n\t\t    database = Sql.Database(\"{server}\", \"{catalog}\")\n\t\tin\n\t\t    database\n"
+    )
+}
+
+/// `definition/tables/<name>.tmdl` — columns (`dataType` + `sourceColumn`, exactly
+/// like the portal — no `summarizeBy`) and a `directLake` entity partition. The
+/// `entityName` is the physical (SQL/Delta) table name.
+fn tmdl_table(t: &GenTable, schema: &str) -> String {
+    let mut s = format!("table {}\n", t.name);
+    for c in &t.columns {
+        let _ = write!(
+            s,
+            "\n\tcolumn {name}\n\t\tdataType: {dt}\n\t\tsourceColumn: {name}\n",
+            name = c.name,
+            dt = c.data_type
+        );
+    }
+    let _ = write!(
+        s,
+        "\n\tpartition {name} = entity\n\t\tmode: directLake\n\t\tsource\n\t\t\tentityName: {name}\n\t\t\tschemaName: {schema}\n\t\t\texpressionSource: DatabaseQuery\n",
+        name = t.name
+    );
+    s
 }
 
 /// A compact summary of the generated model.
@@ -509,34 +577,64 @@ mod tests {
     }
 
     #[test]
-    fn direct_lake_bim_has_required_fields() {
+    fn tmdl_parts_match_portal_shape() {
         let (tables, _) = plan_tables(&info_schema_rows(), None);
-        let bim = build_direct_lake_bim(
+        let parts: std::collections::HashMap<String, String> = build_tmdl_parts(
             "srv.datawarehouse.fabric.microsoft.com",
-            "MyLH",
+            "ea657d3e-74c6-4f2f-a416-7cafcf68437d",
             "dbo",
             &tables,
-        );
-        assert_eq!(bim["compatibilityLevel"], 1604);
-        assert_eq!(bim["model"]["defaultMode"], "directLake");
+        )
+        .into_iter()
+        .collect();
+
+        // definition.pbism — portal emits version 4.2 + empty settings.
+        let pbism: Value = serde_json::from_str(&parts["definition.pbism"]).unwrap();
+        assert_eq!(pbism["version"], "4.2");
+        assert!(pbism["settings"].is_object());
+
+        // model.tmdl — Direct Lake settings + a ref table per table.
+        let model = &parts["definition/model.tmdl"];
+        assert!(model.contains("model Model"));
+        assert!(model.contains("\tdefaultMode: directLake"));
+        assert!(model.contains("\tdefaultPowerBIDataSourceVersion: powerBI_V3"));
+        assert!(model.contains("ref table dimstore"));
+        assert!(model.contains("ref table factsales"));
+
+        // database.tmdl — compatibilityLevel lives here.
         assert_eq!(
-            bim["model"]["defaultPowerBIDataSourceVersion"],
-            "powerBI_V3"
+            parts["definition/database.tmdl"],
+            "database\n\tcompatibilityLevel: 1604\n"
         );
-        // One partition per table, directLake entity source referencing DatabaseQuery.
-        let t0 = &bim["model"]["tables"][0];
-        let part = &t0["partitions"][0];
-        assert_eq!(part["mode"], "directLake");
-        assert_eq!(part["source"]["type"], "entity");
-        assert_eq!(part["source"]["schemaName"], "dbo");
-        assert_eq!(part["source"]["expressionSource"], "DatabaseQuery");
-        // The shared expression binds Sql.Database(server, database).
-        let expr = bim["model"]["expressions"][0]["expression"]
-            .as_str()
-            .unwrap();
-        assert!(
-            expr.contains("Sql.Database(\"srv.datawarehouse.fabric.microsoft.com\", \"MyLH\")")
-        );
+
+        // expressions.tmdl — Sql.Database with the SQL endpoint GUID (not a name).
+        let expr = &parts["definition/expressions.tmdl"];
+        assert!(expr.contains(
+            "Sql.Database(\"srv.datawarehouse.fabric.microsoft.com\", \"ea657d3e-74c6-4f2f-a416-7cafcf68437d\")"
+        ));
+
+        // A per-table file with lean columns (dataType + sourceColumn, NO summarizeBy)
+        // and a directLake entity partition.
+        let ds = &parts["definition/tables/dimstore.tmdl"];
+        assert!(ds.starts_with("table dimstore\n"));
+        assert!(ds.contains("\tcolumn StoreId\n\t\tdataType: int64\n\t\tsourceColumn: StoreId\n"));
+        assert!(!ds.contains("summarizeBy"), "portal omits summarizeBy");
+        assert!(ds.contains("\tpartition dimstore = entity\n\t\tmode: directLake\n\t\tsource\n\t\t\tentityName: dimstore\n\t\t\tschemaName: dbo\n\t\t\texpressionSource: DatabaseQuery\n"));
+    }
+
+    #[test]
+    fn tmdl_parts_one_table_file_per_table() {
+        let (tables, _) = plan_tables(&info_schema_rows(), None);
+        let paths: Vec<String> = build_tmdl_parts("s", "c", "dbo", &tables)
+            .into_iter()
+            .map(|(p, _)| p)
+            .collect();
+        assert!(paths.contains(&"definition/tables/dimstore.tmdl".to_string()));
+        assert!(paths.contains(&"definition/tables/factsales.tmdl".to_string()));
+        assert!(paths.contains(&"definition/model.tmdl".to_string()));
+        assert!(paths.contains(&"definition/database.tmdl".to_string()));
+        assert!(paths.contains(&"definition/expressions.tmdl".to_string()));
+        assert!(paths.contains(&"definition.pbism".to_string()));
     }
 
     #[test]
