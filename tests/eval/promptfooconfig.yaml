@@ -1700,6 +1700,18 @@ tests:
         value: "The response uses 'fabio semantic-model analyze' (with --workspace and --id) to run the Best Practice Analyzer over the model. It does not invent a non-existent command or claim fabio can set Prep-for-AI (AI data schema / verified answers / AI instructions), which are portal-only."
         metric: analyze-not-prep-for-ai
 
+  - description: "Power BI: auto-fix safe semantic-model issues"
+    vars:
+      user_query: "My semantic model has identifier columns that aggregate by default. Can fabio fix that automatically?"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('semantic-model analyze') && output.includes('--fix')
+        metric: semantic-model-analyze-fix
+      - type: llm-rubric
+        value: "The response uses 'fabio semantic-model analyze --fix' to auto-set the default summarization to None on the identifier columns, and conveys that this is the safe mechanical fix (it does NOT claim fabio auto-fixes naming, duplicates, schema restructuring, or descriptions). Bonus if it mentions --dry-run to preview."
+        metric: fix-safe-scope
+
   - description: "Power BI: generate a Direct Lake semantic model from a lakehouse (no TMDL authoring)"
     vars:
       user_query: "Generate a Direct Lake semantic model called 'SalesModel' from my lakehouse — I don't want to hand-write any TMDL, just pull in all the tables"

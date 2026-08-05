@@ -34,7 +34,7 @@ Manage semantic models (Power BI datasets)
 | Command | Mutates | Description |
 |---|---|---|
 | `fabio semantic-model add-user` | yes | Add a user to a semantic model |
-| `fabio semantic-model analyze` | no | Analyze a model against best-practice rules (Best Practice Analyzer / Memory Analyzer over INFO.VIEW metadata) — descriptions, naming, implicit aggregation, duplicate measures, relationship hygiene, star schema, calculated columns, and (opt-in) high cardinality |
+| `fabio semantic-model analyze` | yes | Analyze a model against best-practice rules (Best Practice Analyzer / Memory Analyzer over INFO.VIEW metadata) — descriptions, naming, implicit aggregation, duplicate measures, relationship hygiene, star schema, calculated columns, and (opt-in) high cardinality |
 | `fabio semantic-model bind-connection` | yes | Bind a semantic model to a connection |
 | `fabio semantic-model bind-to-gateway` | yes | Bind a semantic model's data sources to an on-premises/VNet data gateway |
 | `fabio semantic-model cancel-refresh` | yes | Cancel an in-progress enhanced refresh by its request id |
@@ -115,7 +115,7 @@ Manage dashboards (Power BI)
 - Validate a PBIR/PBIP report folder offline with 'report validate --source <folder>' before 'report create --definition' or deploy — it catches missing required files, bad $schema, and byPath-vs-byConnection issues without a tenant call.
 
 ### PREFER
-- semantic-model analyze (--with-cardinality, --severity, --strict) to check a model against best practices before shipping or using it as a data-agent source — it flags missing descriptions, cryptic names, implicit aggregation on identifier columns, duplicate measures, ambiguous dates, relationship hygiene, non-star schemas, calculated + high-cardinality columns. Use semantic-model measure-dependencies to include every dependent measure/column when scoping an AI data schema. See 'fabio context best-practices semantic-model-optimization'.
+- semantic-model analyze (--with-cardinality, --severity, --strict) to check a model against best practices before shipping or using it as a data-agent source — it flags missing descriptions, cryptic names, implicit aggregation on identifier columns, duplicate measures, ambiguous dates, relationship hygiene, non-star schemas, calculated + high-cardinality columns. Add --fix to auto-apply the ONE safe mechanical fix (set default summarization to None on identifier columns) via a dry-run-guarded definition overwrite; naming/dedup/schema/description issues are NOT auto-fixed (they need human judgment). Use semantic-model measure-dependencies to include every dependent measure/column when scoping an AI data schema. See 'fabio context best-practices semantic-model-optimization'.
 - semantic-model generate --lakehouse <id> (or --warehouse) to auto-build a Direct Lake model from a data source WITHOUT hand-authoring TMDL — it reads the SQL analytics endpoint schema, maps types (dropping unmappable columns like Fabric does), synthesizes the portal-EXACT TMDL definition, creates it, and frames it. Use --tables to pick specific tables and --schema (default dbo). Relationships/measures are NOT generated (same as the portal) — add them with update-definition. This is the fast path; use create --file/--definition only when you already have authored TMDL.
 - Introspect a model's schema with semantic-model list-tables/list-columns/list-measures/list-relationships (DAX INFO.VIEW.* — the Analysis Services Schema Rowsets) to understand tables, types, StorageMode (Direct Lake), measures, and relationships WITHOUT fetching/parsing the TMDL/TMSL definition.
 - report create --definition <folder> to create a FULL multi-page PBIR report from generated files (the documented, agent-authorable format); it gathers definition.pbir + report.json or definition/** and validates first. Use --dataset with it to rebind a byPath folder to a concrete model by connection.
@@ -147,6 +147,7 @@ Manage dashboards (Power BI)
 ## Safety
 - Refreshing a large model consumes capacity — confirm headroom before a full refresh.
 - Overwriting a semantic model definition replaces its measures/relationships — confirm with the user.
+- semantic-model analyze --fix overwrites the model definition (irreversible) to apply the safe summarization fix — it is dry-run guarded; preview with --dry-run first. It only changes default summarization on identifier columns, never renames or restructures.
 
 ## Shared references
 Cross-cutting operational guidance (the "common" layer) — consult the relevant topic before non-trivial work:

@@ -2290,6 +2290,89 @@ fn semantic_model_analyze_and_measure_dependencies() {
         "Avg Price should depend on both base measures; got {dep_measures:?}"
     );
 
+    // analyze --fix --dry-run: previews the safe fix without mutating.
+    let dr = fabio()
+        .args([
+            "semantic-model",
+            "analyze",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--fix",
+            "--dry-run",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let drj = parse_json(&dr);
+    let drd = extract_data(&drj);
+    assert!(drd["dry_run"].as_bool().unwrap_or(false));
+    let would: Vec<&str> = drd["details"]["wouldFix"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(
+        would.contains(&"Sales[StoreId]"),
+        "dry-run should plan to fix Sales[StoreId]; got {would:?}"
+    );
+
+    // analyze --fix: applies the safe fix (SummarizeBy -> None on StoreId).
+    let f = fabio()
+        .args([
+            "semantic-model",
+            "analyze",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--fix",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let fj = parse_json(&f);
+    let fd = extract_data(&fj);
+    assert!(fd["fixApplied"].as_bool().unwrap_or(false));
+    assert!(
+        fd["fixed"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == "Sales[StoreId]"),
+        "fix should report Sales[StoreId]; got {fd}"
+    );
+    std::thread::sleep(std::time::Duration::from_secs(6));
+
+    // Re-analyze: the implicit-aggregation issue must be gone.
+    let re = fabio()
+        .args([
+            "semantic-model",
+            "analyze",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--severity",
+            "warning",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let rej = parse_json(&re);
+    let red = extract_data(&rej);
+    let still_implicit = red["issues"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|i| i["rule"] == "implicit-aggregation");
+    assert!(
+        !still_implicit,
+        "implicit-aggregation should be fixed after --fix; got {red}"
+    );
+
     // Cleanup.
     fabio()
         .args(["semantic-model", "delete", "--workspace", ws, "--id", &id])

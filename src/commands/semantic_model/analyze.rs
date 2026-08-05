@@ -330,6 +330,7 @@ pub(super) fn run_rules(
 
 // ── analyze command ───────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn analyze(
     cli: &Cli,
     client: &FabricClient,
@@ -338,6 +339,7 @@ pub(super) async fn analyze(
     with_cardinality: bool,
     min_severity: &str,
     strict: bool,
+    fix: bool,
 ) -> Result<()> {
     let tables = fetch_info_view(client, workspace, id, "TABLES").await?;
     let columns = fetch_info_view(client, workspace, id, "COLUMNS").await?;
@@ -350,7 +352,7 @@ pub(super) async fn analyze(
         None
     };
 
-    let mut issues = run_rules(
+    let all_issues = run_rules(
         &tables,
         &columns,
         &measures,
@@ -359,29 +361,129 @@ pub(super) async fn analyze(
         HIGH_CARDINALITY_THRESHOLD,
     );
 
-    // Filter to >= min_severity.
+    // Optionally auto-fix the SAFE, mechanical issues (currently only
+    // `implicit-aggregation` → default summarization None). Overwrites the
+    // definition, so it is dry-run guarded inside the helper.
+    let mut fixed_cols: Vec<String> = Vec::new();
+    let mut fix_applied = false;
+    if fix {
+        match run_autofix(cli, client, workspace, id, &all_issues).await? {
+            FixResult::DryRunReturn => return Ok(()),
+            FixResult::Applied(f) => {
+                fixed_cols = f;
+                fix_applied = true;
+            }
+            FixResult::NoChange => {}
+        }
+    }
+
+    // Filter the reported issues to >= min_severity.
     let min_rank = severity_rank(min_severity);
-    issues.retain(|i| severity_rank(i["severity"].as_str().unwrap_or("info")) >= min_rank);
+    let issues: Vec<Value> = all_issues
+        .into_iter()
+        .filter(|i| severity_rank(i["severity"].as_str().unwrap_or("info")) >= min_rank)
+        .collect();
 
     let count = |sev: &str| issues.iter().filter(|i| i["severity"] == sev).count();
     let (errors, warnings, infos) = (count("error"), count("warning"), count("info"));
 
-    let out = serde_json::json!({
+    // Issues still needing attention (not auto-fixed).
+    let fixed_set: HashSet<&str> = fixed_cols.iter().map(String::as_str).collect();
+    let remaining = issues
+        .iter()
+        .filter(|i| !fixed_set.contains(i["object"].as_str().unwrap_or_default()))
+        .count();
+
+    let mut out = serde_json::json!({
         "id": id,
         "issueCount": issues.len(),
         "summary": { "error": errors, "warning": warnings, "info": infos },
         "issues": issues,
         "cardinalityProbed": with_cardinality,
     });
+    if fix {
+        out["fixApplied"] = Value::from(fix_applied);
+        out["fixed"] = Value::from(fixed_cols);
+        out["note"] = Value::from(
+            "Only the safe, mechanical fix (default summarization -> None on identifier columns) is auto-applied. The remaining issues (naming, duplicates, descriptions, schema shape, relationships, cardinality) need human review — they can break DAX/relationships or require semantic decisions.",
+        );
+    }
     output::render_object(cli, &out, "issueCount");
 
-    if strict && !issues.is_empty() {
+    if strict && remaining > 0 {
         bail!(
-            "semantic-model analyze found {} issue(s) at or above '{min_severity}' severity",
-            issues.len()
+            "semantic-model analyze found {remaining} issue(s) at or above '{min_severity}' severity that were not auto-fixed"
         );
     }
     Ok(())
+}
+
+/// Outcome of `run_autofix`.
+enum FixResult {
+    /// `--dry-run` was set: the plan was printed; the caller should return.
+    DryRunReturn,
+    /// The fix was applied to these columns.
+    Applied(Vec<String>),
+    /// Nothing to fix (no targets, or targets not present in the definition).
+    NoChange,
+}
+
+/// Apply the safe auto-fix (`implicit-aggregation` → `summarizeBy: none`) by a
+/// read-modify-write on the model definition. Dry-run guarded before the write.
+async fn run_autofix(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    all_issues: &[Value],
+) -> Result<FixResult> {
+    let targets: HashSet<(String, String)> = all_issues
+        .iter()
+        .filter(|i| i["rule"] == "implicit-aggregation")
+        .filter_map(|i| parse_object_ref(i["object"].as_str().unwrap_or_default()))
+        .collect();
+    if targets.is_empty() {
+        return Ok(FixResult::NoChange);
+    }
+    let def = client
+        .post(
+            &format!("/workspaces/{workspace}/semanticModels/{id}/getDefinition"),
+            &serde_json::json!({}),
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model analyze --fix", "Contributor"))?;
+    let parts = decode_parts(&def);
+    let (new_parts, fixed) = apply_summarization_fix(&parts, &targets);
+    if fixed.is_empty() {
+        return Ok(FixResult::NoChange);
+    }
+    if output::dry_run_guard(
+        cli,
+        "semantic-model analyze --fix",
+        &serde_json::json!({ "id": id, "wouldFix": fixed, "rule": "implicit-aggregation", "action": "set summarizeBy: none" }),
+    ) {
+        return Ok(FixResult::DryRunReturn);
+    }
+    let definition_parts: Vec<Value> = new_parts
+        .iter()
+        .map(|(path, content)| {
+            serde_json::json!({
+                "path": path,
+                "payload": BASE64.encode(content.as_bytes()),
+                "payloadType": "InlineBase64"
+            })
+        })
+        .collect();
+    client
+        .post(
+            &format!("/workspaces/{workspace}/semanticModels/{id}/updateDefinition"),
+            &serde_json::json!({ "definition": { "parts": definition_parts } }),
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model analyze --fix", "Contributor"))?;
+    Ok(FixResult::Applied(fixed))
 }
 
 const HIGH_CARDINALITY_THRESHOLD: u64 = 100_000;
@@ -699,6 +801,165 @@ fn extract_measures_bim(bim: &str) -> (Vec<MeasureDef>, HashSet<String>, HashSet
     (measures, mnames, cnames)
 }
 
+// ── auto-fix: set default summarization to None on identifier columns ──────────
+
+/// Parse an issue object ref `"Table[Column]"` into `(table, column)`.
+pub(super) fn parse_object_ref(obj: &str) -> Option<(String, String)> {
+    let open = obj.find('[')?;
+    let table = &obj[..open];
+    let col = obj[open + 1..].strip_suffix(']')?;
+    if table.is_empty() || col.is_empty() {
+        return None;
+    }
+    Some((table.to_string(), col.to_string()))
+}
+
+/// Apply the safe auto-fixes to the definition parts. Currently: set
+/// `summarizeBy: none` on every `(table, column)` in `targets`. Returns the
+/// (possibly-rewritten) parts and the list of columns actually changed
+/// (`"Table[Col]"`). Non-targeted parts are returned unchanged.
+pub(super) fn apply_summarization_fix(
+    parts: &[(String, String)],
+    targets: &HashSet<(String, String)>,
+) -> (Vec<(String, String)>, Vec<String>) {
+    // model.bim (single-file TMSL) path.
+    if let Some((path, bim)) = parts.iter().find(|(p, _)| p == "model.bim") {
+        let (new_bim, fixed) = fix_summarize_by_bim(bim, targets);
+        let out = parts
+            .iter()
+            .map(|(p, c)| {
+                if p == path {
+                    (p.clone(), new_bim.clone())
+                } else {
+                    (p.clone(), c.clone())
+                }
+            })
+            .collect();
+        return (out, fixed);
+    }
+    // TMDL path — edit each table file in place.
+    let mut fixed = Vec::new();
+    let out = parts
+        .iter()
+        .map(|(path, content)| {
+            let is_table = path.starts_with("definition/tables/")
+                && std::path::Path::new(path)
+                    .extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case("tmdl"));
+            if is_table {
+                let (new_content, f) = fix_summarize_by_tmdl(content, targets);
+                fixed.extend(f);
+                (path.clone(), new_content)
+            } else {
+                (path.clone(), content.clone())
+            }
+        })
+        .collect();
+    (out, fixed)
+}
+
+/// Ensure `summarizeBy: none` on the targeted columns of one `tables/<T>.tmdl`.
+/// Replaces an existing `summarizeBy:` line or inserts one after `dataType:`.
+fn fix_summarize_by_tmdl(
+    content: &str,
+    targets: &HashSet<(String, String)>,
+) -> (String, Vec<String>) {
+    let lines: Vec<&str> = content.lines().collect();
+    let table = lines
+        .iter()
+        .find(|l| l.starts_with("table "))
+        .map(|l| strip_tmdl_name(&l[6..]))
+        .unwrap_or_default();
+    let mut out: Vec<String> = Vec::new();
+    let mut fixed: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        let trimmed = line.trim_start_matches('\t');
+        if tab_indent(line) == 1 && trimmed.starts_with("column ") {
+            let col = strip_tmdl_name(&trimmed["column ".len()..]);
+            // Collect the column's property block (blank lines + indent >= 2).
+            let mut j = i + 1;
+            let mut block: Vec<&str> = Vec::new();
+            while j < lines.len() && (lines[j].trim().is_empty() || tab_indent(lines[j]) >= 2) {
+                block.push(lines[j]);
+                j += 1;
+            }
+            out.push(line.to_string());
+            if targets.contains(&(table.clone(), col.clone())) {
+                let mut has_summarize = false;
+                let mut new_block: Vec<String> = Vec::new();
+                for bl in &block {
+                    if bl.trim().starts_with("summarizeBy:") {
+                        new_block.push("\t\tsummarizeBy: none".to_string());
+                        has_summarize = true;
+                    } else {
+                        new_block.push((*bl).to_string());
+                    }
+                }
+                if !has_summarize {
+                    let pos = new_block
+                        .iter()
+                        .position(|l| l.trim().starts_with("dataType:"))
+                        .map_or(0, |p| p + 1);
+                    new_block.insert(pos, "\t\tsummarizeBy: none".to_string());
+                }
+                out.extend(new_block);
+                fixed.push(format!("{table}[{col}]"));
+            } else {
+                out.extend(block.iter().map(|l| (*l).to_string()));
+            }
+            i = j;
+            continue;
+        }
+        out.push(line.to_string());
+        i += 1;
+    }
+    let mut result = out.join("\n");
+    if content.ends_with('\n') {
+        result.push('\n');
+    }
+    (result, fixed)
+}
+
+/// Ensure `"summarizeBy": "none"` on the targeted columns of a `model.bim`.
+fn fix_summarize_by_bim(bim: &str, targets: &HashSet<(String, String)>) -> (String, Vec<String>) {
+    let mut fixed = Vec::new();
+    let Ok(mut j) = serde_json::from_str::<Value>(bim) else {
+        return (bim.to_string(), fixed);
+    };
+    if let Some(tables) = j
+        .get_mut("model")
+        .and_then(|m| m.get_mut("tables"))
+        .and_then(Value::as_array_mut)
+    {
+        for t in tables {
+            let table = t
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            if let Some(cols) = t.get_mut("columns").and_then(Value::as_array_mut) {
+                for c in cols {
+                    let col = c
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string();
+                    if targets.contains(&(table.clone(), col.clone())) {
+                        c["summarizeBy"] = Value::from("none");
+                        fixed.push(format!("{table}[{col}]"));
+                    }
+                }
+            }
+        }
+    }
+    (
+        serde_json::to_string(&j).unwrap_or_else(|_| bim.to_string()),
+        fixed,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -825,5 +1086,50 @@ mod tests {
         assert_eq!(measures[0].name, "Total");
         assert!(mnames.contains("Total"));
         assert!(cnames.contains("Amount"));
+    }
+
+    #[test]
+    fn parse_object_ref_splits_table_and_column() {
+        assert_eq!(
+            parse_object_ref("Sales[StoreId]"),
+            Some(("Sales".to_string(), "StoreId".to_string()))
+        );
+        assert_eq!(parse_object_ref("(model)"), None);
+    }
+
+    #[test]
+    fn fix_summarization_tmdl_inserts_and_replaces() {
+        let tmdl = "table Sales\n\n\tcolumn StoreId\n\t\tdataType: int64\n\t\tsourceColumn: StoreId\n\n\tcolumn Amount\n\t\tdataType: double\n\t\tsummarizeBy: sum\n\t\tsourceColumn: Amount\n";
+        let mut targets = HashSet::new();
+        targets.insert(("Sales".to_string(), "StoreId".to_string()));
+        targets.insert(("Sales".to_string(), "Amount".to_string()));
+        let (out, fixed) = fix_summarize_by_tmdl(tmdl, &targets);
+        // StoreId had no summarizeBy -> inserted after dataType.
+        assert!(out.contains("\tcolumn StoreId\n\t\tdataType: int64\n\t\tsummarizeBy: none\n\t\tsourceColumn: StoreId"));
+        // Amount had summarizeBy: sum -> replaced with none.
+        assert!(out.contains("\t\tsummarizeBy: none\n\t\tsourceColumn: Amount"));
+        assert!(!out.contains("summarizeBy: sum"));
+        assert_eq!(fixed.len(), 2);
+    }
+
+    #[test]
+    fn fix_summarization_tmdl_leaves_untargeted_columns() {
+        let tmdl =
+            "table Sales\n\n\tcolumn Amount\n\t\tdataType: double\n\t\tsourceColumn: Amount\n";
+        let targets = HashSet::new();
+        let (out, fixed) = fix_summarize_by_tmdl(tmdl, &targets);
+        assert_eq!(out, tmdl);
+        assert!(fixed.is_empty());
+    }
+
+    #[test]
+    fn fix_summarization_bim_sets_none() {
+        let bim = r#"{"model":{"tables":[{"name":"Sales","columns":[{"name":"StoreId","dataType":"int64","summarizeBy":"sum"}]}]}}"#;
+        let mut targets = HashSet::new();
+        targets.insert(("Sales".to_string(), "StoreId".to_string()));
+        let (out, fixed) = fix_summarize_by_bim(bim, &targets);
+        let j: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(j["model"]["tables"][0]["columns"][0]["summarizeBy"], "none");
+        assert_eq!(fixed, vec!["Sales[StoreId]".to_string()]);
     }
 }

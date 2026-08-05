@@ -346,6 +346,13 @@ pub enum SemanticModelCommand {
         /// Exit non-zero if any issue at/above the severity threshold is found (CI gate)
         #[arg(long)]
         strict: bool,
+
+        /// Auto-fix the SAFE, mechanical issues (currently: set default
+        /// summarization to None on identifier columns). Overwrites the model
+        /// definition (irreversible) — dry-run guarded. Naming/schema/dedup
+        /// issues are NOT auto-fixed (they need human judgment).
+        #[arg(long)]
+        fix: bool,
     },
     /// List each measure's dependencies (the measures/columns/tables its DAX
     /// references) — useful for including dependent objects in an AI data schema
@@ -787,6 +794,7 @@ pub async fn execute(
             with_cardinality,
             severity,
             strict,
+            fix,
         } => {
             analyze::analyze(
                 cli,
@@ -796,6 +804,7 @@ pub async fn execute(
                 *with_cardinality,
                 severity,
                 *strict,
+                *fix,
             )
             .await
         }
