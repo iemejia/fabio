@@ -88,8 +88,8 @@ fn agent_context_default_is_small() {
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     // Default compact output should be much smaller than full dump
     assert!(
-        stdout.len() < 22_000,
-        "default output should be under 22KB, got {} bytes",
+        stdout.len() < 26_000,
+        "default output should be under 26KB, got {} bytes",
         stdout.len()
     );
 }

@@ -2351,6 +2351,223 @@ fn semantic_model_partition_lifecycle() {
         .success();
 }
 
+// ─── Calculation groups: add group/item, list, delete ────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_calculation_group_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("sm_cg");
+
+    let mut tmp = NamedTempFile::with_suffix(".bim").unwrap();
+    tmp.write_all(three_table_model_bim().as_bytes()).unwrap();
+    let file_path = tmp.path().to_str().unwrap().to_string();
+
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--file",
+            &file_path,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let sm_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // add-calculation-group (dry-run then live)
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "add-calculation-group",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "TimeIntelligence",
+            "--dry-run",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&assert))["dry_run"], true);
+
+    fabio()
+        .args([
+            "semantic-model",
+            "add-calculation-group",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "TimeIntelligence",
+            "--column-name",
+            "Time Calculation",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // add-calculation-item x2
+    for (item, expr) in [
+        ("Current", "SELECTEDMEASURE()"),
+        (
+            "YTD",
+            "CALCULATE(SELECTEDMEASURE(), DATESYTD('Sales'[Amount]))",
+        ),
+    ] {
+        fabio()
+            .args([
+                "semantic-model",
+                "add-calculation-item",
+                "--workspace",
+                &cfg.dest_workspace,
+                "--id",
+                &sm_id,
+                "--group",
+                "TimeIntelligence",
+                "--name",
+                item,
+                "--expression",
+                expr,
+            ])
+            .timeout(std::time::Duration::from_mins(3))
+            .assert()
+            .success();
+    }
+
+    // list-calculation-groups → TimeIntelligence with 2 items
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "list-calculation-groups",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let groups = data.as_array().unwrap();
+    let ti = groups
+        .iter()
+        .find(|g| g["name"] == "TimeIntelligence")
+        .expect("TimeIntelligence group");
+    assert_eq!(ti["itemCount"], 2);
+
+    // Verify in the definition
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "get-definition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let parts = data["definition"]["parts"].as_array().unwrap();
+    let cg = parts
+        .iter()
+        .find(|p| p["path"].as_str() == Some("definition/tables/TimeIntelligence.tmdl"))
+        .and_then(|p| p["payload"].as_str())
+        .map(|b| {
+            String::from_utf8(base64::engine::general_purpose::STANDARD.decode(b).unwrap()).unwrap()
+        })
+        .expect("TimeIntelligence.tmdl");
+    assert!(cg.contains("calculationGroup"), "cg:\n{cg}");
+    assert!(
+        cg.contains("calculationItem Current = SELECTEDMEASURE()"),
+        "cg:\n{cg}"
+    );
+    assert!(
+        cg.contains("partition TimeIntelligence = calculationGroup"),
+        "cg:\n{cg}"
+    );
+
+    // delete-calculation-item
+    fabio()
+        .args([
+            "semantic-model",
+            "delete-calculation-item",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--group",
+            "TimeIntelligence",
+            "--name",
+            "YTD",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // delete-calculation-group
+    fabio()
+        .args([
+            "semantic-model",
+            "delete-calculation-group",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "TimeIntelligence",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // delete a nonexistent group → NOT_FOUND
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "delete-calculation-group",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "Nope",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert_eq!(error_json(&stderr)["error"]["code"], "NOT_FOUND");
+
+    // Cleanup
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+}
+
 // ─── Dry Run ─────────────────────────────────────────────────────────────────
 
 #[test]

@@ -1,5 +1,6 @@
 mod analyze;
 mod authoring;
+mod calc_groups;
 mod columns;
 mod crud;
 mod definitions;
@@ -1168,6 +1169,102 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         name: String,
     },
+    /// List calculation groups of a semantic model (name + item count) —
+    /// read-only.
+    #[command(name = "list-calculation-groups", display_order = 13)]
+    ListCalculationGroups {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Add a calculation group (for time intelligence, etc.) by editing the
+    /// model definition. Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "add-calculation-group", display_order = 13)]
+    AddCalculationGroup {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Calculation group name (also the table name)
+        #[arg(long)]
+        name: String,
+
+        /// The group's column name (defaults to the group name)
+        #[arg(long)]
+        column_name: Option<String>,
+    },
+    /// Delete a calculation group (its whole table) by editing the model
+    /// definition. Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "delete-calculation-group", display_order = 13)]
+    DeleteCalculationGroup {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Calculation group name to delete
+        #[arg(long)]
+        name: String,
+    },
+    /// Add a calculation item (a DAX time-intelligence variant) to a calculation
+    /// group. Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "add-calculation-item", display_order = 13)]
+    AddCalculationItem {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Calculation group name
+        #[arg(long)]
+        group: String,
+
+        /// Calculation item name
+        #[arg(long)]
+        name: String,
+
+        /// DAX expression, e.g. `CALCULATE(SELECTEDMEASURE(), DATESYTD('Date'[Date]))`
+        #[arg(long)]
+        expression: String,
+
+        /// Optional ordinal (sort position)
+        #[arg(long)]
+        ordinal: Option<i64>,
+    },
+    /// Delete a calculation item from a calculation group by editing the model
+    /// definition. Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "delete-calculation-item", display_order = 13)]
+    DeleteCalculationItem {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Calculation group name
+        #[arg(long)]
+        group: String,
+
+        /// Calculation item name to delete
+        #[arg(long)]
+        name: String,
+    },
     /// Update parameters of a semantic model
     #[command(name = "update-parameters", display_order = 14)]
     UpdateParameters {
@@ -2160,6 +2257,42 @@ async fn execute_authoring(
             table,
             name,
         } => partitions::delete_partition(cli, client, workspace, id, table, name).await,
+        SemanticModelCommand::ListCalculationGroups { workspace, id } => {
+            calc_groups::list_calculation_groups(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::AddCalculationGroup {
+            workspace,
+            id,
+            name,
+            column_name,
+        } => {
+            let col = column_name.as_deref().unwrap_or(name);
+            calc_groups::add_calculation_group(cli, client, workspace, id, name, col).await
+        }
+        SemanticModelCommand::DeleteCalculationGroup {
+            workspace,
+            id,
+            name,
+        } => calc_groups::delete_calculation_group(cli, client, workspace, id, name).await,
+        SemanticModelCommand::AddCalculationItem {
+            workspace,
+            id,
+            group,
+            name,
+            expression,
+            ordinal,
+        } => {
+            calc_groups::add_calculation_item(
+                cli, client, workspace, id, group, name, expression, *ordinal,
+            )
+            .await
+        }
+        SemanticModelCommand::DeleteCalculationItem {
+            workspace,
+            id,
+            group,
+            name,
+        } => calc_groups::delete_calculation_item(cli, client, workspace, id, group, name).await,
         _ => unreachable!("execute_authoring only handles granular-authoring commands"),
     }
 }

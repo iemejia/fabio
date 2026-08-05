@@ -1848,6 +1848,18 @@ tests:
         value: "The response uses 'fabio semantic-model update-partition' with --table Sales, the partition --name, and --m (the new Power Query M expression). It may first run list-partitions to find the partition name. It does not invent an XMLA/TOM tool."
         metric: update-partition-approach
 
+  - description: "Power BI: create a time-intelligence calculation group"
+    vars:
+      user_query: "Add a Time Intelligence calculation group to my semantic model with a YTD calculation item"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('semantic-model add-calculation-group') && output.includes('semantic-model add-calculation-item')
+        metric: semantic-model-calc-group-commands
+      - type: llm-rubric
+        value: "The response creates the calculation group (add-calculation-group) and then adds a YTD calculation item (add-calculation-item --group ... --name YTD --expression with a DAX time-intelligence expression). Correct sequencing: group before item. It does not invent an XMLA/TOM tool."
+        metric: calc-group-approach
+
   - description: "Power BI: generate a Direct Lake semantic model from a lakehouse (no TMDL authoring)"
     vars:
       user_query: "Generate a Direct Lake semantic model called 'SalesModel' from my lakehouse — I don't want to hand-write any TMDL, just pull in all the tables"

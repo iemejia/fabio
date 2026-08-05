@@ -143,7 +143,10 @@ pub(super) fn tmdl_table_name(content: &str) -> Option<String> {
 pub(super) fn decl_name(trimmed: &str, keyword: &str) -> Option<String> {
     let rest = trimmed.strip_prefix(keyword)?.strip_prefix(' ')?;
     // Objects whose declaration can carry an inline `= expression`.
-    let name_part = if matches!(keyword, "measure" | "column" | "partition" | "table") {
+    let name_part = if matches!(
+        keyword,
+        "measure" | "column" | "partition" | "table" | "calculationItem"
+    ) {
         rest.split('=').next().unwrap_or(rest)
     } else {
         rest

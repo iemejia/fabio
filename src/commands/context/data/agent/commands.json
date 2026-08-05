@@ -11187,6 +11187,138 @@
         "returns": "void",
         "destructive": true
       },
+      "list-calculation-groups": {
+        "description": "List calculation groups of a semantic model (name + item count) — read-only",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "add-calculation-group": {
+        "description": "Add a calculation group (for time intelligence, etc.) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Calculation group name (also the table name)"
+          },
+          "--column-name": {
+            "type": "string",
+            "description": "The group's column name (defaults to the group name)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "delete-calculation-group": {
+        "description": "Delete a calculation group (its whole table) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Calculation group name to delete"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "add-calculation-item": {
+        "description": "Add a calculation item (a DAX time-intelligence variant) to a calculation group. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--group": {
+            "type": "string",
+            "required": true,
+            "description": "Calculation group name"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Calculation item name"
+          },
+          "--expression": {
+            "type": "string",
+            "required": true,
+            "description": "DAX expression, e.g. `CALCULATE(SELECTEDMEASURE(), DATESYTD('Date'[Date]))`"
+          },
+          "--ordinal": {
+            "type": "string",
+            "description": "Optional ordinal (sort position)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "delete-calculation-item": {
+        "description": "Delete a calculation item from a calculation group by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--group": {
+            "type": "string",
+            "required": true,
+            "description": "Calculation group name"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Calculation item name to delete"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
       "update-parameters": {
         "description": "Update parameters of a semantic model",
         "flags": {
