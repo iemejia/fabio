@@ -5,6 +5,7 @@ mod columns;
 mod crud;
 mod definitions;
 mod expressions;
+mod functions;
 mod generate;
 mod hierarchies;
 pub mod operations;
@@ -1351,6 +1352,74 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         name: String,
     },
+    /// List DAX user-defined functions (UDFs) of a semantic model — read-only.
+    #[command(name = "list-functions", display_order = 13)]
+    ListFunctions {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Add a DAX user-defined function (UDF) by editing the model definition
+    /// (requires model compatibility level >=1702; bumped automatically).
+    /// Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "add-function", display_order = 13)]
+    AddFunction {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Function name
+        #[arg(long)]
+        name: String,
+
+        /// DAX UDF expression, e.g. `(x: INT64) => RETURN x + 1`
+        #[arg(long)]
+        expression: String,
+    },
+    /// Update a DAX user-defined function by editing the model definition.
+    /// Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "update-function", display_order = 13)]
+    UpdateFunction {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Function name to update
+        #[arg(long)]
+        name: String,
+
+        /// New DAX UDF expression
+        #[arg(long)]
+        expression: String,
+    },
+    /// Delete a DAX user-defined function by editing the model definition.
+    /// Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "delete-function", display_order = 13)]
+    DeleteFunction {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Function name to delete
+        #[arg(long)]
+        name: String,
+    },
     /// Update parameters of a semantic model
     #[command(name = "update-parameters", display_order = 14)]
     UpdateParameters {
@@ -2417,6 +2486,26 @@ async fn execute_authoring(
             id,
             name,
         } => expressions::delete_expression(cli, client, workspace, id, name).await,
+        SemanticModelCommand::ListFunctions { workspace, id } => {
+            functions::list_functions(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::AddFunction {
+            workspace,
+            id,
+            name,
+            expression,
+        } => functions::add_function(cli, client, workspace, id, name, expression).await,
+        SemanticModelCommand::UpdateFunction {
+            workspace,
+            id,
+            name,
+            expression,
+        } => functions::update_function(cli, client, workspace, id, name, expression).await,
+        SemanticModelCommand::DeleteFunction {
+            workspace,
+            id,
+            name,
+        } => functions::delete_function(cli, client, workspace, id, name).await,
         _ => unreachable!("execute_authoring only handles granular-authoring commands"),
     }
 }

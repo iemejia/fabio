@@ -145,7 +145,13 @@ pub(super) fn decl_name(trimmed: &str, keyword: &str) -> Option<String> {
     // Objects whose declaration can carry an inline `= expression`.
     let name_part = if matches!(
         keyword,
-        "measure" | "column" | "partition" | "table" | "calculationItem" | "expression"
+        "measure"
+            | "column"
+            | "partition"
+            | "table"
+            | "calculationItem"
+            | "expression"
+            | "function"
     ) {
         rest.split('=').next().unwrap_or(rest)
     } else {

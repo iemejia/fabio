@@ -2757,6 +2757,184 @@ fn semantic_model_expression_lifecycle() {
         .success();
 }
 
+// ─── DAX user-defined functions (UDFs): add / update / list / delete ─────────
+
+#[test]
+#[ignore = "requires live Fabric tenant (DAX UDF preview)"]
+#[serial]
+fn semantic_model_function_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("sm_fn");
+
+    // A 1702 model so the DAX-UDF preview is available.
+    let model = serde_json::json!({
+        "compatibilityLevel": 1702,
+        "model": {
+            "culture": "en-US",
+            "defaultPowerBIDataSourceVersion": "powerBI_V3",
+            "tables": [{
+                "name": "T",
+                "columns": [{"name": "A", "dataType": "int64", "sourceColumn": "A"}],
+                "partitions": [{"name": "T", "source": {"type": "m", "expression": "let Source = #table({\"A\"}, {{1}}) in Source"}}]
+            }]
+        }
+    })
+    .to_string();
+    let mut tmp = NamedTempFile::with_suffix(".bim").unwrap();
+    tmp.write_all(model.as_bytes()).unwrap();
+    let file_path = tmp.path().to_str().unwrap().to_string();
+
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--file",
+            &file_path,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let sm_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // add-function (dry-run then live)
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "add-function",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "AddOne",
+            "--expression",
+            "(x: INT64) => RETURN x + 1",
+            "--dry-run",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&assert))["dry_run"], true);
+
+    fabio()
+        .args([
+            "semantic-model",
+            "add-function",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "AddOne",
+            "--expression",
+            "(x: INT64) => RETURN x + 1",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // list-functions → AddOne
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "list-functions",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let fns = data.as_array().unwrap();
+    assert!(
+        fns.iter().any(|f| f["name"] == "AddOne"),
+        "functions: {fns:?}"
+    );
+
+    // Verify in the definition
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "get-definition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let parts = data["definition"]["parts"].as_array().unwrap();
+    let fn_tmdl = parts
+        .iter()
+        .find(|p| p["path"].as_str() == Some("definition/functions.tmdl"))
+        .and_then(|p| p["payload"].as_str())
+        .map(|b| {
+            String::from_utf8(base64::engine::general_purpose::STANDARD.decode(b).unwrap()).unwrap()
+        })
+        .expect("functions.tmdl");
+    assert!(fn_tmdl.contains("function AddOne ="), "fn:\n{fn_tmdl}");
+
+    // delete-function
+    fabio()
+        .args([
+            "semantic-model",
+            "delete-function",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "AddOne",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // delete nonexistent → NOT_FOUND
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "delete-function",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "Nope",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert_eq!(error_json(&stderr)["error"]["code"], "NOT_FOUND");
+
+    // Cleanup
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+}
+
 // ─── Dry Run ─────────────────────────────────────────────────────────────────
 
 #[test]
