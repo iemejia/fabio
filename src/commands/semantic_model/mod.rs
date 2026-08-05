@@ -1,4 +1,5 @@
 mod analyze;
+mod authoring;
 mod crud;
 mod definitions;
 mod generate;
@@ -365,6 +366,105 @@ pub enum SemanticModelCommand {
         /// Semantic model ID
         #[arg(long)]
         id: String,
+    },
+    /// Set the description of a table, column, or measure by editing the model
+    /// definition (getDefinition → edit TMDL/model.bim → updateDefinition).
+    /// Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "set-description", display_order = 13)]
+    SetDescription {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Target table (a table itself, or the owner of --column)
+        #[arg(long)]
+        table: Option<String>,
+
+        /// Target column (requires --table)
+        #[arg(long)]
+        column: Option<String>,
+
+        /// Target measure (model-unique; --table not needed)
+        #[arg(long)]
+        measure: Option<String>,
+
+        /// Description text (use \n for multi-line)
+        #[arg(long)]
+        description: String,
+    },
+    /// Add a measure to a table by editing the model definition
+    /// (getDefinition → edit TMDL/model.bim → updateDefinition). Overwrites the
+    /// definition (irreversible) — dry-run guarded.
+    #[command(name = "add-measure", display_order = 13)]
+    AddMeasure {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Table to add the measure to
+        #[arg(long)]
+        table: String,
+
+        /// Measure name (must be model-unique)
+        #[arg(long)]
+        name: String,
+
+        /// DAX expression (e.g. "SUM('Sales'[Amount])")
+        #[arg(long)]
+        expression: String,
+
+        /// Optional description
+        #[arg(long)]
+        description: Option<String>,
+
+        /// Optional format string (e.g. "0.00", "$#,0")
+        #[arg(long)]
+        format_string: Option<String>,
+
+        /// Optional display folder
+        #[arg(long)]
+        display_folder: Option<String>,
+    },
+    /// Update an existing measure's expression and/or properties by editing the
+    /// model definition (getDefinition → edit TMDL/model.bim → updateDefinition).
+    /// Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "update-measure", display_order = 13)]
+    UpdateMeasure {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Measure name to update (model-unique)
+        #[arg(long)]
+        measure: String,
+
+        /// New DAX expression
+        #[arg(long)]
+        expression: Option<String>,
+
+        /// New description
+        #[arg(long)]
+        description: Option<String>,
+
+        /// New format string
+        #[arg(long)]
+        format_string: Option<String>,
+
+        /// New display folder
+        #[arg(long)]
+        display_folder: Option<String>,
     },
     /// Update parameters of a semantic model
     #[command(name = "update-parameters", display_order = 14)]
@@ -810,6 +910,76 @@ pub async fn execute(
         }
         SemanticModelCommand::MeasureDependencies { workspace, id } => {
             analyze::measure_dependencies(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::SetDescription {
+            workspace,
+            id,
+            table,
+            column,
+            measure,
+            description,
+        } => {
+            authoring::set_description(
+                cli,
+                client,
+                workspace,
+                id,
+                table.as_deref(),
+                column.as_deref(),
+                measure.as_deref(),
+                description,
+            )
+            .await
+        }
+        SemanticModelCommand::AddMeasure {
+            workspace,
+            id,
+            table,
+            name,
+            expression,
+            description,
+            format_string,
+            display_folder,
+        } => {
+            authoring::add_measure(
+                cli,
+                client,
+                workspace,
+                id,
+                table,
+                name,
+                &authoring::MeasureFields {
+                    expression: Some(expression),
+                    description: description.as_deref(),
+                    format_string: format_string.as_deref(),
+                    display_folder: display_folder.as_deref(),
+                },
+            )
+            .await
+        }
+        SemanticModelCommand::UpdateMeasure {
+            workspace,
+            id,
+            measure,
+            expression,
+            description,
+            format_string,
+            display_folder,
+        } => {
+            authoring::update_measure(
+                cli,
+                client,
+                workspace,
+                id,
+                measure,
+                &authoring::MeasureFields {
+                    expression: expression.as_deref(),
+                    description: description.as_deref(),
+                    format_string: format_string.as_deref(),
+                    display_folder: display_folder.as_deref(),
+                },
+            )
+            .await
         }
         SemanticModelCommand::UpdateParameters {
             workspace,

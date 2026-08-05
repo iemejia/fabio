@@ -1712,6 +1712,32 @@ tests:
         value: "The response uses 'fabio semantic-model analyze --fix' to auto-set the default summarization to None on the identifier columns, and conveys that this is the safe mechanical fix (it does NOT claim fabio auto-fixes naming, duplicates, schema restructuring, or descriptions). Bonus if it mentions --dry-run to preview."
         metric: fix-safe-scope
 
+  - description: "Power BI: add a measure to a semantic model"
+    vars:
+      user_query: "Add a measure called 'Total Revenue' with the DAX SUM('Sales'[Amount]) to the Sales table in my semantic model"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('semantic-model add-measure')
+        metric: semantic-model-add-measure-command
+      - type: icontains
+        value: "--expression"
+      - type: llm-rubric
+        value: "The response uses 'fabio semantic-model add-measure' with --table, --name, and --expression (the DAX). It does NOT claim to use XMLA/TOM or an external modeling tool — fabio edits the model definition directly. Bonus if it notes the change overwrites the definition (dry-run available)."
+        metric: add-measure-approach
+
+  - description: "Power BI: describe a model object (table/column/measure)"
+    vars:
+      user_query: "Set the description of the 'Sales' table in my semantic model to 'Fact table of all sales transactions'"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('semantic-model set-description')
+        metric: semantic-model-set-description-command
+      - type: llm-rubric
+        value: "The response uses 'fabio semantic-model set-description' with --table (and --description). It correctly targets a table (not --column/--measure) and does not invent an XMLA/TOM workflow."
+        metric: set-description-approach
+
   - description: "Power BI: generate a Direct Lake semantic model from a lakehouse (no TMDL authoring)"
     vars:
       user_query: "Generate a Direct Lake semantic model called 'SalesModel' from my lakehouse — I don't want to hand-write any TMDL, just pull in all the tables"

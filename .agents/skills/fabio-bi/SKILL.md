@@ -33,6 +33,7 @@ Manage semantic models (Power BI datasets)
 
 | Command | Mutates | Description |
 |---|---|---|
+| `fabio semantic-model add-measure` | yes | Add a measure to a table by editing the model definition (getDefinition → edit TMDL/model.bim → updateDefinition). Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio semantic-model add-user` | yes | Add a user to a semantic model |
 | `fabio semantic-model analyze` | yes | Analyze a model against best-practice rules (Best Practice Analyzer / Memory Analyzer over INFO.VIEW metadata) — descriptions, naming, implicit aggregation, duplicate measures, relationship hygiene, star schema, calculated columns, and (opt-in) high cardinality |
 | `fabio semantic-model bind-connection` | yes | Bind a semantic model to a connection |
@@ -62,12 +63,14 @@ Manage semantic models (Power BI datasets)
 | `fabio semantic-model refresh` | yes | Refresh a semantic model (required to frame Direct Lake models after creation) |
 | `fabio semantic-model refresh-details` | no | Get execution details of a specific (enhanced) refresh by its request id |
 | `fabio semantic-model refresh-status` | no | Get refresh history and status for a semantic model |
+| `fabio semantic-model set-description` | yes | Set the description of a table, column, or measure by editing the model definition (getDefinition → edit TMDL/model.bim → updateDefinition). Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio semantic-model show` | no | Show details of a semantic model |
 | `fabio semantic-model takeover` | yes | Take over a semantic model (converts definition-managed to service-managed for portal editing) |
 | `fabio semantic-model unbind-connection` | yes | Unbind a connection from a semantic model |
 | `fabio semantic-model update` | yes | Update semantic model properties (name and/or description) |
 | `fabio semantic-model update-datasources` | yes | Update datasources of a semantic model |
 | `fabio semantic-model update-definition` | yes | Update the definition of a semantic model from a file |
+| `fabio semantic-model update-measure` | yes | Update an existing measure's expression and/or properties by editing the model definition (getDefinition → edit TMDL/model.bim → updateDefinition). Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio semantic-model update-parameters` | yes | Update parameters of a semantic model |
 | `fabio semantic-model update-refresh-schedule` | yes | Update the scheduled (automatic) refresh configuration |
 
@@ -134,6 +137,7 @@ Manage dashboards (Power BI)
 - PBIR (the enhanced per-file 'definition/' folder) is Microsoft's documented, agent-authorable report format (each page/visual has its own $schema-bearing JSON) and becomes the only format at GA; conform to the published visual.json/page.json schemas and run 'report validate' before create/deploy. fabio 'report create --definition' pushes a full PBIR tree (previously only 'deploy' could).
 - Direct Lake reads Delta directly — the report is empty until the lakehouse tables are populated.
 - semantic-model generate reads the source schema over the SQL analytics endpoint (TDS), so it needs a SQL-scoped token from the ambient credential chain (az login / device-code cache) — do NOT set a Fabric-only static FABIO_ACCESS_TOKEN for it. It generates the portal-EXACT Direct Lake TMDL (definition.pbism v4.2, model.tmdl defaultMode directLake, database.tmdl compatibilityLevel 1604, per-table tables/*.tmdl, expressions.tmdl Sql.Database(server, <sqlEndpointId>)) and frames it with a Full refresh; wait ~15-30s before the first DAX query. A freshly loaded lakehouse table can lag ~30-60s before it appears on the SQL endpoint. The Sql.Database catalog is the SQL analytics endpoint item id (a GUID), matching what the portal emits.
+- To edit individual model objects (set a description, add/update a measure) fabio uses set-description/add-measure/update-measure — a definition read-modify-write (getDefinition->edit TMDL->updateDefinition), NOT XMLA/TOM. These OVERWRITE the definition (irreversible, dry-run guarded); a new measure lands after the table scalar props (canonical measures-first) so it does not break TMDL indentation.
 
 ## Troubleshooting
 | Symptom | Fix |

@@ -2,10 +2,22 @@
 
 mod common;
 
+use base64::Engine as _;
 use common::{TestConfig, extract_data, fabio, parse_json, unique_name};
 use serial_test::serial;
 use std::io::Write;
 use tempfile::NamedTempFile;
+
+/// Extract the error JSON envelope from stderr, skipping any `[timing]` line
+/// that precedes it when the command made network calls before failing.
+fn error_json(stderr: &str) -> serde_json::Value {
+    let line = stderr
+        .lines()
+        .rev()
+        .find(|l| l.trim_start().starts_with('{'))
+        .unwrap_or(stderr);
+    serde_json::from_str(line.trim()).unwrap()
+}
 
 // ─── List / Show / Update / Delete (basic) ───────────────────────────────────
 
@@ -387,6 +399,255 @@ fn semantic_model_update_name_and_description() {
     assert_eq!(data["description"], "Updated via E2E test");
 
     // Cleanup
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+}
+
+// ─── Authoring: set-description / add-measure / update-measure ────────────────
+
+/// Full authoring lifecycle over the model DEFINITION (getDefinition → edit
+/// TMDL → updateDefinition): set a table description, add a measure with
+/// properties, update the measure's expression, and verify each via the
+/// round-tripped definition. Also covers the duplicate-measure and
+/// missing-target error paths.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_authoring_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("sm_authoring");
+
+    // Create a TMDL model (Fabric normalizes it to definition/tables/*.tmdl).
+    let mut tmp = NamedTempFile::with_suffix(".tmdl").unwrap();
+    tmp.write_all(minimal_model_tmdl().as_bytes()).unwrap();
+    let file_path = tmp.path().to_str().unwrap().to_string();
+
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--file",
+            &file_path,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let sm_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // ── set-description (table) — dry-run first ──────────────────────────
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "set-description",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--table",
+            "TestTable",
+            "--description",
+            "Fact table (e2e)",
+            "--dry-run",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&assert))["dry_run"], true);
+
+    // ── set-description (table) — live ───────────────────────────────────
+    fabio()
+        .args([
+            "semantic-model",
+            "set-description",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--table",
+            "TestTable",
+            "--description",
+            "Fact table (e2e)",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // ── add-measure with properties ─────────────────────────────────────
+    fabio()
+        .args([
+            "semantic-model",
+            "add-measure",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--table",
+            "TestTable",
+            "--name",
+            "Row Count",
+            "--expression",
+            "COUNTROWS('TestTable')",
+            "--format-string",
+            "0",
+            "--display-folder",
+            "KPIs",
+            "--description",
+            "Number of rows",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // ── add-measure duplicate → CONFLICT ────────────────────────────────
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "add-measure",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--table",
+            "TestTable",
+            "--name",
+            "Row Count",
+            "--expression",
+            "1",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert_eq!(error_json(&stderr)["error"]["code"], "CONFLICT");
+
+    // ── update-measure: new expression + format string ──────────────────
+    fabio()
+        .args([
+            "semantic-model",
+            "update-measure",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--measure",
+            "Row Count",
+            "--expression",
+            "COUNTROWS('TestTable') * 2",
+            "--format-string",
+            "#,0",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // ── update-measure on a missing measure → NOT_FOUND ─────────────────
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "update-measure",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--measure",
+            "Nope",
+            "--description",
+            "x",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert_eq!(error_json(&stderr)["error"]["code"], "NOT_FOUND");
+
+    // ── set-description with no target → INVALID_INPUT (offline) ─────────
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "set-description",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--description",
+            "x",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert_eq!(error_json(&stderr)["error"]["code"], "INVALID_INPUT");
+
+    // ── Verify all edits via the round-tripped definition ───────────────
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "get-definition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let parts = data["definition"]["parts"].as_array().unwrap();
+    let table_tmdl = parts
+        .iter()
+        .filter_map(|p| {
+            let path = p["path"].as_str()?;
+            if path.contains("/tables/") && path.contains(".tmdl") {
+                let payload = p["payload"].as_str()?;
+                let bytes = base64::engine::general_purpose::STANDARD
+                    .decode(payload)
+                    .ok()?;
+                String::from_utf8(bytes).ok()
+            } else {
+                None
+            }
+        })
+        .find(|c| c.contains("table TestTable"))
+        .expect("TestTable.tmdl part");
+
+    assert!(
+        table_tmdl.contains("/// Fact table (e2e)"),
+        "table description not applied:\n{table_tmdl}"
+    );
+    assert!(
+        table_tmdl.contains("measure 'Row Count' = COUNTROWS('TestTable') * 2"),
+        "updated measure expression missing:\n{table_tmdl}"
+    );
+    assert!(
+        table_tmdl.contains("displayFolder: KPIs"),
+        "measure displayFolder missing:\n{table_tmdl}"
+    );
+    assert!(
+        table_tmdl.contains("formatString: #,0"),
+        "updated formatString missing:\n{table_tmdl}"
+    );
+    assert!(
+        table_tmdl.contains("/// Number of rows"),
+        "measure description missing:\n{table_tmdl}"
+    );
+
+    // ── Cleanup ─────────────────────────────────────────────────────────
     fabio()
         .args([
             "semantic-model",

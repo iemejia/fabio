@@ -661,7 +661,7 @@ pub(super) struct MeasureDef {
 }
 
 /// Decode a `getDefinition` response's parts into `(path, text)` pairs.
-fn decode_parts(data: &Value) -> Vec<(String, String)> {
+pub(super) fn decode_parts(data: &Value) -> Vec<(String, String)> {
     data.get("definition")
         .and_then(|d| d.get("parts"))
         .and_then(Value::as_array)
@@ -701,12 +701,12 @@ pub(super) fn extract_measures(
     (measures, mnames, cnames)
 }
 
-fn strip_tmdl_name(raw: &str) -> String {
+pub(super) fn strip_tmdl_name(raw: &str) -> String {
     raw.trim().trim_matches('\'').trim().to_string()
 }
 
 /// Count leading tab characters.
-fn tab_indent(line: &str) -> usize {
+pub(super) fn tab_indent(line: &str) -> usize {
     line.chars().take_while(|c| *c == '\t').count()
 }
 

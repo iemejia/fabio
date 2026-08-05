@@ -10159,6 +10159,125 @@
         "mutates": false,
         "returns": "list"
       },
+      "set-description": {
+        "description": "Set the description of a table, column, or measure by editing the model definition (getDefinition → edit TMDL/model.bim → updateDefinition). Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--table": {
+            "type": "string",
+            "description": "Target table (a table itself, or the owner of --column)"
+          },
+          "--column": {
+            "type": "string",
+            "description": "Target column (requires --table)"
+          },
+          "--measure": {
+            "type": "string",
+            "description": "Target measure (model-unique; --table not needed)"
+          },
+          "--description": {
+            "type": "string",
+            "required": true,
+            "description": "Description text (use \\n for multi-line)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "add-measure": {
+        "description": "Add a measure to a table by editing the model definition (getDefinition → edit TMDL/model.bim → updateDefinition). Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Table to add the measure to"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Measure name (must be model-unique)"
+          },
+          "--expression": {
+            "type": "string",
+            "required": true,
+            "description": "DAX expression (e.g. \"SUM('Sales'[Amount])\")"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Optional description"
+          },
+          "--format-string": {
+            "type": "string",
+            "description": "Optional format string (e.g. \"0.00\", \"$#,0\")"
+          },
+          "--display-folder": {
+            "type": "string",
+            "description": "Optional display folder"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "update-measure": {
+        "description": "Update an existing measure's expression and/or properties by editing the model definition (getDefinition → edit TMDL/model.bim → updateDefinition). Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--measure": {
+            "type": "string",
+            "required": true,
+            "description": "Measure name to update (model-unique)"
+          },
+          "--expression": {
+            "type": "string",
+            "description": "New DAX expression"
+          },
+          "--description": {
+            "type": "string",
+            "description": "New description"
+          },
+          "--format-string": {
+            "type": "string",
+            "description": "New format string"
+          },
+          "--display-folder": {
+            "type": "string",
+            "description": "New display folder"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
       "update-parameters": {
         "description": "Update parameters of a semantic model",
         "flags": {
