@@ -3121,8 +3121,10 @@ impl FabricClient {
 ///
 /// Returns the cached token and which credential source provided it.
 async fn acquire_token(scope: &str) -> Result<(CachedToken, CredentialSource)> {
-    // 0. Try static access token from FABIO_ACCESS_TOKEN env var (highest priority)
-    if let Some(result) = try_access_token_env() {
+    // 0. Try static access token(s) from env (highest priority). Prefers a
+    //    scope-specific token (e.g. FABIO_SQL_ACCESS_TOKEN) and falls back to
+    //    the generic FABIO_ACCESS_TOKEN.
+    if let Some(result) = try_access_token_env(scope) {
         return result;
     }
 
@@ -3156,38 +3158,72 @@ async fn acquire_token(scope: &str) -> Result<(CachedToken, CredentialSource)> {
     try_developer_tools_credential(scope).await
 }
 
-/// Try a pre-existing bearer token from the `FABIO_ACCESS_TOKEN` environment variable.
-/// This is the highest-priority credential source — when set, it bypasses all other
-/// authentication methods. Primary use case: running fabio from inside Microsoft Fabric
-/// Notebooks where `az login` and device code flows are unavailable. The notebook session
-/// token can be obtained via `notebookutils.credentials.getToken("pbi")`.
+/// Map a token scope to its dedicated static-token env var, if any. Scopes not
+/// listed (Fabric and anything else) use the generic `FABIO_ACCESS_TOKEN`.
 ///
-/// Also useful in Docker containers, constrained CI environments, or any context where
-/// a token is already available from a prior step.
+/// This lets an environment that can only supply pre-minted tokens (chiefly
+/// Fabric Notebooks, but also constrained CI/containers) provide a DIFFERENT
+/// token per audience — an OAuth access token is audience-scoped and cannot be
+/// exchanged, so a Fabric token (`api.fabric.microsoft.com`) is rejected by
+/// Azure SQL (`database.windows.net`) for TDS. Pure for testing.
+fn scoped_token_env_var(scope: &str) -> Option<&'static str> {
+    if scope == *SQL_SCOPE {
+        Some("FABIO_SQL_ACCESS_TOKEN")
+    } else if scope == *STORAGE_SCOPE {
+        Some("FABIO_STORAGE_ACCESS_TOKEN")
+    } else if scope == *ARM_SCOPE {
+        Some("FABIO_ARM_ACCESS_TOKEN")
+    } else if scope == *GRAPH_SCOPE {
+        Some("FABIO_GRAPH_ACCESS_TOKEN")
+    } else {
+        None
+    }
+}
+
+/// Try a pre-existing bearer token from an env var. For the requested `scope`,
+/// a scope-specific var (e.g. `FABIO_SQL_ACCESS_TOKEN`) takes precedence; when
+/// it is unset, the generic `FABIO_ACCESS_TOKEN` is used (backward compatible —
+/// one token for all scopes). This is the highest-priority credential source:
+/// when set, it bypasses all other authentication methods.
 ///
-/// The token is used as-is with a far-future expiry (1 hour). If the token is actually
-/// expired, the API will return 401 and fabio will report an auth error.
+/// Primary use case: running fabio inside Microsoft Fabric Notebooks where
+/// `az login` and device-code flows are unavailable. The notebook session token
+/// can be obtained via `notebookutils.credentials.getToken(...)` — use the
+/// generic var for Fabric REST and a scope-specific var for the other audiences
+/// your workflow touches (e.g. TDS/SQL, `OneLake` storage). Also useful in Docker
+/// containers, constrained CI, or any context where a token is already available.
 ///
-/// **Important:** This uses the same token for ALL scopes (Fabric, Storage, SQL, ARM,
-/// Graph). If your workflow requires different tokens per scope, use service principal
-/// auth or `fabio auth login` instead.
+/// The token is used as-is with a far-future expiry (1 hour). If it is actually
+/// expired, the API returns 401 and fabio reports an auth error.
 ///
-/// **For CI/CD:** Prefer `azure/login` with OIDC (GitHub Actions) or service principal
-/// env vars (`AZURE_TENANT_ID` + `AZURE_CLIENT_ID` + `AZURE_CLIENT_SECRET`) instead.
-fn try_access_token_env() -> Option<Result<(CachedToken, CredentialSource)>> {
-    let token = std::env::var("FABIO_ACCESS_TOKEN").ok()?;
+/// **For CI/CD:** Prefer `azure/login` with OIDC (GitHub Actions) or service
+/// principal env vars (`AZURE_TENANT_ID` + `AZURE_CLIENT_ID` +
+/// `AZURE_CLIENT_SECRET`) instead — those mint a correct token per audience.
+fn try_access_token_env(scope: &str) -> Option<Result<(CachedToken, CredentialSource)>> {
+    // Prefer a scope-specific static token; fall back to the generic one.
+    let (var, token) =
+        match scoped_token_env_var(scope).and_then(|v| std::env::var(v).ok().map(|t| (v, t))) {
+            Some(pair) => pair,
+            None => (
+                "FABIO_ACCESS_TOKEN",
+                std::env::var("FABIO_ACCESS_TOKEN").ok()?,
+            ),
+        };
+
     if token.is_empty() {
         return Some(Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
-            "FABIO_ACCESS_TOKEN is set but empty.",
-            "Set FABIO_ACCESS_TOKEN to a valid bearer token, or unset it to use other credential sources.".to_string(),
+            format!("{var} is set but empty."),
+            format!(
+                "Set {var} to a valid bearer token, or unset it to use other credential sources."
+            ),
         )
         .into()));
     }
 
-    // Use a 1-hour expiry — the token may expire sooner, but the API will reject it
-    // with 401 and fabio will report an auth error. We cannot introspect JWT expiry
-    // without pulling in a JWT library, and the token might not even be a JWT.
+    // Use a 1-hour expiry — the token may expire sooner, but the API will reject
+    // it with 401 and fabio will report an auth error. We cannot introspect JWT
+    // expiry without a JWT library, and the token might not even be a JWT.
     let expires_on = std::time::SystemTime::now() + Duration::from_hours(1);
     Some(Ok((
         CachedToken::new(token, expires_on),
@@ -3709,6 +3745,29 @@ pub fn validate_uuid(value: &str, param_name: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scoped_token_env_var_maps_non_fabric_scopes() {
+        assert_eq!(
+            scoped_token_env_var(&SQL_SCOPE),
+            Some("FABIO_SQL_ACCESS_TOKEN")
+        );
+        assert_eq!(
+            scoped_token_env_var(&STORAGE_SCOPE),
+            Some("FABIO_STORAGE_ACCESS_TOKEN")
+        );
+        assert_eq!(
+            scoped_token_env_var(&ARM_SCOPE),
+            Some("FABIO_ARM_ACCESS_TOKEN")
+        );
+        assert_eq!(
+            scoped_token_env_var(&GRAPH_SCOPE),
+            Some("FABIO_GRAPH_ACCESS_TOKEN")
+        );
+        // Fabric (and unknown scopes) use the generic FABIO_ACCESS_TOKEN.
+        assert_eq!(scoped_token_env_var(&FABRIC_SCOPE), None);
+        assert_eq!(scoped_token_env_var("https://example.com/.default"), None);
+    }
 
     // ── lro_failure_message ──────────────────────────────────────────────
 

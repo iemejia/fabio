@@ -13,6 +13,42 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
+/// A hint for TDS/SQL auth failures caused by using a Fabric-scoped static token.
+///
+/// A TDS connection authenticates to Azure SQL (`database.windows.net`), which
+/// rejects a Fabric-audience token. When the generic `FABIO_ACCESS_TOKEN` is set
+/// but no SQL-specific `FABIO_SQL_ACCESS_TOKEN` is, the SQL scope falls back to
+/// the (Fabric) generic token and the login fails. Returns the corrective hint
+/// in that case, else `None`. Pure (env-based) for testing via env injection.
+fn sql_scope_token_hint() -> Option<String> {
+    let has_generic = std::env::var("FABIO_ACCESS_TOKEN").is_ok_and(|t| !t.is_empty());
+    let has_sql = std::env::var("FABIO_SQL_ACCESS_TOKEN").is_ok_and(|t| !t.is_empty());
+    sql_scope_token_hint_for(has_generic, has_sql)
+}
+
+/// Pure core of [`sql_scope_token_hint`]: hint iff a generic (Fabric) static
+/// token is present but no SQL-specific one.
+fn sql_scope_token_hint_for(has_generic: bool, has_sql: bool) -> Option<String> {
+    (has_generic && !has_sql).then(|| {
+        "This looks like a SQL auth failure: FABIO_ACCESS_TOKEN is Fabric-scoped, but TDS \
+         needs a SQL-audience token. Set FABIO_SQL_ACCESS_TOKEN=$(az account get-access-token \
+         --resource https://database.windows.net --query accessToken -o tsv), or unset \
+         FABIO_ACCESS_TOKEN to use `az login` / `fabio auth login` (which mint a correct \
+         token per audience)."
+            .to_string()
+    })
+}
+
+/// Build a TDS connection-failure error, adding the SQL-scope token hint when the
+/// failure is likely a Fabric-token-for-SQL misconfiguration.
+fn tds_connection_error(e: &impl std::fmt::Display) -> FabioError {
+    let msg = format!("TDS connection failed: {e}");
+    sql_scope_token_hint().map_or_else(
+        || FabioError::new(ErrorCode::ApiError, msg.clone()),
+        |hint| FabioError::with_hint(ErrorCode::ApiError, msg.clone(), hint),
+    )
+}
+
 /// Resolve SQL text from flag, @file, or stdin.
 pub fn resolve_sql_input(sql: Option<&str>) -> anyhow::Result<String> {
     match sql {
@@ -201,9 +237,7 @@ pub async fn execute_sql_rows(
         let mut tds_client = provider
             .create_client(context, &data_source, None)
             .await
-            .map_err(|e| {
-                FabioError::new(ErrorCode::ApiError, format!("TDS connection failed: {e}"))
-            })?;
+            .map_err(|e| tds_connection_error(&e))?;
 
         // Execute SQL
         tds_client
@@ -373,9 +407,7 @@ pub async fn capture_query_plan(
         let mut tds_client = provider
             .create_client(context, &data_source, None)
             .await
-            .map_err(|e| {
-                FabioError::new(ErrorCode::ApiError, format!("TDS connection failed: {e}"))
-            })?;
+            .map_err(|e| tds_connection_error(&e))?;
 
         // Enable SHOWPLAN_XML — the server returns plan XML instead of executing the query
         tds_client
@@ -448,6 +480,23 @@ mod tests {
     use mssql_tds::datatypes::sql_json::SqlJson;
     use mssql_tds::datatypes::sql_string::{EncodingType, SqlString};
     use mssql_tds::token::tokens::SqlCollation;
+
+    #[test]
+    fn sql_scope_hint_only_when_generic_token_without_sql_token() {
+        // Fabric token set, no SQL token -> hint (the failure case).
+        assert!(sql_scope_token_hint_for(true, false).is_some());
+        // SQL token present -> no hint (correct setup).
+        assert!(sql_scope_token_hint_for(true, true).is_none());
+        // No static tokens at all (credential chain) -> no hint.
+        assert!(sql_scope_token_hint_for(false, false).is_none());
+        assert!(sql_scope_token_hint_for(false, true).is_none());
+        // The hint names the corrective env var.
+        assert!(
+            sql_scope_token_hint_for(true, false)
+                .unwrap()
+                .contains("FABIO_SQL_ACCESS_TOKEN")
+        );
+    }
 
     #[test]
     fn null_converts_to_null() {

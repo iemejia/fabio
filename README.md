@@ -542,7 +542,23 @@ result = subprocess.run(
 print(result.stdout)
 ```
 
-> **Note:** `FABIO_ACCESS_TOKEN` uses the same token for all API scopes (Fabric, Storage, SQL, ARM, Graph). The `pbi` scope from `notebookutils.credentials.getToken("pbi")` covers Fabric REST API calls. For OneLake storage operations, you may need a separate token with the storage scope.
+> **Note:** `FABIO_ACCESS_TOKEN` is the token for the Fabric scope and, by default, is reused for every other audience (Storage, SQL, ARM, Graph). Since access tokens are audience-scoped and can't be exchanged, commands that reach a *different* audience need a token minted for that audience. Provide one with a **scope-specific env var** (each takes precedence over `FABIO_ACCESS_TOKEN` for its scope, and is only fetched when a command needs it):
+>
+> | Env var | Audience | Needed for |
+> |---------|----------|------------|
+> | `FABIO_ACCESS_TOKEN` | Fabric (`api.fabric.microsoft.com`) | all Fabric REST + deploy |
+> | `FABIO_SQL_ACCESS_TOKEN` | Azure SQL (`database.windows.net`) | T-SQL/TDS: `warehouse`/`sql-database`/`sql-endpoint`/`lakehouse` queries + insights, `semantic-model generate`, `digital-twin-builder query`, `ontology generate` (lakehouse) |
+> | `FABIO_STORAGE_ACCESS_TOKEN` | Azure Storage (`storage.azure.com`) | OneLake file ops, if the Fabric token is not accepted |
+> | `FABIO_ARM_ACCESS_TOKEN` | ARM (`management.azure.com`) | capacity lifecycle |
+> | `FABIO_GRAPH_ACCESS_TOKEN` | Microsoft Graph | `label list` |
+>
+> In a notebook, obtain each with `notebookutils.credentials.getToken(<resource>)` and set the matching var — e.g. for TDS commands:
+> ```python
+> env = {**os.environ,
+>        "FABIO_ACCESS_TOKEN": notebookutils.credentials.getToken("pbi"),
+>        "FABIO_SQL_ACCESS_TOKEN": notebookutils.credentials.getToken("https://database.windows.net")}
+> ```
+> If a T-SQL command fails with a login error and only `FABIO_ACCESS_TOKEN` is set, fabio now tells you to set `FABIO_SQL_ACCESS_TOKEN`.
 
 ### Agent Safety
 
