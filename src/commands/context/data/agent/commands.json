@@ -10880,6 +10880,45 @@
         "returns": "object",
         "destructive": true
       },
+      "update-table": {
+        "description": "Update a table's properties (hidden state, data category, description) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Table name to update"
+          },
+          "--hidden": {
+            "type": "enum",
+            "values": [
+              "true",
+              "false"
+            ],
+            "description": "Set the table hidden state (true/false)"
+          },
+          "--data-category": {
+            "type": "string",
+            "description": "Data category (e.g. \"Time\" to mark a date table)"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Table description"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
       "list-cultures": {
         "description": "List translation cultures of a semantic model (culture + translation count) — read-only",
         "flags": {

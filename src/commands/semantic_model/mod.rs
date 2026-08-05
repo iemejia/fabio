@@ -942,6 +942,35 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         new_name: String,
     },
+    /// Update a table's properties (hidden state, data category, description) by
+    /// editing the model definition. Overwrites the definition (irreversible) —
+    /// dry-run guarded.
+    #[command(name = "update-table", display_order = 13)]
+    UpdateTable {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Table name to update
+        #[arg(long)]
+        name: String,
+
+        /// Set the table hidden state (true/false)
+        #[arg(long)]
+        hidden: Option<bool>,
+
+        /// Data category (e.g. "Time" to mark a date table)
+        #[arg(long)]
+        data_category: Option<String>,
+
+        /// Table description
+        #[arg(long)]
+        description: Option<String>,
+    },
     /// List translation cultures of a semantic model (culture + translation
     /// count) — read-only.
     #[command(name = "list-cultures", display_order = 13)]
@@ -2428,6 +2457,28 @@ async fn execute_authoring(
             name,
             new_name,
         } => tables::rename_table(cli, client, workspace, id, name, new_name).await,
+        SemanticModelCommand::UpdateTable {
+            workspace,
+            id,
+            name,
+            hidden,
+            data_category,
+            description,
+        } => {
+            tables::update_table(
+                cli,
+                client,
+                workspace,
+                id,
+                name,
+                &tables::TableProps {
+                    hidden: *hidden,
+                    data_category: data_category.as_deref(),
+                    description: description.as_deref(),
+                },
+            )
+            .await
+        }
         SemanticModelCommand::ListCultures { workspace, id } => {
             translations::list_cultures(cli, client, workspace, id).await
         }

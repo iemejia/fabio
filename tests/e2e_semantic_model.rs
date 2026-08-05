@@ -3140,6 +3140,140 @@ fn semantic_model_perspective_lifecycle() {
         .success();
 }
 
+// ─── update-table (hidden / data-category / description) ─────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_update_table_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("sm_updtbl");
+
+    let mut tmp = NamedTempFile::with_suffix(".bim").unwrap();
+    tmp.write_all(three_table_model_bim().as_bytes()).unwrap();
+    let file_path = tmp.path().to_str().unwrap().to_string();
+
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--file",
+            &file_path,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let sm_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // update-table: hide Product + describe it (dry-run then live)
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "update-table",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "Product",
+            "--hidden",
+            "true",
+            "--description",
+            "Product dimension",
+            "--dry-run",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&assert))["dry_run"], true);
+
+    fabio()
+        .args([
+            "semantic-model",
+            "update-table",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "Product",
+            "--hidden",
+            "true",
+            "--description",
+            "Product dimension",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // Verify in the definition
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "get-definition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let parts = data["definition"]["parts"].as_array().unwrap();
+    let product = parts
+        .iter()
+        .find(|p| p["path"].as_str() == Some("definition/tables/Product.tmdl"))
+        .and_then(|p| p["payload"].as_str())
+        .map(|b| {
+            String::from_utf8(base64::engine::general_purpose::STANDARD.decode(b).unwrap()).unwrap()
+        })
+        .expect("Product.tmdl");
+    assert!(product.contains("isHidden"), "product:\n{product}");
+    assert!(
+        product.contains("/// Product dimension"),
+        "product:\n{product}"
+    );
+
+    // no-op call (no flags) → INVALID_INPUT
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "update-table",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "Product",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert_eq!(error_json(&stderr)["error"]["code"], "INVALID_INPUT");
+
+    // Cleanup
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+}
+
 // ─── Dry Run ─────────────────────────────────────────────────────────────────
 
 #[test]

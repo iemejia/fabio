@@ -17,6 +17,7 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
+use super::analyze::tab_indent;
 use super::relationships::remove_relationships_referencing_table;
 use super::roles::cascade_remove_table_from_roles;
 use super::tmdl::{
@@ -270,6 +271,138 @@ fn table_not_found(name: &str) -> anyhow::Error {
     .into()
 }
 
+// ── update-table (scalar properties) ──────────────────────────────────────────
+
+/// Properties `update-table` can set on a table.
+#[derive(Default)]
+pub(super) struct TableProps<'a> {
+    pub hidden: Option<bool>,
+    pub data_category: Option<&'a str>,
+    pub description: Option<&'a str>,
+}
+
+pub(super) async fn update_table(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    name: &str,
+    props: &TableProps<'_>,
+) -> Result<()> {
+    let op = "semantic-model update-table";
+    if props.hidden.is_none() && props.data_category.is_none() && props.description.is_none() {
+        return Err(FabioError::invalid_input(
+            "Provide at least one of --hidden / --data-category / --description".to_string(),
+        )
+        .into());
+    }
+    let parts = fetch_parts(client, workspace, id, op).await?;
+
+    let new_parts = if let Some(bim) = part_content(&parts, "model.bim") {
+        let new_bim = update_table_bim(bim, name, props)?;
+        replace_part(&parts, "model.bim", &new_bim)
+    } else {
+        let idx = find_table_file(&parts, name)?;
+        let new_content = update_table_tmdl(&parts[idx].1, props);
+        let mut out = parts.clone();
+        out[idx].1 = new_content;
+        out
+    };
+
+    if output::dry_run_guard(cli, op, &serde_json::json!({ "id": id, "table": name })) {
+        return Ok(());
+    }
+    push_parts(client, workspace, id, &new_parts, op).await?;
+    output::render_object(
+        cli,
+        &serde_json::json!({ "status": "table_updated", "id": id, "table": name }),
+        "status",
+    );
+    Ok(())
+}
+
+/// Set/replace the table's scalar properties (`isHidden`, `dataCategory:`) and
+/// `///` description. Managed scalar props are dropped and re-inserted right
+/// after the `table` declaration (before its child objects).
+fn update_table_tmdl(content: &str, props: &TableProps<'_>) -> String {
+    let lines: Vec<&str> = content.lines().collect();
+    let decl = lines
+        .iter()
+        .position(|l| tab_indent(l) == 0 && l.trim_start().starts_with("table "))
+        .unwrap_or(0);
+
+    // Description: replace `///` comment lines (indent 0) immediately before decl.
+    let mut desc_start = decl;
+    while desc_start > 0
+        && tab_indent(lines[desc_start - 1]) == 0
+        && lines[desc_start - 1].trim_start().starts_with("///")
+    {
+        desc_start -= 1;
+    }
+
+    let mut out: Vec<String> = Vec::new();
+    // Lines before the description block are kept verbatim.
+    out.extend(lines[..desc_start].iter().map(|s| (*s).to_string()));
+    // Re-emit the description (new, or the original comments if not overriding).
+    if let Some(d) = props.description {
+        for dl in d.split('\n') {
+            out.push(format!("/// {}", dl.trim_end()));
+        }
+    } else {
+        out.extend(lines[desc_start..decl].iter().map(|s| (*s).to_string()));
+    }
+    // The `table` declaration line.
+    out.push(lines[decl].to_string());
+    // Managed scalar props right after the decl.
+    if props.hidden == Some(true) {
+        out.push("\tisHidden".to_string());
+    }
+    if let Some(cat) = props.data_category.filter(|c| !c.is_empty()) {
+        out.push(format!("\tdataCategory: {cat}"));
+    }
+    // Remaining table body, dropping any existing managed scalar props that sit
+    // in the scalar region (before the first child object).
+    let mut in_scalar_region = true;
+    for l in &lines[decl + 1..] {
+        let t = l.trim_start();
+        if in_scalar_region && tab_indent(l) == 1 && super::tmdl::is_child_object_decl(l) {
+            in_scalar_region = false;
+        }
+        let drop_managed = in_scalar_region
+            && tab_indent(l) == 1
+            && ((props.hidden.is_some() && t == "isHidden")
+                || (props.data_category.is_some() && t.starts_with("dataCategory:")));
+        if drop_managed {
+            continue;
+        }
+        out.push((*l).to_string());
+    }
+    let mut result = out.join("\n");
+    if content.ends_with('\n') {
+        result.push('\n');
+    }
+    result
+}
+
+fn update_table_bim(bim: &str, name: &str, props: &TableProps<'_>) -> Result<String> {
+    let mut j: Value =
+        serde_json::from_str(bim).map_err(|e| FabioError::invalid_input(e.to_string()))?;
+    let t = bim_tables_mut(&mut j)?
+        .iter_mut()
+        .find(|t| t.get("name").and_then(Value::as_str) == Some(name))
+        .ok_or_else(|| table_not_found(name))?;
+    if let Some(h) = props.hidden {
+        t["isHidden"] = Value::Bool(h);
+    }
+    if let Some(cat) = props.data_category {
+        t["dataCategory"] = Value::from(cat);
+    }
+    if let Some(d) = props.description {
+        t["description"] = Value::from(d);
+    }
+    Ok(serde_json::to_string(&j).unwrap_or_else(|_| bim.to_string()))
+}
+
 // ── model.bim editors ─────────────────────────────────────────────────────────
 
 fn bim_tables_mut(j: &mut Value) -> Result<&mut Vec<Value>> {
@@ -356,6 +489,46 @@ mod tests {
         let out = rename_table_decl(content, "Sales", "Fact Sales");
         assert!(out.starts_with("table 'Fact Sales'\n"));
         assert!(out.contains("column A")); // body untouched
+    }
+
+    #[test]
+    fn update_table_sets_scalar_props_and_description() {
+        let content = "table Dates\n\tlineageTag: x\n\n\tcolumn D\n\t\tdataType: dateTime\n";
+        let props = TableProps {
+            hidden: Some(true),
+            data_category: Some("Time"),
+            description: Some("Date dimension"),
+        };
+        let out = update_table_tmdl(content, &props);
+        assert!(out.starts_with("/// Date dimension\ntable Dates\n"));
+        assert!(out.contains("\tisHidden"));
+        assert!(out.contains("\tdataCategory: Time"));
+        assert!(out.contains("\tlineageTag: x")); // preserved
+        assert!(out.contains("column D")); // child untouched
+        // Re-applying replaces (no dupes).
+        let props2 = TableProps {
+            hidden: Some(false),
+            data_category: Some("Regular"),
+            ..Default::default()
+        };
+        let out2 = update_table_tmdl(&out, &props2);
+        assert!(!out2.contains("isHidden")); // hidden=false removes it
+        assert!(out2.contains("\tdataCategory: Regular"));
+        assert_eq!(out2.matches("dataCategory").count(), 1);
+    }
+
+    #[test]
+    fn update_table_bim_sets_props() {
+        let bim = r#"{"model":{"tables":[{"name":"Dates"}]}}"#;
+        let props = TableProps {
+            hidden: Some(true),
+            data_category: Some("Time"),
+            description: Some("d"),
+        };
+        let out = update_table_bim(bim, "Dates", &props).unwrap();
+        let j: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(j["model"]["tables"][0]["isHidden"], true);
+        assert_eq!(j["model"]["tables"][0]["dataCategory"], "Time");
     }
 
     #[test]

@@ -120,6 +120,7 @@ Manage semantic models (Power BI datasets)
 | `fabio semantic-model update-partition` | yes | Update a partition's source expression by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio semantic-model update-refresh-schedule` | yes | Update the scheduled (automatic) refresh configuration |
 | `fabio semantic-model update-relationship` | yes | Update a relationship's active state and/or cross-filter direction (by --relationship-id or by the from/to columns). Overwrites the definition (irreversible) — dry-run guarded |
+| `fabio semantic-model update-table` | yes | Update a table's properties (hidden state, data category, description) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded |
 
 ### fabio report
 Manage reports (Power BI)
