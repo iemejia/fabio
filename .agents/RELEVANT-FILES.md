@@ -53,6 +53,7 @@
 - `src/commands/report.rs`: list/show/create/update/delete/get-definition/update-definition
 - `src/commands/report_pbir.rs`: PBIP/PBIR offline validation + full-folder report definition gathering (backs `report validate` and `report create --definition`)
 - `src/commands/semantic_model.rs`: list/show/create/update/delete/get-definition/update-definition + query/refresh/bind-connection/unbind-connection/takeover + list-parameters/update-parameters/list-datasources/update-datasources/list-users/add-user/delete-user/refresh-status/list-upstream/clone/export-pbix/import-pbix
+- `src/commands/semantic_model/generate.rs`: generate a Direct Lake semantic model from a lakehouse/warehouse (read SQL analytics endpoint INFORMATION_SCHEMA, map types dropping unmappable, synthesize Direct Lake model.bim, create + frame); pure `map_sql_type_to_powerbi`/`plan_tables`/`build_direct_lake_bim`/`build_schema_query`/`summarize` + unit tests
 - `src/commands/eventhouse.rs`: list/show/create/update/delete
 - `src/commands/eventstream/mod.rs`: list/show/create/update/delete/get-definition/update-definition/get-topology/pause/resume/sources/destinations
 - `src/commands/eventstream/builder.rs`: add-source/add-destination/add-sample-source/add-derived-stream/validate/list-components
@@ -175,7 +176,7 @@
 - `tests/e2e_copy_job.rs`: Copy job CRUD + reset tests
 - `tests/e2e_dataflow.rs`: Dataflow CRUD + run + execute-query tests
 - `tests/e2e_report.rs`: Report CRUD tests
-- `tests/e2e_semantic_model.rs`: Semantic model CRUD tests
+- `tests/e2e_semantic_model.rs`: Semantic model CRUD tests + Direct Lake generate (dry-run + generate→frame→DAX lifecycle)
 - `tests/e2e_map.rs`: Map CRUD + definition tests
 - `tests/e2e_spark_job_definition.rs`: Spark job definition tests
 - `tests/e2e_deployment_pipeline.rs`: Deployment pipeline tests

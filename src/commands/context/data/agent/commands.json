@@ -9735,6 +9735,51 @@
           "displayName"
         ]
       },
+      "generate": {
+        "description": "Generate a Direct Lake semantic model from a lakehouse or warehouse (reads the SQL analytics endpoint schema and picks tables, like the Fabric portal's \"New semantic model\")",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model display name"
+          },
+          "--lakehouse": {
+            "type": "string",
+            "description": "Source lakehouse ID (mutually exclusive with --warehouse)"
+          },
+          "--warehouse": {
+            "type": "string",
+            "description": "Source warehouse ID (mutually exclusive with --lakehouse)"
+          },
+          "--tables": {
+            "type": "string",
+            "description": "Comma-separated table names to include (default: all base tables)"
+          },
+          "--schema": {
+            "type": "string",
+            "description": "SQL schema to read tables from (default: dbo)"
+          },
+          "--no-refresh": {
+            "type": "bool",
+            "description": "Skip the framing refresh (you must run `semantic-model refresh` before querying)"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
       "update": {
         "description": "Update semantic model properties (name and/or description)",
         "flags": {

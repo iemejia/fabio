@@ -427,7 +427,9 @@ fabio notebook update-definition --workspace $WS --id $NB --file updated.py     
 
 **Semantic Models & Reports:**
 ```bash
-fabio semantic-model create --workspace $WS --name "Sales" --file model.tmdl --connection $SQLEP
+# Auto-generate a Direct Lake model from a lakehouse/warehouse (portal "New semantic model" — reads the SQL endpoint schema, picks tables, frames it). Needs a SQL-scoped token from the credential chain (az/device-code), NOT a static FABIO_ACCESS_TOKEN.
+fabio semantic-model generate --workspace $WS --lakehouse $LH --name "Sales"    # or --warehouse $WH; --tables a,b to pick; --schema dbo
+fabio semantic-model create --workspace $WS --name "Sales" --file model.tmdl --connection $SQLEP   # from hand-authored TMDL/model.bim
 fabio semantic-model query --workspace $WS --id $SM --dax "EVALUATE Sales"
 fabio semantic-model refresh --workspace $WS --id $SM
 fabio report create --workspace $WS --name "Dashboard" --dataset $SM          # simple: 1-page report bound to a model

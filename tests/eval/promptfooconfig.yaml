@@ -1688,6 +1688,20 @@ tests:
   # Based on fabio-comparison-scenarios: Scenario 0 + 3
   # ============================================================
 
+  - description: "Power BI: generate a Direct Lake semantic model from a lakehouse (no TMDL authoring)"
+    vars:
+      user_query: "Generate a Direct Lake semantic model called 'SalesModel' from my lakehouse — I don't want to hand-write any TMDL, just pull in all the tables"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('semantic-model generate')
+        metric: semantic-model-generate-command
+      - type: icontains
+        value: "--lakehouse"
+      - type: llm-rubric
+        value: "The response uses 'fabio semantic-model generate' with --lakehouse (and --name) to auto-build a Direct Lake model from the lakehouse WITHOUT hand-authoring a TMDL/model.bim file. It does not tell the user to write TMDL by hand for this task."
+        metric: generate-not-handauthored
+
   - description: "Power BI: create Direct Lake semantic model and report"
     vars:
       user_query: "Create a semantic model called 'SalesModel' from my model.bim file connected to the lakehouse SQL endpoint, refresh it for Direct Lake framing, then create a report called 'Sales Dashboard' bound to it"

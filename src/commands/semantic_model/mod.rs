@@ -1,5 +1,6 @@
 mod crud;
 mod definitions;
+mod generate;
 pub mod operations;
 mod powerbi;
 
@@ -62,6 +63,47 @@ pub enum SemanticModelCommand {
         /// SQL endpoint or lakehouse ID for live connection (generates definition.pbism)
         #[arg(long, visible_alias = "connection-id")]
         connection: Option<String>,
+
+        /// Sensitivity label ID to apply on creation
+        #[arg(long)]
+        sensitivity_label: Option<String>,
+    },
+    /// Generate a Direct Lake semantic model from a lakehouse or warehouse
+    /// (reads the SQL analytics endpoint schema and picks tables, like the
+    /// Fabric portal's "New semantic model")
+    #[command(display_order = 3)]
+    Generate {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model display name
+        #[arg(long)]
+        name: String,
+
+        /// Source lakehouse ID (mutually exclusive with --warehouse)
+        #[arg(long, conflicts_with = "warehouse")]
+        lakehouse: Option<String>,
+
+        /// Source warehouse ID (mutually exclusive with --lakehouse)
+        #[arg(long)]
+        warehouse: Option<String>,
+
+        /// Comma-separated table names to include (default: all base tables)
+        #[arg(long)]
+        tables: Option<String>,
+
+        /// SQL schema to read tables from (default: dbo)
+        #[arg(long, default_value = "dbo")]
+        schema: String,
+
+        /// Skip the framing refresh (you must run `semantic-model refresh` before querying)
+        #[arg(long)]
+        no_refresh: bool,
+
+        /// Optional description
+        #[arg(long)]
+        description: Option<String>,
 
         /// Sensitivity label ID to apply on creation
         #[arg(long)]
@@ -585,6 +627,32 @@ pub async fn execute(
                 file.as_deref(),
                 definition.as_deref(),
                 connection.as_deref(),
+                sensitivity_label.as_deref(),
+            )
+            .await
+        }
+        SemanticModelCommand::Generate {
+            workspace,
+            name,
+            lakehouse,
+            warehouse,
+            tables,
+            schema,
+            no_refresh,
+            description,
+            sensitivity_label,
+        } => {
+            generate::generate(
+                cli,
+                client,
+                workspace,
+                lakehouse.as_deref(),
+                warehouse.as_deref(),
+                name,
+                tables.as_deref(),
+                schema,
+                *no_refresh,
+                description.as_deref(),
                 sensitivity_label.as_deref(),
             )
             .await
