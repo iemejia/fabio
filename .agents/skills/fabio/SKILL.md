@@ -44,7 +44,7 @@ fabio auth status
 fabio has built-in introspection. Use these commands instead of reading reference files:
 
 ```bash
-# Find commands — compact index of all 76 groups + subcommands
+# Find commands — compact index of all 78 groups + subcommands
 fabio context agent
 
 # Full details for one group (all flags, types, examples)
@@ -292,7 +292,7 @@ Credential chain: FABIO_ACCESS_TOKEN > fabio cache > env vars > managed identity
 
 ## Command Quick Reference
 
-77 command groups. Use `fabio context agent --group <name>` for full flag details.
+78 command groups. Use `fabio context agent --group <name>` for full flag details.
 
 **Core:**
 ```bash
@@ -437,6 +437,14 @@ fabio report create --workspace $WS --name "Sales" --definition ./MyReport.Repor
 # Render a (paginated) report to a file (Power BI exportToFile flow)
 fabio report export --workspace $WS --id $RID --format PDF --out report.pdf                       # PDF/PPTX/PNG
 fabio paginated-report export --workspace $WS --id $PR --format XLSX --out data.xlsx --parameter Year=2026  # PDF/XLSX/DOCX/CSV/IMAGE/...
+```
+
+**Plan (connected planning / FP&A):**
+```bash
+fabio plan create --workspace $WS --name "Q3Forecast"                          # creates an EMPTY plan (no --definition flag on create)
+fabio plan list --workspace $WS                                                # --no-recursive / --root-folder-id to scope to a folder
+fabio plan get-definition --workspace $WS --id $PLAN_ID --decode               # PlanV1 / connectedPlanning/infobridge.json
+fabio plan update-definition --workspace $WS --id $PLAN_ID --file infobridge.json  # irreversibly replaces the whole definition (dry-run guarded)
 ```
 
 **Data Agent (AI-powered Q&A over lakehouse data):**

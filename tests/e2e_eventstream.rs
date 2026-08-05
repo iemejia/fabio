@@ -510,7 +510,7 @@ fn eventstream_list_components_filter_destination() {
     let json = parse_json(&output);
     let data = extract_data(&json);
     let items = data.as_array().expect("should be array");
-    assert_eq!(items.len(), 4, "Should have 4 destination types");
+    assert_eq!(items.len(), 5, "Should have 5 destination types");
     for item in items {
         assert_eq!(item["category"], "destination");
     }

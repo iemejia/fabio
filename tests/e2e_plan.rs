@@ -331,6 +331,42 @@ fn plan_dry_run_delete() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
+fn plan_dry_run_update_definition() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::tempdir().unwrap();
+    let def_path = dir.path().join("infobridge.json");
+    std::fs::write(&def_path, r#"{"connectionId": "test-connection"}"#).unwrap();
+
+    let assert = fabio()
+        .args([
+            "plan",
+            "update-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--file",
+            def_path.to_str().unwrap(),
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "plan update-definition");
+    assert!(data["dry_run"].as_bool().unwrap());
+    assert_eq!(
+        data["details"]["id"],
+        "00000000-0000-0000-0000-000000000000"
+    );
+    assert_eq!(data["details"]["workspace"], cfg.source_workspace);
+    assert!(data["details"]["contentLength"].as_u64().unwrap() > 0);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn plan_list_with_folder_scoping_flags() {
     let cfg = TestConfig::from_env();
 

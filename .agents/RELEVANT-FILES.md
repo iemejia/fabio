@@ -73,6 +73,7 @@
 - `src/commands/spark.rs`: get-settings/update-settings/list-pools/get-pool/create-pool/update-pool/delete-pool
 - `src/commands/spark_job_definition.rs`: list/show/create/update/delete/get-definition/update-definition/run
 - `src/commands/map.rs`: list/show/create/update/delete/get-definition/update-definition (geospatial Azure Maps)
+- `src/commands/plan.rs`: list/show/create/update/delete/get-definition/update-definition (connected-planning Plan item, PlanV1 / connectedPlanning/infobridge.json)
 - `src/commands/capacity.rs`: list/show (Fabric API) + suspend/resume/create/update/delete/list-skus/check-name (ARM API)
 - `src/commands/connection.rs`: list/show/create/update/delete/list-supported-types
 - `src/commands/deployment_pipeline.rs`: list/show/create/update/delete/list-stages/list-stage-items/assign-workspace/unassign-workspace/deploy
@@ -154,6 +155,7 @@
 - `tests/e2e_dataagent.rs`: Data agent tests (34 tests: CRUD, query, definition, publish, datasource lifecycle, fewshot lifecycle, elements lifecycle, config, CSV upload, dry-run validations)
 - `tests/e2e_git.rs`: Git command group tests
 - `tests/e2e_ontology.rs`: Ontology CRUD + definition tests
+- `tests/e2e_plan.rs`: Plan CRUD + definition tests (list, create/show/delete, update, get-definition incl. --format, dry-run create/delete/update-definition, folder-scoping flags)
 - `tests/e2e_agent_native.rs`: Agent-native compliance tests (principles 1-10)
 - `tests/e2e_verbose.rs`: Verbose flag tests (16 tests: offline flag acceptance, HTTP/auth/LRO tracing, --quiet suppression, --dry-run interaction)
 - `tests/e2e_sync.rs`: Lakehouse sync tests (24 tests: basic copy, skip unchanged, delete, checksum, parallel, rename detection, dedup, include/exclude, size-only, no-overwrite, force, max-delete, existing, remove-source-files, local-to-remote sync)

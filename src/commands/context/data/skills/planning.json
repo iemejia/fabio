@@ -19,7 +19,7 @@
   ],
   "prefer": [
     "Runtime introspection (context agent --group plan, context describe plan create) for exact flags and the definition shape.",
-    "Omitting --definition on create for an empty plan, then populating it via update-definition."
+    "Creating an empty plan first (plan create makes an empty plan — there is no --definition flag on create), then populating its content via update-definition."
   ],
   "avoid": [
     "Passing --hard-delete on plan delete — the API has no such parameter; plan delete is a simple, non-recoverable delete.",
@@ -41,7 +41,8 @@
     }
   ],
   "safety": [
-    "plan delete is destructive (dry-run guarded) and irreversible; no --hard-delete flag exists for this item type."
+    "plan delete is destructive (dry-run guarded) and irreversible; no --hard-delete flag exists for this item type.",
+    "plan update-definition irreversibly replaces the plan's entire definition (LRO-polled, dry-run guarded); there is no backup — export the current definition with get-definition first if you need to preserve it."
   ],
   "shared_references": ["lro", "pagination"],
   "see_also": [

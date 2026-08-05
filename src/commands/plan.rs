@@ -112,7 +112,7 @@ pub enum PlanCommand {
         #[arg(long)]
         id: String,
         /// Path to definition file (a single raw part, or a full envelope JSON)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "content")]
         file: Option<String>,
         /// Inline definition content
         #[arg(long)]
@@ -142,6 +142,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &PlanCommand) ->
             name,
             description,
             sensitivity_label,
+            folder_id,
         } => {
             create(
                 cli,
@@ -150,6 +151,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &PlanCommand) ->
                 name,
                 description.as_deref(),
                 sensitivity_label.as_deref(),
+                folder_id.as_deref(),
             )
             .await
         }
@@ -290,6 +292,7 @@ async fn create(
     name: &str,
     description: Option<&str>,
     sensitivity_label: Option<&str>,
+    folder_id: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({ "displayName": name });
     if let Some(desc) = description {
@@ -300,11 +303,14 @@ async fn create(
             "sensitivityLabelId": label_id
         });
     }
+    if let Some(folder) = folder_id {
+        body["folderId"] = Value::from(folder);
+    }
 
     if output::dry_run_guard(
         cli,
         "plan create",
-        &serde_json::json!({ "workspace": workspace, "displayName": name, "description": description, "sensitivityLabel": sensitivity_label }),
+        &serde_json::json!({ "workspace": workspace, "displayName": name, "description": description, "sensitivityLabel": sensitivity_label, "folderId": folder_id }),
     ) {
         return Ok(());
     }

@@ -64,6 +64,19 @@ tests:
       - type: icontains
         value: "DataLake"
 
+  - description: "Basic CRUD: create a connected-planning Plan item"
+    vars:
+      user_query: "Create a connected planning plan called Q3Forecast in my workspace"
+    assert:
+      - type: icontains
+        value: "fabio plan create"
+      - type: icontains
+        value: "--workspace"
+      - type: icontains
+        value: "--name"
+      - type: icontains
+        value: "Q3Forecast"
+
   - description: "List workspaces"
     vars:
       user_query: "Show me all my workspaces"
