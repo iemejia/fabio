@@ -4,6 +4,7 @@ mod calc_groups;
 mod columns;
 mod crud;
 mod definitions;
+mod expressions;
 mod generate;
 mod hierarchies;
 pub mod operations;
@@ -1265,6 +1266,91 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         name: String,
     },
+    /// List named expressions / Power Query parameters of a semantic model —
+    /// read-only.
+    #[command(name = "list-expressions", display_order = 13)]
+    ListExpressions {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Add a named expression (a shared M query) or Power Query parameter by
+    /// editing the model definition. Overwrites the definition (irreversible) —
+    /// dry-run guarded.
+    #[command(name = "add-expression", display_order = 13)]
+    AddExpression {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Expression name
+        #[arg(long)]
+        name: String,
+
+        /// Raw Power Query M expression (mutually exclusive with --parameter-value)
+        #[arg(long, conflicts_with = "parameter_value")]
+        expression: Option<String>,
+
+        /// Make it a Power Query PARAMETER with this default value
+        #[arg(long)]
+        parameter_value: Option<String>,
+
+        /// Parameter type: `Text` (default), `Number`, `Logical`, `DateTime`
+        #[arg(long)]
+        parameter_type: Option<String>,
+    },
+    /// Update a named expression / parameter's value by editing the model
+    /// definition. Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "update-expression", display_order = 13)]
+    UpdateExpression {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Expression name to update
+        #[arg(long)]
+        name: String,
+
+        /// New raw Power Query M expression (mutually exclusive with --parameter-value)
+        #[arg(long, conflicts_with = "parameter_value")]
+        expression: Option<String>,
+
+        /// New parameter default value
+        #[arg(long)]
+        parameter_value: Option<String>,
+
+        /// Parameter type: `Text` (default), `Number`, `Logical`, `DateTime`
+        #[arg(long)]
+        parameter_type: Option<String>,
+    },
+    /// Delete a named expression / parameter by editing the model definition.
+    /// Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "delete-expression", display_order = 13)]
+    DeleteExpression {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Expression name to delete
+        #[arg(long)]
+        name: String,
+    },
     /// Update parameters of a semantic model
     #[command(name = "update-parameters", display_order = 14)]
     UpdateParameters {
@@ -2293,6 +2379,44 @@ async fn execute_authoring(
             group,
             name,
         } => calc_groups::delete_calculation_item(cli, client, workspace, id, group, name).await,
+        SemanticModelCommand::ListExpressions { workspace, id } => {
+            expressions::list_expressions(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::AddExpression {
+            workspace,
+            id,
+            name,
+            expression,
+            parameter_value,
+            parameter_type,
+        } => {
+            let m = expressions::resolve_m(
+                expression.as_deref(),
+                parameter_value.as_deref(),
+                parameter_type.as_deref(),
+            )?;
+            expressions::add_expression(cli, client, workspace, id, name, &m).await
+        }
+        SemanticModelCommand::UpdateExpression {
+            workspace,
+            id,
+            name,
+            expression,
+            parameter_value,
+            parameter_type,
+        } => {
+            let m = expressions::resolve_m(
+                expression.as_deref(),
+                parameter_value.as_deref(),
+                parameter_type.as_deref(),
+            )?;
+            expressions::update_expression(cli, client, workspace, id, name, &m).await
+        }
+        SemanticModelCommand::DeleteExpression {
+            workspace,
+            id,
+            name,
+        } => expressions::delete_expression(cli, client, workspace, id, name).await,
         _ => unreachable!("execute_authoring only handles granular-authoring commands"),
     }
 }

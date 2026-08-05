@@ -11319,6 +11319,116 @@
         "returns": "void",
         "destructive": true
       },
+      "list-expressions": {
+        "description": "List named expressions / Power Query parameters of a semantic model — read-only",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "add-expression": {
+        "description": "Add a named expression (a shared M query) or Power Query parameter by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Expression name"
+          },
+          "--expression": {
+            "type": "string",
+            "description": "Raw Power Query M expression (mutually exclusive with --parameter-value)"
+          },
+          "--parameter-value": {
+            "type": "string",
+            "description": "Make it a Power Query PARAMETER with this default value"
+          },
+          "--parameter-type": {
+            "type": "string",
+            "description": "Parameter type: `Text` (default), `Number`, `Logical`, `DateTime`"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "update-expression": {
+        "description": "Update a named expression / parameter's value by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Expression name to update"
+          },
+          "--expression": {
+            "type": "string",
+            "description": "New raw Power Query M expression (mutually exclusive with --parameter-value)"
+          },
+          "--parameter-value": {
+            "type": "string",
+            "description": "New parameter default value"
+          },
+          "--parameter-type": {
+            "type": "string",
+            "description": "Parameter type: `Text` (default), `Number`, `Logical`, `DateTime`"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "delete-expression": {
+        "description": "Delete a named expression / parameter by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Expression name to delete"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
       "update-parameters": {
         "description": "Update parameters of a semantic model",
         "flags": {

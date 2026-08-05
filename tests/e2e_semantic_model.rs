@@ -2568,6 +2568,195 @@ fn semantic_model_calculation_group_lifecycle() {
         .success();
 }
 
+// ─── Named expressions / parameters: add / update / list / delete ────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_expression_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("sm_expr");
+
+    let mut tmp = NamedTempFile::with_suffix(".bim").unwrap();
+    tmp.write_all(three_table_model_bim().as_bytes()).unwrap();
+    let file_path = tmp.path().to_str().unwrap().to_string();
+
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--file",
+            &file_path,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let sm_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // add-expression as a Power Query PARAMETER (dry-run then live)
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "add-expression",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "ServerName",
+            "--parameter-value",
+            "prod-sql",
+            "--parameter-type",
+            "Text",
+            "--dry-run",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&assert))["dry_run"], true);
+
+    fabio()
+        .args([
+            "semantic-model",
+            "add-expression",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "ServerName",
+            "--parameter-value",
+            "prod-sql",
+            "--parameter-type",
+            "Text",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // list-expressions → ServerName flagged as a parameter
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "list-expressions",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let exprs = data.as_array().unwrap();
+    let sn = exprs
+        .iter()
+        .find(|e| e["name"] == "ServerName")
+        .expect("ServerName expression");
+    assert_eq!(sn["isParameter"], true);
+
+    // update-expression: change the parameter default
+    fabio()
+        .args([
+            "semantic-model",
+            "update-expression",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "ServerName",
+            "--parameter-value",
+            "staging-sql",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // Verify in the definition
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "get-definition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let parts = data["definition"]["parts"].as_array().unwrap();
+    let expr = parts
+        .iter()
+        .find(|p| p["path"].as_str() == Some("definition/expressions.tmdl"))
+        .and_then(|p| p["payload"].as_str())
+        .map(|b| {
+            String::from_utf8(base64::engine::general_purpose::STANDARD.decode(b).unwrap()).unwrap()
+        })
+        .expect("expressions.tmdl");
+    assert!(expr.contains("expression ServerName ="), "expr:\n{expr}");
+    assert!(expr.contains("staging-sql"), "expr:\n{expr}");
+    assert!(expr.contains("IsParameterQuery=true"), "expr:\n{expr}");
+
+    // delete-expression
+    fabio()
+        .args([
+            "semantic-model",
+            "delete-expression",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "ServerName",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // delete nonexistent → NOT_FOUND
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "delete-expression",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "Nope",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert_eq!(error_json(&stderr)["error"]["code"], "NOT_FOUND");
+
+    // Cleanup
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+}
+
 // ─── Dry Run ─────────────────────────────────────────────────────────────────
 
 #[test]

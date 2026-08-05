@@ -1860,6 +1860,18 @@ tests:
         value: "The response creates the calculation group (add-calculation-group) and then adds a YTD calculation item (add-calculation-item --group ... --name YTD --expression with a DAX time-intelligence expression). Correct sequencing: group before item. It does not invent an XMLA/TOM tool."
         metric: calc-group-approach
 
+  - description: "Power BI: add a Power Query parameter"
+    vars:
+      user_query: "Add a Power Query parameter called ServerName to my semantic model with the default value 'prod-sql'"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('semantic-model add-expression')
+        metric: semantic-model-add-expression-command
+      - type: llm-rubric
+        value: "The response uses 'fabio semantic-model add-expression' with --name ServerName and a parameter value (either --parameter-value prod-sql or --expression with an M meta [IsParameterQuery=true] clause). It does not confuse this with update-parameters (which sets a deployed model's parameter values at runtime). It does not invent an XMLA/TOM tool."
+        metric: add-expression-approach
+
   - description: "Power BI: generate a Direct Lake semantic model from a lakehouse (no TMDL authoring)"
     vars:
       user_query: "Generate a Direct Lake semantic model called 'SalesModel' from my lakehouse — I don't want to hand-write any TMDL, just pull in all the tables"
