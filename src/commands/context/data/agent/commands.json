@@ -3279,6 +3279,30 @@
             "type": "bool",
             "description": "Update Fabric item sensitivity from source (`OneDriveSharePoint` target)"
           },
+          "--transform": {
+            "type": "string",
+            "description": "Apply a data transformation, converting source files into a Delta table. Only `csvToDelta` is supported via the REST API (Parquet/JSON/ Excel and AI transforms are portal-only). Create the shortcut under `Tables`"
+          },
+          "--transform-json": {
+            "type": "string",
+            "description": "Full transform object as JSON (escape hatch; overrides --transform + csv flags)"
+          },
+          "--csv-delimiter": {
+            "type": "string",
+            "description": "CSV delimiter for `csvToDelta` (default `,`; one of `,` `;` tab `|` `&` space)"
+          },
+          "--csv-no-header": {
+            "type": "bool",
+            "description": "CSV files do NOT have a header row (`csvToDelta`; default: first row is the header)"
+          },
+          "--csv-keep-error-files": {
+            "type": "bool",
+            "description": "Do NOT skip source files with errors (`csvToDelta`; default: skip bad files)"
+          },
+          "--transform-include-subfolders": {
+            "type": "bool",
+            "description": "Recurse into subfolders of the target when transforming (default: top-level only)"
+          },
           "--conflict-policy": {
             "type": "string",
             "description": "Conflict policy: Abort or `GenerateUniqueName`"

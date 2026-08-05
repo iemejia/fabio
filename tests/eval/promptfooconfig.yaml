@@ -1851,6 +1851,20 @@ tests:
           output.includes('adlsgen2') || output.includes('adls') || output.includes('ADLS')
         metric: shortcut-adls-target
 
+  - description: "Data Lake: shortcut with CSV-to-Delta transformation"
+    vars:
+      user_query: "Create a shortcut to my ADLS folder of CSV files and have it automatically convert them into a Delta table I can query"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('create-shortcut') || output.includes('shortcut create')
+        metric: shortcut-transform-command
+      - type: icontains
+        value: "--transform"
+      - type: llm-rubric
+        value: "The response uses fabio lakehouse create-shortcut with --transform csvToDelta (creating the shortcut under Tables) to convert the CSV files into a Delta table. It does NOT claim fabio can do Parquet/JSON/Excel or AI transforms via the CLI (those are portal-only)."
+        metric: transform-csv-only
+
   # ============================================================
   # VARIABLE LIBRARY & VALUE SETS (CI/CD Parameterization)
   # ============================================================

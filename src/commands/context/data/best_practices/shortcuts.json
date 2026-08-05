@@ -9,6 +9,13 @@
     "amazons3": "fabio lakehouse create-shortcut --workspace $WS --id $LH --name s3 --path Files --target-type AmazonS3 --connection-id $CONN --location https://bucket.s3.amazonaws.com --subpath /data",
     "escape_hatch": "fabio lakehouse create-shortcut ... --target '<raw JSON matching the Fabric shortcut target schema>'"
   },
+  "transformations": {
+    "what": "A shortcut can convert structured source files into a queryable Delta table (Fabric Spark keeps it in sync ~every 2 min). Add --transform to create-shortcut and create it under Tables.",
+    "rest_supported": "Only csvToDelta is exposed by the public REST API. Parquet/JSON/Excel and the AI-powered transforms (summarization/translation/sentiment/PII/name-recognition) are PORTAL-ONLY — --transform parquet|json|excel|... is rejected with a clear hint.",
+    "csv_example": "fabio lakehouse create-shortcut --workspace $WS --id $LH --name sales --path Tables --target-type AdlsGen2 --connection-id $CONN --location https://ACCOUNT.dfs.core.windows.net --subpath /container/csv --transform csvToDelta --csv-delimiter , --transform-include-subfolders",
+    "csv_flags": "--csv-delimiter (default ,), --csv-no-header (default: first row is header), --csv-keep-error-files (default: skip bad files), --transform-include-subfolders (default: top-level only). Raw escape hatch: --transform-json '<transform object>'.",
+    "notes": "Materialization is an async Fabric Spark job; the documented sources are external (ADLS/S3/etc.). get-shortcut/list-shortcuts do NOT return the transform (it only appears in the create response)."
+  },
   "connection_first": {
     "why": "Cloud target types (AdlsGen2, AmazonS3, AzureBlobStorage, GoogleCloudStorage, S3Compatible) require a connection; create it first and pass its id via --connection-id. OneLake/ExternalDataShare targets do not.",
     "step_1_create_connection": "fabio connection create --name \"my-adls\" --connectivity-type ShareableCloud --connection-type AzureDataLakeStorage --server \"https://ACCOUNT.dfs.core.windows.net\" --path \"/CONTAINER\" --credential-type Key --credential-key \"$STORAGE_KEY\" --skip-test",

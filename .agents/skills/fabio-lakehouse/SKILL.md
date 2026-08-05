@@ -15,7 +15,7 @@ license: MIT
 - Creating a lakehouse or listing/inspecting its files and Delta tables.
 - Uploading files to Files/ and loading them into Delta tables.
 - Syncing files between lakehouses or from a local directory (rsync-like).
-- Creating OneLake shortcuts (typed flags for all 9 targets: OneLake, ADLS Gen2, S3, GCS, S3-compatible, Dataverse, Azure Blob, External Data Share, OneDrive/SharePoint), listing them (list-shortcuts), or managing OneLake security.
+- Creating OneLake shortcuts (typed flags for all 9 targets: OneLake, ADLS Gen2, S3, GCS, S3-compatible, Dataverse, Azure Blob, External Data Share, OneDrive/SharePoint), optionally with a CSV->Delta transform (--transform csvToDelta), listing them (list-shortcuts), or managing OneLake security.
 - Deleting an arbitrary OneLake directory recursively (delete-directory), beyond just delete-table.
 - Managing Materialized Lake Views (execution definitions + refresh schedules).
 
@@ -128,6 +128,7 @@ Manage `OneLake` data access roles (row/column-level security)
 - move-file within a lakehouse is an atomic O(1) rename; cross-item falls back to copy+delete automatically.
 - list-shortcuts hides DW-managed internal shortcuts (OneLake->OneLake under Tables/) by default — pass --include-managed to see them.
 - create-shortcut takes typed flags per target type (--connection-id/--location/--subpath for cloud; --target-workspace/--target-item/--target-path for OneLake; --bucket for S3); --target JSON remains a raw escape hatch.
+- create-shortcut can convert source files into a queryable Delta table via --transform: only csvToDelta is exposed by the REST API (with --csv-delimiter/--csv-no-header/--csv-keep-error-files/--transform-include-subfolders). Parquet/JSON/Excel and the AI-powered transforms are portal-only. Create the shortcut under Tables; --transform-json is a raw escape hatch. Materialization is an async Fabric Spark job (~2-min polling) and the documented sources are external (ADLS/S3/...).
 
 ## Troubleshooting
 | Symptom | Fix |

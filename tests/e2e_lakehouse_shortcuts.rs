@@ -469,3 +469,113 @@ fn lakehouse_typed_onelake_shortcut_and_list() {
         .assert()
         .success();
 }
+
+/// `create-shortcut --transform csvToDelta` — the Fabric REST API accepts a
+/// `transform` object and echoes it in the create response. Asserts the exact
+/// shape fabio sends (type + properties). (Actual Delta materialization is an
+/// async Fabric Spark job — not asserted here.)
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_create_shortcut_with_csv_transform() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("sc_xform");
+
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "create-shortcut",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &cfg.dest_lakehouse,
+            "--name",
+            &name,
+            "--path",
+            "Tables",
+            "--target-type",
+            "OneLake",
+            "--target-workspace",
+            &cfg.source_workspace,
+            "--target-item",
+            &cfg.source_lakehouse,
+            "--target-path",
+            "Files",
+            "--transform",
+            "csvToDelta",
+            "--csv-delimiter",
+            ",",
+            "--transform-include-subfolders",
+            "--conflict-policy",
+            "CreateOrOverwrite",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["transform"]["type"], "csvToDelta");
+    assert_eq!(data["transform"]["includeSubfolders"], true);
+    assert_eq!(data["transform"]["properties"]["delimiter"], ",");
+    assert_eq!(data["transform"]["properties"]["useFirstRowAsHeader"], true);
+
+    // Cleanup.
+    fabio()
+        .args([
+            "lakehouse",
+            "delete-shortcut",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &cfg.dest_lakehouse,
+            "--name",
+            &name,
+            "--path",
+            "Tables",
+        ])
+        .assert()
+        .success();
+}
+
+/// `--transform parquet` (and other portal-only transforms) is rejected offline
+/// with a clear "not available via the REST API" hint — no network call.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_create_shortcut_transform_parquet_rejected() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "create-shortcut",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &cfg.dest_lakehouse,
+            "--name",
+            "x",
+            "--path",
+            "Tables",
+            "--target-type",
+            "OneLake",
+            "--target-workspace",
+            &cfg.source_workspace,
+            "--target-item",
+            &cfg.source_lakehouse,
+            "--target-path",
+            "Files",
+            "--transform",
+            "parquet",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err: serde_json::Value = serde_json::from_str(stderr.trim()).unwrap();
+    assert_eq!(err["error"]["code"], "INVALID_INPUT");
+    assert!(
+        err["error"]["hint"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("portal-only")
+    );
+}

@@ -687,6 +687,32 @@ pub enum LakehouseCommand {
         #[arg(long = "update-sensitivity")]
         update_sensitivity: bool,
 
+        /// Apply a data transformation, converting source files into a Delta
+        /// table. Only `csvToDelta` is supported via the REST API (Parquet/JSON/
+        /// Excel and AI transforms are portal-only). Create the shortcut under `Tables`.
+        #[arg(long = "transform")]
+        transform: Option<String>,
+
+        /// Full transform object as JSON (escape hatch; overrides --transform + csv flags)
+        #[arg(long = "transform-json")]
+        transform_json: Option<String>,
+
+        /// CSV delimiter for `csvToDelta` (default `,`; one of `,` `;` tab `|` `&` space)
+        #[arg(long = "csv-delimiter")]
+        csv_delimiter: Option<String>,
+
+        /// CSV files do NOT have a header row (`csvToDelta`; default: first row is the header)
+        #[arg(long = "csv-no-header")]
+        csv_no_header: bool,
+
+        /// Do NOT skip source files with errors (`csvToDelta`; default: skip bad files)
+        #[arg(long = "csv-keep-error-files")]
+        csv_keep_error_files: bool,
+
+        /// Recurse into subfolders of the target when transforming (default: top-level only)
+        #[arg(long = "transform-include-subfolders")]
+        transform_include_subfolders: bool,
+
         /// Conflict policy: Abort or `GenerateUniqueName`
         #[arg(long)]
         conflict_policy: Option<String>,
@@ -1593,6 +1619,12 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             environment_domain,
             delta_lake_folder,
             update_sensitivity,
+            transform,
+            transform_json,
+            csv_delimiter,
+            csv_no_header,
+            csv_keep_error_files,
+            transform_include_subfolders,
             conflict_policy,
         } => {
             let flags = shortcuts::ShortcutTargetFlags {
@@ -1607,6 +1639,14 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
                 delta_lake_folder: delta_lake_folder.as_deref(),
                 update_sensitivity: *update_sensitivity,
             };
+            let transform_flags = shortcuts::ShortcutTransformFlags {
+                transform_type: transform.as_deref(),
+                transform_json: transform_json.as_deref(),
+                csv_delimiter: csv_delimiter.as_deref(),
+                csv_no_header: *csv_no_header,
+                csv_keep_error_files: *csv_keep_error_files,
+                include_subfolders: *transform_include_subfolders,
+            };
             shortcuts::create_shortcut(
                 cli,
                 client,
@@ -1617,6 +1657,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
                 target_type,
                 target.as_deref(),
                 &flags,
+                &transform_flags,
                 conflict_policy.as_deref(),
             )
             .await

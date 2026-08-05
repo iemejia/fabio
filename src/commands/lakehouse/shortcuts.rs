@@ -162,17 +162,22 @@ pub(super) async fn create_shortcut(
     target_type: &str,
     target: Option<&str>,
     flags: &ShortcutTargetFlags<'_>,
+    transform: &ShortcutTransformFlags<'_>,
     conflict_policy: Option<&str>,
 ) -> Result<()> {
     let (discriminator, target_body) = build_shortcut_target(target_type, target, flags)?;
 
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "name": name,
         "path": path,
         "target": {
             discriminator: target_body
         }
     });
+    // Optional data transformation (CSV → Delta table). No-op when not requested.
+    if let Some(t) = build_transformation(transform)? {
+        body["transform"] = t;
+    }
 
     let url = conflict_policy.map_or_else(
         || format!("/workspaces/{workspace}/items/{id}/shortcuts"),
@@ -184,6 +189,82 @@ pub(super) async fn create_shortcut(
     let data = client.post(&url, &body, false).await?;
     output::render_object(cli, &data, "name");
     Ok(())
+}
+
+/// Typed flags for a shortcut data transformation.
+///
+/// A transformation converts structured source files referenced by the shortcut
+/// into a queryable Delta table (Fabric Spark keeps it in sync). Only `csvToDelta`
+/// is exposed by the Fabric REST API today; Parquet/JSON/Excel and the AI-powered
+/// transforms are portal-only. `--transform-json` is a raw escape hatch for any
+/// future transform shape.
+#[derive(Default)]
+pub(super) struct ShortcutTransformFlags<'a> {
+    pub transform_type: Option<&'a str>,
+    pub transform_json: Option<&'a str>,
+    pub csv_delimiter: Option<&'a str>,
+    pub csv_no_header: bool,
+    pub csv_keep_error_files: bool,
+    pub include_subfolders: bool,
+}
+
+/// Normalize a transform type to the Fabric discriminator, or explain why it is
+/// not (yet) reachable via the public REST API. Pure for unit testing.
+fn normalize_transform_type(input: &str) -> Result<&'static str> {
+    let key: String = input
+        .trim()
+        .to_ascii_lowercase()
+        .chars()
+        .filter(|c| !matches!(c, '-' | '_' | ' '))
+        .collect();
+    match key.as_str() {
+        "csvtodelta" | "csv" | "csv2delta" => Ok("csvToDelta"),
+        "parquettodelta" | "parquet" | "jsontodelta" | "json" | "exceltodelta" | "excel"
+        | "xlsx" | "ai" | "summarization" | "translation" | "sentiment" | "pii" => {
+            Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Transform '{input}' is not available via the Fabric REST API."),
+                "Only 'csvToDelta' is exposed by the shortcuts REST API. Parquet/JSON/Excel and \
+                 AI-powered (summarization/translation/sentiment/PII/name-recognition) transforms \
+                 are currently portal-only."
+                    .to_string(),
+            )
+            .into())
+        }
+        _ => Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Unknown transform type '{input}'."),
+            "The only supported transform is 'csvToDelta' (aliases: csv). Or pass a raw transform \
+             object with --transform-json."
+                .to_string(),
+        )
+        .into()),
+    }
+}
+
+/// Build the optional `transform` object for a shortcut create request:
+/// `{type: "csvToDelta", includeSubfolders, properties: {delimiter,
+/// useFirstRowAsHeader, skipFilesWithErrors}}`. Returns `None` when no transform
+/// was requested. `--transform-json` (raw) overrides the typed flags. Pure.
+fn build_transformation(f: &ShortcutTransformFlags) -> Result<Option<Value>> {
+    if let Some(json) = f.transform_json {
+        let v: Value = serde_json::from_str(json)
+            .map_err(|e| FabioError::invalid_input(format!("Invalid --transform-json: {e}")))?;
+        return Ok(Some(v));
+    }
+    let Some(t) = f.transform_type else {
+        return Ok(None);
+    };
+    normalize_transform_type(t)?; // currently only csvToDelta succeeds
+    Ok(Some(serde_json::json!({
+        "type": "csvToDelta",
+        "includeSubfolders": f.include_subfolders,
+        "properties": {
+            "delimiter": f.csv_delimiter.map(str::trim).filter(|s| !s.is_empty()).unwrap_or(","),
+            "useFirstRowAsHeader": !f.csv_no_header,
+            "skipFilesWithErrors": !f.csv_keep_error_files,
+        }
+    })))
 }
 
 /// List shortcuts within an item, optionally under a parent path.
@@ -357,6 +438,77 @@ fn read_shortcut_json_input(file: Option<&str>, content: Option<&str>) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transform_none_when_not_requested() {
+        let f = ShortcutTransformFlags::default();
+        assert!(build_transformation(&f).unwrap().is_none());
+    }
+
+    #[test]
+    fn transform_csv_builds_expected_shape() {
+        let f = ShortcutTransformFlags {
+            transform_type: Some("csv"),
+            ..Default::default()
+        };
+        let t = build_transformation(&f).unwrap().unwrap();
+        assert_eq!(t["type"], "csvToDelta");
+        assert_eq!(t["includeSubfolders"], false);
+        assert_eq!(t["properties"]["delimiter"], ",");
+        assert_eq!(t["properties"]["useFirstRowAsHeader"], true);
+        assert_eq!(t["properties"]["skipFilesWithErrors"], true);
+    }
+
+    #[test]
+    fn transform_csv_honors_flags() {
+        let f = ShortcutTransformFlags {
+            transform_type: Some("csvToDelta"),
+            csv_delimiter: Some(";"),
+            csv_no_header: true,
+            csv_keep_error_files: true,
+            include_subfolders: true,
+            transform_json: None,
+        };
+        let t = build_transformation(&f).unwrap().unwrap();
+        assert_eq!(t["includeSubfolders"], true);
+        assert_eq!(t["properties"]["delimiter"], ";");
+        assert_eq!(t["properties"]["useFirstRowAsHeader"], false);
+        assert_eq!(t["properties"]["skipFilesWithErrors"], false);
+    }
+
+    #[test]
+    fn transform_json_escape_hatch_overrides() {
+        let f = ShortcutTransformFlags {
+            transform_type: Some("csv"),
+            transform_json: Some(r#"{"type":"customTransform","x":1}"#),
+            ..Default::default()
+        };
+        let t = build_transformation(&f).unwrap().unwrap();
+        assert_eq!(t["type"], "customTransform");
+        assert_eq!(t["x"], 1);
+    }
+
+    #[test]
+    fn transform_rejects_portal_only_types_with_hint() {
+        for ty in ["parquet", "json", "excel", "xlsx", "summarization"] {
+            let f = ShortcutTransformFlags {
+                transform_type: Some(ty),
+                ..Default::default()
+            };
+            let err = build_transformation(&f).unwrap_err();
+            let msg = err.to_string();
+            assert!(msg.contains("not available"), "{ty}: {msg}");
+        }
+    }
+
+    #[test]
+    fn transform_rejects_unknown_type() {
+        let f = ShortcutTransformFlags {
+            transform_type: Some("bogus"),
+            ..Default::default()
+        };
+        assert!(build_transformation(&f).is_err());
+    }
 
     #[test]
     fn normalize_target_type_accepts_aliases_and_casing() {
