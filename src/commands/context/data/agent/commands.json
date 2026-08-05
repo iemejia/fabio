@@ -11525,6 +11525,149 @@
         "returns": "void",
         "destructive": true
       },
+      "list-perspectives": {
+        "description": "List perspectives (filtered model views) of a semantic model — read-only",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "add-perspective": {
+        "description": "Add a perspective (a filtered view of the model) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Perspective name"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "delete-perspective": {
+        "description": "Delete a perspective by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Perspective name to delete"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "add-perspective-member": {
+        "description": "Add a member (a table, or a column/measure/hierarchy of a table) to a perspective. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--perspective": {
+            "type": "string",
+            "required": true,
+            "description": "Perspective name (must already exist — add it with add-perspective)"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Table to include (or the owner of --column/--measure/--hierarchy)"
+          },
+          "--column": {
+            "type": "string",
+            "description": "Include this column of the table"
+          },
+          "--measure": {
+            "type": "string",
+            "description": "Include this measure of the table"
+          },
+          "--hierarchy": {
+            "type": "string",
+            "description": "Include this hierarchy of the table"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "remove-perspective-member": {
+        "description": "Remove a member from a perspective (a whole table, or one of its members). Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--perspective": {
+            "type": "string",
+            "required": true,
+            "description": "Perspective name"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Table to remove (or the owner of --column/--measure/--hierarchy)"
+          },
+          "--column": {
+            "type": "string",
+            "description": "Remove this column (instead of the whole table)"
+          },
+          "--measure": {
+            "type": "string",
+            "description": "Remove this measure (instead of the whole table)"
+          },
+          "--hierarchy": {
+            "type": "string",
+            "description": "Remove this hierarchy (instead of the whole table)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
       "update-parameters": {
         "description": "Update parameters of a semantic model",
         "flags": {

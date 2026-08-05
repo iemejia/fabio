@@ -10,6 +10,7 @@ mod generate;
 mod hierarchies;
 pub mod operations;
 mod partitions;
+mod perspectives;
 mod powerbi;
 mod relationships;
 mod roles;
@@ -1420,6 +1421,113 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         name: String,
     },
+    /// List perspectives (filtered model views) of a semantic model — read-only.
+    #[command(name = "list-perspectives", display_order = 13)]
+    ListPerspectives {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Add a perspective (a filtered view of the model) by editing the model
+    /// definition. Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "add-perspective", display_order = 13)]
+    AddPerspective {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Perspective name
+        #[arg(long)]
+        name: String,
+    },
+    /// Delete a perspective by editing the model definition. Overwrites the
+    /// definition (irreversible) — dry-run guarded.
+    #[command(name = "delete-perspective", display_order = 13)]
+    DeletePerspective {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Perspective name to delete
+        #[arg(long)]
+        name: String,
+    },
+    /// Add a member (a table, or a column/measure/hierarchy of a table) to a
+    /// perspective. Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "add-perspective-member", display_order = 13)]
+    AddPerspectiveMember {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Perspective name (must already exist — add it with add-perspective)
+        #[arg(long)]
+        perspective: String,
+
+        /// Table to include (or the owner of --column/--measure/--hierarchy)
+        #[arg(long)]
+        table: String,
+
+        /// Include this column of the table
+        #[arg(long)]
+        column: Option<String>,
+
+        /// Include this measure of the table
+        #[arg(long)]
+        measure: Option<String>,
+
+        /// Include this hierarchy of the table
+        #[arg(long)]
+        hierarchy: Option<String>,
+    },
+    /// Remove a member from a perspective (a whole table, or one of its
+    /// members). Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "remove-perspective-member", display_order = 13)]
+    RemovePerspectiveMember {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Perspective name
+        #[arg(long)]
+        perspective: String,
+
+        /// Table to remove (or the owner of --column/--measure/--hierarchy)
+        #[arg(long)]
+        table: String,
+
+        /// Remove this column (instead of the whole table)
+        #[arg(long)]
+        column: Option<String>,
+
+        /// Remove this measure (instead of the whole table)
+        #[arg(long)]
+        measure: Option<String>,
+
+        /// Remove this hierarchy (instead of the whole table)
+        #[arg(long)]
+        hierarchy: Option<String>,
+    },
     /// Update parameters of a semantic model
     #[command(name = "update-parameters", display_order = 14)]
     UpdateParameters {
@@ -2506,6 +2614,69 @@ async fn execute_authoring(
             id,
             name,
         } => functions::delete_function(cli, client, workspace, id, name).await,
+        SemanticModelCommand::ListPerspectives { workspace, id } => {
+            perspectives::list_perspectives(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::AddPerspective {
+            workspace,
+            id,
+            name,
+        } => perspectives::add_perspective(cli, client, workspace, id, name).await,
+        SemanticModelCommand::DeletePerspective {
+            workspace,
+            id,
+            name,
+        } => perspectives::delete_perspective(cli, client, workspace, id, name).await,
+        SemanticModelCommand::AddPerspectiveMember {
+            workspace,
+            id,
+            perspective,
+            table,
+            column,
+            measure,
+            hierarchy,
+        } => {
+            let member = resolve_perspective_member(
+                column.as_deref(),
+                measure.as_deref(),
+                hierarchy.as_deref(),
+            )?;
+            perspectives::add_perspective_member(
+                cli,
+                client,
+                workspace,
+                id,
+                perspective,
+                table,
+                member,
+            )
+            .await
+        }
+        SemanticModelCommand::RemovePerspectiveMember {
+            workspace,
+            id,
+            perspective,
+            table,
+            column,
+            measure,
+            hierarchy,
+        } => {
+            let member = resolve_perspective_member(
+                column.as_deref(),
+                measure.as_deref(),
+                hierarchy.as_deref(),
+            )?;
+            perspectives::remove_perspective_member(
+                cli,
+                client,
+                workspace,
+                id,
+                perspective,
+                table,
+                member,
+            )
+            .await
+        }
         _ => unreachable!("execute_authoring only handles granular-authoring commands"),
     }
 }
@@ -2546,6 +2717,25 @@ fn build_rel_spec(
             "Incomplete relationship column selector.".to_string(),
             "When matching by columns, pass ALL of --from-table/--from-column/--to-table/--to-column."
                 .to_string(),
+        )
+        .into()),
+    }
+}
+
+/// Resolve the optional column/measure/hierarchy selector for a perspective
+/// member (at most one). Returns `None` for a whole-table member.
+fn resolve_perspective_member<'a>(
+    column: Option<&'a str>,
+    measure: Option<&'a str>,
+    hierarchy: Option<&'a str>,
+) -> Result<Option<(perspectives::MemberKind, &'a str)>> {
+    match (column, measure, hierarchy) {
+        (None, None, None) => Ok(None),
+        (Some(c), None, None) => Ok(Some((perspectives::MemberKind::Column, c))),
+        (None, Some(m), None) => Ok(Some((perspectives::MemberKind::Measure, m))),
+        (None, None, Some(h)) => Ok(Some((perspectives::MemberKind::Hierarchy, h))),
+        _ => Err(FabioError::invalid_input(
+            "Specify at most one of --column / --measure / --hierarchy".to_string(),
         )
         .into()),
     }

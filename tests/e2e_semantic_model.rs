@@ -2935,6 +2935,211 @@ fn semantic_model_function_lifecycle() {
         .success();
 }
 
+// ─── Perspectives: add / member / list / delete ──────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_perspective_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("sm_persp");
+
+    let mut tmp = NamedTempFile::with_suffix(".bim").unwrap();
+    tmp.write_all(three_table_model_bim().as_bytes()).unwrap();
+    let file_path = tmp.path().to_str().unwrap().to_string();
+
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--file",
+            &file_path,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let sm_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // add-perspective (dry-run then live)
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "add-perspective",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "SalesView",
+            "--dry-run",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&assert))["dry_run"], true);
+
+    fabio()
+        .args([
+            "semantic-model",
+            "add-perspective",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "SalesView",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // add-perspective-member: a column of Sales
+    fabio()
+        .args([
+            "semantic-model",
+            "add-perspective-member",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--perspective",
+            "SalesView",
+            "--table",
+            "Sales",
+            "--column",
+            "Amount",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // list-perspectives → SalesView with 1 table
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "list-perspectives",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let ps = data.as_array().unwrap();
+    let sv = ps
+        .iter()
+        .find(|p| p["name"] == "SalesView")
+        .expect("SalesView perspective");
+    assert_eq!(sv["tableCount"], 1);
+
+    // Verify in the definition
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "get-definition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let parts = data["definition"]["parts"].as_array().unwrap();
+    let persp = parts
+        .iter()
+        .find(|p| p["path"].as_str() == Some("definition/perspectives/SalesView.tmdl"))
+        .and_then(|p| p["payload"].as_str())
+        .map(|b| {
+            String::from_utf8(base64::engine::general_purpose::STANDARD.decode(b).unwrap()).unwrap()
+        })
+        .expect("SalesView.tmdl");
+    assert!(persp.contains("perspectiveTable Sales"), "persp:\n{persp}");
+    assert!(
+        persp.contains("perspectiveColumn Amount"),
+        "persp:\n{persp}"
+    );
+
+    // remove-perspective-member (the whole table)
+    fabio()
+        .args([
+            "semantic-model",
+            "remove-perspective-member",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--perspective",
+            "SalesView",
+            "--table",
+            "Sales",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // delete-perspective
+    fabio()
+        .args([
+            "semantic-model",
+            "delete-perspective",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "SalesView",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // member on a missing perspective → NOT_FOUND
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "add-perspective-member",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--perspective",
+            "Nope",
+            "--table",
+            "Sales",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert_eq!(error_json(&stderr)["error"]["code"], "NOT_FOUND");
+
+    // Cleanup
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+}
+
 // ─── Dry Run ─────────────────────────────────────────────────────────────────
 
 #[test]
