@@ -2257,6 +2257,15 @@ fn semantic_model_analyze_and_measure_dependencies() {
         rules.contains(&"missing-description"),
         "expected missing-description; got {rules:?}"
     );
+    // A plain analysis nudges toward --fix when there are auto-fixable issues.
+    assert!(
+        ad["autoFixable"].as_u64().unwrap_or(0) >= 1,
+        "plain analyze should report autoFixable count: {ad}"
+    );
+    assert!(
+        ad["hint"].as_str().unwrap_or_default().contains("--fix"),
+        "plain analyze should hint to run --fix: {ad}"
+    );
 
     // measure-dependencies — Avg Price depends on the two base measures.
     let m = fabio()

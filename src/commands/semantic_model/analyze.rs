@@ -361,6 +361,13 @@ pub(super) async fn analyze(
         HIGH_CARDINALITY_THRESHOLD,
     );
 
+    // How many issues fabio can auto-fix (before consuming `all_issues`) — used
+    // to nudge the caller toward `--fix` when they ran a plain analysis.
+    let auto_fixable = all_issues
+        .iter()
+        .filter(|i| is_auto_fixable(i["rule"].as_str().unwrap_or_default()))
+        .count();
+
     // Optionally auto-fix the SAFE, mechanical issues (currently only
     // `implicit-aggregation` → default summarization None). Overwrites the
     // definition, so it is dry-run guarded inside the helper.
@@ -407,6 +414,12 @@ pub(super) async fn analyze(
         out["note"] = Value::from(
             "Only the safe, mechanical fix (default summarization -> None on identifier columns) is auto-applied. The remaining issues (naming, duplicates, descriptions, schema shape, relationships, cardinality) need human review — they can break DAX/relationships or require semantic decisions.",
         );
+    } else if auto_fixable > 0 {
+        // Nudge the caller (esp. a coding agent) toward the auto-fix.
+        out["autoFixable"] = Value::from(auto_fixable);
+        out["hint"] = Value::from(format!(
+            "{auto_fixable} issue(s) can be auto-fixed. Run: fabio semantic-model analyze --workspace {workspace} --id {id} --fix (preview first with --dry-run). --fix only sets default summarization to None on identifier columns and overwrites the model definition; the other issues need manual review."
+        ));
     }
     output::render_object(cli, &out, "issueCount");
 
@@ -439,7 +452,7 @@ async fn run_autofix(
 ) -> Result<FixResult> {
     let targets: HashSet<(String, String)> = all_issues
         .iter()
-        .filter(|i| i["rule"] == "implicit-aggregation")
+        .filter(|i| is_auto_fixable(i["rule"].as_str().unwrap_or_default()))
         .filter_map(|i| parse_object_ref(i["object"].as_str().unwrap_or_default()))
         .collect();
     if targets.is_empty() {
@@ -487,6 +500,13 @@ async fn run_autofix(
 }
 
 const HIGH_CARDINALITY_THRESHOLD: u64 = 100_000;
+
+/// The rules whose issues `--fix` can auto-remediate safely (mechanical, never
+/// breaks DAX/relationships). Kept in one place so the `--fix` targeting and the
+/// "auto-fixable" hint stay in sync.
+fn is_auto_fixable(rule: &str) -> bool {
+    rule == "implicit-aggregation"
+}
 
 /// Probe distinct-value counts for every visible data column in ONE DAX query
 /// (`EVALUATE ROW("c0", DISTINCTCOUNT('T'[C]), ...)`). Returns `"Table[Col]"` →
@@ -1086,6 +1106,14 @@ mod tests {
         assert_eq!(measures[0].name, "Total");
         assert!(mnames.contains("Total"));
         assert!(cnames.contains("Amount"));
+    }
+
+    #[test]
+    fn is_auto_fixable_only_implicit_aggregation() {
+        assert!(is_auto_fixable("implicit-aggregation"));
+        assert!(!is_auto_fixable("non-descriptive-name"));
+        assert!(!is_auto_fixable("duplicate-measure"));
+        assert!(!is_auto_fixable("missing-description"));
     }
 
     #[test]
