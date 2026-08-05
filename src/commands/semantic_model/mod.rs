@@ -4,6 +4,7 @@ mod columns;
 mod crud;
 mod definitions;
 mod generate;
+mod hierarchies;
 pub mod operations;
 mod powerbi;
 mod relationships;
@@ -1012,6 +1013,67 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         caption: String,
     },
+    /// List user hierarchies of a semantic model (table, name, level count) —
+    /// read-only.
+    #[command(name = "list-hierarchies", display_order = 13)]
+    ListHierarchies {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Only list hierarchies of this table
+        #[arg(long)]
+        table: Option<String>,
+    },
+    /// Add a user (drill-down) hierarchy to a table by editing the model
+    /// definition. Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "add-hierarchy", display_order = 13)]
+    AddHierarchy {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Table to add the hierarchy to
+        #[arg(long)]
+        table: String,
+
+        /// Hierarchy name (must be unique in the table)
+        #[arg(long)]
+        name: String,
+
+        /// A level, top-to-bottom. Repeat for each level. Forms: "Column",
+        /// "LevelName=Column", or "LevelName:Column".
+        #[arg(long = "level", required = true)]
+        levels: Vec<String>,
+    },
+    /// Delete a hierarchy from a table by editing the model definition.
+    /// Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "delete-hierarchy", display_order = 13)]
+    DeleteHierarchy {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Table containing the hierarchy
+        #[arg(long)]
+        table: String,
+
+        /// Hierarchy name to delete
+        #[arg(long)]
+        name: String,
+    },
     /// Update parameters of a semantic model
     #[command(name = "update-parameters", display_order = 14)]
     UpdateParameters {
@@ -1457,6 +1519,143 @@ pub async fn execute(
         SemanticModelCommand::MeasureDependencies { workspace, id } => {
             analyze::measure_dependencies(cli, client, workspace, id).await
         }
+        SemanticModelCommand::UpdateParameters {
+            workspace,
+            id,
+            content,
+        } => powerbi::update_parameters(cli, client, workspace, id, content).await,
+        SemanticModelCommand::ListDatasources { workspace, id } => {
+            powerbi::list_datasources(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::GetBoundGatewayDatasources { workspace, id } => {
+            powerbi::get_bound_gateway_datasources(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::BindToGateway {
+            workspace,
+            id,
+            gateway_id,
+            datasource_ids,
+        } => {
+            powerbi::bind_to_gateway(
+                cli,
+                client,
+                workspace,
+                id,
+                gateway_id,
+                datasource_ids.as_deref(),
+            )
+            .await
+        }
+        SemanticModelCommand::UpdateDatasources {
+            workspace,
+            id,
+            content,
+        } => powerbi::update_datasources(cli, client, workspace, id, content).await,
+        SemanticModelCommand::ListUsers { workspace, id } => {
+            powerbi::list_users(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::AddUser {
+            workspace,
+            id,
+            principal,
+            principal_type,
+            access_right,
+        } => {
+            powerbi::add_user(
+                cli,
+                client,
+                workspace,
+                id,
+                principal,
+                principal_type,
+                access_right,
+            )
+            .await
+        }
+        SemanticModelCommand::DeleteUser {
+            workspace,
+            id,
+            user,
+        } => powerbi::delete_user(cli, client, workspace, id, user).await,
+        SemanticModelCommand::RefreshStatus { workspace, id, top } => {
+            powerbi::refresh_status(cli, client, workspace, id, *top).await
+        }
+        SemanticModelCommand::RefreshDetails {
+            workspace,
+            id,
+            refresh_id,
+        } => operations::refresh_details(cli, client, workspace, id, refresh_id).await,
+        SemanticModelCommand::CancelRefresh {
+            workspace,
+            id,
+            refresh_id,
+        } => operations::cancel_refresh(cli, client, workspace, id, refresh_id).await,
+        SemanticModelCommand::GetRefreshSchedule { workspace, id } => {
+            operations::get_refresh_schedule(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::UpdateRefreshSchedule {
+            workspace,
+            id,
+            enabled,
+            days,
+            times,
+            local_time_zone_id,
+            notify_option,
+        } => {
+            operations::update_refresh_schedule(
+                cli,
+                client,
+                workspace,
+                id,
+                *enabled,
+                days.as_deref(),
+                times.as_deref(),
+                local_time_zone_id.as_deref(),
+                notify_option.as_deref(),
+            )
+            .await
+        }
+        SemanticModelCommand::ListUpstream { workspace, id } => {
+            powerbi::list_upstream(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::Clone {
+            workspace,
+            id,
+            name,
+            target_workspace,
+        } => {
+            powerbi::clone_model(
+                cli,
+                client,
+                workspace,
+                id,
+                name,
+                target_workspace.as_deref(),
+            )
+            .await
+        }
+        SemanticModelCommand::ExportPbix {
+            workspace,
+            id,
+            file,
+        } => powerbi::export_pbix(cli, client, workspace, id, file).await,
+        SemanticModelCommand::ImportPbix {
+            workspace,
+            name,
+            file,
+            name_conflict,
+        } => powerbi::import_pbix(cli, client, workspace, name, file, name_conflict).await,
+        _ => execute_authoring(cli, client, command).await,
+    }
+}
+
+#[allow(clippy::too_many_lines)]
+async fn execute_authoring(
+    cli: &Cli,
+    client: &FabricClient,
+    command: &SemanticModelCommand,
+) -> Result<()> {
+    match command {
         SemanticModelCommand::SetDescription {
             workspace,
             id,
@@ -1810,132 +2009,31 @@ pub async fn execute(
             )
             .await
         }
-        SemanticModelCommand::UpdateParameters {
+        SemanticModelCommand::ListHierarchies {
             workspace,
             id,
-            content,
-        } => powerbi::update_parameters(cli, client, workspace, id, content).await,
-        SemanticModelCommand::ListDatasources { workspace, id } => {
-            powerbi::list_datasources(cli, client, workspace, id).await
-        }
-        SemanticModelCommand::GetBoundGatewayDatasources { workspace, id } => {
-            powerbi::get_bound_gateway_datasources(cli, client, workspace, id).await
-        }
-        SemanticModelCommand::BindToGateway {
+            table,
+        } => hierarchies::list_hierarchies(cli, client, workspace, id, table.as_deref()).await,
+        SemanticModelCommand::AddHierarchy {
             workspace,
             id,
-            gateway_id,
-            datasource_ids,
-        } => {
-            powerbi::bind_to_gateway(
-                cli,
-                client,
-                workspace,
-                id,
-                gateway_id,
-                datasource_ids.as_deref(),
-            )
-            .await
-        }
-        SemanticModelCommand::UpdateDatasources {
-            workspace,
-            id,
-            content,
-        } => powerbi::update_datasources(cli, client, workspace, id, content).await,
-        SemanticModelCommand::ListUsers { workspace, id } => {
-            powerbi::list_users(cli, client, workspace, id).await
-        }
-        SemanticModelCommand::AddUser {
-            workspace,
-            id,
-            principal,
-            principal_type,
-            access_right,
-        } => {
-            powerbi::add_user(
-                cli,
-                client,
-                workspace,
-                id,
-                principal,
-                principal_type,
-                access_right,
-            )
-            .await
-        }
-        SemanticModelCommand::DeleteUser {
-            workspace,
-            id,
-            user,
-        } => powerbi::delete_user(cli, client, workspace, id, user).await,
-        SemanticModelCommand::RefreshStatus { workspace, id, top } => {
-            powerbi::refresh_status(cli, client, workspace, id, *top).await
-        }
-        SemanticModelCommand::RefreshDetails {
-            workspace,
-            id,
-            refresh_id,
-        } => operations::refresh_details(cli, client, workspace, id, refresh_id).await,
-        SemanticModelCommand::CancelRefresh {
-            workspace,
-            id,
-            refresh_id,
-        } => operations::cancel_refresh(cli, client, workspace, id, refresh_id).await,
-        SemanticModelCommand::GetRefreshSchedule { workspace, id } => {
-            operations::get_refresh_schedule(cli, client, workspace, id).await
-        }
-        SemanticModelCommand::UpdateRefreshSchedule {
-            workspace,
-            id,
-            enabled,
-            days,
-            times,
-            local_time_zone_id,
-            notify_option,
-        } => {
-            operations::update_refresh_schedule(
-                cli,
-                client,
-                workspace,
-                id,
-                *enabled,
-                days.as_deref(),
-                times.as_deref(),
-                local_time_zone_id.as_deref(),
-                notify_option.as_deref(),
-            )
-            .await
-        }
-        SemanticModelCommand::ListUpstream { workspace, id } => {
-            powerbi::list_upstream(cli, client, workspace, id).await
-        }
-        SemanticModelCommand::Clone {
-            workspace,
-            id,
+            table,
             name,
-            target_workspace,
+            levels,
         } => {
-            powerbi::clone_model(
-                cli,
-                client,
-                workspace,
-                id,
-                name,
-                target_workspace.as_deref(),
-            )
-            .await
+            let parsed: Result<Vec<hierarchies::Level>> = levels
+                .iter()
+                .map(|s| hierarchies::parse_level_spec(s))
+                .collect();
+            hierarchies::add_hierarchy(cli, client, workspace, id, table, name, &parsed?).await
         }
-        SemanticModelCommand::ExportPbix {
+        SemanticModelCommand::DeleteHierarchy {
             workspace,
             id,
-            file,
-        } => powerbi::export_pbix(cli, client, workspace, id, file).await,
-        SemanticModelCommand::ImportPbix {
-            workspace,
+            table,
             name,
-            file,
-            name_conflict,
-        } => powerbi::import_pbix(cli, client, workspace, name, file, name_conflict).await,
+        } => hierarchies::delete_hierarchy(cli, client, workspace, id, table, name).await,
+        _ => unreachable!("execute_authoring only handles granular-authoring commands"),
     }
 }
 

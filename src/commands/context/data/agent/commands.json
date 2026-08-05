@@ -10984,6 +10984,88 @@
         "returns": "object",
         "destructive": true
       },
+      "list-hierarchies": {
+        "description": "List user hierarchies of a semantic model (table, name, level count) — read-only",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--table": {
+            "type": "string",
+            "description": "Only list hierarchies of this table"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "add-hierarchy": {
+        "description": "Add a user (drill-down) hierarchy to a table by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Table to add the hierarchy to"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Hierarchy name (must be unique in the table)"
+          },
+          "--level": {
+            "type": "string",
+            "required": true,
+            "description": "A level, top-to-bottom. Repeat for each level. Forms: \"Column\", \"LevelName=Column\", or \"LevelName:Column\""
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "delete-hierarchy": {
+        "description": "Delete a hierarchy from a table by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Table containing the hierarchy"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Hierarchy name to delete"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
       "update-parameters": {
         "description": "Update parameters of a semantic model",
         "flags": {

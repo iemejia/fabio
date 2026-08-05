@@ -1822,6 +1822,20 @@ tests:
         value: "The response adds the culture (add-culture --culture fr-FR) and sets a translated caption (set-translation --culture fr-FR --table Sales --caption Ventes). Correct sequencing: add-culture before set-translation. It does not invent an XMLA/TOM tool."
         metric: translation-approach
 
+  - description: "Power BI: add a drill-down hierarchy"
+    vars:
+      user_query: "Add a Geography hierarchy to the Geo table in my semantic model with levels Country then City"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('semantic-model add-hierarchy')
+        metric: semantic-model-add-hierarchy-command
+      - type: icontains
+        value: "--level"
+      - type: llm-rubric
+        value: "The response uses 'fabio semantic-model add-hierarchy' with --table Geo, --name Geography, and two --level flags (Country then City, top-to-bottom). It does not invent an XMLA/TOM tool."
+        metric: add-hierarchy-approach
+
   - description: "Power BI: generate a Direct Lake semantic model from a lakehouse (no TMDL authoring)"
     vars:
       user_query: "Generate a Direct Lake semantic model called 'SalesModel' from my lakehouse — I don't want to hand-write any TMDL, just pull in all the tables"
