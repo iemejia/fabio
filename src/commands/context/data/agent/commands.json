@@ -10627,6 +10627,180 @@
         "returns": "void",
         "destructive": true
       },
+      "add-calculated-column": {
+        "description": "Add a calculated column (a DAX-defined column) to a table by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Table to add the column to"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Column name (must be unique in the table)"
+          },
+          "--expression": {
+            "type": "string",
+            "required": true,
+            "description": "DAX expression (e.g. \"UPPER('Sales'[Region])\")"
+          },
+          "--data-type": {
+            "type": "string",
+            "description": "Data type: string (default), int64, double, decimal, dateTime, boolean"
+          },
+          "--format-string": {
+            "type": "string",
+            "description": "Format string"
+          },
+          "--summarize-by": {
+            "type": "string",
+            "description": "Default summarization: none, sum, count, min, max, average, distinctCount"
+          },
+          "--display-folder": {
+            "type": "string",
+            "description": "Display folder"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Description"
+          },
+          "--hidden": {
+            "type": "bool",
+            "description": "Hide the column"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "delete-column": {
+        "description": "Delete a column from a table by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Table containing the column"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Column name to delete"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "rename-column": {
+        "description": "Rename a column (declaration only; DAX/relationship references are NOT rewritten). Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Table containing the column"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Current column name"
+          },
+          "--new-name": {
+            "type": "string",
+            "required": true,
+            "description": "New column name"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "update-column": {
+        "description": "Update a column's properties (data type, format, summarization, display folder, description, hidden). Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Table containing the column"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Column name to update"
+          },
+          "--data-type": {
+            "type": "string",
+            "description": "New data type: string, int64, double, decimal, dateTime, boolean"
+          },
+          "--format-string": {
+            "type": "string",
+            "description": "New format string"
+          },
+          "--summarize-by": {
+            "type": "string",
+            "description": "New default summarization: none, sum, count, min, max, average, distinctCount"
+          },
+          "--display-folder": {
+            "type": "string",
+            "description": "New display folder"
+          },
+          "--description": {
+            "type": "string",
+            "description": "New description"
+          },
+          "--hidden": {
+            "type": "enum",
+            "values": [
+              "true",
+              "false"
+            ],
+            "description": "Set hidden state (true/false)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
       "update-parameters": {
         "description": "Update parameters of a semantic model",
         "flags": {

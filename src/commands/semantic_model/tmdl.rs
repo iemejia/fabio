@@ -175,6 +175,99 @@ pub(super) fn column_ref(table: &str, column: &str) -> String {
     format!("{}.{}", quote_tmdl_name(table), quote_tmdl_name(column))
 }
 
+/// A table-level child-object declaration at indent 1 (`column`/`measure`/
+/// `hierarchy`/`partition`/`calculationGroup`). Child objects MUST come AFTER
+/// the table's own scalar properties (e.g. `lineageTag:`).
+pub(super) fn is_child_object_decl(line: &str) -> bool {
+    let t = line.trim_start();
+    [
+        "column ",
+        "measure ",
+        "hierarchy ",
+        "partition ",
+        "calculationGroup",
+    ]
+    .iter()
+    .any(|k| t.starts_with(k))
+}
+
+/// Insert a block of child-object lines into a table file before the first
+/// table-level child object (or its leading `///` comment) — i.e. after the
+/// table's scalar properties. Yields the canonical layout and never separates
+/// the `table` declaration from its own properties.
+pub(super) fn insert_table_child_lines(content: &str, block: &[String]) -> String {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut out: Vec<String> = Vec::new();
+    let mut inserted = false;
+    let mut seen_table = false;
+    for line in &lines {
+        if !inserted
+            && seen_table
+            && tab_indent(line) == 1
+            && (line.trim_start().starts_with("///") || is_child_object_decl(line))
+        {
+            out.extend(block.iter().cloned());
+            out.push(String::new());
+            inserted = true;
+        }
+        out.push((*line).to_string());
+        if tab_indent(line) == 0 && line.trim_start().starts_with("table ") {
+            seen_table = true;
+        }
+    }
+    if !inserted {
+        out.push(String::new());
+        out.extend(block.iter().cloned());
+    }
+    let mut result = out.join("\n");
+    if content.ends_with('\n') {
+        result.push('\n');
+    }
+    result
+}
+
+/// The line span `[start, end)` of a `<keyword> <name>` child-object block in a
+/// table file, INCLUDING its leading contiguous `///` description comments and
+/// its trailing indent≥2 body.
+pub(super) fn child_span(lines: &[&str], keyword: &str, name: &str) -> Option<(usize, usize)> {
+    let decl = lines.iter().position(|l| {
+        tab_indent(l) == 1
+            && decl_name(l.trim_start_matches('\t'), keyword).as_deref() == Some(name)
+    })?;
+    let mut start = decl;
+    while start > 0 {
+        let prev = lines[start - 1];
+        if tab_indent(prev) == 1 && prev.trim_start().starts_with("///") {
+            start -= 1;
+        } else {
+            break;
+        }
+    }
+    let mut end = decl + 1;
+    while end < lines.len() && (lines[end].trim().is_empty() || tab_indent(lines[end]) >= 2) {
+        end += 1;
+    }
+    while end > decl + 1 && lines[end - 1].trim().is_empty() {
+        end -= 1;
+    }
+    Some((start, end))
+}
+
+/// Join lines, collapsing runs of ≥3 newlines to 2 and preserving a single
+/// trailing newline when the original had one.
+pub(super) fn join_preserving_trailing_newline(out: &[String], had_trailing: bool) -> String {
+    let mut joined = out.join("\n");
+    while joined.contains("\n\n\n") {
+        joined = joined.replace("\n\n\n", "\n\n");
+    }
+    let joined = joined.trim_end().to_string();
+    if had_trailing && !joined.is_empty() {
+        format!("{joined}\n")
+    } else {
+        joined
+    }
+}
+
 /// Add a `ref <kind> <name>` line to `model.tmdl` if not already present. Tables
 /// and roles require a ref line in `model.tmdl` (relationships do not — they are
 /// auto-discovered). Returns the (possibly-updated) content.

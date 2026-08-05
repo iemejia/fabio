@@ -1,5 +1,6 @@
 mod analyze;
 mod authoring;
+mod columns;
 mod crud;
 mod definitions;
 mod generate;
@@ -738,6 +739,143 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         table: String,
     },
+    /// Add a calculated column (a DAX-defined column) to a table by editing the
+    /// model definition. Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "add-calculated-column", display_order = 13)]
+    AddCalculatedColumn {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Table to add the column to
+        #[arg(long)]
+        table: String,
+
+        /// Column name (must be unique in the table)
+        #[arg(long)]
+        name: String,
+
+        /// DAX expression (e.g. "UPPER('Sales'[Region])")
+        #[arg(long)]
+        expression: String,
+
+        /// Data type: string (default), int64, double, decimal, dateTime, boolean
+        #[arg(long)]
+        data_type: Option<String>,
+
+        /// Format string
+        #[arg(long)]
+        format_string: Option<String>,
+
+        /// Default summarization: none, sum, count, min, max, average, distinctCount
+        #[arg(long)]
+        summarize_by: Option<String>,
+
+        /// Display folder
+        #[arg(long)]
+        display_folder: Option<String>,
+
+        /// Description
+        #[arg(long)]
+        description: Option<String>,
+
+        /// Hide the column
+        #[arg(long)]
+        hidden: bool,
+    },
+    /// Delete a column from a table by editing the model definition. Overwrites
+    /// the definition (irreversible) — dry-run guarded.
+    #[command(name = "delete-column", display_order = 13)]
+    DeleteColumn {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Table containing the column
+        #[arg(long)]
+        table: String,
+
+        /// Column name to delete
+        #[arg(long)]
+        name: String,
+    },
+    /// Rename a column (declaration only; DAX/relationship references are NOT
+    /// rewritten). Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "rename-column", display_order = 13)]
+    RenameColumn {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Table containing the column
+        #[arg(long)]
+        table: String,
+
+        /// Current column name
+        #[arg(long)]
+        name: String,
+
+        /// New column name
+        #[arg(long)]
+        new_name: String,
+    },
+    /// Update a column's properties (data type, format, summarization, display
+    /// folder, description, hidden). Overwrites the definition (irreversible) —
+    /// dry-run guarded.
+    #[command(name = "update-column", display_order = 13)]
+    UpdateColumn {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Table containing the column
+        #[arg(long)]
+        table: String,
+
+        /// Column name to update
+        #[arg(long)]
+        name: String,
+
+        /// New data type: string, int64, double, decimal, dateTime, boolean
+        #[arg(long)]
+        data_type: Option<String>,
+
+        /// New format string
+        #[arg(long)]
+        format_string: Option<String>,
+
+        /// New default summarization: none, sum, count, min, max, average, distinctCount
+        #[arg(long)]
+        summarize_by: Option<String>,
+
+        /// New display folder
+        #[arg(long)]
+        display_folder: Option<String>,
+
+        /// New description
+        #[arg(long)]
+        description: Option<String>,
+
+        /// Set hidden state (true/false)
+        #[arg(long)]
+        hidden: Option<bool>,
+    },
     /// Update parameters of a semantic model
     #[command(name = "update-parameters", display_order = 14)]
     UpdateParameters {
@@ -1409,6 +1547,81 @@ pub async fn execute(
             role,
             table,
         } => roles::delete_rls(cli, client, workspace, id, role, table).await,
+        SemanticModelCommand::AddCalculatedColumn {
+            workspace,
+            id,
+            table,
+            name,
+            expression,
+            data_type,
+            format_string,
+            summarize_by,
+            display_folder,
+            description,
+            hidden,
+        } => {
+            columns::add_calculated_column(
+                cli,
+                client,
+                workspace,
+                id,
+                table,
+                name,
+                expression,
+                &columns::ColumnProps {
+                    data_type: data_type.as_deref(),
+                    format_string: format_string.as_deref(),
+                    summarize_by: summarize_by.as_deref(),
+                    display_folder: display_folder.as_deref(),
+                    description: description.as_deref(),
+                    hidden: hidden.then_some(true),
+                },
+            )
+            .await
+        }
+        SemanticModelCommand::DeleteColumn {
+            workspace,
+            id,
+            table,
+            name,
+        } => columns::delete_column(cli, client, workspace, id, table, name).await,
+        SemanticModelCommand::RenameColumn {
+            workspace,
+            id,
+            table,
+            name,
+            new_name,
+        } => columns::rename_column(cli, client, workspace, id, table, name, new_name).await,
+        SemanticModelCommand::UpdateColumn {
+            workspace,
+            id,
+            table,
+            name,
+            data_type,
+            format_string,
+            summarize_by,
+            display_folder,
+            description,
+            hidden,
+        } => {
+            columns::update_column(
+                cli,
+                client,
+                workspace,
+                id,
+                table,
+                name,
+                &columns::ColumnProps {
+                    data_type: data_type.as_deref(),
+                    format_string: format_string.as_deref(),
+                    summarize_by: summarize_by.as_deref(),
+                    display_folder: display_folder.as_deref(),
+                    description: description.as_deref(),
+                    hidden: *hidden,
+                },
+            )
+            .await
+        }
         SemanticModelCommand::UpdateParameters {
             workspace,
             id,

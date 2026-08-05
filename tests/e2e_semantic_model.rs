@@ -1292,6 +1292,235 @@ fn semantic_model_role_lifecycle() {
         .success();
 }
 
+// ─── Column authoring: add-calculated / update / rename / delete ─────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_column_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("sm_col");
+
+    let mut tmp = NamedTempFile::with_suffix(".bim").unwrap();
+    tmp.write_all(three_table_model_bim().as_bytes()).unwrap();
+    let file_path = tmp.path().to_str().unwrap().to_string();
+
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--file",
+            &file_path,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let sm_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // add-calculated-column (dry-run)
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "add-calculated-column",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--table",
+            "Sales",
+            "--name",
+            "Double Amount",
+            "--expression",
+            "'Sales'[Amount] * 2",
+            "--data-type",
+            "double",
+            "--format-string",
+            "0.00",
+            "--dry-run",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&assert))["dry_run"], true);
+
+    // add-calculated-column (live)
+    fabio()
+        .args([
+            "semantic-model",
+            "add-calculated-column",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--table",
+            "Sales",
+            "--name",
+            "Double Amount",
+            "--expression",
+            "'Sales'[Amount] * 2",
+            "--data-type",
+            "double",
+            "--format-string",
+            "0.00",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // duplicate → CONFLICT
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "add-calculated-column",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--table",
+            "Sales",
+            "--name",
+            "Double Amount",
+            "--expression",
+            "1",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert_eq!(error_json(&stderr)["error"]["code"], "CONFLICT");
+
+    // update-column: summarization + display folder
+    fabio()
+        .args([
+            "semantic-model",
+            "update-column",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--table",
+            "Sales",
+            "--name",
+            "Double Amount",
+            "--summarize-by",
+            "sum",
+            "--display-folder",
+            "Calc",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // rename-column
+    fabio()
+        .args([
+            "semantic-model",
+            "rename-column",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--table",
+            "Sales",
+            "--name",
+            "Double Amount",
+            "--new-name",
+            "Doubled",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // Verify via the round-tripped definition
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "get-definition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let parts = data["definition"]["parts"].as_array().unwrap();
+    let sales = parts
+        .iter()
+        .find(|p| p["path"].as_str() == Some("definition/tables/Sales.tmdl"))
+        .and_then(|p| p["payload"].as_str())
+        .map(|b| {
+            String::from_utf8(base64::engine::general_purpose::STANDARD.decode(b).unwrap()).unwrap()
+        })
+        .expect("Sales.tmdl");
+    assert!(
+        sales.contains("column Doubled = 'Sales'[Amount] * 2"),
+        "sales:\n{sales}"
+    );
+    assert!(sales.contains("summarizeBy: sum"), "sales:\n{sales}");
+    assert!(sales.contains("displayFolder: Calc"), "sales:\n{sales}");
+
+    // delete-column
+    fabio()
+        .args([
+            "semantic-model",
+            "delete-column",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--table",
+            "Sales",
+            "--name",
+            "Doubled",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // delete nonexistent column → NOT_FOUND
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "delete-column",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--table",
+            "Sales",
+            "--name",
+            "Nope",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert_eq!(error_json(&stderr)["error"]["code"], "NOT_FOUND");
+
+    // Cleanup
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+}
+
 // ─── Dry Run ─────────────────────────────────────────────────────────────────
 
 #[test]

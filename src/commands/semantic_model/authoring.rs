@@ -25,7 +25,8 @@ use crate::output;
 
 use super::analyze::tab_indent;
 use super::tmdl::{
-    decl_name, fetch_parts, find_table_file, is_table_tmdl, push_parts, replace_part,
+    decl_name, fetch_parts, find_table_file, insert_table_child_lines, is_table_tmdl,
+    join_preserving_trailing_newline, push_parts, replace_part,
 };
 
 // ── set-description ────────────────────────────────────────────────────────────
@@ -475,7 +476,7 @@ pub(super) async fn move_measure(
         }
         let (block, remaining) = extract_measure_block(&parts[src_idx].1, measure)
             .ok_or_else(|| FabioError::not_found(format!("Measure '{measure}' not found")))?;
-        let dst_new = insert_measure_lines(&parts[dst_idx].1, &block);
+        let dst_new = insert_table_child_lines(&parts[dst_idx].1, &block);
         let mut out = parts.clone();
         out[src_idx].1 = remaining;
         out[dst_idx].1 = dst_new;
@@ -526,24 +527,8 @@ fn render_measure_expr(expr: &str) -> String {
     }
 }
 
-/// A child-object declaration at the table level (indent 1). Measures must be
-/// placed AFTER the table's own scalar properties (e.g. `lineageTag:`) and among
-/// the other child objects — never between the `table` line and its properties.
-fn is_child_object_decl(line: &str) -> bool {
-    let t = line.trim_start();
-    [
-        "column ",
-        "measure ",
-        "hierarchy ",
-        "partition ",
-        "calculationGroup",
-    ]
-    .iter()
-    .any(|k| t.starts_with(k))
-}
-
+/// Build the measure's TMDL lines and insert them into the table file.
 fn add_measure_tmdl(content: &str, name: &str, expr: &str, fields: &MeasureFields) -> String {
-    // Build the measure's lines (description comment, decl, properties).
     let mut mlines: Vec<String> = Vec::new();
     if let Some(d) = fields.description.filter(|x| !x.is_empty()) {
         for dl in d.split('\n') {
@@ -557,81 +542,12 @@ fn add_measure_tmdl(content: &str, name: &str, expr: &str, fields: &MeasureField
     for l in measure_property_lines(fields).lines() {
         mlines.push(l.to_string());
     }
-    insert_measure_lines(content, &mlines)
+    insert_table_child_lines(content, &mlines)
 }
 
-/// Insert a block of measure lines into a table file before the first
-/// table-level child object (or its leading `///` comment) — i.e. after the
-/// table's scalar properties. This yields the canonical "measures first" layout
-/// and never separates the `table` declaration from its own properties.
-fn insert_measure_lines(content: &str, mlines: &[String]) -> String {
-    let lines: Vec<&str> = content.lines().collect();
-    let mut out: Vec<String> = Vec::new();
-    let mut inserted = false;
-    let mut seen_table = false;
-    for line in &lines {
-        if !inserted
-            && seen_table
-            && tab_indent(line) == 1
-            && (line.trim_start().starts_with("///") || is_child_object_decl(line))
-        {
-            out.extend(mlines.iter().cloned());
-            out.push(String::new());
-            inserted = true;
-        }
-        out.push((*line).to_string());
-        if tab_indent(line) == 0 && line.trim_start().starts_with("table ") {
-            seen_table = true;
-        }
-    }
-    if !inserted {
-        out.push(String::new());
-        out.extend(mlines.iter().cloned());
-    }
-    let mut result = out.join("\n");
-    if content.ends_with('\n') {
-        result.push('\n');
-    }
-    result
-}
-
-/// The line span `[start, end)` of a measure block in a table file, INCLUDING
-/// its leading contiguous `///` description comments and trailing indent≥2 body.
+/// The line span of a measure block (delegates to the shared `child_span`).
 fn measure_span(lines: &[&str], measure: &str) -> Option<(usize, usize)> {
-    let decl = lines.iter().position(|l| {
-        tab_indent(l) == 1
-            && decl_name(l.trim_start_matches('\t'), "measure").as_deref() == Some(measure)
-    })?;
-    let mut start = decl;
-    while start > 0 {
-        let prev = lines[start - 1];
-        if tab_indent(prev) == 1 && prev.trim_start().starts_with("///") {
-            start -= 1;
-        } else {
-            break;
-        }
-    }
-    let mut end = decl + 1;
-    while end < lines.len() && (lines[end].trim().is_empty() || tab_indent(lines[end]) >= 2) {
-        end += 1;
-    }
-    while end > decl + 1 && lines[end - 1].trim().is_empty() {
-        end -= 1;
-    }
-    Some((start, end))
-}
-
-fn join_preserving_trailing_newline(out: &[String], had_trailing: bool) -> String {
-    let mut joined = out.join("\n");
-    while joined.contains("\n\n\n") {
-        joined = joined.replace("\n\n\n", "\n\n");
-    }
-    let joined = joined.trim_end().to_string();
-    if had_trailing && !joined.is_empty() {
-        format!("{joined}\n")
-    } else {
-        joined
-    }
+    super::tmdl::child_span(lines, "measure", measure)
 }
 
 /// Remove a measure block from a table file. Returns `(new_content, removed)`.
@@ -1161,7 +1077,7 @@ mod tests {
         assert!(!remaining.contains("measure 'Total'"));
         // Re-insert into another table body keeps it valid.
         let dst = "table Other\n\tlineageTag: x\n\n\tcolumn C\n\t\tdataType: string\n\t\tsourceColumn: C\n";
-        let moved = insert_measure_lines(dst, &block);
+        let moved = insert_table_child_lines(dst, &block);
         assert!(moved.contains("measure 'Total'"));
         let lt = moved.find("lineageTag: x").unwrap();
         let meas = moved.find("measure 'Total'").unwrap();

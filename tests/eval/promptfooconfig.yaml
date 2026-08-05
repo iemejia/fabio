@@ -1780,6 +1780,20 @@ tests:
         value: "The response creates the role (add-role) and sets an RLS filter (set-rls --role Regional --table Customer --filter with a DAX predicate on Region). It uses set-rls (NOT add-user, which is dataset permissions, not RLS). Correct sequencing: add-role before set-rls."
         metric: rls-approach
 
+  - description: "Power BI: add a calculated column"
+    vars:
+      user_query: "Add a calculated column called 'Margin Pct' to the Sales table in my semantic model with the DAX DIVIDE('Sales'[Margin], 'Sales'[Amount])"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('semantic-model add-calculated-column')
+        metric: semantic-model-add-calc-column-command
+      - type: icontains
+        value: "--expression"
+      - type: llm-rubric
+        value: "The response uses 'fabio semantic-model add-calculated-column' with --table Sales, --name 'Margin Pct', and --expression (the DAX). It does not invent an XMLA/TOM tool — fabio edits the model definition."
+        metric: add-calc-column-approach
+
   - description: "Power BI: generate a Direct Lake semantic model from a lakehouse (no TMDL authoring)"
     vars:
       user_query: "Generate a Direct Lake semantic model called 'SalesModel' from my lakehouse — I don't want to hand-write any TMDL, just pull in all the tables"
