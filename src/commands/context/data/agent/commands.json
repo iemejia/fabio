@@ -11358,6 +11358,43 @@
         "returns": "void",
         "destructive": true
       },
+      "update-calculation-item": {
+        "description": "Update a calculation item's DAX expression (and optionally its ordinal) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--group": {
+            "type": "string",
+            "required": true,
+            "description": "Calculation group name"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Calculation item name to update"
+          },
+          "--expression": {
+            "type": "string",
+            "required": true,
+            "description": "New DAX expression"
+          },
+          "--ordinal": {
+            "type": "string",
+            "description": "New ordinal (sort position)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
       "list-expressions": {
         "description": "List named expressions / Power Query parameters of a semantic model — read-only",
         "flags": {

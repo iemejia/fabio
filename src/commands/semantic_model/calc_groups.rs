@@ -270,6 +270,54 @@ pub(super) async fn delete_calculation_item(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn update_calculation_item(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    group: &str,
+    name: &str,
+    expression: &str,
+    ordinal: Option<i64>,
+) -> Result<()> {
+    let op = "semantic-model update-calculation-item";
+    let parts = fetch_parts(client, workspace, id, op).await?;
+
+    let new_parts = if let Some(bim) = part_content(&parts, "model.bim") {
+        let new_bim = update_calc_item_bim(bim, group, name, expression, ordinal)?;
+        replace_part(&parts, "model.bim", &new_bim)
+    } else {
+        let idx = find_table_file(&parts, group)?;
+        let (new_content, updated) =
+            update_calc_item_tmdl(&parts[idx].1, name, expression, ordinal);
+        if !updated {
+            return Err(FabioError::not_found(format!(
+                "Calculation item '{group}.{name}' not found"
+            ))
+            .into());
+        }
+        let mut out = parts.clone();
+        out[idx].1 = new_content;
+        out
+    };
+
+    if output::dry_run_guard(
+        cli,
+        op,
+        &serde_json::json!({ "id": id, "calculationGroup": group, "item": name }),
+    ) {
+        return Ok(());
+    }
+    push_parts(client, workspace, id, &new_parts, op).await?;
+    output::render_object(
+        cli,
+        &serde_json::json!({ "status": "calculation_item_updated", "id": id, "calculationGroup": group, "item": name }),
+        "status",
+    );
+    Ok(())
+}
+
 // ── list-calculation-groups ───────────────────────────────────────────────────
 
 pub(super) async fn list_calculation_groups(
@@ -315,6 +363,21 @@ fn calc_item_names(content: &str) -> Vec<String> {
         .filter(|l| tab_indent(l) == 2 && l.trim_start().starts_with("calculationItem "))
         .filter_map(|l| decl_name(l.trim_start_matches('\t'), "calculationItem"))
         .collect()
+}
+
+/// A known scalar property line of a calculation item (preserved across an
+/// expression update). A `formatStringDefinition` (a nested DAX block) is NOT
+/// in this set and is not preserved — re-author it if needed.
+fn is_calc_item_prop(trimmed: &str) -> bool {
+    [
+        "ordinal:",
+        "isDefault",
+        "lineageTag:",
+        "annotation ",
+        "changedProperty ",
+    ]
+    .iter()
+    .any(|k| trimmed.starts_with(k))
 }
 
 fn build_calc_item_lines(name: &str, expression: &str, ordinal: Option<i64>) -> Vec<String> {
@@ -378,6 +441,71 @@ fn delete_calc_item_tmdl(content: &str, name: &str) -> (String, bool) {
         join_preserving_trailing_newline(&out, content.ends_with('\n')),
         true,
     )
+}
+
+/// Replace a calculation item's DAX expression (and optionally its ordinal),
+/// preserving other property lines. Returns `(new_content, updated)`.
+fn update_calc_item_tmdl(
+    content: &str,
+    name: &str,
+    expression: &str,
+    ordinal: Option<i64>,
+) -> (String, bool) {
+    let lines: Vec<&str> = content.lines().collect();
+    let Some(decl) = lines.iter().position(|l| {
+        tab_indent(l) == 2
+            && decl_name(l.trim_start_matches('\t'), "calculationItem").as_deref() == Some(name)
+    }) else {
+        return (content.to_string(), false);
+    };
+    // The item's body spans indent≥3 lines after the decl.
+    let mut end = decl + 1;
+    while end < lines.len() && (lines[end].trim().is_empty() || tab_indent(lines[end]) >= 3) {
+        end += 1;
+    }
+    while end > decl + 1 && lines[end - 1].trim().is_empty() {
+        end -= 1;
+    }
+
+    // New decl + expression continuation lines.
+    let expr = expression.trim();
+    let mut block: Vec<String> = Vec::new();
+    if expr.contains('\n') {
+        block.push(format!("\t\tcalculationItem {} =", quote_tmdl_name(name)));
+        for l in expr.lines() {
+            block.push(format!("\t\t\t{}", l.trim_end()));
+        }
+    } else {
+        block.push(format!(
+            "\t\tcalculationItem {} = {expr}",
+            quote_tmdl_name(name)
+        ));
+    }
+    // Preserve existing scalar property lines (ordinal:, isDefault, lineageTag:,
+    // annotation, changedProperty), dropping the old expression continuation and
+    // the old ordinal when a new one is supplied.
+    for l in &lines[decl + 1..end] {
+        let t = l.trim_start();
+        if ordinal.is_some() && t.starts_with("ordinal:") {
+            continue;
+        }
+        if is_calc_item_prop(t) {
+            block.push((*l).to_string());
+        }
+    }
+    if let Some(o) = ordinal {
+        block.push(format!("\t\t\tordinal: {o}"));
+    }
+
+    let mut out: Vec<String> = Vec::new();
+    out.extend(lines[..decl].iter().map(|s| (*s).to_string()));
+    out.extend(block);
+    out.extend(lines[end..].iter().map(|s| (*s).to_string()));
+    let mut result = out.join("\n");
+    if content.ends_with('\n') {
+        result.push('\n');
+    }
+    (result, true)
 }
 
 fn collect_calc_groups(parts: &[(String, String)]) -> Vec<Value> {
@@ -517,6 +645,28 @@ fn delete_calc_item_bim(bim: &str, group: &str, name: &str) -> Result<String> {
     Ok(serde_json::to_string(&j).unwrap_or_else(|_| bim.to_string()))
 }
 
+fn update_calc_item_bim(
+    bim: &str,
+    group: &str,
+    name: &str,
+    expression: &str,
+    ordinal: Option<i64>,
+) -> Result<String> {
+    let mut j: Value =
+        serde_json::from_str(bim).map_err(|e| FabioError::invalid_input(e.to_string()))?;
+    let item = calc_items_bim(&mut j, group)?
+        .iter_mut()
+        .find(|i| i.get("name").and_then(Value::as_str) == Some(name))
+        .ok_or_else(|| {
+            FabioError::not_found(format!("Calculation item '{group}.{name}' not found"))
+        })?;
+    item["expression"] = Value::from(expression);
+    if let Some(o) = ordinal {
+        item["ordinal"] = Value::from(o);
+    }
+    Ok(serde_json::to_string(&j).unwrap_or_else(|_| bim.to_string()))
+}
+
 fn collect_calc_groups_bim(bim: &str) -> Vec<Value> {
     let Ok(j) = serde_json::from_str::<Value>(bim) else {
         return Vec::new();
@@ -598,6 +748,25 @@ mod tests {
         assert!(removed);
         assert!(!del.contains("calculationItem YTD"));
         assert!(del.contains("calculationItem Current"));
+    }
+
+    #[test]
+    fn update_calc_item_replaces_expression_keeps_ordinal() {
+        let with = "table T\n\n\tcalculationGroup\n\n\t\tcalculationItem YTD = OLD()\n\t\t\tordinal: 2\n\n\tcolumn C\n\t\tdataType: string\n\t\tsourceColumn: Name\n\n\tpartition T = calculationGroup\n";
+        let (out, updated) =
+            update_calc_item_tmdl(with, "YTD", "CALCULATE(SELECTEDMEASURE())", None);
+        assert!(updated);
+        assert!(out.contains("\t\tcalculationItem YTD = CALCULATE(SELECTEDMEASURE())"));
+        assert!(!out.contains("OLD()"));
+        assert!(out.contains("\t\t\tordinal: 2")); // preserved
+        // override ordinal
+        let (out2, _u) = update_calc_item_tmdl(with, "YTD", "NEW()", Some(5));
+        assert!(out2.contains("\t\t\tordinal: 5"));
+        assert!(!out2.contains("ordinal: 2"));
+        assert_eq!(out2.matches("ordinal:").count(), 1);
+        // missing item
+        let (_o, found) = update_calc_item_tmdl(with, "Nope", "X()", None);
+        assert!(!found);
     }
 
     #[test]

@@ -1860,6 +1860,18 @@ tests:
         value: "The response creates the calculation group (add-calculation-group) and then adds a YTD calculation item (add-calculation-item --group ... --name YTD --expression with a DAX time-intelligence expression). Correct sequencing: group before item. It does not invent an XMLA/TOM tool."
         metric: calc-group-approach
 
+  - description: "Power BI: change a calculation item's DAX"
+    vars:
+      user_query: "Update the YTD calculation item in my TimeIntelligence calculation group to a new DAX expression"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('semantic-model update-calculation-item')
+        metric: semantic-model-update-calc-item-command
+      - type: llm-rubric
+        value: "The response uses 'fabio semantic-model update-calculation-item' with --group TimeIntelligence, --name YTD, and --expression (the new DAX). It does not delete-then-re-add or invent an XMLA/TOM tool."
+        metric: update-calc-item-approach
+
   - description: "Power BI: add a Power Query parameter"
     vars:
       user_query: "Add a Power Query parameter called ServerName to my semantic model with the default value 'prod-sql'"

@@ -1297,6 +1297,35 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         name: String,
     },
+    /// Update a calculation item's DAX expression (and optionally its ordinal)
+    /// by editing the model definition. Overwrites the definition (irreversible)
+    /// — dry-run guarded.
+    #[command(name = "update-calculation-item", display_order = 13)]
+    UpdateCalculationItem {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Calculation group name
+        #[arg(long)]
+        group: String,
+
+        /// Calculation item name to update
+        #[arg(long)]
+        name: String,
+
+        /// New DAX expression
+        #[arg(long)]
+        expression: String,
+
+        /// New ordinal (sort position)
+        #[arg(long)]
+        ordinal: Option<i64>,
+    },
     /// List named expressions / Power Query parameters of a semantic model —
     /// read-only.
     #[command(name = "list-expressions", display_order = 13)]
@@ -2607,6 +2636,19 @@ async fn execute_authoring(
             group,
             name,
         } => calc_groups::delete_calculation_item(cli, client, workspace, id, group, name).await,
+        SemanticModelCommand::UpdateCalculationItem {
+            workspace,
+            id,
+            group,
+            name,
+            expression,
+            ordinal,
+        } => {
+            calc_groups::update_calculation_item(
+                cli, client, workspace, id, group, name, expression, *ordinal,
+            )
+            .await
+        }
         SemanticModelCommand::ListExpressions { workspace, id } => {
             expressions::list_expressions(cli, client, workspace, id).await
         }

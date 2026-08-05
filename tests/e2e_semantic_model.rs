@@ -2502,6 +2502,52 @@ fn semantic_model_calculation_group_lifecycle() {
         "cg:\n{cg}"
     );
 
+    // update-calculation-item: change YTD's DAX
+    fabio()
+        .args([
+            "semantic-model",
+            "update-calculation-item",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--group",
+            "TimeIntelligence",
+            "--name",
+            "YTD",
+            "--expression",
+            "CALCULATE(SELECTEDMEASURE(), DATESYTD('Sales'[Amount], \"6/30\"))",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // Verify the updated DAX
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "get-definition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let parts = data["definition"]["parts"].as_array().unwrap();
+    let cg2 = parts
+        .iter()
+        .find(|p| p["path"].as_str() == Some("definition/tables/TimeIntelligence.tmdl"))
+        .and_then(|p| p["payload"].as_str())
+        .map(|b| {
+            String::from_utf8(base64::engine::general_purpose::STANDARD.decode(b).unwrap()).unwrap()
+        })
+        .expect("TimeIntelligence.tmdl");
+    assert!(cg2.contains("\"6/30\""), "cg2:\n{cg2}");
+
     // delete-calculation-item
     fabio()
         .args([
