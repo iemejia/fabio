@@ -5,6 +5,8 @@ mod definitions;
 mod generate;
 pub mod operations;
 mod powerbi;
+mod relationships;
+mod tmdl;
 
 use anyhow::Result;
 use clap::Subcommand;
@@ -465,6 +467,127 @@ pub enum SemanticModelCommand {
         /// New display folder
         #[arg(long)]
         display_folder: Option<String>,
+    },
+    /// Add a relationship between two tables by editing the model definition.
+    /// Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "add-relationship", display_order = 13)]
+    AddRelationship {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// "Many" side table (foreign key)
+        #[arg(long)]
+        from_table: String,
+
+        /// "Many" side column (foreign key)
+        #[arg(long)]
+        from_column: String,
+
+        /// "One" side table (primary key)
+        #[arg(long)]
+        to_table: String,
+
+        /// "One" side column (primary key)
+        #[arg(long)]
+        to_column: String,
+
+        /// Cross-filter direction: oneDirection (default), bothDirections, automatic
+        #[arg(long)]
+        cross_filter: Option<String>,
+
+        /// Create the relationship inactive
+        #[arg(long)]
+        inactive: bool,
+
+        /// From-side cardinality: one | many (default many)
+        #[arg(long)]
+        from_cardinality: Option<String>,
+
+        /// To-side cardinality: one | many (default one)
+        #[arg(long)]
+        to_cardinality: Option<String>,
+    },
+    /// Delete a relationship (by --relationship-id or by the from/to columns).
+    /// Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "delete-relationship", display_order = 13)]
+    DeleteRelationship {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Relationship id (GUID) to delete
+        #[arg(long)]
+        relationship_id: Option<String>,
+
+        /// "Many" side table (used with the other from/to flags to match by columns)
+        #[arg(long)]
+        from_table: Option<String>,
+
+        /// "Many" side column
+        #[arg(long)]
+        from_column: Option<String>,
+
+        /// "One" side table
+        #[arg(long)]
+        to_table: Option<String>,
+
+        /// "One" side column
+        #[arg(long)]
+        to_column: Option<String>,
+    },
+    /// Update a relationship's active state and/or cross-filter direction
+    /// (by --relationship-id or by the from/to columns). Overwrites the
+    /// definition (irreversible) — dry-run guarded.
+    #[command(name = "update-relationship", display_order = 13)]
+    UpdateRelationship {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Relationship id (GUID) to update
+        #[arg(long)]
+        relationship_id: Option<String>,
+
+        /// "Many" side table (match by columns)
+        #[arg(long)]
+        from_table: Option<String>,
+
+        /// "Many" side column
+        #[arg(long)]
+        from_column: Option<String>,
+
+        /// "One" side table
+        #[arg(long)]
+        to_table: Option<String>,
+
+        /// "One" side column
+        #[arg(long)]
+        to_column: Option<String>,
+
+        /// Set the relationship active
+        #[arg(long, conflicts_with = "inactive")]
+        active: bool,
+
+        /// Set the relationship inactive
+        #[arg(long)]
+        inactive: bool,
+
+        /// New cross-filter direction: oneDirection, bothDirections, automatic
+        #[arg(long)]
+        cross_filter: Option<String>,
     },
     /// Update parameters of a semantic model
     #[command(name = "update-parameters", display_order = 14)]
@@ -981,6 +1104,118 @@ pub async fn execute(
             )
             .await
         }
+        SemanticModelCommand::AddRelationship {
+            workspace,
+            id,
+            from_table,
+            from_column,
+            to_table,
+            to_column,
+            cross_filter,
+            inactive,
+            from_cardinality,
+            to_cardinality,
+        } => {
+            relationships::add_relationship(
+                cli,
+                client,
+                workspace,
+                id,
+                &relationships::RelSpec {
+                    from_table,
+                    from_column,
+                    to_table,
+                    to_column,
+                },
+                &relationships::RelProps {
+                    cross_filter: cross_filter.as_deref(),
+                    is_active: inactive.then_some(false),
+                    from_cardinality: from_cardinality.as_deref(),
+                    to_cardinality: to_cardinality.as_deref(),
+                },
+            )
+            .await
+        }
+        SemanticModelCommand::DeleteRelationship {
+            workspace,
+            id,
+            relationship_id,
+            from_table,
+            from_column,
+            to_table,
+            to_column,
+        } => {
+            let spec = build_rel_spec(
+                from_table.as_deref(),
+                from_column.as_deref(),
+                to_table.as_deref(),
+                to_column.as_deref(),
+                relationship_id.as_deref(),
+            )?;
+            let rel = spec.as_ref().map(|s| relationships::RelSpec {
+                from_table: &s.0,
+                from_column: &s.1,
+                to_table: &s.2,
+                to_column: &s.3,
+            });
+            relationships::delete_relationship(
+                cli,
+                client,
+                workspace,
+                id,
+                relationship_id.as_deref(),
+                rel.as_ref(),
+            )
+            .await
+        }
+        SemanticModelCommand::UpdateRelationship {
+            workspace,
+            id,
+            relationship_id,
+            from_table,
+            from_column,
+            to_table,
+            to_column,
+            active,
+            inactive,
+            cross_filter,
+        } => {
+            let spec = build_rel_spec(
+                from_table.as_deref(),
+                from_column.as_deref(),
+                to_table.as_deref(),
+                to_column.as_deref(),
+                relationship_id.as_deref(),
+            )?;
+            let rel = spec.as_ref().map(|s| relationships::RelSpec {
+                from_table: &s.0,
+                from_column: &s.1,
+                to_table: &s.2,
+                to_column: &s.3,
+            });
+            let is_active = if *active {
+                Some(true)
+            } else if *inactive {
+                Some(false)
+            } else {
+                None
+            };
+            relationships::update_relationship(
+                cli,
+                client,
+                workspace,
+                id,
+                relationship_id.as_deref(),
+                rel.as_ref(),
+                &relationships::RelProps {
+                    cross_filter: cross_filter.as_deref(),
+                    is_active,
+                    from_cardinality: None,
+                    to_cardinality: None,
+                },
+            )
+            .await
+        }
         SemanticModelCommand::UpdateParameters {
             workspace,
             id,
@@ -1107,6 +1342,47 @@ pub async fn execute(
             file,
             name_conflict,
         } => powerbi::import_pbix(cli, client, workspace, name, file, name_conflict).await,
+    }
+}
+
+/// Resolve the relationship match spec for delete/update: either a
+/// `--relationship-id` (spec is `None`) or all four from/to column flags.
+type RelTuple = (String, String, String, String);
+
+fn build_rel_spec(
+    from_table: Option<&str>,
+    from_column: Option<&str>,
+    to_table: Option<&str>,
+    to_column: Option<&str>,
+    relationship_id: Option<&str>,
+) -> Result<Option<RelTuple>> {
+    match (from_table, from_column, to_table, to_column) {
+        (Some(ft), Some(fc), Some(tt), Some(tc)) => Ok(Some((
+            ft.to_string(),
+            fc.to_string(),
+            tt.to_string(),
+            tc.to_string(),
+        ))),
+        (None, None, None, None) => {
+            if relationship_id.is_some() {
+                Ok(None)
+            } else {
+                Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    "Specify which relationship to target.".to_string(),
+                    "Pass --relationship-id <guid>, or all of --from-table/--from-column/--to-table/--to-column."
+                        .to_string(),
+                )
+                .into())
+            }
+        }
+        _ => Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Incomplete relationship column selector.".to_string(),
+            "When matching by columns, pass ALL of --from-table/--from-column/--to-table/--to-column."
+                .to_string(),
+        )
+        .into()),
     }
 }
 

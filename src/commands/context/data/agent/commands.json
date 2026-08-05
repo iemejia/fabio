@@ -10278,6 +10278,148 @@
         "returns": "object",
         "destructive": true
       },
+      "add-relationship": {
+        "description": "Add a relationship between two tables by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--from-table": {
+            "type": "string",
+            "required": true,
+            "description": "\"Many\" side table (foreign key)"
+          },
+          "--from-column": {
+            "type": "string",
+            "required": true,
+            "description": "\"Many\" side column (foreign key)"
+          },
+          "--to-table": {
+            "type": "string",
+            "required": true,
+            "description": "\"One\" side table (primary key)"
+          },
+          "--to-column": {
+            "type": "string",
+            "required": true,
+            "description": "\"One\" side column (primary key)"
+          },
+          "--cross-filter": {
+            "type": "string",
+            "description": "Cross-filter direction: oneDirection (default), bothDirections, automatic"
+          },
+          "--inactive": {
+            "type": "bool",
+            "description": "Create the relationship inactive"
+          },
+          "--from-cardinality": {
+            "type": "string",
+            "description": "From-side cardinality: one | many (default many)"
+          },
+          "--to-cardinality": {
+            "type": "string",
+            "description": "To-side cardinality: one | many (default one)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "delete-relationship": {
+        "description": "Delete a relationship (by --relationship-id or by the from/to columns). Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--relationship-id": {
+            "type": "string",
+            "description": "Relationship id (GUID) to delete"
+          },
+          "--from-table": {
+            "type": "string",
+            "description": "\"Many\" side table (used with the other from/to flags to match by columns)"
+          },
+          "--from-column": {
+            "type": "string",
+            "description": "\"Many\" side column"
+          },
+          "--to-table": {
+            "type": "string",
+            "description": "\"One\" side table"
+          },
+          "--to-column": {
+            "type": "string",
+            "description": "\"One\" side column"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "update-relationship": {
+        "description": "Update a relationship's active state and/or cross-filter direction (by --relationship-id or by the from/to columns). Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--relationship-id": {
+            "type": "string",
+            "description": "Relationship id (GUID) to update"
+          },
+          "--from-table": {
+            "type": "string",
+            "description": "\"Many\" side table (match by columns)"
+          },
+          "--from-column": {
+            "type": "string",
+            "description": "\"Many\" side column"
+          },
+          "--to-table": {
+            "type": "string",
+            "description": "\"One\" side table"
+          },
+          "--to-column": {
+            "type": "string",
+            "description": "\"One\" side column"
+          },
+          "--active": {
+            "type": "bool",
+            "description": "Set the relationship active"
+          },
+          "--inactive": {
+            "type": "bool",
+            "description": "Set the relationship inactive"
+          },
+          "--cross-filter": {
+            "type": "string",
+            "description": "New cross-filter direction: oneDirection, bothDirections, automatic"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
       "update-parameters": {
         "description": "Update parameters of a semantic model",
         "flags": {

@@ -1,0 +1,214 @@
+//! Shared TMDL / `model.bim` definition round-trip plumbing for the
+//! `semantic-model` granular authoring commands (`authoring`, `relationships`,
+//! `roles`, `columns`, `tables`, `translations`).
+//!
+//! fabio is a REST CLI with no XMLA/TOM, so every granular model edit is a
+//! definition read-modify-write: `getDefinition` → edit the TMDL parts (or
+//! `model.bim`) in place → `updateDefinition`. This module holds the fetch/push
+//! plumbing, the part-list helpers, and the small TMDL parsing/quoting utilities
+//! the authoring modules share.
+
+use anyhow::Result;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use serde_json::Value;
+
+use crate::client::FabricClient;
+use crate::errors::enrich_forbidden;
+
+use super::analyze::{decode_parts, strip_tmdl_name, tab_indent};
+
+/// Fetch a semantic model's definition and decode its parts into `(path, text)`.
+pub(super) async fn fetch_parts(
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    op: &str,
+) -> Result<Vec<(String, String)>> {
+    let def = client
+        .post(
+            &format!("/workspaces/{workspace}/semanticModels/{id}/getDefinition"),
+            &serde_json::json!({}),
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, op, "Contributor"))?;
+    Ok(decode_parts(&def))
+}
+
+/// Push a new set of definition parts via `updateDefinition` (LRO).
+pub(super) async fn push_parts(
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    parts: &[(String, String)],
+    op: &str,
+) -> Result<()> {
+    let definition_parts: Vec<Value> = parts
+        .iter()
+        .map(|(path, content)| {
+            serde_json::json!({
+                "path": path,
+                "payload": BASE64.encode(content.as_bytes()),
+                "payloadType": "InlineBase64"
+            })
+        })
+        .collect();
+    client
+        .post(
+            &format!("/workspaces/{workspace}/semanticModels/{id}/updateDefinition"),
+            &serde_json::json!({ "definition": { "parts": definition_parts } }),
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, op, "Contributor"))?;
+    Ok(())
+}
+
+/// Return a copy of `parts` with the content of `path` replaced (no-op if absent).
+pub(super) fn replace_part(
+    parts: &[(String, String)],
+    path: &str,
+    content: &str,
+) -> Vec<(String, String)> {
+    parts
+        .iter()
+        .map(|(p, c)| {
+            if p == path {
+                (p.clone(), content.to_string())
+            } else {
+                (p.clone(), c.clone())
+            }
+        })
+        .collect()
+}
+
+/// Return a copy of `parts` with `path` set to `content` — replacing it if it
+/// exists, otherwise appending it (used for `definition/relationships.tmdl`,
+/// which may not exist until the first relationship is added).
+pub(super) fn upsert_part(
+    parts: &[(String, String)],
+    path: &str,
+    content: &str,
+) -> Vec<(String, String)> {
+    if parts.iter().any(|(p, _)| p == path) {
+        replace_part(parts, path, content)
+    } else {
+        let mut out = parts.to_vec();
+        out.push((path.to_string(), content.to_string()));
+        out
+    }
+}
+
+/// Return a copy of `parts` with `path` removed.
+pub(super) fn remove_part(parts: &[(String, String)], path: &str) -> Vec<(String, String)> {
+    parts.iter().filter(|(p, _)| p != path).cloned().collect()
+}
+
+/// The content of `path` in `parts`, if present.
+pub(super) fn part_content<'a>(parts: &'a [(String, String)], path: &str) -> Option<&'a str> {
+    parts
+        .iter()
+        .find(|(p, _)| p == path)
+        .map(|(_, c)| c.as_str())
+}
+
+pub(super) fn is_table_tmdl(path: &str) -> bool {
+    path.starts_with("definition/tables/")
+        && std::path::Path::new(path)
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("tmdl"))
+}
+
+/// The logical table name declared in a `definition/tables/<T>.tmdl` file.
+pub(super) fn tmdl_table_name(content: &str) -> Option<String> {
+    content
+        .lines()
+        .find(|l| tab_indent(l) == 0 && l.trim_start().starts_with("table "))
+        .map(|l| strip_tmdl_name(&l.trim_start()[6..]))
+}
+
+/// The object name declared by a `<keyword> <name>[ = …]` line (quotes stripped).
+pub(super) fn decl_name(trimmed: &str, keyword: &str) -> Option<String> {
+    let rest = trimmed.strip_prefix(keyword)?.strip_prefix(' ')?;
+    // Objects whose declaration can carry an inline `= expression`.
+    let name_part = if matches!(keyword, "measure" | "column" | "partition" | "table") {
+        rest.split('=').next().unwrap_or(rest)
+    } else {
+        rest
+    };
+    let n = strip_tmdl_name(name_part);
+    (!n.is_empty()).then_some(n)
+}
+
+/// Index of the `definition/tables/<table>.tmdl` part for `table`.
+pub(super) fn find_table_file(parts: &[(String, String)], table: &str) -> Result<usize> {
+    parts
+        .iter()
+        .position(|(p, c)| is_table_tmdl(p) && tmdl_table_name(c).as_deref() == Some(table))
+        .ok_or_else(|| {
+            crate::errors::FabioError::with_hint(
+                crate::errors::ErrorCode::NotFound,
+                format!("Table '{table}' not found in the model definition."),
+                "List tables with `fabio semantic-model list-tables`.".to_string(),
+            )
+            .into()
+        })
+}
+
+/// Quote a TMDL identifier if it needs quoting (contains a space or other
+/// characters that break a bare identifier). A bare alphanumeric/underscore name
+/// is returned as-is; everything else is single-quoted.
+pub(super) fn quote_tmdl_name(name: &str) -> String {
+    let bare = !name.is_empty()
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && !name.chars().next().is_some_and(|c| c.is_ascii_digit());
+    if bare {
+        name.to_string()
+    } else {
+        format!("'{}'", name.replace('\'', "''"))
+    }
+}
+
+/// A `Table.Column` TMDL reference, quoting each part as needed.
+pub(super) fn column_ref(table: &str, column: &str) -> String {
+    format!("{}.{}", quote_tmdl_name(table), quote_tmdl_name(column))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quote_tmdl_name_bare_vs_quoted() {
+        assert_eq!(quote_tmdl_name("Sales"), "Sales");
+        assert_eq!(quote_tmdl_name("Sales_2"), "Sales_2");
+        assert_eq!(quote_tmdl_name("Sales Amount"), "'Sales Amount'");
+        assert_eq!(quote_tmdl_name("2024"), "'2024'");
+        assert_eq!(quote_tmdl_name("O'Brien"), "'O''Brien'");
+    }
+
+    #[test]
+    fn column_ref_quotes_each_part() {
+        assert_eq!(column_ref("Sales", "Amount"), "Sales.Amount");
+        assert_eq!(
+            column_ref("Sales Fact", "Net Amount"),
+            "'Sales Fact'.'Net Amount'"
+        );
+    }
+
+    #[test]
+    fn upsert_and_remove_part() {
+        let parts = vec![("model.tmdl".to_string(), "x".to_string())];
+        let up = upsert_part(&parts, "definition/relationships.tmdl", "r");
+        assert_eq!(up.len(), 2);
+        let up2 = upsert_part(&up, "definition/relationships.tmdl", "r2");
+        assert_eq!(up2.len(), 2);
+        assert_eq!(
+            part_content(&up2, "definition/relationships.tmdl"),
+            Some("r2")
+        );
+        let rm = remove_part(&up2, "definition/relationships.tmdl");
+        assert_eq!(rm.len(), 1);
+    }
+}

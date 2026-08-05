@@ -661,6 +661,272 @@ fn semantic_model_authoring_lifecycle() {
         .success();
 }
 
+// ─── Relationships: add / update / delete ────────────────────────────────────
+
+/// Model.bim with three tables (Customer, Product, Sales) and NO relationships,
+/// so the relationship commands can build them from scratch.
+fn three_table_model_bim() -> String {
+    serde_json::json!({
+        "compatibilityLevel": 1604,
+        "model": {
+            "culture": "en-US",
+            "defaultPowerBIDataSourceVersion": "powerBI_V3",
+            "tables": [
+                {
+                    "name": "Customer",
+                    "columns": [{"name": "CustomerKey", "dataType": "int64", "sourceColumn": "CustomerKey"}],
+                    "partitions": [{"name": "Customer", "source": {"type": "m", "expression": "let Source = #table({\"CustomerKey\"}, {{1}}) in Source"}}]
+                },
+                {
+                    "name": "Product",
+                    "columns": [{"name": "ProductKey", "dataType": "int64", "sourceColumn": "ProductKey"}],
+                    "partitions": [{"name": "Product", "source": {"type": "m", "expression": "let Source = #table({\"ProductKey\"}, {{1}}) in Source"}}]
+                },
+                {
+                    "name": "Sales",
+                    "columns": [
+                        {"name": "CustomerKey", "dataType": "int64", "sourceColumn": "CustomerKey"},
+                        {"name": "ProductKey", "dataType": "int64", "sourceColumn": "ProductKey"},
+                        {"name": "Amount", "dataType": "double", "sourceColumn": "Amount"}
+                    ],
+                    "partitions": [{"name": "Sales", "source": {"type": "m", "expression": "let Source = #table({\"CustomerKey\",\"ProductKey\",\"Amount\"}, {{1,1,10.0}}) in Source"}}]
+                }
+            ]
+        }
+    })
+    .to_string()
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_relationship_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("sm_rel");
+
+    let mut tmp = NamedTempFile::with_suffix(".bim").unwrap();
+    tmp.write_all(three_table_model_bim().as_bytes()).unwrap();
+    let file_path = tmp.path().to_str().unwrap().to_string();
+
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--file",
+            &file_path,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let sm_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // ── add-relationship (dry-run) ──────────────────────────────────────
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "add-relationship",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--from-table",
+            "Sales",
+            "--from-column",
+            "CustomerKey",
+            "--to-table",
+            "Customer",
+            "--to-column",
+            "CustomerKey",
+            "--dry-run",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&assert))["dry_run"], true);
+
+    // ── add-relationship (live) — Customer join ─────────────────────────
+    fabio()
+        .args([
+            "semantic-model",
+            "add-relationship",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--from-table",
+            "Sales",
+            "--from-column",
+            "CustomerKey",
+            "--to-table",
+            "Customer",
+            "--to-column",
+            "CustomerKey",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // ── add-relationship (live) — Product join, bidirectional ───────────
+    fabio()
+        .args([
+            "semantic-model",
+            "add-relationship",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--from-table",
+            "Sales",
+            "--from-column",
+            "ProductKey",
+            "--to-table",
+            "Product",
+            "--to-column",
+            "ProductKey",
+            "--cross-filter",
+            "bothDirections",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // ── update-relationship: make the Customer join inactive ────────────
+    fabio()
+        .args([
+            "semantic-model",
+            "update-relationship",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--from-table",
+            "Sales",
+            "--from-column",
+            "CustomerKey",
+            "--to-table",
+            "Customer",
+            "--to-column",
+            "CustomerKey",
+            "--inactive",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // ── Verify via the round-tripped definition ─────────────────────────
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "get-definition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let parts = data["definition"]["parts"].as_array().unwrap();
+    let rels = parts
+        .iter()
+        .find(|p| p["path"].as_str() == Some("definition/relationships.tmdl"))
+        .and_then(|p| p["payload"].as_str())
+        .map(|b| {
+            String::from_utf8(base64::engine::general_purpose::STANDARD.decode(b).unwrap()).unwrap()
+        })
+        .expect("relationships.tmdl part");
+    assert!(
+        rels.contains("fromColumn: Sales.CustomerKey"),
+        "rels:\n{rels}"
+    );
+    assert!(
+        rels.contains("fromColumn: Sales.ProductKey"),
+        "rels:\n{rels}"
+    );
+    assert!(
+        rels.contains("crossFilteringBehavior: bothDirections"),
+        "rels:\n{rels}"
+    );
+    assert!(rels.contains("isActive: false"), "rels:\n{rels}");
+
+    // ── delete-relationship: the Product join, by columns ───────────────
+    fabio()
+        .args([
+            "semantic-model",
+            "delete-relationship",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--from-table",
+            "Sales",
+            "--from-column",
+            "ProductKey",
+            "--to-table",
+            "Product",
+            "--to-column",
+            "ProductKey",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // ── delete a nonexistent relationship → NOT_FOUND ───────────────────
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "delete-relationship",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--relationship-id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert_eq!(error_json(&stderr)["error"]["code"], "NOT_FOUND");
+
+    // ── no selector → INVALID_INPUT (offline) ───────────────────────────
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "delete-relationship",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert_eq!(error_json(&stderr)["error"]["code"], "INVALID_INPUT");
+
+    // ── Cleanup ─────────────────────────────────────────────────────────
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+}
+
 // ─── Dry Run ─────────────────────────────────────────────────────────────────
 
 #[test]

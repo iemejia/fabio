@@ -16,90 +16,17 @@
 use std::fmt::Write as _;
 
 use anyhow::{Result, bail};
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
+use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
-use super::analyze::{decode_parts, strip_tmdl_name, tab_indent};
-
-// ── definition round-trip plumbing ────────────────────────────────────────────
-
-async fn fetch_parts(
-    client: &FabricClient,
-    workspace: &str,
-    id: &str,
-    op: &str,
-) -> Result<Vec<(String, String)>> {
-    let def = client
-        .post(
-            &format!("/workspaces/{workspace}/semanticModels/{id}/getDefinition"),
-            &serde_json::json!({}),
-            true,
-        )
-        .await
-        .map_err(|e| enrich_forbidden(e, op, "Contributor"))?;
-    Ok(decode_parts(&def))
-}
-
-async fn push_parts(
-    client: &FabricClient,
-    workspace: &str,
-    id: &str,
-    parts: &[(String, String)],
-    op: &str,
-) -> Result<()> {
-    let definition_parts: Vec<Value> = parts
-        .iter()
-        .map(|(path, content)| {
-            serde_json::json!({
-                "path": path,
-                "payload": BASE64.encode(content.as_bytes()),
-                "payloadType": "InlineBase64"
-            })
-        })
-        .collect();
-    client
-        .post(
-            &format!("/workspaces/{workspace}/semanticModels/{id}/updateDefinition"),
-            &serde_json::json!({ "definition": { "parts": definition_parts } }),
-            true,
-        )
-        .await
-        .map_err(|e| enrich_forbidden(e, op, "Contributor"))?;
-    Ok(())
-}
-
-fn is_table_tmdl(path: &str) -> bool {
-    path.starts_with("definition/tables/")
-        && std::path::Path::new(path)
-            .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("tmdl"))
-}
-
-/// The logical table name declared in a `definition/tables/<T>.tmdl` file.
-fn tmdl_table_name(content: &str) -> Option<String> {
-    content
-        .lines()
-        .find(|l| tab_indent(l) == 0 && l.trim_start().starts_with("table "))
-        .map(|l| strip_tmdl_name(&l.trim_start()[6..]))
-}
-
-/// The object name declared by a `<keyword> <name>[ = …]` line (quotes stripped).
-fn decl_name(trimmed: &str, keyword: &str) -> Option<String> {
-    let rest = trimmed.strip_prefix(keyword)?.strip_prefix(' ')?;
-    let name_part = if keyword == "measure" {
-        rest.split('=').next().unwrap_or(rest)
-    } else {
-        rest
-    };
-    let n = strip_tmdl_name(name_part);
-    (!n.is_empty()).then_some(n)
-}
+use super::analyze::tab_indent;
+use super::tmdl::{
+    decl_name, fetch_parts, find_table_file, is_table_tmdl, push_parts, replace_part,
+};
 
 // ── set-description ────────────────────────────────────────────────────────────
 
@@ -712,20 +639,6 @@ fn update_measure_bim(bim: &str, measure: &str, fields: &MeasureFields) -> Resul
 
 // ── lookup helpers ────────────────────────────────────────────────────────────
 
-fn find_table_file(parts: &[(String, String)], table: &str) -> Result<usize> {
-    parts
-        .iter()
-        .position(|(p, c)| is_table_tmdl(p) && tmdl_table_name(c).as_deref() == Some(table))
-        .ok_or_else(|| {
-            FabioError::with_hint(
-                ErrorCode::NotFound,
-                format!("Table '{table}' not found in the model definition."),
-                "List tables with `fabio semantic-model list-tables`.".to_string(),
-            )
-            .into()
-        })
-}
-
 fn find_measure_file(parts: &[(String, String)], measure: &str) -> Result<usize> {
     parts
         .iter()
@@ -770,19 +683,6 @@ fn measure_exists(parts: &[(String, String)], measure: &str) -> bool {
     parts
         .iter()
         .any(|(p, c)| is_table_tmdl(p) && tmdl_has_measure(c, measure))
-}
-
-fn replace_part(parts: &[(String, String)], path: &str, content: &str) -> Vec<(String, String)> {
-    parts
-        .iter()
-        .map(|(p, c)| {
-            if p == path {
-                (p.clone(), content.to_string())
-            } else {
-                (p.clone(), c.clone())
-            }
-        })
-        .collect()
 }
 
 #[cfg(test)]
