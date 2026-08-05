@@ -251,22 +251,27 @@ pub(super) async fn restore_workspace(
     Ok(())
 }
 
-pub(super) async fn list_network_policies(cli: &Cli, client: &FabricClient) -> Result<()> {
+pub(super) async fn list_network_policies(
+    cli: &Cli,
+    client: &FabricClient,
+    filter: Option<&str>,
+) -> Result<()> {
+    let mut url = "/admin/workspaces/networking/communicationpolicies".to_string();
+    if let Some(f) = filter {
+        url.push_str("?filter=");
+        url.push_str(&urlencoding::encode(f));
+    }
+
     let resp = client
-        .get_list(
-            "/admin/workspaces/networking/communicationpolicies",
-            "value",
-            cli.all,
-            cli.continuation_token.as_deref(),
-        )
+        .get_list(&url, "value", cli.all, cli.continuation_token.as_deref())
         .await?;
 
     output::render_list_with_token(
         cli,
         &resp.items,
-        &["id", "workspaceId", "policyType"],
-        &["ID", "WORKSPACE", "TYPE"],
-        "id",
+        &["workspaceId", "workspaceName", "workspaceType"],
+        &["WORKSPACE ID", "WORKSPACE NAME", "TYPE"],
+        "workspaceId",
         resp.continuation_token.as_deref(),
     );
     Ok(())

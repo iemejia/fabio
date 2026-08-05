@@ -77,6 +77,11 @@
       "optionalParts": [".platform"],
       "note": "map.json holds the geospatial map definition (layers, data bindings)."
     },
+    "Plan": {
+      "requiredParts": ["connectedPlanning/infobridge.json"],
+      "optionalParts": [".platform"],
+      "note": "Format is PlanV1. connectedPlanning/infobridge.json is the canonical part path observed in the Fabric REST API spec examples; definition is optional on create (omit for an empty plan)."
+    },
     "GraphModel": {
       "requiredParts": ["GraphModel.json"],
       "optionalParts": [".platform"],

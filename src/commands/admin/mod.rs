@@ -210,7 +210,12 @@ pub enum AdminCommand {
     },
     /// List network communication policies
     #[command(display_order = 37)]
-    ListNetworkPolicies,
+    ListNetworkPolicies {
+        /// Filter by policy direction (e.g. "inbound/publicAccessRules/defaultAction eq 'deny'",
+        /// "outbound/publicAccessRules/defaultAction eq 'deny'", or both combined with `or`)
+        #[arg(long)]
+        filter: Option<String>,
+    },
 
     // ── Items ────────────────────────────────────────────────────────────
     /// List items (admin view)
@@ -588,7 +593,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &AdminCommand) -
             name,
             capacity_id,
         } => workspaces::restore_workspace(cli, client, workspace, name, capacity_id).await,
-        AdminCommand::ListNetworkPolicies => workspaces::list_network_policies(cli, client).await,
+        AdminCommand::ListNetworkPolicies { filter } => {
+            workspaces::list_network_policies(cli, client, filter.as_deref()).await
+        }
         // Items
         AdminCommand::ListItems => items::list_items(cli, client).await,
         AdminCommand::ShowItem { workspace, item_id } => {

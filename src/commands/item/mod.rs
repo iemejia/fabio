@@ -917,6 +917,7 @@ const KNOWN_ITEM_TYPES: &[&str] = &[
     "Notebook",
     "Ontology",
     "PaginatedReport",
+    "Plan",
     "Reflex",
     "Report",
     "SQLEndpoint",

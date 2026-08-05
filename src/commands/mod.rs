@@ -58,6 +58,7 @@ pub mod operations_agent;
 pub mod org_app;
 pub mod org_app_audience;
 pub mod paginated_report;
+pub mod plan;
 pub mod powerbi_export;
 pub mod profile;
 pub mod query_input;
@@ -188,6 +189,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
             variable_library::execute(&cli, &client, command).await
         }
         Command::Map { command } => map::execute(&cli, &client, command).await,
+        Command::Plan { command } => plan::execute(&cli, &client, command).await,
         Command::GraphQuerySet { command } => {
             graph_query_set::execute(&cli, &client, command).await
         }
@@ -433,6 +435,7 @@ fn extract_command_path(cli: &Cli) -> String {
         Command::CosmosDbDatabase { .. } => "cosmos-db-database",
         Command::SnowflakeDatabase { .. } => "snowflake-database",
         Command::Map { .. } => "map",
+        Command::Plan { .. } => "plan",
         Command::Connection { .. } => "connection",
         Command::DeploymentPipeline { .. } => "deployment-pipeline",
         Command::Domain { .. } => "domain",
