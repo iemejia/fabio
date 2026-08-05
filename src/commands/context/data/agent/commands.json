@@ -9856,6 +9856,42 @@
         "returns": "void",
         "destructive": true
       },
+      "scaffold": {
+        "description": "Scaffold a complete PBIR report from a compact JSON spec (pages + visuals) and create it — or write the PBIR folder to disk with --out",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Report display name (when creating)"
+          },
+          "--spec": {
+            "type": "string",
+            "required": true,
+            "description": "Report spec JSON (inline, or @file, or @- for stdin)"
+          },
+          "--dataset": {
+            "type": "string",
+            "required": true,
+            "description": "Dataset / semantic model ID to bind the report to"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Optional description (when creating)"
+          },
+          "--out": {
+            "type": "string",
+            "description": "Write the PBIR folder to this directory instead of creating the report"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
       "publish-to-web": {
         "description": "Publish a report to the web (generates a publicly accessible embed URL)",
         "flags": {

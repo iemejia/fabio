@@ -344,6 +344,39 @@ pub enum ReportCommand {
         #[arg(long)]
         name: String,
     },
+    /// Scaffold a complete PBIR report from a compact JSON spec (pages + visuals)
+    /// and create it — or write the PBIR folder to disk with --out.
+    ///
+    /// The spec is `{"pages":[{"displayName":..,"visuals":[{"type":..}]}]}` where
+    /// each visual has a `type` and, for data-bound visuals, `category` /
+    /// `measure(s)` fields (Table.Column or Sum(Table.Column)); a textbox uses
+    /// `text`. See `fabio context schema Report`.
+    #[command(display_order = 9)]
+    Scaffold {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Report display name (when creating)
+        #[arg(long)]
+        name: String,
+
+        /// Report spec JSON (inline, or @file, or @- for stdin)
+        #[arg(long)]
+        spec: String,
+
+        /// Dataset / semantic model ID to bind the report to
+        #[arg(long)]
+        dataset: String,
+
+        /// Optional description (when creating)
+        #[arg(long)]
+        description: Option<String>,
+
+        /// Write the PBIR folder to this directory instead of creating the report
+        #[arg(long)]
+        out: Option<String>,
+    },
 
     // ── Sharing & Publishing ─────────────────────────────────────────────
     /// Publish a report to the web (generates a publicly accessible embed URL)
@@ -530,6 +563,40 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) 
             page,
             name,
         } => authoring::delete_visual(cli, client, workspace, id, page, name).await,
+        ReportCommand::Scaffold {
+            workspace,
+            name,
+            spec,
+            dataset,
+            description,
+            out,
+        } => {
+            let spec_str = crate::commands::query_input::resolve_query_input(
+                Some(spec),
+                "JSON",
+                "--spec",
+                r#"{"pages":[{"displayName":"Overview","visuals":[{"type":"card","measure":"Sum(Sales.Revenue)"}]}]}"#,
+            )?;
+            let spec_json: Value = serde_json::from_str(&spec_str).map_err(|e| {
+                crate::errors::FabioError::with_hint(
+                    crate::errors::ErrorCode::InvalidInput,
+                    format!("--spec is not valid JSON: {e}"),
+                    r#"e.g. --spec '{"pages":[{"displayName":"Overview","visuals":[{"type":"card","measure":"Sum(Sales.Revenue)"}]}]}'"#
+                        .to_string(),
+                )
+            })?;
+            authoring::scaffold(
+                cli,
+                client,
+                workspace,
+                name,
+                &spec_json,
+                dataset,
+                out.as_deref(),
+                description.as_deref(),
+            )
+            .await
+        }
         ReportCommand::PublishToWeb { workspace, id } => {
             publish_to_web(cli, client, workspace, id).await
         }

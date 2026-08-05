@@ -1941,6 +1941,28 @@ tests:
       - type: icontains
         value: "--name"
 
+  - description: "Power BI: scaffold a full report from a page/visual spec"
+    vars:
+      user_query: "Generate a brand new Power BI report called 'Sales Overview' with one page containing a card and a bar chart, bound to semantic model sm-001 in workspace ws-001"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('report scaffold')
+        metric: report-scaffold
+      - type: icontains
+        value: "--dataset"
+      - type: icontains
+        value: "--spec"
+
+  - description: "Power BI: add a visual to an existing report page"
+    vars:
+      user_query: "Add a bar chart to the existing report rpt-001 in workspace ws-001 showing Sum(Sales.Revenue) by Sales.Country"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('report add-visual')
+        metric: report-add-visual
+
   # ============================================================
   # SCENARIO: Safe Deploy with Rename Detection (Scenario 3)
   # Based on fabio-comparison-scenarios: deploy + rename

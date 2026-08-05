@@ -1040,3 +1040,136 @@ fn report_visual_authoring_lifecycle() {
         .assert()
         .success();
 }
+
+/// `report scaffold`: generate a full PBIR report from a compact spec, both to
+/// disk (--out, validated offline) and by creating it directly, then prove it
+/// renders by exporting to PDF. Cleans up report + model.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn report_scaffold_lifecycle() {
+    use std::io::Write;
+
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.dest_workspace;
+
+    // Model with data.
+    let dir = tempfile::tempdir().unwrap();
+    let bim = dir.path().join("model.bim");
+    let mut f = std::fs::File::create(&bim).unwrap();
+    f.write_all(
+        br#"{"compatibilityLevel":1604,"model":{"defaultPowerBIDataSourceVersion":"powerBI_V3","culture":"en-US","tables":[{"name":"T","columns":[{"name":"Category","dataType":"string","sourceColumn":"[Category]","type":"calculatedTableColumn"},{"name":"Amount","dataType":"int64","sourceColumn":"[Amount]","type":"calculatedTableColumn"}],"partitions":[{"name":"T","mode":"import","source":{"type":"calculated","expression":"DATATABLE(\"Category\", STRING, \"Amount\", INTEGER, {{\"A\", 10}, {\"B\", 20}})"}}]}]}}"#,
+    )
+    .unwrap();
+    let sm_assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            ws,
+            "--name",
+            "fabio-e2e-scaffold-model",
+            "--file",
+            bim.to_str().unwrap(),
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let sm_id = parse_json(&sm_assert)["data"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let spec = r#"{"pages":[{"displayName":"Overview","visuals":[{"type":"textbox","text":"Report"},{"type":"card","measure":"Sum(T.Amount)","title":"Total"},{"type":"clusteredBarChart","category":"T.Category","measures":["Sum(T.Amount)"],"title":"By Category"}]}]}"#;
+    let _ = &sm_id;
+
+    // 1. scaffold --out → a folder; validate it offline.
+    let outdir = dir.path().join("scaffolded");
+    fabio()
+        .args([
+            "report",
+            "scaffold",
+            "--workspace",
+            ws,
+            "--name",
+            "x",
+            "--dataset",
+            &sm_id,
+            "--spec",
+            spec,
+            "--out",
+            outdir.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    fabio()
+        .args(["report", "validate", "--source", outdir.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // 2. scaffold → create the report directly.
+    let sc = fabio()
+        .args([
+            "report",
+            "scaffold",
+            "--workspace",
+            ws,
+            "--name",
+            "fabio-e2e-scaffold-report",
+            "--dataset",
+            &sm_id,
+            "--spec",
+            spec,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let rep_id = parse_json(&sc)["data"]["id"].as_str().unwrap().to_string();
+
+    // 3. Three visuals present.
+    let lv = fabio()
+        .args(["report", "list-visuals", "--workspace", ws, "--id", &rep_id])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&lv)).as_array().unwrap().len(), 3);
+
+    // 4. Renders (export to PDF).
+    let pdf = dir.path().join("out.pdf");
+    let ex = fabio()
+        .args([
+            "report",
+            "export",
+            "--workspace",
+            ws,
+            "--id",
+            &rep_id,
+            "--format",
+            "PDF",
+            "--out",
+            pdf.to_str().unwrap(),
+            "--timeout",
+            "180",
+        ])
+        .timeout(std::time::Duration::from_mins(4))
+        .assert()
+        .success();
+    assert_eq!(parse_json(&ex)["data"]["status"], "Succeeded");
+
+    // Cleanup.
+    fabio()
+        .args(["report", "delete", "--workspace", ws, "--id", &rep_id])
+        .assert()
+        .success();
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            ws,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+}

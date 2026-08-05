@@ -836,6 +836,218 @@ pub(super) async fn delete_visual(
     Ok(())
 }
 
+// ── scaffold (full PBIR from a compact spec) ──────────────────────────────────
+
+/// A minimal, valid theme resource + report.json referencing it. The Fabric API
+/// requires `report.json` to carry `layoutOptimization` + a resolvable
+/// `themeCollection`, so a from-scratch report must ship a base theme.
+const THEME_JSON: &str = r##"{"name":"fabioTheme","dataColors":["#118DFF","#12239E","#E66C37","#6B007B","#E044A7","#744EC2","#D9B300","#D64550"],"background":"#FFFFFF","foreground":"#000000","tableAccent":"#118DFF"}"##;
+const THEME_PATH: &str = "StaticResources/SharedResources/BaseThemes/fabioTheme.json";
+
+fn report_json() -> String {
+    serde_json::json!({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/report/1.0.0/schema.json",
+        "layoutOptimization": "None",
+        "themeCollection": {
+            "baseTheme": { "name": "fabioTheme", "reportVersionAtImport": "5.55", "type": "SharedResources" }
+        },
+        "resourcePackages": [{
+            "name": "SharedResources",
+            "type": "SharedResources",
+            "items": [{ "name": "fabioTheme", "path": "BaseThemes/fabioTheme.json", "type": "BaseTheme" }]
+        }]
+    })
+    .to_string()
+}
+
+fn version_json() -> String {
+    serde_json::json!({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/versionMetadata/1.0.0/schema.json",
+        "version": "2.0.0"
+    })
+    .to_string()
+}
+
+fn definition_pbir(dataset_id: &str) -> String {
+    serde_json::json!({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definitionProperties/2.0.0/schema.json",
+        "version": "4.0",
+        "datasetReference": {
+            "byConnection": { "connectionString": format!("semanticmodelid={dataset_id}") }
+        }
+    })
+    .to_string()
+}
+
+/// Build the complete set of PBIR parts for a report from a compact spec:
+/// `{"pages":[{"displayName","name"?,"active"?,"visuals":[{"type",...}]}]}`.
+pub(super) fn scaffold_parts(spec: &Value, dataset_id: &str) -> Result<Vec<(String, String)>> {
+    let pages = spec.get("pages").and_then(Value::as_array).ok_or_else(|| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Report spec must have a `pages` array.".to_string(),
+            r#"e.g. {"pages":[{"displayName":"Overview","visuals":[{"type":"card","measure":"Sum(Sales.Revenue)"}]}]}"#
+                .to_string(),
+        )
+    })?;
+    if pages.is_empty() {
+        return Err(FabioError::invalid_input("Report spec has no pages".to_string()).into());
+    }
+
+    let mut parts: Vec<(String, String)> = vec![
+        ("definition.pbir".to_string(), definition_pbir(dataset_id)),
+        ("definition/version.json".to_string(), version_json()),
+        ("definition/report.json".to_string(), report_json()),
+        (THEME_PATH.to_string(), THEME_JSON.to_string()),
+    ];
+
+    let mut page_order: Vec<String> = Vec::new();
+    let mut active: Option<String> = None;
+
+    for (i, page) in pages.iter().enumerate() {
+        let display = page
+            .get("displayName")
+            .and_then(Value::as_str)
+            .unwrap_or("Page");
+        let pname = page
+            .get("name")
+            .and_then(Value::as_str)
+            .map_or_else(new_object_name, str::to_owned);
+        page_order.push(pname.clone());
+        if page.get("active").and_then(Value::as_bool) == Some(true) || (active.is_none() && i == 0)
+        {
+            active = Some(pname.clone());
+        }
+        parts.push((page_json_path(&pname), build_page_json(&pname, display)));
+
+        if let Some(visuals) = page.get("visuals").and_then(Value::as_array) {
+            for (vi, v) in visuals.iter().enumerate() {
+                let vtype = v.get("type").and_then(Value::as_str).ok_or_else(|| {
+                    FabioError::invalid_input("each visual needs a `type`".to_string())
+                })?;
+                let vname = v
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map_or_else(new_object_name, str::to_owned);
+                // Owned locals so VisualSpec's borrows outlive the call.
+                let measures: Vec<String> = visual_measures(v);
+                let vspec = VisualSpec {
+                    visual_type: vtype,
+                    name: Some(&vname),
+                    title: v.get("title").and_then(Value::as_str),
+                    text: v.get("text").and_then(Value::as_str),
+                    category: v.get("category").and_then(Value::as_str),
+                    measures: &measures,
+                    x: v.get("x").and_then(Value::as_f64),
+                    y: v.get("y").and_then(Value::as_f64),
+                    width: v.get("width").and_then(Value::as_f64),
+                    height: v.get("height").and_then(Value::as_f64),
+                };
+                let vjson = build_visual_json(&vname, i64::try_from(vi).unwrap_or(0) + 1, &vspec)?;
+                parts.push((
+                    format!("definition/pages/{pname}/visuals/{vname}/visual.json"),
+                    vjson,
+                ));
+            }
+        }
+    }
+
+    let mut pages_meta = serde_json::Map::new();
+    pages_meta.insert("$schema".to_string(), Value::from(PAGES_SCHEMA));
+    pages_meta.insert(
+        "pageOrder".to_string(),
+        Value::Array(page_order.into_iter().map(Value::from).collect()),
+    );
+    if let Some(a) = active {
+        pages_meta.insert("activePageName".to_string(), Value::from(a));
+    }
+    parts.push((
+        PAGES_JSON.to_string(),
+        serde_json::to_string_pretty(&Value::Object(pages_meta)).unwrap_or_default(),
+    ));
+
+    Ok(parts)
+}
+
+/// Read a visual's value fields from either `measures: [...]` or a single `measure`.
+fn visual_measures(v: &Value) -> Vec<String> {
+    if let Some(arr) = v.get("measures").and_then(Value::as_array) {
+        return arr
+            .iter()
+            .filter_map(|m| m.as_str().map(str::to_owned))
+            .collect();
+    }
+    v.get("measure")
+        .and_then(Value::as_str)
+        .map(|m| vec![m.to_string()])
+        .unwrap_or_default()
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn scaffold(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    name: &str,
+    spec: &Value,
+    dataset: &str,
+    out: Option<&str>,
+    description: Option<&str>,
+) -> Result<()> {
+    let op = "report scaffold";
+    let parts = scaffold_parts(spec, dataset)?;
+
+    // Offline mode: write the PBIR folder to disk for inspection / editing.
+    if let Some(dir) = out {
+        for (path, content) in &parts {
+            let full = std::path::Path::new(dir).join(path);
+            if let Some(parent) = full.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&full, content)?;
+        }
+        output::render_object(
+            cli,
+            &serde_json::json!({ "status": "scaffolded", "out": dir, "parts": parts.len() }),
+            "status",
+        );
+        return Ok(());
+    }
+
+    if output::dry_run_guard(
+        cli,
+        op,
+        &serde_json::json!({ "workspace": workspace, "name": name, "dataset": dataset, "parts": parts.len() }),
+    ) {
+        return Ok(());
+    }
+
+    // Create the report from the scaffolded parts.
+    let definition_parts: Vec<Value> = parts
+        .iter()
+        .map(|(path, content)| {
+            serde_json::json!({
+                "path": path,
+                "payload": BASE64.encode(content.as_bytes()),
+                "payloadType": "InlineBase64"
+            })
+        })
+        .collect();
+    let mut body = serde_json::json!({
+        "displayName": name,
+        "definition": { "parts": definition_parts }
+    });
+    if let Some(d) = description {
+        body["description"] = Value::from(d);
+    }
+    let data = client
+        .post(&format!("/workspaces/{workspace}/reports"), &body, true)
+        .await
+        .map_err(|e| enrich_forbidden(e, op, "Member"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
 // ── shared ────────────────────────────────────────────────────────────────────
 
 pub(super) fn page_not_found(name: &str) -> anyhow::Error {
@@ -1096,5 +1308,71 @@ mod tests {
             .as_array()
             .unwrap();
         assert_eq!(projs.len(), 2);
+    }
+
+    #[test]
+    fn scaffold_parts_builds_full_pbir() {
+        let spec: Value = serde_json::json!({
+            "pages": [
+                {
+                    "displayName": "Overview",
+                    "name": "p1",
+                    "visuals": [
+                        {"type": "textbox", "text": "Hi"},
+                        {"type": "card", "measure": "Sum(Sales.Revenue)", "title": "Revenue"},
+                        {"type": "clusteredBarChart", "category": "Sales.Country", "measures": ["Sum(Sales.Revenue)"]}
+                    ]
+                },
+                {"displayName": "Detail", "active": true}
+            ]
+        });
+        let parts = scaffold_parts(&spec, "model-123").unwrap();
+        let paths: Vec<&str> = parts.iter().map(|(p, _)| p.as_str()).collect();
+        assert!(paths.contains(&"definition.pbir"));
+        assert!(paths.contains(&"definition/report.json"));
+        assert!(paths.contains(&"definition/version.json"));
+        assert!(paths.contains(&"definition/pages/pages.json"));
+        assert!(paths.contains(&"definition/pages/p1/page.json"));
+        assert!(
+            paths
+                .iter()
+                .any(|p| p.starts_with("definition/pages/p1/visuals/")
+                    && p.ends_with("/visual.json"))
+        );
+        // 3 visuals on p1
+        assert_eq!(
+            paths
+                .iter()
+                .filter(|p| p.starts_with("definition/pages/p1/visuals/"))
+                .count(),
+            3
+        );
+        // definition.pbir binds the dataset.
+        let pbir = &parts
+            .iter()
+            .find(|(p, _)| p == "definition.pbir")
+            .unwrap()
+            .1;
+        assert!(pbir.contains("semanticmodelid=model-123"));
+        // pages.json: p1 first in order; the 2nd page (active:true) is active.
+        let pj: Value = serde_json::from_str(
+            &parts
+                .iter()
+                .find(|(p, _)| p == "definition/pages/pages.json")
+                .unwrap()
+                .1,
+        )
+        .unwrap();
+        assert_eq!(pj["pageOrder"][0], "p1");
+        assert_eq!(pj["pageOrder"].as_array().unwrap().len(), 2);
+        let active = pj["activePageName"].as_str().unwrap();
+        assert_ne!(active, "p1"); // the second page has active:true
+        assert!(!active.is_empty());
+    }
+
+    #[test]
+    fn scaffold_parts_rejects_empty() {
+        assert!(scaffold_parts(&serde_json::json!({}), "m").is_err());
+        assert!(scaffold_parts(&serde_json::json!({"pages": []}), "m").is_err());
     }
 }
