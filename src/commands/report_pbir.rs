@@ -7,6 +7,7 @@
 //! parts. This lets a coding agent generate PBIR files, validate them offline,
 //! and create/deploy them with fabio.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, bail};
@@ -14,6 +15,27 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::Serialize;
 use serde_json::Value;
+
+/// Service-enforced PBIR size limits (see projects-report docs).
+const MAX_PAGES: usize = 1000;
+const MAX_VISUALS_PER_PAGE: usize = 1000;
+
+/// A PBIR page/visual/bookmark folder name must be one or more word characters
+/// (letters, digits, underscores) or hyphens — otherwise Power BI Desktop
+/// ignores the folder and treats it as a private user file.
+fn is_valid_object_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// The `name` property declared inside a PBIR JSON file, if any.
+fn json_name(path: &Path) -> Option<String> {
+    let s = std::fs::read_to_string(path).ok()?;
+    let v: Value = serde_json::from_str(&s).ok()?;
+    v.get("name").and_then(Value::as_str).map(str::to_owned)
+}
 
 /// A single validation finding (error or warning) tied to a file.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -123,6 +145,28 @@ fn validate_pbir_definition(
         }
     }
 
+    // version.json `version` should be semver-shaped (e.g. "2.0.0").
+    let version_json = def.join("version.json");
+    if version_json.exists()
+        && let Ok(s) = std::fs::read_to_string(&version_json)
+        && let Ok(v) = serde_json::from_str::<Value>(&s)
+    {
+        *checks += 1;
+        match v.get("version").and_then(Value::as_str) {
+            Some(ver) if is_semverish(ver) => {}
+            Some(ver) => warnings.push(Finding::new(
+                "definition/version.json",
+                "VERSION_FORMAT",
+                format!("version `{ver}` is not a dotted semantic version (e.g. \"2.0.0\")"),
+            )),
+            None => errors.push(Finding::new(
+                "definition/version.json",
+                "MISSING_VERSION",
+                "version.json must have a `version`",
+            )),
+        }
+    }
+
     // pages/ folder with at least one page.json.
     *checks += 1;
     let pages = def.join("pages");
@@ -134,48 +178,68 @@ fn validate_pbir_definition(
         ));
         return;
     }
-    // pages.json is optional (page order / active page) but recommended.
-    let pages_json = pages.join("pages.json");
-    if pages_json.exists() {
-        check_pbir_json(
-            &pages_json,
-            "definition/pages/pages.json",
-            checks,
-            errors,
-            warnings,
-        );
-    } else {
-        warnings.push(Finding::new(
-            "definition/pages/pages.json",
-            "MISSING_RECOMMENDED",
-            "pages.json is missing (defines page order and active page)",
-        ));
-    }
 
-    let mut page_count = 0usize;
+    // Walk the page folders, collecting names for cross-reference checks.
+    let mut page_folders: Vec<String> = Vec::new();
+    let mut page_names: Vec<String> = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&pages) {
-        for entry in entries.flatten() {
-            let p = entry.path();
+        let mut sorted: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
+        sorted.sort();
+        for p in sorted {
             if !p.is_dir() {
                 continue;
             }
-            page_count += 1;
-            let page_name = p.file_name().unwrap_or_default().to_string_lossy();
-            let page_json = p.join("page.json");
+            let page_folder = p
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+            page_folders.push(page_folder.clone());
+
+            // Naming convention.
             *checks += 1;
-            let label = format!("definition/pages/{page_name}/page.json");
+            if !is_valid_object_name(&page_folder) {
+                warnings.push(Finding::new(
+                    &format!("definition/pages/{page_folder}"),
+                    "INVALID_OBJECT_NAME",
+                    "page folder name must be word characters or hyphens, else Power BI Desktop ignores it",
+                ));
+            }
+
+            let page_json = p.join("page.json");
+            let label = format!("definition/pages/{page_folder}/page.json");
+            *checks += 1;
             if page_json.exists() {
                 check_pbir_json(&page_json, &label, checks, errors, warnings);
+                match json_name(&page_json) {
+                    Some(n) => {
+                        if n != page_folder {
+                            warnings.push(Finding::new(
+                                &label,
+                                "PAGE_NAME_MISMATCH",
+                                format!("page.json `name` (\"{n}\") does not match its folder (\"{page_folder}\")"),
+                            ));
+                        }
+                        page_names.push(n);
+                    }
+                    None => warnings.push(Finding::new(
+                        &label,
+                        "MISSING_NAME",
+                        "page.json should declare a `name`",
+                    )),
+                }
             } else {
                 errors.push(Finding::new(
                     &label,
                     "MISSING_REQUIRED",
-                    format!("page `{page_name}` is missing its required page.json"),
+                    format!("page `{page_folder}` is missing its required page.json"),
                 ));
             }
 
-            // visuals/<visual>/visual.json (each visual.json is required if the folder exists).
+            // visuals/<visual>/visual.json
             let visuals = p.join("visuals");
+            let mut visual_names: HashSet<String> = HashSet::new();
+            let mut visual_count = 0usize;
             if visuals.is_dir()
                 && let Ok(ventries) = std::fs::read_dir(&visuals)
             {
@@ -184,31 +248,158 @@ fn validate_pbir_definition(
                     if !vp.is_dir() {
                         continue;
                     }
-                    let vname = vp.file_name().unwrap_or_default().to_string_lossy();
-                    let vjson = vp.join("visual.json");
-                    *checks += 1;
+                    visual_count += 1;
+                    let vfolder = vp
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned();
                     let vlabel =
-                        format!("definition/pages/{page_name}/visuals/{vname}/visual.json");
+                        format!("definition/pages/{page_folder}/visuals/{vfolder}/visual.json");
+                    *checks += 1;
+                    if !is_valid_object_name(&vfolder) {
+                        warnings.push(Finding::new(
+                            &format!("definition/pages/{page_folder}/visuals/{vfolder}"),
+                            "INVALID_OBJECT_NAME",
+                            "visual folder name must be word characters or hyphens",
+                        ));
+                    }
+                    let vjson = vp.join("visual.json");
                     if vjson.exists() {
                         check_pbir_json(&vjson, &vlabel, checks, errors, warnings);
+                        if let Some(n) = json_name(&vjson) {
+                            if n != vfolder {
+                                warnings.push(Finding::new(
+                                    &vlabel,
+                                    "VISUAL_NAME_MISMATCH",
+                                    format!("visual.json `name` (\"{n}\") does not match its folder (\"{vfolder}\")"),
+                                ));
+                            }
+                            if !visual_names.insert(n.clone()) {
+                                errors.push(Finding::new(
+                                    &vlabel,
+                                    "DUPLICATE_VISUAL_NAME",
+                                    format!("visual `name` \"{n}\" is duplicated on this page (names must be unique per page)"),
+                                ));
+                            }
+                        }
                     } else {
                         errors.push(Finding::new(
                             &vlabel,
                             "MISSING_REQUIRED",
-                            format!("visual `{vname}` is missing its required visual.json"),
+                            format!("visual `{vfolder}` is missing its required visual.json"),
                         ));
                     }
                 }
             }
+            if visual_count > MAX_VISUALS_PER_PAGE {
+                errors.push(Finding::new(
+                    &format!("definition/pages/{page_folder}"),
+                    "TOO_MANY_VISUALS",
+                    format!("page has {visual_count} visuals; the service limit is {MAX_VISUALS_PER_PAGE}"),
+                ));
+            }
         }
     }
-    if page_count == 0 {
+
+    if page_folders.is_empty() {
         errors.push(Finding::new(
             "definition/pages",
             "NO_PAGES",
             "a PBIR report must contain at least one page folder",
         ));
     }
+    if page_folders.len() > MAX_PAGES {
+        errors.push(Finding::new(
+            "definition/pages",
+            "TOO_MANY_PAGES",
+            format!(
+                "report has {} pages; the service limit is {MAX_PAGES}",
+                page_folders.len()
+            ),
+        ));
+    }
+    // Duplicate page names (across pages).
+    let mut seen: HashSet<&str> = HashSet::new();
+    for n in &page_names {
+        if !seen.insert(n.as_str()) {
+            errors.push(Finding::new(
+                "definition/pages",
+                "DUPLICATE_PAGE_NAME",
+                format!("page `name` \"{n}\" is used by more than one page (names must be unique)"),
+            ));
+        }
+    }
+
+    // pages.json cross-reference: activePageName + pageOrder must reference real pages.
+    let folder_set: HashSet<&str> = page_folders.iter().map(String::as_str).collect();
+    let pages_json = pages.join("pages.json");
+    if pages_json.exists()
+        && let Ok(s) = std::fs::read_to_string(&pages_json)
+        && let Ok(meta) = serde_json::from_str::<Value>(&s)
+    {
+        *checks += 1;
+        if let Some(active) = meta.get("activePageName").and_then(Value::as_str)
+            && !folder_set.contains(active)
+        {
+            errors.push(Finding::new(
+                "definition/pages/pages.json",
+                "ACTIVE_PAGE_NOT_FOUND",
+                format!("activePageName \"{active}\" does not match any page folder"),
+            ));
+        }
+        if let Some(order) = meta.get("pageOrder").and_then(Value::as_array) {
+            let order_set: HashSet<&str> = order.iter().filter_map(Value::as_str).collect();
+            for entry in &order_set {
+                if !folder_set.contains(*entry) {
+                    warnings.push(Finding::new(
+                        "definition/pages/pages.json",
+                        "DANGLING_PAGE_ORDER",
+                        format!("pageOrder entry \"{entry}\" does not match any page folder"),
+                    ));
+                }
+            }
+            for f in &page_folders {
+                if !order_set.contains(f.as_str()) {
+                    warnings.push(Finding::new(
+                        "definition/pages/pages.json",
+                        "PAGE_NOT_IN_ORDER",
+                        format!("page \"{f}\" is not listed in pageOrder"),
+                    ));
+                }
+            }
+        }
+    } else {
+        warnings.push(Finding::new(
+            "definition/pages/pages.json",
+            "MISSING_RECOMMENDED",
+            "pages.json is missing (defines page order and active page)",
+        ));
+    }
+
+    // report.json `defaultPage` annotation must reference a real page.
+    let report_json = def.join("report.json");
+    if report_json.exists()
+        && let Ok(s) = std::fs::read_to_string(&report_json)
+        && let Ok(rj) = serde_json::from_str::<Value>(&s)
+        && let Some(anns) = rj.get("annotations").and_then(Value::as_array)
+    {
+        for a in anns {
+            if a.get("name").and_then(Value::as_str) == Some("defaultPage")
+                && let Some(dp) = a.get("value").and_then(Value::as_str)
+                && !folder_set.contains(dp)
+            {
+                warnings.push(Finding::new(
+                    "definition/report.json",
+                    "DEFAULT_PAGE_NOT_FOUND",
+                    format!("defaultPage annotation \"{dp}\" does not match any page"),
+                ));
+            }
+        }
+    }
+
+    // Bookmarks (optional): validate each bookmark.json + bookmarks.json cross-ref.
+    validate_bookmarks(def, checks, errors, warnings);
 
     // Optional: report-level measures.
     let ext = def.join("reportExtensions.json");
@@ -220,6 +411,69 @@ fn validate_pbir_definition(
             errors,
             warnings,
         );
+    }
+}
+
+/// Accept a dotted numeric version like `2.0.0`, `1.1.0`, `4.0`.
+fn is_semverish(v: &str) -> bool {
+    let parts: Vec<&str> = v.split('.').collect();
+    (2..=3).contains(&parts.len())
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+}
+
+/// Validate the optional `bookmarks/` folder.
+fn validate_bookmarks(
+    def: &Path,
+    checks: &mut usize,
+    errors: &mut Vec<Finding>,
+    warnings: &mut Vec<Finding>,
+) {
+    let bookmarks = def.join("bookmarks");
+    if !bookmarks.is_dir() {
+        return;
+    }
+    let mut names: HashSet<String> = HashSet::new();
+    if let Ok(entries) = std::fs::read_dir(&bookmarks) {
+        for e in entries.flatten() {
+            let p = e.path();
+            let fname = p
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+            if p.is_file() && fname.ends_with(".bookmark.json") {
+                *checks += 1;
+                let label = format!("definition/bookmarks/{fname}");
+                check_pbir_json(&p, &label, checks, errors, warnings);
+                if let Some(n) = json_name(&p) {
+                    names.insert(n);
+                }
+            }
+        }
+    }
+    let meta = bookmarks.join("bookmarks.json");
+    if meta.exists()
+        && let Ok(s) = std::fs::read_to_string(&meta)
+        && let Ok(v) = serde_json::from_str::<Value>(&s)
+        && let Some(items) = v.get("items").and_then(Value::as_array)
+    {
+        // Each referenced bookmark name should have a file (top-level or in a group).
+        for it in items {
+            if let Some(n) = it.get("name").and_then(Value::as_str)
+                && !names.contains(n)
+                && it.get("children").is_none()
+            {
+                warnings.push(Finding::new(
+                    "definition/bookmarks/bookmarks.json",
+                    "DANGLING_BOOKMARK",
+                    format!(
+                        "bookmarks.json references \"{n}\" but no matching .bookmark.json exists"
+                    ),
+                ));
+            }
+        }
     }
 }
 
@@ -349,13 +603,22 @@ pub(super) fn validate_report_folder(dir: &Path) -> ReportValidation {
                 (false, true) => {
                     dataset_reference = Some("byConnection".to_owned());
                     let bc = &dr["byConnection"];
-                    if bc.get("connectionString").and_then(Value::as_str).is_none()
-                        && bc.get("pbiModelDatabaseName").is_none()
-                    {
+                    let conn = bc.get("connectionString").and_then(Value::as_str);
+                    if conn.is_none() && bc.get("pbiModelDatabaseName").is_none() {
                         warnings.push(Finding::new(
                             "definition.pbir",
                             "EMPTY_BYCONNECTION",
                             "byConnection has no connectionString / pbiModelDatabaseName",
+                        ));
+                    } else if let Some(cs) = conn
+                        && !cs.contains("semanticmodelid=")
+                        && !cs.to_ascii_lowercase().contains("data source")
+                        && bc.get("pbiModelDatabaseName").is_none()
+                    {
+                        warnings.push(Finding::new(
+                            "definition.pbir",
+                            "BYCONNECTION_MISSING_MODEL_ID",
+                            "byConnection connectionString should include `semanticmodelid=<id>` (or a Data Source) so a REST deploy can resolve the model",
                         ));
                     }
                 }
@@ -574,6 +837,100 @@ mod tests {
         assert!(r.valid, "expected valid, errors: {:?}", r.errors);
         assert_eq!(r.format.as_deref(), Some("PBIR"));
         assert_eq!(r.dataset_reference.as_deref(), Some("byConnection"));
+    }
+
+    #[test]
+    fn active_page_not_found_is_error() {
+        let dir = TempDir::new().unwrap();
+        make_pbir_report(dir.path());
+        write(
+            &dir.path().join("definition/pages/pages.json"),
+            r#"{"$schema":"x","pageOrder":["p1"],"activePageName":"ghost"}"#,
+        );
+        let r = validate_report_folder(dir.path());
+        assert!(!r.valid);
+        assert!(r.errors.iter().any(|e| e.code == "ACTIVE_PAGE_NOT_FOUND"));
+    }
+
+    #[test]
+    fn dangling_page_order_and_missing_in_order_warn() {
+        let dir = TempDir::new().unwrap();
+        make_pbir_report(dir.path());
+        write(
+            &dir.path().join("definition/pages/pages.json"),
+            r#"{"$schema":"x","pageOrder":["ghost"],"activePageName":"p1"}"#,
+        );
+        let r = validate_report_folder(dir.path());
+        assert!(r.valid, "these are warnings, not errors: {:?}", r.errors);
+        assert!(r.warnings.iter().any(|w| w.code == "DANGLING_PAGE_ORDER"));
+        assert!(r.warnings.iter().any(|w| w.code == "PAGE_NOT_IN_ORDER"));
+    }
+
+    #[test]
+    fn page_name_mismatch_warns() {
+        let dir = TempDir::new().unwrap();
+        make_pbir_report(dir.path());
+        write(
+            &dir.path().join("definition/pages/p1/page.json"),
+            r#"{"$schema":"x","name":"different"}"#,
+        );
+        let r = validate_report_folder(dir.path());
+        assert!(r.warnings.iter().any(|w| w.code == "PAGE_NAME_MISMATCH"));
+    }
+
+    #[test]
+    fn invalid_object_name_warns() {
+        let dir = TempDir::new().unwrap();
+        make_pbir_report(dir.path());
+        write(
+            &dir.path().join("definition/pages/bad name!/page.json"),
+            r#"{"$schema":"x","name":"bad name!"}"#,
+        );
+        let r = validate_report_folder(dir.path());
+        assert!(r.warnings.iter().any(|w| w.code == "INVALID_OBJECT_NAME"));
+    }
+
+    #[test]
+    fn byconnection_without_model_id_warns() {
+        let dir = TempDir::new().unwrap();
+        write(
+            &dir.path().join("definition.pbir"),
+            r#"{"$schema":"https://developer.microsoft.com/json-schemas/fabric/item/report/definitionProperties/2.0.0/schema.json","version":"4.0","datasetReference":{"byConnection":{"connectionString":"foo=bar"}}}"#,
+        );
+        write(&dir.path().join("report.json"), r#"{"sections":[]}"#);
+        let r = validate_report_folder(dir.path());
+        assert!(
+            r.warnings
+                .iter()
+                .any(|w| w.code == "BYCONNECTION_MISSING_MODEL_ID")
+        );
+    }
+
+    #[test]
+    fn duplicate_visual_name_is_error() {
+        let dir = TempDir::new().unwrap();
+        make_pbir_report(dir.path());
+        write(
+            &dir.path()
+                .join("definition/pages/p1/visuals/v1/visual.json"),
+            r#"{"$schema":"x","name":"dup"}"#,
+        );
+        write(
+            &dir.path()
+                .join("definition/pages/p1/visuals/v2/visual.json"),
+            r#"{"$schema":"x","name":"dup"}"#,
+        );
+        let r = validate_report_folder(dir.path());
+        assert!(!r.valid);
+        assert!(r.errors.iter().any(|e| e.code == "DUPLICATE_VISUAL_NAME"));
+    }
+
+    #[test]
+    fn is_valid_object_name_accepts_word_and_hyphen() {
+        assert!(is_valid_object_name("62018210e115c6493d6d"));
+        assert!(is_valid_object_name("Page_1-copy"));
+        assert!(!is_valid_object_name("bad name"));
+        assert!(!is_valid_object_name(""));
     }
 
     #[test]
