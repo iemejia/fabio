@@ -10084,6 +10084,52 @@
         "mutates": false,
         "returns": "list"
       },
+      "analyze": {
+        "description": "Analyze a model against best-practice rules (Best Practice Analyzer / Memory Analyzer over INFO.VIEW metadata) — descriptions, naming, implicit aggregation, duplicate measures, relationship hygiene, star schema, calculated columns, and (opt-in) high cardinality",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--with-cardinality": {
+            "type": "bool",
+            "description": "Also probe column cardinality via DISTINCTCOUNT (extra DAX; flags high-cardinality columns)"
+          },
+          "--severity": {
+            "type": "string",
+            "description": "Minimum severity to report: info, warning, error"
+          },
+          "--strict": {
+            "type": "bool",
+            "description": "Exit non-zero if any issue at/above the severity threshold is found (CI gate)"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "measure-dependencies": {
+        "description": "List each measure's dependencies (the measures/columns/tables its DAX references) — useful for including dependent objects in an AI data schema",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
       "update-parameters": {
         "description": "Update parameters of a semantic model",
         "flags": {

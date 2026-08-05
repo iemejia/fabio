@@ -100,7 +100,10 @@ fn strip_bracket_keys(rows: &[Value]) -> Vec<Value> {
 }
 
 /// Run a DAX query and return the first result table's rows.
-async fn run_dax_rows(
+/// Execute a DAX query and return its first result table's rows (raw, with DAX
+/// `[Bracket]` column keys). Public within the crate so other command modules
+/// (e.g. `analyze`) can run ad-hoc DAX such as `DISTINCTCOUNT` cardinality probes.
+pub async fn run_dax_rows(
     client: &FabricClient,
     workspace: &str,
     id: &str,

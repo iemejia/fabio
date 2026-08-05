@@ -1,0 +1,20 @@
+{
+  "name": "Semantic Model AI Readiness",
+  "description": "Optimize a Power BI semantic model and prepare it as a Fabric data agent source: run the Best Practice Analyzer, resolve measure dependencies, wire it to a data agent, and evaluate. Covers the reachable steps from Microsoft's 'Semantic model best practices for data agent' guidance.",
+  "prerequisites": [
+    "Authenticated via fabio auth login (or az login) with a SQL-scoped token in the credential chain",
+    "An existing Power BI semantic model (or generate one: fabio semantic-model generate --lakehouse ...)",
+    "For steps 4-6: a Fabric data agent and F2+ capacity"
+  ],
+  "steps": [
+    {"step_number": 1, "command": "fabio semantic-model analyze --workspace $WS_ID --id $SM_ID --with-cardinality", "description": "Best Practice Analyzer: flag missing descriptions, cryptic names, implicit aggregation, duplicate measures, ambiguous dates, relationship hygiene, non-star schema, calculated + high-cardinality columns. Fix the issues (descriptions, SummarizeBy=None on keys, star schema)."},
+    {"step_number": 2, "command": "fabio semantic-model analyze --workspace $WS_ID --id $SM_ID --severity warning --strict", "description": "Optional CI gate: fail (non-zero exit) if any warning/error remains after your fixes."},
+    {"step_number": 3, "command": "fabio semantic-model measure-dependencies --workspace $WS_ID --id $SM_ID", "description": "List each measure's dependent measures/columns/tables so an AI data schema includes ALL required objects (a measure that references other measures needs those too)."},
+    {"step_number": 4, "command": "# Portal step: in Power BI Desktop/Service -> 'Prep data for AI', set the AI data schema, verified answers, and AI instructions (no public REST API; keep model-specific guidance here, NOT at the data-agent level).", "description": "Prep for AI is portal/Desktop-only. The DAX-generation tool uses ONLY the model metadata + Prep for AI config and ignores data-agent instructions for semantic-model DAX."},
+    {"step_number": 5, "command": "fabio data-agent add-datasource --workspace $WS_ID --id $AGENT_ID --artifact $SM_ID --artifact-type SemanticModel && fabio data-agent select-tables --workspace $WS_ID --id $AGENT_ID --datasource $SM_ID --all-tables && fabio data-agent publish --workspace $WS_ID --id $AGENT_ID", "description": "Add the model as a NL2DAX source, select the SAME tables you scoped in Prep for AI, and publish. (Set FABIO_ACCESS_TOKEN from an az Fabric token for the schema-fetch OBO.)"},
+    {"step_number": 6, "command": "fabio data-agent query --workspace $WS_ID --id $AGENT_ID --prompt \"What were total sales last quarter?\" --show-steps", "description": "Test: inspect the generated DAX in the run steps to verify it correctly answers the question."},
+    {"step_number": 7, "command": "fabio data-agent evaluate --workspace $WS_ID --id $AGENT_ID --questions ./ground-truth.json --llm-endpoint $LLM --llm-key $KEY --llm-model gpt-4o", "description": "Evaluate answers against ground-truth question/answer pairs (optional LLM judge) and iterate on the model + Prep for AI config."},
+    {"step_number": 8, "command": "fabio git connect --workspace $WS_ID ... && fabio deploy apply --source ./items --workspace $PROD_WS", "description": "Put the model + agent config under source control and promote across dev/test/prod (ALM)."}
+  ],
+  "notes": "The Prep for AI components (AI data schema, verified answers, AI instructions) are portal-only today. fabio covers everything else: model health (analyze), dependency analysis (measure-dependencies), evaluation (data-agent evaluate), and source control/deployment. See 'fabio context best-practices semantic-model-optimization'."
+}

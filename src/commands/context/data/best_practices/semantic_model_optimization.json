@@ -1,0 +1,39 @@
+{
+  "topic": "semantic-model-optimization",
+  "title": "Semantic model best practices (optimization + AI-readiness)",
+  "summary": "How to optimize a Power BI semantic model for performance, correctness, and use as an AI/data-agent source: run the Best Practice Analyzer, fix descriptions/naming/aggregation/relationships, understand measure dependencies, and know which AI-prep steps are portal-only. Based on Microsoft's 'Semantic model best practices for data agent' guidance.",
+  "why_it_matters": "A bloated or poorly-modeled semantic model produces slow, inaccurate results — especially when a Fabric data agent generates DAX against it. A clean star schema with descriptive names, correct default summarization, and good descriptions makes both reports and AI answers faster and more accurate.",
+  "fabio_commands": {
+    "semantic-model analyze": "Best Practice Analyzer / Memory Analyzer over the model's INFO.VIEW metadata. Flags missing descriptions, cryptic names, implicit-aggregation risks (identifier columns that still sum), duplicate/overlapping measures, ambiguous date fields, relationship hygiene (inactive/bidirectional/many-to-many), non-star (flat / no-relationship) schemas, and calculated columns. Add --with-cardinality to probe DISTINCTCOUNT and flag high-cardinality (memory-heavy) columns. Use --severity warning to focus, and --strict to fail CI on issues.",
+    "semantic-model measure-dependencies": "Lists each measure's dependencies (the measures/columns/tables its DAX references), read from the model definition. Use it to include ALL dependent objects when scoping an AI data schema — a measure that references other measures/columns needs those included too.",
+    "semantic-model list-tables/list-columns/list-measures/list-relationships": "INFO.VIEW.* introspection to understand the model (types, StorageMode, SummarizeBy, descriptions, cardinality of relationships) before optimizing or writing DAX.",
+    "semantic-model generate": "Generate a clean Direct Lake model from a lakehouse/warehouse (portal-exact TMDL). Start from a well-modeled source; generate does not create relationships/measures (add via update-definition).",
+    "semantic-model query": "Validate the DAX the agent (or you) will run — response accuracy depends on the generated DAX being correct.",
+    "data-agent evaluate": "Evaluate a data agent's answers against ground-truth question/answer pairs (optionally with an LLM judge) to measure accuracy and iterate.",
+    "git + deploy": "Manage semantic model + data-agent configuration across dev/test/prod with Git integration and deployment pipelines (source control / ALM)."
+  },
+  "recommended_workflow": [
+    "1. Optimize the model: run `semantic-model analyze --with-cardinality` and fix the flagged issues (descriptions, naming, default summarization, high-cardinality columns, star schema).",
+    "2. Understand dependencies: `semantic-model measure-dependencies` so an AI data schema includes every dependent measure/column.",
+    "3. Add descriptions to tables/columns/measures (grounds the AI). fabio flags missing ones; author them in Power BI Desktop/Service or via update-definition.",
+    "4. Configure Prep for AI (AI data schema, verified answers, AI instructions) — see the note below; this is portal/Desktop-only today.",
+    "5. Add the model to the data agent and select the SAME tables you scoped in Prep for AI.",
+    "6. Test: run questions and inspect the generated DAX (`data-agent query --show-steps`).",
+    "7. Evaluate & iterate with `data-agent evaluate` against ground-truth pairs.",
+    "8. Put it under source control and promote with deploy/deployment pipelines."
+  ],
+  "common_pitfalls": [
+    "Flat/denormalized tables instead of a star schema — analyze flags 'flat-schema'/'no-relationships'.",
+    "Implicit measures / wrong default summarization on numeric identifier columns — analyze flags 'implicit-aggregation'. Set SummarizeBy=None on keys and create explicit measures.",
+    "Duplicate/overlapping measures (Total Sales / Sales Amount / Revenue) create ambiguity — analyze flags 'duplicate-measure'.",
+    "Cryptic names (TR_AMT, DIM_GEO_01) — analyze flags 'non-descriptive-name'. Use business-friendly names or descriptions/synonyms.",
+    "Ambiguous date fields (Order Date, Ship Date, ...) without guidance — analyze flags 'ambiguous-dates'. Mark a date table and add AI instructions.",
+    "Verified answers referencing hidden fields won't work.",
+    "Including helper/intermediate measures in the AI data schema adds noise — include only real business metrics (use measure-dependencies to know what's required)."
+  ],
+  "portal_only_note": "The three 'Prep for AI' components — AI data schema, verified answers, and AI instructions — are configured in Power BI Desktop or the Power BI service ('Prep data for AI'), NOT via a public Fabric/Power BI REST API, so fabio cannot set them today. IMPORTANT: the DAX-generation tool ONLY uses the semantic model's metadata + Prep for AI config; it IGNORES data-agent-level instructions for semantic-model DAX. Keep model-specific guidance in Prep for AI; use data-agent instructions only for cross-source concerns (formatting, routing, tone). fabio helps with everything else: model health (analyze), dependencies (measure-dependencies), descriptions (flagging), evaluation (data-agent evaluate), and ALM (git/deploy).",
+  "references": [
+    "https://learn.microsoft.com/en-us/fabric/data-science/semantic-model-best-practices",
+    "https://learn.microsoft.com/en-us/power-bi/create-reports/copilot-prepare-data-ai"
+  ]
+}

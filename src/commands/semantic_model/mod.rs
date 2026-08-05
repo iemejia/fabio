@@ -1,3 +1,4 @@
+mod analyze;
 mod crud;
 mod definitions;
 mod generate;
@@ -312,6 +313,44 @@ pub enum SemanticModelCommand {
     /// List relationships of a semantic model (via DAX INFO.VIEW.RELATIONSHIPS)
     #[command(name = "list-relationships", display_order = 13)]
     ListRelationships {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Analyze a model against best-practice rules (Best Practice Analyzer /
+    /// Memory Analyzer over INFO.VIEW metadata) — descriptions, naming,
+    /// implicit aggregation, duplicate measures, relationship hygiene, star
+    /// schema, calculated columns, and (opt-in) high cardinality
+    #[command(display_order = 13)]
+    Analyze {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Also probe column cardinality via DISTINCTCOUNT (extra DAX; flags high-cardinality columns)
+        #[arg(long)]
+        with_cardinality: bool,
+
+        /// Minimum severity to report: info, warning, error
+        #[arg(long, default_value = "info")]
+        severity: String,
+
+        /// Exit non-zero if any issue at/above the severity threshold is found (CI gate)
+        #[arg(long)]
+        strict: bool,
+    },
+    /// List each measure's dependencies (the measures/columns/tables its DAX
+    /// references) — useful for including dependent objects in an AI data schema
+    #[command(name = "measure-dependencies", display_order = 13)]
+    MeasureDependencies {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
@@ -741,6 +780,27 @@ pub async fn execute(
         }
         SemanticModelCommand::ListRelationships { workspace, id } => {
             operations::list_relationships(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::Analyze {
+            workspace,
+            id,
+            with_cardinality,
+            severity,
+            strict,
+        } => {
+            analyze::analyze(
+                cli,
+                client,
+                workspace,
+                id,
+                *with_cardinality,
+                severity,
+                *strict,
+            )
+            .await
+        }
+        SemanticModelCommand::MeasureDependencies { workspace, id } => {
+            analyze::measure_dependencies(cli, client, workspace, id).await
         }
         SemanticModelCommand::UpdateParameters {
             workspace,

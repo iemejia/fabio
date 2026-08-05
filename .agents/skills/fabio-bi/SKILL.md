@@ -12,6 +12,7 @@ license: MIT
 > **Prefer runtime introspection.** This index is a snapshot; the installed binary is always authoritative. Use `fabio context agent --group <group>` and `fabio context describe <group> <command>` for exact flags and output shapes.
 
 ## When to use
+- Optimizing a semantic model / checking it against best practices (semantic-model analyze — Best Practice Analyzer over INFO.VIEW; measure-dependencies for AI data schema scoping).
 - Auto-generating a Direct Lake semantic model from a lakehouse/warehouse (semantic-model generate — the portal's 'New semantic model' flow, no hand-authored TMDL).
 - Creating/updating semantic models from TMDL and binding them to a SQL endpoint.
 - Running DAX queries (EVALUATE) and refreshing models.
@@ -33,6 +34,7 @@ Manage semantic models (Power BI datasets)
 | Command | Mutates | Description |
 |---|---|---|
 | `fabio semantic-model add-user` | yes | Add a user to a semantic model |
+| `fabio semantic-model analyze` | no | Analyze a model against best-practice rules (Best Practice Analyzer / Memory Analyzer over INFO.VIEW metadata) — descriptions, naming, implicit aggregation, duplicate measures, relationship hygiene, star schema, calculated columns, and (opt-in) high cardinality |
 | `fabio semantic-model bind-connection` | yes | Bind a semantic model to a connection |
 | `fabio semantic-model bind-to-gateway` | yes | Bind a semantic model's data sources to an on-premises/VNet data gateway |
 | `fabio semantic-model cancel-refresh` | yes | Cancel an in-progress enhanced refresh by its request id |
@@ -55,6 +57,7 @@ Manage semantic models (Power BI datasets)
 | `fabio semantic-model list-tables` | no | List tables of a semantic model (via DAX INFO.VIEW.TABLES — no definition parsing) |
 | `fabio semantic-model list-upstream` | no | List upstream (lineage) datasets that this semantic model depends on |
 | `fabio semantic-model list-users` | no | List users (permissions) of a semantic model |
+| `fabio semantic-model measure-dependencies` | no | List each measure's dependencies (the measures/columns/tables its DAX references) — useful for including dependent objects in an AI data schema |
 | `fabio semantic-model query` | no | Execute a DAX query against a semantic model |
 | `fabio semantic-model refresh` | yes | Refresh a semantic model (required to frame Direct Lake models after creation) |
 | `fabio semantic-model refresh-details` | no | Get execution details of a specific (enhanced) refresh by its request id |
@@ -112,6 +115,7 @@ Manage dashboards (Power BI)
 - Validate a PBIR/PBIP report folder offline with 'report validate --source <folder>' before 'report create --definition' or deploy — it catches missing required files, bad $schema, and byPath-vs-byConnection issues without a tenant call.
 
 ### PREFER
+- semantic-model analyze (--with-cardinality, --severity, --strict) to check a model against best practices before shipping or using it as a data-agent source — it flags missing descriptions, cryptic names, implicit aggregation on identifier columns, duplicate measures, ambiguous dates, relationship hygiene, non-star schemas, calculated + high-cardinality columns. Use semantic-model measure-dependencies to include every dependent measure/column when scoping an AI data schema. See 'fabio context best-practices semantic-model-optimization'.
 - semantic-model generate --lakehouse <id> (or --warehouse) to auto-build a Direct Lake model from a data source WITHOUT hand-authoring TMDL — it reads the SQL analytics endpoint schema, maps types (dropping unmappable columns like Fabric does), synthesizes the portal-EXACT TMDL definition, creates it, and frames it. Use --tables to pick specific tables and --schema (default dbo). Relationships/measures are NOT generated (same as the portal) — add them with update-definition. This is the fast path; use create --file/--definition only when you already have authored TMDL.
 - Introspect a model's schema with semantic-model list-tables/list-columns/list-measures/list-relationships (DAX INFO.VIEW.* — the Analysis Services Schema Rowsets) to understand tables, types, StorageMode (Direct Lake), measures, and relationships WITHOUT fetching/parsing the TMDL/TMSL definition.
 - report create --definition <folder> to create a FULL multi-page PBIR report from generated files (the documented, agent-authorable format); it gathers definition.pbir + report.json or definition/** and validates first. Use --dataset with it to rebind a byPath folder to a concrete model by connection.
@@ -152,8 +156,10 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 | `fabio context best-practices throttling` | fabio transparently handles 429 (Too Many Requests) and gateway errors. Agents do NOT need to implement retry logic. |
 | `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |
 | `fabio context best-practices lro` | Many Fabric operations are async (return 202). fabio polls them automatically. Use --wait for job operations. |
+| `fabio context best-practices semantic-model-optimization` | How to optimize a Power BI semantic model for performance, correctness, and use as an AI/data-agent source: run the Best Practice Analyzer, fix descriptions/naming/aggregation/relationships, understand measure dependencies, and know which AI-prep steps are portal-only. Based on Microsoft's 'Semantic model best practices for data agent' guidance. |
 
 ## See also
 - fabio context persona bi-developer
 - fabio context workflow direct-lake-report
+- fabio context workflow semantic-model-ai-readiness
 - fabio context disambiguate semantic-model

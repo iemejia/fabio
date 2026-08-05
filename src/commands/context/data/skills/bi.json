@@ -4,6 +4,7 @@
   "description": "Intent-scoped fabio skill for the Fabric BI layer: semantic models (datasets), Power BI reports, paginated reports, and dashboards. Use for creating/refreshing semantic models, running DAX, and managing report items. Triggers: \"semantic model\", \"dataset\", \"dax query\", \"refresh dataset\", \"power bi report\", \"paginated report\", \"dashboard\", \"direct lake\".",
   "command_groups": ["semantic-model", "report", "paginated-report", "dashboard"],
   "when_to_use": [
+    "Optimizing a semantic model / checking it against best practices (semantic-model analyze — Best Practice Analyzer over INFO.VIEW; measure-dependencies for AI data schema scoping).",
     "Auto-generating a Direct Lake semantic model from a lakehouse/warehouse (semantic-model generate — the portal's 'New semantic model' flow, no hand-authored TMDL).",
     "Creating/updating semantic models from TMDL and binding them to a SQL endpoint.",
     "Running DAX queries (EVALUATE) and refreshing models.",
@@ -21,6 +22,7 @@
     "Validate a PBIR/PBIP report folder offline with 'report validate --source <folder>' before 'report create --definition' or deploy — it catches missing required files, bad $schema, and byPath-vs-byConnection issues without a tenant call."
   ],
   "prefer": [
+    "semantic-model analyze (--with-cardinality, --severity, --strict) to check a model against best practices before shipping or using it as a data-agent source — it flags missing descriptions, cryptic names, implicit aggregation on identifier columns, duplicate measures, ambiguous dates, relationship hygiene, non-star schemas, calculated + high-cardinality columns. Use semantic-model measure-dependencies to include every dependent measure/column when scoping an AI data schema. See 'fabio context best-practices semantic-model-optimization'.",
     "semantic-model generate --lakehouse <id> (or --warehouse) to auto-build a Direct Lake model from a data source WITHOUT hand-authoring TMDL — it reads the SQL analytics endpoint schema, maps types (dropping unmappable columns like Fabric does), synthesizes the portal-EXACT TMDL definition, creates it, and frames it. Use --tables to pick specific tables and --schema (default dbo). Relationships/measures are NOT generated (same as the portal) — add them with update-definition. This is the fast path; use create --file/--definition only when you already have authored TMDL.",
     "Introspect a model's schema with semantic-model list-tables/list-columns/list-measures/list-relationships (DAX INFO.VIEW.* — the Analysis Services Schema Rowsets) to understand tables, types, StorageMode (Direct Lake), measures, and relationships WITHOUT fetching/parsing the TMDL/TMSL definition.",
     "report create --definition <folder> to create a FULL multi-page PBIR report from generated files (the documented, agent-authorable format); it gathers definition.pbir + report.json or definition/** and validates first. Use --dataset with it to rebind a byPath folder to a concrete model by connection.",
@@ -51,10 +53,11 @@
     "Refreshing a large model consumes capacity — confirm headroom before a full refresh.",
     "Overwriting a semantic model definition replaces its measures/relationships — confirm with the user."
   ],
-  "shared_references": ["throttling", "pagination", "lro"],
+  "shared_references": ["throttling", "pagination", "lro", "semantic-model-optimization"],
   "see_also": [
     "fabio context persona bi-developer",
     "fabio context workflow direct-lake-report",
+    "fabio context workflow semantic-model-ai-readiness",
     "fabio context disambiguate semantic-model"
   ]
 }

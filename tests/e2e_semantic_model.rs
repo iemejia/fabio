@@ -2194,3 +2194,105 @@ fn semantic_model_generate_direct_lake_lifecycle() {
         .assert()
         .success();
 }
+
+/// Best Practice Analyzer + measure-dependencies over a live model with known
+/// issues: a numeric identifier column that still aggregates (implicit-aggregation),
+/// missing descriptions, and three measures where one depends on the other two.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_analyze_and_measure_dependencies() {
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+
+    // A model that deliberately trips several rules.
+    let bim = r#"{"compatibilityLevel":1604,"model":{"culture":"en-US","defaultPowerBIDataSourceVersion":"powerBI_V3","tables":[{"name":"Sales","columns":[{"name":"StoreId","dataType":"int64","sourceColumn":"StoreId"},{"name":"Amount","dataType":"double","sourceColumn":"Amount"},{"name":"Qty","dataType":"int64","sourceColumn":"Qty"}],"partitions":[{"name":"p","source":{"type":"m","expression":"let Source = #table(type table [StoreId=Int64.Type, Amount=number, Qty=Int64.Type], {{1, 100.0, 3}}) in Source"}}],"measures":[{"name":"Total Amount","expression":"SUM('Sales'[Amount])"},{"name":"Total Qty","expression":"SUM(Sales[Qty])"},{"name":"Avg Price","expression":"DIVIDE([Total Amount], [Total Qty])"}]}]}}"#;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("model.bim");
+    std::fs::write(&path, bim).unwrap();
+
+    let created = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            ws,
+            "--name",
+            &unique_name("bpa"),
+            "--file",
+            path.to_str().unwrap(),
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let id = extract_data(&parse_json(&created))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    std::thread::sleep(std::time::Duration::from_secs(8));
+
+    // analyze — must find issues, including implicit-aggregation on the ID column.
+    let a = fabio()
+        .args(["semantic-model", "analyze", "--workspace", ws, "--id", &id])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let aj = parse_json(&a);
+    let ad = extract_data(&aj);
+    assert!(
+        ad["issueCount"].as_u64().unwrap() >= 1,
+        "analyze should report issues: {ad}"
+    );
+    let rules: Vec<&str> = ad["issues"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["rule"].as_str().unwrap())
+        .collect();
+    assert!(
+        rules.contains(&"implicit-aggregation"),
+        "expected implicit-aggregation on StoreId; got {rules:?}"
+    );
+    assert!(
+        rules.contains(&"missing-description"),
+        "expected missing-description; got {rules:?}"
+    );
+
+    // measure-dependencies — Avg Price depends on the two base measures.
+    let m = fabio()
+        .args([
+            "semantic-model",
+            "measure-dependencies",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let mj = parse_json(&m);
+    let deps = extract_data(&mj);
+    let avg = deps
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["measure"] == "Avg Price")
+        .expect("Avg Price measure");
+    let dep_measures: Vec<&str> = avg["dependsOnMeasures"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(
+        dep_measures.contains(&"Total Amount") && dep_measures.contains(&"Total Qty"),
+        "Avg Price should depend on both base measures; got {dep_measures:?}"
+    );
+
+    // Cleanup.
+    fabio()
+        .args(["semantic-model", "delete", "--workspace", ws, "--id", &id])
+        .assert()
+        .success();
+}
