@@ -1521,6 +1521,201 @@ fn semantic_model_column_lifecycle() {
         .success();
 }
 
+// ─── Table lifecycle: add / rename / delete (with cascade) ───────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_table_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("sm_tbl");
+
+    let mut tmp = NamedTempFile::with_suffix(".bim").unwrap();
+    tmp.write_all(three_table_model_bim().as_bytes()).unwrap();
+    let file_path = tmp.path().to_str().unwrap().to_string();
+
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--file",
+            &file_path,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let sm_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Seed a relationship Sales -> Customer (so delete-table can cascade it).
+    fabio()
+        .args([
+            "semantic-model",
+            "add-relationship",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--from-table",
+            "Sales",
+            "--from-column",
+            "CustomerKey",
+            "--to-table",
+            "Customer",
+            "--to-column",
+            "CustomerKey",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // add-table (calculated) — dry-run then live
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "add-table",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "Numbers",
+            "--expression",
+            "GENERATESERIES(1, 5, 1)",
+            "--dry-run",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&assert))["dry_run"], true);
+
+    fabio()
+        .args([
+            "semantic-model",
+            "add-table",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "Numbers",
+            "--expression",
+            "GENERATESERIES(1, 5, 1)",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // rename-table Numbers -> NumberSeries
+    fabio()
+        .args([
+            "semantic-model",
+            "rename-table",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "Numbers",
+            "--new-name",
+            "NumberSeries",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // Verify: NumberSeries.tmdl exists + model.tmdl references it.
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "get-definition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let parts = data["definition"]["parts"].as_array().unwrap();
+    let paths: Vec<&str> = parts.iter().filter_map(|p| p["path"].as_str()).collect();
+    assert!(
+        paths.contains(&"definition/tables/NumberSeries.tmdl"),
+        "paths: {paths:?}"
+    );
+    assert!(
+        !paths.contains(&"definition/tables/Numbers.tmdl"),
+        "old path present"
+    );
+    let model = parts
+        .iter()
+        .find(|p| p["path"].as_str() == Some("definition/model.tmdl"))
+        .and_then(|p| p["payload"].as_str())
+        .map(|b| {
+            String::from_utf8(base64::engine::general_purpose::STANDARD.decode(b).unwrap()).unwrap()
+        })
+        .unwrap();
+    assert!(model.contains("ref table NumberSeries"), "model:\n{model}");
+
+    // delete-table Customer → cascades the Sales->Customer relationship
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "delete-table",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "Customer",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let cascaded = &extract_data(&json)["cascadedRelationships"];
+    assert_eq!(cascaded.as_array().map(std::vec::Vec::len), Some(1));
+
+    // delete a nonexistent table → NOT_FOUND
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "delete-table",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "Nope",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert_eq!(error_json(&stderr)["error"]["code"], "NOT_FOUND");
+
+    // Cleanup
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+}
+
 // ─── Dry Run ─────────────────────────────────────────────────────────────────
 
 #[test]

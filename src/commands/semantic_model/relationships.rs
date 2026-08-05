@@ -386,6 +386,45 @@ fn parse_relationship_blocks(content: &str) -> Vec<RelBlock> {
     blocks
 }
 
+/// Remove every relationship block whose `fromColumn`/`toColumn` references
+/// `table` (used by `delete-table` cascade). Returns `(new_content, removed_ids)`.
+pub(super) fn remove_relationships_referencing_table(
+    content: &str,
+    table: &str,
+) -> (String, Vec<String>) {
+    let lines: Vec<&str> = content.lines().collect();
+    let blocks = parse_relationship_blocks(content);
+    let to_remove: Vec<&RelBlock> = blocks
+        .iter()
+        .filter(|b| b.from.0.eq_ignore_ascii_case(table) || b.to.0.eq_ignore_ascii_case(table))
+        .collect();
+    if to_remove.is_empty() {
+        return (content.to_string(), Vec::new());
+    }
+    let removed_ids: Vec<String> = to_remove.iter().map(|b| b.id.clone()).collect();
+    let drop: std::collections::HashSet<usize> =
+        to_remove.iter().flat_map(|b| b.start..b.end).collect();
+    let out: Vec<&str> = lines
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| !drop.contains(i))
+        .map(|(_, l)| *l)
+        .collect();
+    let mut joined = out.join("\n");
+    while joined.contains("\n\n\n") {
+        joined = joined.replace("\n\n\n", "\n\n");
+    }
+    let joined = joined.trim().to_string();
+    let result = if joined.is_empty() {
+        String::new()
+    } else if content.ends_with('\n') {
+        format!("{joined}\n")
+    } else {
+        joined
+    };
+    (result, removed_ids)
+}
+
 fn block_matches(b: &RelBlock, relationship_id: Option<&str>, spec: Option<&RelSpec<'_>>) -> bool {
     if let Some(rid) = relationship_id {
         return b.id.eq_ignore_ascii_case(rid);

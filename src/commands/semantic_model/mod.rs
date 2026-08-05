@@ -8,6 +8,7 @@ pub mod operations;
 mod powerbi;
 mod relationships;
 mod roles;
+mod tables;
 mod tmdl;
 
 use anyhow::Result;
@@ -876,6 +877,64 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         hidden: Option<bool>,
     },
+    /// Add a calculated table (a DAX table expression) by editing the model
+    /// definition. Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "add-table", display_order = 13)]
+    AddTable {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Table name (must be model-unique)
+        #[arg(long)]
+        name: String,
+
+        /// DAX table expression (e.g. "CALENDAR(DATE(2020,1,1), DATE(2020,12,31))")
+        #[arg(long)]
+        expression: String,
+    },
+    /// Delete a table by editing the model definition. CASCADES: also removes
+    /// relationships and role RLS filters that reference the table. Overwrites
+    /// the definition (irreversible) — dry-run guarded.
+    #[command(name = "delete-table", display_order = 13)]
+    DeleteTable {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Table name to delete
+        #[arg(long)]
+        name: String,
+    },
+    /// Rename a table (declaration, file, and model.tmdl ref; DAX/relationship
+    /// references are NOT rewritten). Overwrites the definition (irreversible) —
+    /// dry-run guarded.
+    #[command(name = "rename-table", display_order = 13)]
+    RenameTable {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Current table name
+        #[arg(long)]
+        name: String,
+
+        /// New table name
+        #[arg(long)]
+        new_name: String,
+    },
     /// Update parameters of a semantic model
     #[command(name = "update-parameters", display_order = 14)]
     UpdateParameters {
@@ -1622,6 +1681,23 @@ pub async fn execute(
             )
             .await
         }
+        SemanticModelCommand::AddTable {
+            workspace,
+            id,
+            name,
+            expression,
+        } => tables::add_table(cli, client, workspace, id, name, expression).await,
+        SemanticModelCommand::DeleteTable {
+            workspace,
+            id,
+            name,
+        } => tables::delete_table(cli, client, workspace, id, name).await,
+        SemanticModelCommand::RenameTable {
+            workspace,
+            id,
+            name,
+            new_name,
+        } => tables::rename_table(cli, client, workspace, id, name, new_name).await,
         SemanticModelCommand::UpdateParameters {
             workspace,
             id,

@@ -1794,6 +1794,20 @@ tests:
         value: "The response uses 'fabio semantic-model add-calculated-column' with --table Sales, --name 'Margin Pct', and --expression (the DAX). It does not invent an XMLA/TOM tool — fabio edits the model definition."
         metric: add-calc-column-approach
 
+  - description: "Power BI: add a calculated date table"
+    vars:
+      user_query: "Add a calculated date table called 'Calendar' to my semantic model using CALENDARAUTO()"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('semantic-model add-table')
+        metric: semantic-model-add-table-command
+      - type: icontains
+        value: "--expression"
+      - type: llm-rubric
+        value: "The response uses 'fabio semantic-model add-table' with --name Calendar and --expression CALENDARAUTO() (a DAX table expression). It does not invent an XMLA/TOM tool."
+        metric: add-table-approach
+
   - description: "Power BI: generate a Direct Lake semantic model from a lakehouse (no TMDL authoring)"
     vars:
       user_query: "Generate a Direct Lake semantic model called 'SalesModel' from my lakehouse — I don't want to hand-write any TMDL, just pull in all the tables"

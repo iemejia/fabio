@@ -253,6 +253,31 @@ fn is_role_file(path: &str) -> bool {
             .is_some_and(|e| e.eq_ignore_ascii_case("tmdl"))
 }
 
+/// Remove any `tablePermission <table> = …` lines from every role file (used by
+/// `delete-table` cascade). Returns the updated parts and the affected role names.
+pub(super) fn cascade_remove_table_from_roles(
+    parts: &[(String, String)],
+    table: &str,
+) -> (Vec<(String, String)>, Vec<String>) {
+    let mut out = parts.to_vec();
+    let mut affected = Vec::new();
+    for (p, c) in &mut out {
+        if is_role_file(p) {
+            let (new_c, removed) = remove_table_permission(c, table);
+            if removed {
+                affected.push(
+                    parse_role_tmdl(&new_c)["name"]
+                        .as_str()
+                        .unwrap_or("")
+                        .to_string(),
+                );
+                *c = new_c;
+            }
+        }
+    }
+    (out, affected)
+}
+
 fn parse_role_tmdl(content: &str) -> Value {
     let mut name = String::new();
     let mut model_permission = String::new();

@@ -60,6 +60,7 @@
  - `src/commands/semantic_model/relationships.rs`: `add-`/`delete-`/`update-relationship` (edit `definition/relationships.tmdl`, match by id or from/to columns); pure `render_relationship_block`/`parse_relationship_blocks`/`parse_column_ref`/`remove_relationship_block`/`update_relationship_block`/`add_relationship_bim` + unit tests
  - `src/commands/semantic_model/roles.rs`: `add-role`/`delete-role`/`set-rls`/`delete-rls`/`list-roles` (security roles + RLS; edit `definition/roles/<name>.tmdl` + `ref role` in model.tmdl); pure `parse_role_tmdl`/`set_table_permission`/`remove_table_permission`/`collect_roles` + `model.bim` variants + unit tests
  - `src/commands/semantic_model/columns.rs`: `add-calculated-column`/`delete-column`/`rename-column`/`update-column` (edit `column` blocks in `definition/tables/<T>.tmdl`); pure `build_calculated_column_lines`/`delete_column_tmdl`/`rename_column_tmdl`/`update_column_tmdl` + `model.bim` variants + unit tests
+ - `src/commands/semantic_model/tables.rs`: `add-table` (calculated)/`delete-table` (cascades relationships + role RLS filters)/`rename-table` (decl + file path + model.tmdl ref); pure `render_calculated_table`/`rename_table_decl` + `model.bim` variants + unit tests
 - `src/commands/eventhouse.rs`: list/show/create/update/delete
 - `src/commands/eventstream/mod.rs`: list/show/create/update/delete/get-definition/update-definition/get-topology/pause/resume/sources/destinations
 - `src/commands/eventstream/builder.rs`: add-source/add-destination/add-sample-source/add-derived-stream/validate/list-components

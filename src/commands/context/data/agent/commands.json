@@ -10801,6 +10801,85 @@
         "returns": "object",
         "destructive": true
       },
+      "add-table": {
+        "description": "Add a calculated table (a DAX table expression) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Table name (must be model-unique)"
+          },
+          "--expression": {
+            "type": "string",
+            "required": true,
+            "description": "DAX table expression (e.g. \"CALENDAR(DATE(2020,1,1), DATE(2020,12,31))\")"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "delete-table": {
+        "description": "Delete a table by editing the model definition. CASCADES: also removes relationships and role RLS filters that reference the table. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Table name to delete"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "rename-table": {
+        "description": "Rename a table (declaration, file, and model.tmdl ref; DAX/relationship references are NOT rewritten). Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Current table name"
+          },
+          "--new-name": {
+            "type": "string",
+            "required": true,
+            "description": "New table name"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
       "update-parameters": {
         "description": "Update parameters of a semantic model",
         "flags": {
