@@ -6697,6 +6697,10 @@
             "type": "string",
             "description": "Download files attached to the answer into this directory (e.g. generated CSVs/charts)"
           },
+          "--visuals": {
+            "type": "bool",
+            "description": "Extract chart/visual specifications the agent generated (chart type, axes, title, sort, and the aggregated data) into a `visuals` array in the output"
+          },
           "--timeout": {
             "type": "integer",
             "description": "Maximum wait time in seconds for the query to complete (default: 300)",

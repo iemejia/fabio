@@ -126,6 +126,11 @@ pub enum DataAgentCommand {
         #[arg(long, value_name = "DIR")]
         download_files: Option<String>,
 
+        /// Extract chart/visual specifications the agent generated (chart type, axes,
+        /// title, sort, and the aggregated data) into a `visuals` array in the output
+        #[arg(long)]
+        visuals: bool,
+
         /// Maximum wait time in seconds for the query to complete (default: 300)
         #[arg(long, default_value = "300")]
         timeout: u64,
@@ -740,6 +745,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             thread_id,
             keep_thread,
             download_files,
+            visuals,
             timeout,
         } => query::query(
             cli,
@@ -753,6 +759,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             thread_id.as_deref(),
             *keep_thread,
             download_files.as_deref(),
+            *visuals,
             *timeout,
         )
         .await

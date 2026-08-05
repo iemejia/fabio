@@ -110,6 +110,7 @@ pub(super) async fn evaluate(
                 keep_thread: false,
                 show_steps,
                 download_dir: None,
+                visuals: false,
             };
             match run_assistant_query(&resolved_url, &token, &spec.question, &opts, max_wait).await
             {

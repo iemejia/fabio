@@ -1659,6 +1659,17 @@ tests:
       - type: icontains
         value: "--question"
 
+  - description: "Data Agent: get a chart/visual response from the agent"
+    vars:
+      user_query: "Ask my Data Agent for a bar chart of sales by region and give me the chart specification"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('data-agent query')
+        metric: agent-query-command
+      - type: icontains
+        value: "--visuals"
+
   - description: "Data Agent: select specific tables for a datasource"
     vars:
       user_query: "Configure my Data Agent's datasource to only use the orders, customers, and products tables"

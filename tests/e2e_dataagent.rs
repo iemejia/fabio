@@ -4491,3 +4491,140 @@ fn az_fabric_token() -> Option<String> {
     let token = String::from_utf8(output.stdout).ok()?.trim().to_string();
     (!token.is_empty()).then_some(token)
 }
+
+/// Chart/visual extraction (`data-agent query --visuals`).
+///
+/// Verifies fabio's finding that a Fabric data agent's visual responses — which
+/// the docs describe as portal-only — are in fact reachable through the
+/// published Assistants API: when the agent answers with a chart it invokes a
+/// `VisualizeDataset` tool whose `arguments` carry the COMPLETE chart spec
+/// (chart type, x/y columns, title, axis titles, sort, and the aggregated data
+/// as inline CSV). `--visuals` surfaces that spec.
+///
+/// Fixture: `FABIO_TEST_LOADED_LAKEHOUSE` (a pre-populated, schema-enabled
+/// lakehouse — same fixture the NL2SQL tests use) plus `az` for the
+/// OBO-capable Fabric token that add-datasource's schema fetch needs.
+#[test]
+#[ignore = "requires live Fabric tenant + a populated lakehouse (FABIO_TEST_LOADED_LAKEHOUSE) + az"]
+#[serial]
+fn dataagent_query_visuals_lifecycle() {
+    let Ok(lh) = std::env::var("FABIO_TEST_LOADED_LAKEHOUSE") else {
+        eprintln!("FABIO_TEST_LOADED_LAKEHOUSE not set — skipping visuals validation");
+        return;
+    };
+    let Some(token) = az_fabric_token() else {
+        eprintln!("az Fabric token unavailable — skipping visuals validation");
+        return;
+    };
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+    let fb = || {
+        let mut c = fabio();
+        c.env("FABIO_ACCESS_TOKEN", &token);
+        c
+    };
+
+    // 1) Agent grounded on the pre-populated lakehouse.
+    let id = extract_data(&parse_json(
+        &fb()
+            .args([
+                "data-agent",
+                "create",
+                "--workspace",
+                ws,
+                "--name",
+                &unique_name("viz_agent"),
+            ])
+            .timeout(std::time::Duration::from_mins(2))
+            .assert()
+            .success(),
+    ))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    fb().args([
+        "data-agent",
+        "add-datasource",
+        "--workspace",
+        ws,
+        "--id",
+        &id,
+        "--artifact",
+        &lh,
+        "--artifact-type",
+        "Lakehouse",
+        "--lro-timeout",
+        "300",
+    ])
+    .timeout(std::time::Duration::from_mins(6))
+    .assert()
+    .success();
+    fb().args([
+        "data-agent",
+        "select-tables",
+        "--workspace",
+        ws,
+        "--id",
+        &id,
+        "--datasource",
+        &lh,
+        "--all-tables",
+    ])
+    .timeout(std::time::Duration::from_mins(2))
+    .assert()
+    .success();
+    fb().args([
+        "data-agent",
+        "publish",
+        "--workspace",
+        ws,
+        "--id",
+        &id,
+        "--description",
+        "visuals e2e",
+    ])
+    .timeout(std::time::Duration::from_mins(3))
+    .assert()
+    .success();
+
+    // 2) Ask for a chart and assert a structured chart spec comes back. The
+    //    prompt is deliberately explicit so the agent invokes VisualizeDataset
+    //    regardless of the fixture's exact schema.
+    let assert = fb()
+        .args([
+            "data-agent",
+            "query",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--prompt",
+            "Create a bar chart that visualizes a summary of the available data. \
+             Aggregate a numeric column grouped by a categorical column and return a chart.",
+            "--visuals",
+        ])
+        .timeout(std::time::Duration::from_mins(4))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let visuals = data["visuals"].as_array().expect("visuals array");
+    assert!(
+        !visuals.is_empty(),
+        "expected at least one extracted chart spec, got: {data}"
+    );
+    let v = &visuals[0];
+    assert!(
+        v.get("chart_type").is_some(),
+        "chart spec must carry a chart_type: {v}"
+    );
+    assert!(
+        v.get("inline_csv_data").is_some(),
+        "chart spec must carry the aggregated inline_csv_data: {v}"
+    );
+
+    // Cleanup: the agent only — the lakehouse fixture is pre-existing.
+    fb().args(["data-agent", "delete", "--workspace", ws, "--id", &id])
+        .assert()
+        .success();
+}

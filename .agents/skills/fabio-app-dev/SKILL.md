@@ -163,6 +163,7 @@ Manage org app audiences (audience definitions for org apps)
 ## Key gotchas
 - Only a PUBLISHED Data Agent is queryable; 'data-agent query' builds the consumption URL ({fabricBase}/workspaces/{ws}/dataagents/{id}/aiassistant/openai) when --published-url is omitted. 'data-agent mcp-url' prints the MCP endpoint for external MCP clients.
 - Data Agent preview runtime (Advanced NL2SQL) is toggled via 'update-config --enable-preview-runtime'; a published agent's runtime is fixed at publish time (republish to change).
+- Data Agent visual/chart responses ARE reachable via 'data-agent query --visuals' — despite the docs calling visuals portal-only. When the agent charts an answer it invokes a VisualizeDataset tool whose args carry the full spec (chart_type, x_column, y_columns, title, axis titles, sort, and the aggregated inline_csv_data); --visuals extracts these into a 'visuals' array so a client can render the chart. Only the pre-rendered report_specs_*.json file is NOT downloadable (its file id 404s on the published /files endpoint).
 - 'user-data-function invoke' needs a PUBLISHED function with public access enabled in the portal; fabio SSRF-guards the URL (HTTPS + trusted Microsoft host) and attaches the Fabric bearer token.
 - Cosmos DB and SQL Database backends require F4+ capacity.
 - app-backend has aliases (rayfin-app, data-app); org-app distribution pairs org-app with org-app-audience.

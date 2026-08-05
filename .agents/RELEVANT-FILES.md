@@ -152,7 +152,7 @@
 - `tests/e2e_notebook.rs`: Notebook create/get-definition/run/run --wait/status/stop/delete/strip-output tests
 - `tests/e2e_warehouse.rs`: Warehouse list/show/query/query-stdin/plan/queries-running/queries-frequent/queries-long-running/queries-history/queries-kill/statistics-list/statistics-create/statistics-update/statistics-delete tests
 - `tests/e2e_sql_database.rs`: SQL Database CRUD + query + import + revalidate-cmk dry-run tests
-- `tests/e2e_dataagent.rs`: Data agent tests (34 tests: CRUD, query, definition, publish, datasource lifecycle, fewshot lifecycle, elements lifecycle, config, CSV upload, dry-run validations)
+- `tests/e2e_dataagent.rs`: Data agent tests (CRUD, query, multi-turn, visuals extraction, definition, publish, datasource lifecycle, fewshot lifecycle, elements lifecycle, config, CSV upload, dry-run validations)
 - `tests/e2e_git.rs`: Git command group tests
 - `tests/e2e_ontology.rs`: Ontology CRUD + definition tests
 - `tests/e2e_plan.rs`: Plan CRUD + definition tests (list, create/show/delete, update, get-definition incl. --format, dry-run create/delete/update-definition, folder-scoping flags)

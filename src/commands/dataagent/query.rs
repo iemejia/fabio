@@ -30,6 +30,8 @@ pub(super) struct QueryOptions<'a> {
     pub show_steps: bool,
     /// Directory to download answer-attached files into (`None` = skip).
     pub download_dir: Option<&'a Path>,
+    /// Extract chart/visual specifications from the run steps.
+    pub visuals: bool,
 }
 
 /// Validate the requested query stage.
@@ -84,6 +86,7 @@ pub(super) async fn query(
     thread_id: Option<&str>,
     keep_thread: bool,
     download_files: Option<&str>,
+    visuals: bool,
     timeout: u64,
 ) -> Result<()> {
     validate_query_stage(stage, published_url.is_some())?;
@@ -129,6 +132,7 @@ pub(super) async fn query(
         keep_thread,
         show_steps: verbose,
         download_dir,
+        visuals,
     };
     let query_result =
         run_assistant_query(&resolved_url, &token, &prompt_text, &opts, max_wait).await?;
@@ -140,6 +144,9 @@ pub(super) async fn query(
     });
     if let Some(steps) = query_result.steps {
         result["steps"] = steps;
+    }
+    if visuals {
+        result["visuals"] = Value::Array(query_result.visuals);
     }
     if download_dir.is_some() {
         result["files"] = Value::Array(query_result.files);
@@ -281,6 +288,8 @@ pub(super) struct QueryResult {
     pub steps: Option<Value>,
     /// Metadata for any files downloaded from the answer (empty unless requested).
     pub files: Vec<Value>,
+    /// Chart/visual specifications extracted from run steps (empty unless requested).
+    pub visuals: Vec<Value>,
 }
 
 /// Run a query against the data agent using the `OpenAI` Assistants API protocol.
@@ -314,12 +323,18 @@ pub(super) async fn run_assistant_query(
     // Step 3: Poll until complete
     poll_run_completion(&http, base_url, auth_header, &thread_id, &run_id, max_wait).await?;
 
-    // Step 4 (optional): Retrieve run steps for verbose mode
-    let steps = if opts.show_steps {
+    // Step 4 (optional): Retrieve run steps for verbose mode and/or visual extraction.
+    let raw_steps = if opts.show_steps || opts.visuals {
         Some(retrieve_run_steps(&http, base_url, auth_header, &thread_id, &run_id).await?)
     } else {
         None
     };
+    let visuals = match &raw_steps {
+        Some(steps) if opts.visuals => extract_visuals(steps),
+        _ => Vec::new(),
+    };
+    // Only surface the (verbose) raw steps when explicitly requested.
+    let steps = if opts.show_steps { raw_steps } else { None };
 
     // Step 5: Get the assistant messages, then extract the answer text.
     let messages = fetch_messages(&http, base_url, auth_header, &thread_id).await?;
@@ -349,6 +364,7 @@ pub(super) async fn run_assistant_query(
         thread_id,
         steps,
         files,
+        visuals,
     })
 }
 
@@ -682,6 +698,75 @@ fn extract_answer(messages: &Value) -> String {
         })
         .unwrap_or("(No response from data agent)")
         .to_string()
+}
+
+/// Extract chart/visual specifications the agent produced during the run.
+///
+/// When a Fabric data agent answers a question with a chart, it invokes an
+/// internal `VisualizeDataset` function tool. Although the portal renders the
+/// chart (and the un-downloadable `report_specs_*.json` file it references is
+/// NOT served by the published Assistants `/files` API), the COMPLETE chart
+/// specification — chart type, x/y columns, title, axis titles, sort, and the
+/// aggregated data as inline CSV — is present verbatim in that tool call's
+/// `arguments`, which ARE reachable via the run-steps endpoint. This lets a
+/// client reconstruct the visual without the portal.
+///
+/// Operates on the SIMPLIFIED step shape produced by [`retrieve_run_steps`] (a
+/// top-level array of steps, each `tool_calls` entry flattened to
+/// `{type, name, arguments, output}`). The agent emits the same spec twice (a
+/// `trace.VisualizeDataset` mirror plus the canonical `*.VisualizeDataset`
+/// call), so identical specs are de-duplicated. The generated file name (e.g.
+/// `report_specs_1.json`) is pulled from the tool `output` text when present.
+/// Pure for unit testing.
+fn extract_visuals(steps: &Value) -> Vec<Value> {
+    let mut out: Vec<Value> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    let Some(step_arr) = steps.as_array() else {
+        return out;
+    };
+    for step in step_arr {
+        let Some(tool_calls) = step.get("tool_calls").and_then(Value::as_array) else {
+            continue;
+        };
+        for tc in tool_calls {
+            let name = tc.get("name").and_then(Value::as_str).unwrap_or_default();
+            if !name.ends_with("VisualizeDataset") {
+                continue;
+            }
+            // `arguments` is a JSON-encoded string holding the chart spec.
+            let Some(spec) = tc
+                .get("arguments")
+                .and_then(Value::as_str)
+                .and_then(|s| serde_json::from_str::<Value>(s).ok())
+            else {
+                continue;
+            };
+            // De-duplicate the trace/canonical pair by the spec's content.
+            let key = spec.to_string();
+            if !seen.insert(key) {
+                continue;
+            }
+            let mut visual = spec;
+            if let Some(output) = tc.get("output").and_then(Value::as_str)
+                && let Some(file_name) = parse_report_spec_filename(output)
+            {
+                visual["reportSpecFile"] = Value::from(file_name);
+            }
+            out.push(visual);
+        }
+    }
+    out
+}
+
+/// Pull the generated `report_specs_*.json` file name out of a `VisualizeDataset`
+/// tool `output` string (`... File Name: 'report_specs_1.json'. ...`).
+fn parse_report_spec_filename(output: &str) -> Option<String> {
+    let marker = "File Name: '";
+    let start = output.find(marker)? + marker.len();
+    let rest = &output[start..];
+    let end = rest.find('\'')?;
+    Some(rest[..end].to_string())
 }
 
 /// Extract file IDs referenced by the assistant's answer.
@@ -1255,6 +1340,70 @@ mod tests {
             "data": [{"role": "assistant", "content": [{"type": "text", "text": {"value": "no files"}}]}]
         });
         assert!(extract_file_ids(&messages).is_empty());
+    }
+
+    #[test]
+    fn parse_report_spec_filename_extracts_quoted_name() {
+        let output = "Visualization 'X' generated successfully. File ID: 'file_abc', File Name: 'report_specs_1.json'.\n#Description: ...";
+        assert_eq!(
+            parse_report_spec_filename(output).as_deref(),
+            Some("report_specs_1.json")
+        );
+        assert_eq!(parse_report_spec_filename("no file name here"), None);
+    }
+
+    /// Mirrors the SIMPLIFIED step shape produced by `retrieve_run_steps` for a
+    /// live `VisualizeDataset` chart (captured against a published data agent).
+    /// The agent emits the spec twice (a `trace.` mirror + the canonical call);
+    /// `extract_visuals` must de-duplicate to a single chart spec and attach the
+    /// generated `reportSpecFile` name.
+    #[test]
+    fn extract_visuals_dedupes_and_parses_spec() {
+        let args = r#"{"inline_csv_data":"region,total_sales\nEast,51500\nWest,33300","x_column":"region","y_columns":["total_sales"],"chart_type":"column_chart","title":"Total Sales by Region"}"#;
+        let output = "Visualization 'Total Sales by Region' generated successfully. File ID: 'file_x', File Name: 'report_specs_1.json'.";
+        let steps = serde_json::json!([
+            {
+                "type": "tool_calls",
+                "status": "completed",
+                "tool_calls": [
+                    {"type": "function", "name": "trace.VisualizeDataset", "arguments": args, "output": output},
+                    {"type": "function", "name": "AIFunction.VisualizeDataset", "arguments": args, "output": output}
+                ]
+            },
+            {
+                "type": "tool_calls",
+                "status": "completed",
+                "tool_calls": [
+                    {"type": "function", "name": "analyze.database.execute", "arguments": "{}", "output": "rows"}
+                ]
+            }
+        ]);
+        let visuals = extract_visuals(&steps);
+        assert_eq!(visuals.len(), 1, "identical specs must be de-duplicated");
+        let v = &visuals[0];
+        assert_eq!(v["chart_type"], "column_chart");
+        assert_eq!(v["title"], "Total Sales by Region");
+        assert_eq!(v["x_column"], "region");
+        assert_eq!(v["y_columns"][0], "total_sales");
+        assert_eq!(v["reportSpecFile"], "report_specs_1.json");
+        assert!(
+            v["inline_csv_data"]
+                .as_str()
+                .unwrap()
+                .contains("East,51500")
+        );
+    }
+
+    #[test]
+    fn extract_visuals_empty_when_no_visualize_tool() {
+        let steps = serde_json::json!([
+            {"type": "tool_calls", "status": "completed",
+             "tool_calls": [{"type": "function", "name": "analyze.database.execute", "arguments": "{}", "output": "rows"}]},
+            {"type": "message_creation", "status": "completed"}
+        ]);
+        assert!(extract_visuals(&steps).is_empty());
+        // Non-array (e.g. steps unavailable) must not panic.
+        assert!(extract_visuals(&serde_json::json!({})).is_empty());
     }
 
     #[test]

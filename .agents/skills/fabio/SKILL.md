@@ -464,6 +464,8 @@ fabio data-agent query --workspace $WS --id $AGENT --prompt "Remember 7." --keep
 fabio data-agent query --workspace $WS --id $AGENT --prompt "What number?" --thread-id thread_abc
 # Download answer-attached files (generated CSVs/charts); adds a files[] array
 fabio data-agent query --workspace $WS --id $AGENT --prompt "Chart revenue as CSV" --download-files ./out
+# Extract chart/visual specs the agent generated (chart type, axes, title, sort, inline data) — adds a visuals[] array
+fabio data-agent query --workspace $WS --id $AGENT --prompt "Show me a bar chart of sales by region" --visuals
 # Batch-run a question set (evaluation primitive; naive expected-match only, not an LLM judge)
 fabio data-agent evaluate --workspace $WS --id $AGENT --questions questions.json
 # LLM-powered (bring your own judge model via --llm-* or FABIO_LLM_ENDPOINT/KEY/MODEL):
