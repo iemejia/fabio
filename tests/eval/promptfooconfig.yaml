@@ -1766,6 +1766,20 @@ tests:
         value: "The response uses 'fabio semantic-model move-measure' with --measure 'Total Sales' and --to-table Customer. It does not invent an XMLA/TOM tool."
         metric: move-measure-approach
 
+  - description: "Power BI: row-level security (RLS) on a semantic model"
+    vars:
+      user_query: "Add row-level security to my semantic model so the 'Regional' role only sees Customer rows where Region = 'West'"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('semantic-model add-role') && output.includes('semantic-model set-rls')
+        metric: semantic-model-rls-commands
+      - type: icontains
+        value: "--filter"
+      - type: llm-rubric
+        value: "The response creates the role (add-role) and sets an RLS filter (set-rls --role Regional --table Customer --filter with a DAX predicate on Region). It uses set-rls (NOT add-user, which is dataset permissions, not RLS). Correct sequencing: add-role before set-rls."
+        metric: rls-approach
+
   - description: "Power BI: generate a Direct Lake semantic model from a lakehouse (no TMDL authoring)"
     vars:
       user_query: "Generate a Direct Lake semantic model called 'SalesModel' from my lakehouse — I don't want to hand-write any TMDL, just pull in all the tables"

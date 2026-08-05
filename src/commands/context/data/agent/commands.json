@@ -10499,6 +10499,134 @@
         "returns": "object",
         "destructive": true
       },
+      "list-roles": {
+        "description": "List security roles (RLS) of a semantic model (name, model permission, and per-table filters) — read-only",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "add-role": {
+        "description": "Add a security role by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Role name"
+          },
+          "--model-permission": {
+            "type": "string",
+            "description": "Model permission: read (default), none, readRefresh, refresh"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "delete-role": {
+        "description": "Delete a security role (and its RLS filters) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Role name to delete"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "set-rls": {
+        "description": "Set a row-level-security (RLS) filter on a table for a role (a DAX predicate). Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--role": {
+            "type": "string",
+            "required": true,
+            "description": "Role to add the filter to"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Table the filter applies to"
+          },
+          "--filter": {
+            "type": "string",
+            "required": true,
+            "description": "DAX filter predicate (e.g. \"'Sales'[Region] = \\\"West\\\"\")"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "delete-rls": {
+        "description": "Remove a row-level-security (RLS) filter from a table for a role. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--role": {
+            "type": "string",
+            "required": true,
+            "description": "Role to remove the filter from"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Table whose filter to remove"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
       "update-parameters": {
         "description": "Update parameters of a semantic model",
         "flags": {

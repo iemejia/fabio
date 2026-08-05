@@ -6,6 +6,7 @@ mod generate;
 pub mod operations;
 mod powerbi;
 mod relationships;
+mod roles;
 mod tmdl;
 
 use anyhow::Result;
@@ -644,6 +645,98 @@ pub enum SemanticModelCommand {
         /// New cross-filter direction: oneDirection, bothDirections, automatic
         #[arg(long)]
         cross_filter: Option<String>,
+    },
+    /// List security roles (RLS) of a semantic model (name, model permission,
+    /// and per-table filters) — read-only.
+    #[command(name = "list-roles", display_order = 13)]
+    ListRoles {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Add a security role by editing the model definition. Overwrites the
+    /// definition (irreversible) — dry-run guarded.
+    #[command(name = "add-role", display_order = 13)]
+    AddRole {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Role name
+        #[arg(long)]
+        name: String,
+
+        /// Model permission: read (default), none, readRefresh, refresh
+        #[arg(long, default_value = "read")]
+        model_permission: String,
+    },
+    /// Delete a security role (and its RLS filters) by editing the model
+    /// definition. Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "delete-role", display_order = 13)]
+    DeleteRole {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Role name to delete
+        #[arg(long)]
+        name: String,
+    },
+    /// Set a row-level-security (RLS) filter on a table for a role (a DAX
+    /// predicate). Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "set-rls", display_order = 13)]
+    SetRls {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Role to add the filter to
+        #[arg(long)]
+        role: String,
+
+        /// Table the filter applies to
+        #[arg(long)]
+        table: String,
+
+        /// DAX filter predicate (e.g. "'Sales'[Region] = \"West\"")
+        #[arg(long)]
+        filter: String,
+    },
+    /// Remove a row-level-security (RLS) filter from a table for a role.
+    /// Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "delete-rls", display_order = 13)]
+    DeleteRls {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Role to remove the filter from
+        #[arg(long)]
+        role: String,
+
+        /// Table whose filter to remove
+        #[arg(long)]
+        table: String,
     },
     /// Update parameters of a semantic model
     #[command(name = "update-parameters", display_order = 14)]
@@ -1289,6 +1382,33 @@ pub async fn execute(
             )
             .await
         }
+        SemanticModelCommand::ListRoles { workspace, id } => {
+            roles::list_roles(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::AddRole {
+            workspace,
+            id,
+            name,
+            model_permission,
+        } => roles::add_role(cli, client, workspace, id, name, model_permission).await,
+        SemanticModelCommand::DeleteRole {
+            workspace,
+            id,
+            name,
+        } => roles::delete_role(cli, client, workspace, id, name).await,
+        SemanticModelCommand::SetRls {
+            workspace,
+            id,
+            role,
+            table,
+            filter,
+        } => roles::set_rls(cli, client, workspace, id, role, table, filter).await,
+        SemanticModelCommand::DeleteRls {
+            workspace,
+            id,
+            role,
+            table,
+        } => roles::delete_rls(cli, client, workspace, id, role, table).await,
         SemanticModelCommand::UpdateParameters {
             workspace,
             id,

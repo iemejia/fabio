@@ -1099,6 +1099,199 @@ fn semantic_model_measure_lifecycle() {
         .success();
 }
 
+// ─── Security roles / RLS: add-role / set-rls / list-roles / delete ──────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_role_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("sm_role");
+
+    let mut tmp = NamedTempFile::with_suffix(".bim").unwrap();
+    tmp.write_all(three_table_model_bim().as_bytes()).unwrap();
+    let file_path = tmp.path().to_str().unwrap().to_string();
+
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--file",
+            &file_path,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let sm_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // add-role (dry-run)
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "add-role",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "RegionalManager",
+            "--dry-run",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&assert))["dry_run"], true);
+
+    // add-role (live)
+    fabio()
+        .args([
+            "semantic-model",
+            "add-role",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "RegionalManager",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // set-rls: a DAX filter on Customer
+    fabio()
+        .args([
+            "semantic-model",
+            "set-rls",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--role",
+            "RegionalManager",
+            "--table",
+            "Customer",
+            "--filter",
+            "'Customer'[CustomerKey] = 1",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // list-roles → verify the role + filter
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "list-roles",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let roles = data.as_array().unwrap();
+    let role = roles
+        .iter()
+        .find(|r| r["name"] == "RegionalManager")
+        .expect("RegionalManager role");
+    assert_eq!(role["modelPermission"], "read");
+    assert_eq!(role["tablePermissions"][0]["table"], "Customer");
+
+    // add-role duplicate → CONFLICT
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "add-role",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "RegionalManager",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert_eq!(error_json(&stderr)["error"]["code"], "CONFLICT");
+
+    // delete-rls
+    fabio()
+        .args([
+            "semantic-model",
+            "delete-rls",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--role",
+            "RegionalManager",
+            "--table",
+            "Customer",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // delete-role
+    fabio()
+        .args([
+            "semantic-model",
+            "delete-role",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "RegionalManager",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // delete a nonexistent role → NOT_FOUND
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "delete-role",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "Nope",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert_eq!(error_json(&stderr)["error"]["code"], "NOT_FOUND");
+
+    // Cleanup
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+}
+
 // ─── Dry Run ─────────────────────────────────────────────────────────────────
 
 #[test]

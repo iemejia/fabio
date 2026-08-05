@@ -175,6 +175,54 @@ pub(super) fn column_ref(table: &str, column: &str) -> String {
     format!("{}.{}", quote_tmdl_name(table), quote_tmdl_name(column))
 }
 
+/// Add a `ref <kind> <name>` line to `model.tmdl` if not already present. Tables
+/// and roles require a ref line in `model.tmdl` (relationships do not — they are
+/// auto-discovered). Returns the (possibly-updated) content.
+pub(super) fn add_model_ref(model_tmdl: &str, kind: &str, name: &str) -> String {
+    let ref_line = format!("ref {kind} {}", quote_tmdl_name(name));
+    if model_tmdl.lines().any(|l| l.trim() == ref_line) {
+        return model_tmdl.to_string();
+    }
+    let base = model_tmdl.trim_end();
+    let last = base.lines().last().unwrap_or("");
+    // Group with an existing same-kind ref block (no blank line); otherwise start
+    // a new group with a blank-line separator.
+    let sep = if last.trim_start().starts_with(&format!("ref {kind} ")) {
+        "\n"
+    } else {
+        "\n\n"
+    };
+    let mut result = format!("{base}{sep}{ref_line}");
+    if model_tmdl.ends_with('\n') || model_tmdl.is_empty() {
+        result.push('\n');
+    }
+    result
+}
+
+/// Remove a `ref <kind> <name>` line from `model.tmdl`, collapsing the blank line
+/// that the removal may leave behind.
+pub(super) fn remove_model_ref(model_tmdl: &str, kind: &str, name: &str) -> String {
+    let target = format!("ref {kind} {}", quote_tmdl_name(name));
+    let mut out: Vec<&str> = model_tmdl
+        .lines()
+        .filter(|l| l.trim() != target.as_str())
+        .collect();
+    while out.len() >= 2
+        && out[out.len() - 1].trim().is_empty()
+        && out[out.len() - 2].trim().is_empty()
+    {
+        out.pop();
+    }
+    let mut result = out.join("\n");
+    while result.contains("\n\n\n") {
+        result = result.replace("\n\n\n", "\n\n");
+    }
+    if model_tmdl.ends_with('\n') {
+        result.push('\n');
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,6 +243,23 @@ mod tests {
             column_ref("Sales Fact", "Net Amount"),
             "'Sales Fact'.'Net Amount'"
         );
+    }
+
+    #[test]
+    fn add_model_ref_appends_and_is_idempotent() {
+        let m = "model Model\n\tculture: en-US\n\nref table Sales\n";
+        let out = add_model_ref(m, "role", "WestOnly");
+        assert!(out.contains("ref role WestOnly"));
+        let again = add_model_ref(&out, "role", "WestOnly");
+        assert_eq!(out, again);
+    }
+
+    #[test]
+    fn remove_model_ref_drops_line() {
+        let m = "model Model\n\nref table Sales\nref role WestOnly\n";
+        let out = remove_model_ref(m, "role", "WestOnly");
+        assert!(!out.contains("WestOnly"));
+        assert!(out.contains("ref table Sales"));
     }
 
     #[test]
