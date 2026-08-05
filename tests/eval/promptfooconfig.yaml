@@ -1752,6 +1752,20 @@ tests:
         value: "The response uses 'fabio semantic-model add-relationship' with --from-table/--from-column (the many side, Sales) and --to-table/--to-column (the one side, Customer). It does NOT invent an XMLA/TOM tool — fabio edits the model definition. Bonus if it notes the many-to-one direction."
         metric: add-relationship-approach
 
+  - description: "Power BI: move a measure to another table"
+    vars:
+      user_query: "Move the 'Total Sales' measure in my semantic model from the Sales table to the Customer table"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('semantic-model move-measure')
+        metric: semantic-model-move-measure-command
+      - type: icontains
+        value: "--to-table"
+      - type: llm-rubric
+        value: "The response uses 'fabio semantic-model move-measure' with --measure 'Total Sales' and --to-table Customer. It does not invent an XMLA/TOM tool."
+        metric: move-measure-approach
+
   - description: "Power BI: generate a Direct Lake semantic model from a lakehouse (no TMDL authoring)"
     vars:
       user_query: "Generate a Direct Lake semantic model called 'SalesModel' from my lakehouse — I don't want to hand-write any TMDL, just pull in all the tables"

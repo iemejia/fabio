@@ -10278,6 +10278,85 @@
         "returns": "object",
         "destructive": true
       },
+      "delete-measure": {
+        "description": "Delete a measure from the model by editing the definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--measure": {
+            "type": "string",
+            "required": true,
+            "description": "Measure name to delete (model-unique)"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "rename-measure": {
+        "description": "Rename a measure (its declaration only; DAX references are NOT rewritten). Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--measure": {
+            "type": "string",
+            "required": true,
+            "description": "Current measure name"
+          },
+          "--new-name": {
+            "type": "string",
+            "required": true,
+            "description": "New measure name"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "move-measure": {
+        "description": "Move a measure to a different home table (name and definition preserved). Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--measure": {
+            "type": "string",
+            "required": true,
+            "description": "Measure name to move (model-unique)"
+          },
+          "--to-table": {
+            "type": "string",
+            "required": true,
+            "description": "Destination table"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
       "add-relationship": {
         "description": "Add a relationship between two tables by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
         "flags": {

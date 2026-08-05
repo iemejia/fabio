@@ -468,6 +468,62 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         display_folder: Option<String>,
     },
+    /// Delete a measure from the model by editing the definition. Overwrites the
+    /// definition (irreversible) — dry-run guarded.
+    #[command(name = "delete-measure", display_order = 13)]
+    DeleteMeasure {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Measure name to delete (model-unique)
+        #[arg(long)]
+        measure: String,
+    },
+    /// Rename a measure (its declaration only; DAX references are NOT rewritten).
+    /// Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "rename-measure", display_order = 13)]
+    RenameMeasure {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Current measure name
+        #[arg(long)]
+        measure: String,
+
+        /// New measure name
+        #[arg(long)]
+        new_name: String,
+    },
+    /// Move a measure to a different home table (name and definition preserved).
+    /// Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "move-measure", display_order = 13)]
+    MoveMeasure {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Measure name to move (model-unique)
+        #[arg(long)]
+        measure: String,
+
+        /// Destination table
+        #[arg(long)]
+        to_table: String,
+    },
     /// Add a relationship between two tables by editing the model definition.
     /// Overwrites the definition (irreversible) — dry-run guarded.
     #[command(name = "add-relationship", display_order = 13)]
@@ -1104,6 +1160,23 @@ pub async fn execute(
             )
             .await
         }
+        SemanticModelCommand::DeleteMeasure {
+            workspace,
+            id,
+            measure,
+        } => authoring::delete_measure(cli, client, workspace, id, measure).await,
+        SemanticModelCommand::RenameMeasure {
+            workspace,
+            id,
+            measure,
+            new_name,
+        } => authoring::rename_measure(cli, client, workspace, id, measure, new_name).await,
+        SemanticModelCommand::MoveMeasure {
+            workspace,
+            id,
+            measure,
+            to_table,
+        } => authoring::move_measure(cli, client, workspace, id, measure, to_table).await,
         SemanticModelCommand::AddRelationship {
             workspace,
             id,

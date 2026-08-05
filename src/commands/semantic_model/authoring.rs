@@ -354,6 +354,150 @@ pub(super) async fn update_measure(
     Ok(())
 }
 
+// ── delete / rename / move measure ────────────────────────────────────────────
+
+pub(super) async fn delete_measure(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    measure: &str,
+) -> Result<()> {
+    let op = "semantic-model delete-measure";
+    let parts = fetch_parts(client, workspace, id, op).await?;
+
+    let new_parts = if let Some((_, bim)) = parts.iter().find(|(p, _)| p == "model.bim") {
+        let new_bim = delete_measure_bim(bim, measure)?;
+        replace_part(&parts, "model.bim", &new_bim)
+    } else {
+        let idx = find_measure_file(&parts, measure)?;
+        let (new_content, removed) = delete_measure_tmdl(&parts[idx].1, measure);
+        if !removed {
+            bail!("Could not find measure '{measure}' in the model definition.");
+        }
+        let mut out = parts.clone();
+        out[idx].1 = new_content;
+        out
+    };
+
+    if output::dry_run_guard(
+        cli,
+        op,
+        &serde_json::json!({ "id": id, "measure": measure }),
+    ) {
+        return Ok(());
+    }
+    push_parts(client, workspace, id, &new_parts, op).await?;
+    output::render_object(
+        cli,
+        &serde_json::json!({ "status": "measure_deleted", "id": id, "measure": measure }),
+        "status",
+    );
+    Ok(())
+}
+
+pub(super) async fn rename_measure(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    measure: &str,
+    new_name: &str,
+) -> Result<()> {
+    let op = "semantic-model rename-measure";
+    if measure == new_name {
+        return Err(
+            FabioError::invalid_input("--new-name must differ from --measure".to_string()).into(),
+        );
+    }
+    let parts = fetch_parts(client, workspace, id, op).await?;
+    if measure_exists(&parts, new_name) {
+        return Err(FabioError::with_hint(
+            ErrorCode::Conflict,
+            format!("A measure named '{new_name}' already exists."),
+            "Pick a different --new-name.".to_string(),
+        )
+        .into());
+    }
+
+    let new_parts = if let Some((_, bim)) = parts.iter().find(|(p, _)| p == "model.bim") {
+        let new_bim = rename_measure_bim(bim, measure, new_name)?;
+        replace_part(&parts, "model.bim", &new_bim)
+    } else {
+        let idx = find_measure_file(&parts, measure)?;
+        let (new_content, renamed) = rename_measure_tmdl(&parts[idx].1, measure, new_name);
+        if !renamed {
+            bail!("Could not find measure '{measure}' in the model definition.");
+        }
+        let mut out = parts.clone();
+        out[idx].1 = new_content;
+        out
+    };
+
+    if output::dry_run_guard(
+        cli,
+        op,
+        &serde_json::json!({ "id": id, "measure": measure, "newName": new_name }),
+    ) {
+        return Ok(());
+    }
+    push_parts(client, workspace, id, &new_parts, op).await?;
+    output::render_object(
+        cli,
+        &serde_json::json!({ "status": "measure_renamed", "id": id, "measure": measure, "newName": new_name }),
+        "status",
+    );
+    Ok(())
+}
+
+pub(super) async fn move_measure(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    measure: &str,
+    to_table: &str,
+) -> Result<()> {
+    let op = "semantic-model move-measure";
+    let parts = fetch_parts(client, workspace, id, op).await?;
+
+    let new_parts = if let Some((_, bim)) = parts.iter().find(|(p, _)| p == "model.bim") {
+        let new_bim = move_measure_bim(bim, measure, to_table)?;
+        replace_part(&parts, "model.bim", &new_bim)
+    } else {
+        let src_idx = find_measure_file(&parts, measure)?;
+        let dst_idx = find_table_file(&parts, to_table)?;
+        if src_idx == dst_idx {
+            return Err(FabioError::invalid_input(format!(
+                "Measure '{measure}' is already in table '{to_table}'."
+            ))
+            .into());
+        }
+        let (block, remaining) = extract_measure_block(&parts[src_idx].1, measure)
+            .ok_or_else(|| FabioError::not_found(format!("Measure '{measure}' not found")))?;
+        let dst_new = insert_measure_lines(&parts[dst_idx].1, &block);
+        let mut out = parts.clone();
+        out[src_idx].1 = remaining;
+        out[dst_idx].1 = dst_new;
+        out
+    };
+
+    if output::dry_run_guard(
+        cli,
+        op,
+        &serde_json::json!({ "id": id, "measure": measure, "toTable": to_table }),
+    ) {
+        return Ok(());
+    }
+    push_parts(client, workspace, id, &new_parts, op).await?;
+    output::render_object(
+        cli,
+        &serde_json::json!({ "status": "measure_moved", "id": id, "measure": measure, "toTable": to_table }),
+        "status",
+    );
+    Ok(())
+}
+
 /// Build the property lines (`formatString`, `displayFolder`) for a measure at
 /// indent 2. `///` description is emitted separately (it precedes the measure).
 fn measure_property_lines(fields: &MeasureFields) -> String {
@@ -413,11 +557,14 @@ fn add_measure_tmdl(content: &str, name: &str, expr: &str, fields: &MeasureField
     for l in measure_property_lines(fields).lines() {
         mlines.push(l.to_string());
     }
+    insert_measure_lines(content, &mlines)
+}
 
-    // Insert before the first table-level child object (or its leading `///`
-    // description comment) — i.e. after the table's scalar properties. This
-    // yields the canonical "measures first" layout and never separates the
-    // `table` declaration from its own properties.
+/// Insert a block of measure lines into a table file before the first
+/// table-level child object (or its leading `///` comment) — i.e. after the
+/// table's scalar properties. This yields the canonical "measures first" layout
+/// and never separates the `table` declaration from its own properties.
+fn insert_measure_lines(content: &str, mlines: &[String]) -> String {
     let lines: Vec<&str> = content.lines().collect();
     let mut out: Vec<String> = Vec::new();
     let mut inserted = false;
@@ -439,13 +586,107 @@ fn add_measure_tmdl(content: &str, name: &str, expr: &str, fields: &MeasureField
     }
     if !inserted {
         out.push(String::new());
-        out.extend(mlines);
+        out.extend(mlines.iter().cloned());
     }
     let mut result = out.join("\n");
     if content.ends_with('\n') {
         result.push('\n');
     }
     result
+}
+
+/// The line span `[start, end)` of a measure block in a table file, INCLUDING
+/// its leading contiguous `///` description comments and trailing indent≥2 body.
+fn measure_span(lines: &[&str], measure: &str) -> Option<(usize, usize)> {
+    let decl = lines.iter().position(|l| {
+        tab_indent(l) == 1
+            && decl_name(l.trim_start_matches('\t'), "measure").as_deref() == Some(measure)
+    })?;
+    let mut start = decl;
+    while start > 0 {
+        let prev = lines[start - 1];
+        if tab_indent(prev) == 1 && prev.trim_start().starts_with("///") {
+            start -= 1;
+        } else {
+            break;
+        }
+    }
+    let mut end = decl + 1;
+    while end < lines.len() && (lines[end].trim().is_empty() || tab_indent(lines[end]) >= 2) {
+        end += 1;
+    }
+    while end > decl + 1 && lines[end - 1].trim().is_empty() {
+        end -= 1;
+    }
+    Some((start, end))
+}
+
+fn join_preserving_trailing_newline(out: &[String], had_trailing: bool) -> String {
+    let mut joined = out.join("\n");
+    while joined.contains("\n\n\n") {
+        joined = joined.replace("\n\n\n", "\n\n");
+    }
+    let joined = joined.trim_end().to_string();
+    if had_trailing && !joined.is_empty() {
+        format!("{joined}\n")
+    } else {
+        joined
+    }
+}
+
+/// Remove a measure block from a table file. Returns `(new_content, removed)`.
+fn delete_measure_tmdl(content: &str, measure: &str) -> (String, bool) {
+    let lines: Vec<&str> = content.lines().collect();
+    let Some((start, end)) = measure_span(&lines, measure) else {
+        return (content.to_string(), false);
+    };
+    let mut out: Vec<String> = Vec::new();
+    out.extend(lines[..start].iter().map(|s| (*s).to_string()));
+    out.extend(lines[end..].iter().map(|s| (*s).to_string()));
+    (
+        join_preserving_trailing_newline(&out, content.ends_with('\n')),
+        true,
+    )
+}
+
+/// Extract a measure block (its lines) and return the block plus the remaining
+/// table content with the block removed.
+fn extract_measure_block(content: &str, measure: &str) -> Option<(Vec<String>, String)> {
+    let lines: Vec<&str> = content.lines().collect();
+    let (start, end) = measure_span(&lines, measure)?;
+    let block: Vec<String> = lines[start..end].iter().map(|s| (*s).to_string()).collect();
+    let (remaining, _) = delete_measure_tmdl(content, measure);
+    Some((block, remaining))
+}
+
+/// Rename a measure's declaration in place (references are NOT rewritten).
+/// Returns `(new_content, renamed)`.
+fn rename_measure_tmdl(content: &str, old: &str, new: &str) -> (String, bool) {
+    let mut renamed = false;
+    let mut out: Vec<String> = Vec::new();
+    for line in content.lines() {
+        if !renamed
+            && tab_indent(line) == 1
+            && decl_name(line.trim_start_matches('\t'), "measure").as_deref() == Some(old)
+        {
+            // Preserve everything from the `=` onward.
+            let after = line.trim_start().strip_prefix("measure ").unwrap_or("");
+            let rest = after.find('=').map_or("", |i| &after[i..]);
+            out.push(format!(
+                "\tmeasure {} {}",
+                super::tmdl::quote_tmdl_name(new),
+                rest
+            ));
+            renamed = true;
+        } else {
+            out.push(line.to_string());
+        }
+    }
+    let mut result = out.join("\n");
+    if content.ends_with('\n') {
+        result.push('\n');
+    }
+    (result, renamed)
 }
 
 /// Known TMDL measure sub-property keywords (indent 2), used to separate the
@@ -637,6 +878,82 @@ fn update_measure_bim(bim: &str, measure: &str, fields: &MeasureFields) -> Resul
     Ok(serde_json::to_string(&j).unwrap_or_else(|_| bim.to_string()))
 }
 
+fn bim_tables_mut(j: &mut Value) -> Result<&mut Vec<Value>> {
+    j.get_mut("model")
+        .and_then(|m| m.get_mut("tables"))
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| FabioError::invalid_input("model.bim has no tables").into())
+}
+
+fn delete_measure_bim(bim: &str, measure: &str) -> Result<String> {
+    let mut j: Value =
+        serde_json::from_str(bim).map_err(|e| FabioError::invalid_input(e.to_string()))?;
+    let mut removed = false;
+    for t in bim_tables_mut(&mut j)? {
+        if let Some(ms) = t.get_mut("measures").and_then(Value::as_array_mut) {
+            let before = ms.len();
+            ms.retain(|x| x.get("name").and_then(Value::as_str) != Some(measure));
+            if ms.len() != before {
+                removed = true;
+            }
+        }
+    }
+    if !removed {
+        return Err(FabioError::not_found(format!("Measure '{measure}' not found")).into());
+    }
+    Ok(serde_json::to_string(&j).unwrap_or_else(|_| bim.to_string()))
+}
+
+fn rename_measure_bim(bim: &str, measure: &str, new_name: &str) -> Result<String> {
+    let mut j: Value =
+        serde_json::from_str(bim).map_err(|e| FabioError::invalid_input(e.to_string()))?;
+    let meas = bim_tables_mut(&mut j)?
+        .iter_mut()
+        .find_map(|t| {
+            t.get_mut("measures")
+                .and_then(Value::as_array_mut)
+                .and_then(|ms| {
+                    ms.iter_mut()
+                        .find(|x| x.get("name").and_then(Value::as_str) == Some(measure))
+                })
+        })
+        .ok_or_else(|| FabioError::not_found(format!("Measure '{measure}' not found")))?;
+    meas["name"] = Value::from(new_name);
+    Ok(serde_json::to_string(&j).unwrap_or_else(|_| bim.to_string()))
+}
+
+fn move_measure_bim(bim: &str, measure: &str, to_table: &str) -> Result<String> {
+    let mut j: Value =
+        serde_json::from_str(bim).map_err(|e| FabioError::invalid_input(e.to_string()))?;
+    // Extract the measure object from its current table.
+    let mut extracted: Option<Value> = None;
+    for t in bim_tables_mut(&mut j)? {
+        if let Some(ms) = t.get_mut("measures").and_then(Value::as_array_mut)
+            && let Some(pos) = ms
+                .iter()
+                .position(|x| x.get("name").and_then(Value::as_str) == Some(measure))
+        {
+            extracted = Some(ms.remove(pos));
+            break;
+        }
+    }
+    let m =
+        extracted.ok_or_else(|| FabioError::not_found(format!("Measure '{measure}' not found")))?;
+    // Insert into the destination table.
+    let dst = bim_tables_mut(&mut j)?
+        .iter_mut()
+        .find(|t| t.get("name").and_then(Value::as_str) == Some(to_table))
+        .ok_or_else(|| FabioError::not_found(format!("Table '{to_table}' not found")))?;
+    dst.as_object_mut()
+        .unwrap()
+        .entry("measures")
+        .or_insert_with(|| Value::Array(Vec::new()))
+        .as_array_mut()
+        .unwrap()
+        .push(m);
+    Ok(serde_json::to_string(&j).unwrap_or_else(|_| bim.to_string()))
+}
+
 // ── lookup helpers ────────────────────────────────────────────────────────────
 
 fn find_measure_file(parts: &[(String, String)], measure: &str) -> Result<usize> {
@@ -808,6 +1125,77 @@ mod tests {
         let parts = vec![("definition/tables/Sales.tmdl".to_string(), sales_tmdl())];
         assert!(measure_exists(&parts, "Total"));
         assert!(!measure_exists(&parts, "Nope"));
+    }
+
+    #[test]
+    fn delete_measure_removes_block_and_comment() {
+        let (out, removed) = delete_measure_tmdl(&sales_tmdl(), "Total");
+        assert!(removed);
+        assert!(!out.contains("measure 'Total'"));
+        assert!(!out.contains("Existing measure")); // its `///` comment gone too
+        assert!(out.contains("column Amount")); // rest intact
+        assert!(out.contains("partition p"));
+    }
+
+    #[test]
+    fn delete_measure_missing_is_noop() {
+        let (_out, removed) = delete_measure_tmdl(&sales_tmdl(), "Nope");
+        assert!(!removed);
+    }
+
+    #[test]
+    fn rename_measure_changes_decl_only() {
+        let (out, renamed) = rename_measure_tmdl(&sales_tmdl(), "Total", "Grand Total");
+        assert!(renamed);
+        assert!(out.contains("measure 'Grand Total' = SUM('Sales'[Amount])"));
+        assert!(!out.contains("measure 'Total'"));
+        assert!(out.contains("formatString: 0.00")); // properties preserved
+    }
+
+    #[test]
+    fn extract_measure_block_captures_and_removes() {
+        let (block, remaining) = extract_measure_block(&sales_tmdl(), "Total").unwrap();
+        assert!(block.iter().any(|l| l.contains("measure 'Total'")));
+        assert!(block.iter().any(|l| l.contains("/// Existing measure")));
+        assert!(block.iter().any(|l| l.contains("formatString: 0.00")));
+        assert!(!remaining.contains("measure 'Total'"));
+        // Re-insert into another table body keeps it valid.
+        let dst = "table Other\n\tlineageTag: x\n\n\tcolumn C\n\t\tdataType: string\n\t\tsourceColumn: C\n";
+        let moved = insert_measure_lines(dst, &block);
+        assert!(moved.contains("measure 'Total'"));
+        let lt = moved.find("lineageTag: x").unwrap();
+        let meas = moved.find("measure 'Total'").unwrap();
+        assert!(lt < meas, "measure must land after the table's lineageTag");
+    }
+
+    #[test]
+    fn bim_delete_rename_move_measure() {
+        let bim = r#"{"model":{"tables":[{"name":"Sales","measures":[{"name":"Total","expression":"1"},{"name":"Avg","expression":"2"}]},{"name":"Dim","measures":[]}]}}"#;
+        // delete
+        let d = delete_measure_bim(bim, "Avg").unwrap();
+        let jd: Value = serde_json::from_str(&d).unwrap();
+        assert_eq!(
+            jd["model"]["tables"][0]["measures"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        // rename
+        let r = rename_measure_bim(bim, "Total", "Sum Total").unwrap();
+        let jr: Value = serde_json::from_str(&r).unwrap();
+        assert_eq!(jr["model"]["tables"][0]["measures"][0]["name"], "Sum Total");
+        // move Total from Sales to Dim
+        let m = move_measure_bim(bim, "Total", "Dim").unwrap();
+        let jm: Value = serde_json::from_str(&m).unwrap();
+        assert_eq!(
+            jm["model"]["tables"][0]["measures"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        ); // Sales now has just Avg
+        assert_eq!(jm["model"]["tables"][1]["measures"][0]["name"], "Total"); // Dim gained Total
     }
 
     #[test]

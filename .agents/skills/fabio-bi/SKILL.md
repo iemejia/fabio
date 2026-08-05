@@ -43,6 +43,7 @@ Manage semantic models (Power BI datasets)
 | `fabio semantic-model clone` | yes | Clone a semantic model to the same or different workspace |
 | `fabio semantic-model create` | yes | Create a new semantic model from a definition file (model.bim) |
 | `fabio semantic-model delete` | yes | Delete a semantic model |
+| `fabio semantic-model delete-measure` | yes | Delete a measure from the model by editing the definition. Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio semantic-model delete-relationship` | yes | Delete a relationship (by --relationship-id or by the from/to columns). Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio semantic-model delete-user` | yes | Remove a user from a semantic model |
 | `fabio semantic-model export-pbix` | no | Export a semantic model as a .pbix file |
@@ -61,10 +62,12 @@ Manage semantic models (Power BI datasets)
 | `fabio semantic-model list-upstream` | no | List upstream (lineage) datasets that this semantic model depends on |
 | `fabio semantic-model list-users` | no | List users (permissions) of a semantic model |
 | `fabio semantic-model measure-dependencies` | no | List each measure's dependencies (the measures/columns/tables its DAX references) — useful for including dependent objects in an AI data schema |
+| `fabio semantic-model move-measure` | yes | Move a measure to a different home table (name and definition preserved). Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio semantic-model query` | no | Execute a DAX query against a semantic model |
 | `fabio semantic-model refresh` | yes | Refresh a semantic model (required to frame Direct Lake models after creation) |
 | `fabio semantic-model refresh-details` | no | Get execution details of a specific (enhanced) refresh by its request id |
 | `fabio semantic-model refresh-status` | no | Get refresh history and status for a semantic model |
+| `fabio semantic-model rename-measure` | yes | Rename a measure (its declaration only; DAX references are NOT rewritten). Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio semantic-model set-description` | yes | Set the description of a table, column, or measure by editing the model definition (getDefinition → edit TMDL/model.bim → updateDefinition). Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio semantic-model show` | no | Show details of a semantic model |
 | `fabio semantic-model takeover` | yes | Take over a semantic model (converts definition-managed to service-managed for portal editing) |
@@ -140,7 +143,7 @@ Manage dashboards (Power BI)
 - PBIR (the enhanced per-file 'definition/' folder) is Microsoft's documented, agent-authorable report format (each page/visual has its own $schema-bearing JSON) and becomes the only format at GA; conform to the published visual.json/page.json schemas and run 'report validate' before create/deploy. fabio 'report create --definition' pushes a full PBIR tree (previously only 'deploy' could).
 - Direct Lake reads Delta directly — the report is empty until the lakehouse tables are populated.
 - semantic-model generate reads the source schema over the SQL analytics endpoint (TDS), so it needs a SQL-scoped token from the ambient credential chain (az login / device-code cache) — do NOT set a Fabric-only static FABIO_ACCESS_TOKEN for it. It generates the portal-EXACT Direct Lake TMDL (definition.pbism v4.2, model.tmdl defaultMode directLake, database.tmdl compatibilityLevel 1604, per-table tables/*.tmdl, expressions.tmdl Sql.Database(server, <sqlEndpointId>)) and frames it with a Full refresh; wait ~15-30s before the first DAX query. A freshly loaded lakehouse table can lag ~30-60s before it appears on the SQL endpoint. The Sql.Database catalog is the SQL analytics endpoint item id (a GUID), matching what the portal emits.
-- To edit individual model objects (set a description, add/update a measure, add/delete/update a relationship) fabio uses set-description/add-measure/update-measure and add-relationship/delete-relationship/update-relationship — a definition read-modify-write (getDefinition->edit TMDL->updateDefinition), NOT XMLA/TOM. These OVERWRITE the definition (irreversible, dry-run guarded); a new measure lands after the table scalar props (canonical measures-first) so it does not break TMDL indentation. Relationships live in definition/relationships.tmdl (delete/update match by --relationship-id or the full from/to column tuple).
+- To edit individual model objects fabio uses definition read-modify-write (getDefinition->edit TMDL->updateDefinition), NOT XMLA/TOM: set-description; measures add/update/delete/rename/move (rename does NOT rewrite DAX references; move changes the home table); relationships add/delete/update (in definition/relationships.tmdl, match by --relationship-id or the full from/to column tuple). These OVERWRITE the definition (irreversible, dry-run guarded); a measure lands after the table scalar props (canonical measures-first) so it does not break TMDL indentation.
 
 ## Troubleshooting
 | Symptom | Fix |
