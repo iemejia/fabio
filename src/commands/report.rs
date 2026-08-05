@@ -9,6 +9,8 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
+#[path = "report_def.rs"]
+mod authoring;
 #[path = "report_pbir.rs"]
 mod pbir;
 
@@ -158,6 +160,111 @@ pub enum ReportCommand {
         source: String,
     },
 
+    // ── PBIR page authoring (definition read-modify-write) ────────────────
+    /// List the pages of a report (name, display name, visual count) — read-only.
+    #[command(name = "list-pages", display_order = 9)]
+    ListPages {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Report ID
+        #[arg(long)]
+        id: String,
+    },
+    /// List the visuals of a report (page, name, type, title) — read-only.
+    #[command(name = "list-visuals", display_order = 9)]
+    ListVisuals {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Report ID
+        #[arg(long)]
+        id: String,
+
+        /// Only list visuals of this page (by page name)
+        #[arg(long)]
+        page: Option<String>,
+    },
+    /// Add a page to a PBIR report by editing its definition. Overwrites the
+    /// definition (irreversible) — dry-run guarded.
+    #[command(name = "add-page", display_order = 9)]
+    AddPage {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Report ID
+        #[arg(long)]
+        id: String,
+
+        /// Page display name (the tab label)
+        #[arg(long)]
+        display_name: String,
+
+        /// Internal page name (default: a generated 20-hex id)
+        #[arg(long)]
+        name: Option<String>,
+
+        /// Make this the active (default) page
+        #[arg(long)]
+        active: bool,
+    },
+    /// Delete a page from a PBIR report by editing its definition (a report must
+    /// keep at least one page). Overwrites the definition (irreversible) —
+    /// dry-run guarded.
+    #[command(name = "delete-page", display_order = 9)]
+    DeletePage {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Report ID
+        #[arg(long)]
+        id: String,
+
+        /// Page name to delete
+        #[arg(long)]
+        name: String,
+    },
+    /// Rename a page's display name in a PBIR report. Overwrites the definition
+    /// (irreversible) — dry-run guarded.
+    #[command(name = "rename-page", display_order = 9)]
+    RenamePage {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Report ID
+        #[arg(long)]
+        id: String,
+
+        /// Page name to rename
+        #[arg(long)]
+        name: String,
+
+        /// New display name
+        #[arg(long)]
+        display_name: String,
+    },
+    /// Set the active (default) page of a PBIR report. Overwrites the definition
+    /// (irreversible) — dry-run guarded.
+    #[command(name = "set-active-page", display_order = 9)]
+    SetActivePage {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Report ID
+        #[arg(long)]
+        id: String,
+
+        /// Page name to make active
+        #[arg(long)]
+        name: String,
+    },
+
     // ── Sharing & Publishing ─────────────────────────────────────────────
     /// Publish a report to the web (generates a publicly accessible embed URL)
     ///
@@ -199,6 +306,7 @@ pub enum ReportCommand {
     },
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) -> Result<()> {
     match command {
         ReportCommand::List { workspace } => list(cli, client, workspace).await,
@@ -258,6 +366,48 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) 
             report_json,
         } => update_definition(cli, client, workspace, id, file, report_json.as_deref()).await,
         ReportCommand::Validate { source } => validate(cli, source),
+        ReportCommand::ListPages { workspace, id } => {
+            authoring::list_pages(cli, client, workspace, id).await
+        }
+        ReportCommand::ListVisuals {
+            workspace,
+            id,
+            page,
+        } => authoring::list_visuals(cli, client, workspace, id, page.as_deref()).await,
+        ReportCommand::AddPage {
+            workspace,
+            id,
+            display_name,
+            name,
+            active,
+        } => {
+            authoring::add_page(
+                cli,
+                client,
+                workspace,
+                id,
+                display_name,
+                name.as_deref(),
+                *active,
+            )
+            .await
+        }
+        ReportCommand::DeletePage {
+            workspace,
+            id,
+            name,
+        } => authoring::delete_page(cli, client, workspace, id, name).await,
+        ReportCommand::RenamePage {
+            workspace,
+            id,
+            name,
+            display_name,
+        } => authoring::rename_page(cli, client, workspace, id, name, display_name).await,
+        ReportCommand::SetActivePage {
+            workspace,
+            id,
+            name,
+        } => authoring::set_active_page(cli, client, workspace, id, name).await,
         ReportCommand::PublishToWeb { workspace, id } => {
             publish_to_web(cli, client, workspace, id).await
         }

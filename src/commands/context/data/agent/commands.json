@@ -9621,6 +9621,149 @@
         "mutates": false,
         "returns": "object"
       },
+      "list-pages": {
+        "description": "List the pages of a report (name, display name, visual count) — read-only",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Report ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "list-visuals": {
+        "description": "List the visuals of a report (page, name, type, title) — read-only",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Report ID"
+          },
+          "--page": {
+            "type": "string",
+            "description": "Only list visuals of this page (by page name)"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "add-page": {
+        "description": "Add a page to a PBIR report by editing its definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Report ID"
+          },
+          "--display-name": {
+            "type": "string",
+            "required": true,
+            "description": "Page display name (the tab label)"
+          },
+          "--name": {
+            "type": "string",
+            "description": "Internal page name (default: a generated 20-hex id)"
+          },
+          "--active": {
+            "type": "bool",
+            "description": "Make this the active (default) page"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "delete-page": {
+        "description": "Delete a page from a PBIR report by editing its definition (a report must keep at least one page). Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Report ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Page name to delete"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "rename-page": {
+        "description": "Rename a page's display name in a PBIR report. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Report ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Page name to rename"
+          },
+          "--display-name": {
+            "type": "string",
+            "required": true,
+            "description": "New display name"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "set-active-page": {
+        "description": "Set the active (default) page of a PBIR report. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Report ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Page name to make active"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
       "publish-to-web": {
         "description": "Publish a report to the web (generates a publicly accessible embed URL)",
         "flags": {

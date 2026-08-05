@@ -128,12 +128,18 @@ Manage reports (Power BI)
 
 | Command | Mutates | Description |
 |---|---|---|
+| `fabio report add-page` | yes | Add a page to a PBIR report by editing its definition. Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio report create` | yes | Create a new report from a definition file |
 | `fabio report delete` | yes | Delete a report |
+| `fabio report delete-page` | yes | Delete a page from a PBIR report by editing its definition (a report must keep at least one page). Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio report export` | no | Export (render) the Power BI report to a file (PDF, PPTX, PNG) |
 | `fabio report get-definition` | no | Get the definition of a report |
 | `fabio report list` | no | List reports in a workspace |
+| `fabio report list-pages` | no | List the pages of a report (name, display name, visual count) — read-only |
+| `fabio report list-visuals` | no | List the visuals of a report (page, name, type, title) — read-only |
 | `fabio report publish-to-web` | yes | Publish a report to the web (generates a publicly accessible embed URL) |
+| `fabio report rename-page` | yes | Rename a page's display name in a PBIR report. Overwrites the definition (irreversible) — dry-run guarded |
+| `fabio report set-active-page` | yes | Set the active (default) page of a PBIR report. Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio report show` | no | Show details of a report |
 | `fabio report update` | yes | Update report properties (name and/or description) |
 | `fabio report update-definition` | yes | Update the definition of a report |
