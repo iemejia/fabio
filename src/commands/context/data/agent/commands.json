@@ -10880,6 +10880,110 @@
         "returns": "object",
         "destructive": true
       },
+      "list-cultures": {
+        "description": "List translation cultures of a semantic model (culture + translation count) — read-only",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "add-culture": {
+        "description": "Add a translation culture (e.g. fr-FR) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--culture": {
+            "type": "string",
+            "required": true,
+            "description": "Culture / locale name (e.g. fr-FR, es-ES)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "delete-culture": {
+        "description": "Delete a translation culture by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--culture": {
+            "type": "string",
+            "required": true,
+            "description": "Culture / locale name to delete"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "set-translation": {
+        "description": "Set a translated caption for a table/column/measure in a culture. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--culture": {
+            "type": "string",
+            "required": true,
+            "description": "Culture / locale name (must already exist — add it with add-culture)"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Table to translate (or the owner of --column/--measure)"
+          },
+          "--column": {
+            "type": "string",
+            "description": "Column to translate (requires --table)"
+          },
+          "--measure": {
+            "type": "string",
+            "description": "Measure to translate"
+          },
+          "--caption": {
+            "type": "string",
+            "required": true,
+            "description": "Translated caption (the display name in this culture)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
       "update-parameters": {
         "description": "Update parameters of a semantic model",
         "flags": {

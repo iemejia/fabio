@@ -1808,6 +1808,20 @@ tests:
         value: "The response uses 'fabio semantic-model add-table' with --name Calendar and --expression CALENDARAUTO() (a DAX table expression). It does not invent an XMLA/TOM tool."
         metric: add-table-approach
 
+  - description: "Power BI: translate a semantic model to French"
+    vars:
+      user_query: "Add a French (fr-FR) translation to my semantic model and translate the Sales table caption to 'Ventes'"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('semantic-model add-culture') && output.includes('semantic-model set-translation')
+        metric: semantic-model-translation-commands
+      - type: icontains
+        value: "--caption"
+      - type: llm-rubric
+        value: "The response adds the culture (add-culture --culture fr-FR) and sets a translated caption (set-translation --culture fr-FR --table Sales --caption Ventes). Correct sequencing: add-culture before set-translation. It does not invent an XMLA/TOM tool."
+        metric: translation-approach
+
   - description: "Power BI: generate a Direct Lake semantic model from a lakehouse (no TMDL authoring)"
     vars:
       user_query: "Generate a Direct Lake semantic model called 'SalesModel' from my lakehouse — I don't want to hand-write any TMDL, just pull in all the tables"

@@ -113,6 +113,17 @@ pub(super) fn part_content<'a>(parts: &'a [(String, String)], path: &str) -> Opt
         .map(|(_, c)| c.as_str())
 }
 
+/// The model name declared by `model <name>` in `model.tmdl` (defaults `Model`).
+pub(super) fn model_name(model_tmdl: &str) -> String {
+    model_tmdl
+        .lines()
+        .find(|l| tab_indent(l) == 0 && l.trim_start().starts_with("model "))
+        .map_or_else(
+            || "Model".to_string(),
+            |l| strip_tmdl_name(&l.trim_start()[6..]),
+        )
+}
+
 pub(super) fn is_table_tmdl(path: &str) -> bool {
     path.starts_with("definition/tables/")
         && std::path::Path::new(path)

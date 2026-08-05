@@ -1716,6 +1716,231 @@ fn semantic_model_table_lifecycle() {
         .success();
 }
 
+// ─── Translations / cultures: add-culture / set-translation / list / delete ──
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn semantic_model_translation_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("sm_tr");
+
+    let mut tmp = NamedTempFile::with_suffix(".bim").unwrap();
+    tmp.write_all(three_table_model_bim().as_bytes()).unwrap();
+    let file_path = tmp.path().to_str().unwrap().to_string();
+
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--file",
+            &file_path,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let sm_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // add-culture (dry-run then live)
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "add-culture",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--culture",
+            "fr-FR",
+            "--dry-run",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&assert))["dry_run"], true);
+
+    fabio()
+        .args([
+            "semantic-model",
+            "add-culture",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--culture",
+            "fr-FR",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // set-translation on a table and a column
+    fabio()
+        .args([
+            "semantic-model",
+            "set-translation",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--culture",
+            "fr-FR",
+            "--table",
+            "Sales",
+            "--caption",
+            "Ventes",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    fabio()
+        .args([
+            "semantic-model",
+            "set-translation",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--culture",
+            "fr-FR",
+            "--table",
+            "Sales",
+            "--column",
+            "Amount",
+            "--caption",
+            "Montant",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // list-cultures → fr-FR with 2 translations
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "list-cultures",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let cultures = data.as_array().unwrap();
+    let fr = cultures
+        .iter()
+        .find(|c| c["culture"] == "fr-FR")
+        .expect("fr-FR culture");
+    assert_eq!(fr["translationCount"], 2);
+
+    // Verify captions via the round-tripped definition
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "get-definition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let parts = data["definition"]["parts"].as_array().unwrap();
+    let culture = parts
+        .iter()
+        .find(|p| p["path"].as_str() == Some("definition/cultures/fr-FR.tmdl"))
+        .and_then(|p| p["payload"].as_str())
+        .map(|b| {
+            String::from_utf8(base64::engine::general_purpose::STANDARD.decode(b).unwrap()).unwrap()
+        })
+        .expect("fr-FR.tmdl");
+    assert!(culture.contains("caption: Ventes"), "culture:\n{culture}");
+    assert!(culture.contains("caption: Montant"), "culture:\n{culture}");
+
+    // add-culture duplicate → CONFLICT
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "add-culture",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--culture",
+            "fr-FR",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert_eq!(error_json(&stderr)["error"]["code"], "CONFLICT");
+
+    // set-translation on a missing culture → NOT_FOUND
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "set-translation",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--culture",
+            "de-DE",
+            "--table",
+            "Sales",
+            "--caption",
+            "Verkauf",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert_eq!(error_json(&stderr)["error"]["code"], "NOT_FOUND");
+
+    // delete-culture
+    fabio()
+        .args([
+            "semantic-model",
+            "delete-culture",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--culture",
+            "fr-FR",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+
+    // Cleanup
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+}
+
 // ─── Dry Run ─────────────────────────────────────────────────────────────────
 
 #[test]

@@ -10,6 +10,7 @@ mod relationships;
 mod roles;
 mod tables;
 mod tmdl;
+mod translations;
 
 use anyhow::Result;
 use clap::Subcommand;
@@ -935,6 +936,82 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         new_name: String,
     },
+    /// List translation cultures of a semantic model (culture + translation
+    /// count) — read-only.
+    #[command(name = "list-cultures", display_order = 13)]
+    ListCultures {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Add a translation culture (e.g. fr-FR) by editing the model definition.
+    /// Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "add-culture", display_order = 13)]
+    AddCulture {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Culture / locale name (e.g. fr-FR, es-ES)
+        #[arg(long)]
+        culture: String,
+    },
+    /// Delete a translation culture by editing the model definition. Overwrites
+    /// the definition (irreversible) — dry-run guarded.
+    #[command(name = "delete-culture", display_order = 13)]
+    DeleteCulture {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Culture / locale name to delete
+        #[arg(long)]
+        culture: String,
+    },
+    /// Set a translated caption for a table/column/measure in a culture.
+    /// Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "set-translation", display_order = 13)]
+    SetTranslation {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Culture / locale name (must already exist — add it with add-culture)
+        #[arg(long)]
+        culture: String,
+
+        /// Table to translate (or the owner of --column/--measure)
+        #[arg(long)]
+        table: String,
+
+        /// Column to translate (requires --table)
+        #[arg(long)]
+        column: Option<String>,
+
+        /// Measure to translate
+        #[arg(long)]
+        measure: Option<String>,
+
+        /// Translated caption (the display name in this culture)
+        #[arg(long)]
+        caption: String,
+    },
     /// Update parameters of a semantic model
     #[command(name = "update-parameters", display_order = 14)]
     UpdateParameters {
@@ -1698,6 +1775,41 @@ pub async fn execute(
             name,
             new_name,
         } => tables::rename_table(cli, client, workspace, id, name, new_name).await,
+        SemanticModelCommand::ListCultures { workspace, id } => {
+            translations::list_cultures(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::AddCulture {
+            workspace,
+            id,
+            culture,
+        } => translations::add_culture(cli, client, workspace, id, culture).await,
+        SemanticModelCommand::DeleteCulture {
+            workspace,
+            id,
+            culture,
+        } => translations::delete_culture(cli, client, workspace, id, culture).await,
+        SemanticModelCommand::SetTranslation {
+            workspace,
+            id,
+            culture,
+            table,
+            column,
+            measure,
+            caption,
+        } => {
+            translations::set_translation(
+                cli,
+                client,
+                workspace,
+                id,
+                culture,
+                table,
+                column.as_deref(),
+                measure.as_deref(),
+                caption,
+            )
+            .await
+        }
         SemanticModelCommand::UpdateParameters {
             workspace,
             id,

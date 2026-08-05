@@ -61,6 +61,7 @@
  - `src/commands/semantic_model/roles.rs`: `add-role`/`delete-role`/`set-rls`/`delete-rls`/`list-roles` (security roles + RLS; edit `definition/roles/<name>.tmdl` + `ref role` in model.tmdl); pure `parse_role_tmdl`/`set_table_permission`/`remove_table_permission`/`collect_roles` + `model.bim` variants + unit tests
  - `src/commands/semantic_model/columns.rs`: `add-calculated-column`/`delete-column`/`rename-column`/`update-column` (edit `column` blocks in `definition/tables/<T>.tmdl`); pure `build_calculated_column_lines`/`delete_column_tmdl`/`rename_column_tmdl`/`update_column_tmdl` + `model.bim` variants + unit tests
  - `src/commands/semantic_model/tables.rs`: `add-table` (calculated)/`delete-table` (cascades relationships + role RLS filters)/`rename-table` (decl + file path + model.tmdl ref); pure `render_calculated_table`/`rename_table_decl` + `model.bim` variants + unit tests
+ - `src/commands/semantic_model/translations.rs`: `add-culture`/`delete-culture`/`set-translation`/`list-cultures` (edit `definition/cultures/<c>.tmdl` nested translation tree + `ref cultureInfo` in model.tmdl); pure `parse_culture`/`render_culture`/`apply_translation` + `model.bim` variants + unit tests
 - `src/commands/eventhouse.rs`: list/show/create/update/delete
 - `src/commands/eventstream/mod.rs`: list/show/create/update/delete/get-definition/update-definition/get-topology/pause/resume/sources/destinations
 - `src/commands/eventstream/builder.rs`: add-source/add-destination/add-sample-source/add-derived-stream/validate/list-components
