@@ -24,6 +24,7 @@ use crate::output;
 
 pub(super) const PAGE_SCHEMA: &str = "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/page/2.1.0/schema.json";
 pub(super) const PAGES_SCHEMA: &str = "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/pagesMetadata/1.1.0/schema.json";
+pub(super) const VISUAL_SCHEMA: &str = "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.11.0/schema.json";
 
 const PAGES_JSON: &str = "definition/pages/pages.json";
 const DEFAULT_WIDTH: i64 = 1280;
@@ -544,6 +545,297 @@ pub(super) async fn set_active_page(
     Ok(())
 }
 
+// ── visual authoring ──────────────────────────────────────────────────────────
+
+/// A visual to add: its type, layout, title, and (data / text) content.
+pub(super) struct VisualSpec<'a> {
+    pub visual_type: &'a str,
+    pub name: Option<&'a str>,
+    pub title: Option<&'a str>,
+    pub text: Option<&'a str>,
+    pub category: Option<&'a str>,
+    pub measures: &'a [String],
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub width: Option<f64>,
+    pub height: Option<f64>,
+}
+
+/// Parse a field spec into a `(field, queryRef)` pair.
+///
+/// Forms:
+/// - `Table.Column`               → a Column reference (queryRef `Table.Column`).
+/// - `Func(Table.Column)`         → an Aggregation (Sum/Avg/Min/Max/Count/CountNonNull).
+/// - `Measure(Table.Name)`        → a Measure reference (queryRef `Table.Name`).
+///
+/// When `default_aggregate` is set (measure roles), a bare `Table.Column` becomes
+/// `Sum(Table.Column)`.
+pub(super) fn parse_field_spec(spec: &str, default_aggregate: bool) -> Result<(Value, String)> {
+    let spec = spec.trim();
+    // Func(Table.Column) / Measure(Table.Name)
+    if let Some(open) = spec.find('(')
+        && spec.ends_with(')')
+    {
+        let func = spec[..open].trim();
+        let inner = &spec[open + 1..spec.len() - 1];
+        let (table, prop) = split_table_field(inner)?;
+        if func.eq_ignore_ascii_case("measure") {
+            return Ok((
+                serde_json::json!({
+                    "Measure": { "Expression": { "SourceRef": { "Entity": table } }, "Property": prop }
+                }),
+                format!("{table}.{prop}"),
+            ));
+        }
+        let (fn_num, fn_ref) = aggregate_function(func)?;
+        return Ok((
+            serde_json::json!({
+                "Aggregation": {
+                    "Expression": { "Column": { "Expression": { "SourceRef": { "Entity": table } }, "Property": prop } },
+                    "Function": fn_num
+                }
+            }),
+            format!("{fn_ref}({table}.{prop})"),
+        ));
+    }
+    // Bare Table.Column
+    let (table, prop) = split_table_field(spec)?;
+    if default_aggregate {
+        Ok((
+            serde_json::json!({
+                "Aggregation": {
+                    "Expression": { "Column": { "Expression": { "SourceRef": { "Entity": table } }, "Property": prop } },
+                    "Function": 0
+                }
+            }),
+            format!("Sum({table}.{prop})"),
+        ))
+    } else {
+        Ok((
+            serde_json::json!({
+                "Column": { "Expression": { "SourceRef": { "Entity": table } }, "Property": prop }
+            }),
+            format!("{table}.{prop}"),
+        ))
+    }
+}
+
+fn split_table_field(s: &str) -> Result<(String, String)> {
+    let s = s.trim().trim_matches('\'');
+    let (t, f) = s.split_once('.').ok_or_else(|| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Field '{s}' must be in Table.Column form."),
+            "Use e.g. --category Sales.Country or --measure \"Sum(Sales.Revenue)\".".to_string(),
+        )
+    })?;
+    Ok((
+        t.trim().trim_matches('\'').to_string(),
+        f.trim().trim_matches('\'').to_string(),
+    ))
+}
+
+fn aggregate_function(func: &str) -> Result<(i64, &'static str)> {
+    match func.to_ascii_lowercase().as_str() {
+        "sum" => Ok((0, "Sum")),
+        "avg" | "average" => Ok((1, "Avg")),
+        "min" => Ok((2, "Min")),
+        "max" => Ok((3, "Max")),
+        "count" => Ok((4, "Count")),
+        "countnonnull" | "distinctcount" => Ok((5, "CountNonNull")),
+        _ => Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Unknown aggregate function '{func}'."),
+            "Use Sum, Avg, Min, Max, Count, or CountNonNull.".to_string(),
+        )
+        .into()),
+    }
+}
+
+/// Category-role / measure-role names for a visual type. `None` category means
+/// the visual has no category well (e.g. a card); a `table` puts everything in
+/// one well.
+fn visual_roles(visual_type: &str) -> (Option<&'static str>, &'static str, bool) {
+    match visual_type {
+        "card" | "multiRowCard" | "kpi" => (None, "Values", false),
+        "tableEx" | "table" | "pivotTable" | "matrix" | "slicer" | "advancedSlicerVisual" => {
+            (Some("Values"), "Values", true)
+        }
+        // columnChart / barChart / lineChart / areaChart / pieChart / scatterChart …
+        _ => (Some("Category"), "Y", false),
+    }
+}
+
+/// Build a visual.json string from a spec. `z` is the stacking order.
+pub(super) fn build_visual_json(name: &str, z: i64, spec: &VisualSpec<'_>) -> Result<String> {
+    let mut visual = serde_json::json!({ "visualType": spec.visual_type });
+
+    if spec.visual_type == "textbox" {
+        let text = spec.text.unwrap_or("");
+        visual["objects"] = serde_json::json!({
+            "general": [{
+                "properties": {
+                    "paragraphs": [{
+                        "textRuns": [{ "value": text }],
+                        "horizontalTextAlignment": "left"
+                    }]
+                }
+            }]
+        });
+    } else if spec.category.is_some() || !spec.measures.is_empty() {
+        let (cat_role, measure_role, single_well) = visual_roles(spec.visual_type);
+        let mut query_state = serde_json::Map::new();
+
+        // Collect projections, keyed by role.
+        let mut role_projections: Vec<(String, Vec<Value>)> = Vec::new();
+        let mut push = |role: &str, proj: Value| {
+            if let Some(entry) = role_projections.iter_mut().find(|(r, _)| r == role) {
+                entry.1.push(proj);
+            } else {
+                role_projections.push((role.to_string(), vec![proj]));
+            }
+        };
+
+        if let Some(cat) = spec.category {
+            let (field, qref) = parse_field_spec(cat, false)?;
+            let role = if single_well {
+                measure_role
+            } else {
+                cat_role.unwrap_or(measure_role)
+            };
+            push(
+                role,
+                serde_json::json!({ "field": field, "queryRef": qref }),
+            );
+        }
+        for m in spec.measures {
+            let (field, qref) = parse_field_spec(m, true)?;
+            push(
+                measure_role,
+                serde_json::json!({ "field": field, "queryRef": qref }),
+            );
+        }
+        for (role, projs) in role_projections {
+            query_state.insert(role, serde_json::json!({ "projections": projs }));
+        }
+        visual["query"] = serde_json::json!({ "queryState": query_state });
+    }
+
+    if let Some(title) = spec.title {
+        visual["visualContainerObjects"] = serde_json::json!({
+            "title": [{
+                "properties": {
+                    "show": { "expr": { "Literal": { "Value": "true" } } },
+                    "text": { "expr": { "Literal": { "Value": format!("'{}'", title.replace('\'', "''")) } } }
+                }
+            }]
+        });
+    }
+    visual["drillFilterOtherVisuals"] = Value::Bool(true);
+
+    let v = serde_json::json!({
+        "$schema": VISUAL_SCHEMA,
+        "name": name,
+        "position": {
+            "x": spec.x.unwrap_or(40.0),
+            "y": spec.y.unwrap_or(40.0),
+            "z": z,
+            "height": spec.height.unwrap_or(300.0),
+            "width": spec.width.unwrap_or(400.0),
+        },
+        "visual": visual,
+    });
+    Ok(serde_json::to_string_pretty(&v).unwrap_or_default())
+}
+
+fn visual_json_path(page: &str, visual: &str) -> String {
+    format!("definition/pages/{page}/visuals/{visual}/visual.json")
+}
+
+pub(super) async fn add_visual(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    page: &str,
+    spec: &VisualSpec<'_>,
+) -> Result<()> {
+    let op = "report add-visual";
+    let parts = fetch_parts(client, workspace, id, op).await?;
+    require_pbir(&parts)?;
+    if !page_folders(&parts).iter().any(|n| n == page) {
+        return Err(page_not_found(page));
+    }
+
+    let visual_name = spec.name.map_or_else(new_object_name, str::to_owned);
+    let path = visual_json_path(page, &visual_name);
+    if parts.iter().any(|(p, _)| p == &path) {
+        return Err(FabioError::with_hint(
+            ErrorCode::Conflict,
+            format!("A visual named '{visual_name}' already exists on page '{page}'."),
+            "Pick a different --name.".to_string(),
+        )
+        .into());
+    }
+    // Next z-order = number of existing visuals on the page + 1.
+    let z = i64::try_from(collect_visuals(&parts, Some(page)).len()).unwrap_or(0) + 1;
+    let visual_json = build_visual_json(&visual_name, z, spec)?;
+    let new_parts = upsert_part(&parts, &path, &visual_json);
+
+    if output::dry_run_guard(
+        cli,
+        op,
+        &serde_json::json!({ "id": id, "page": page, "visual": visual_name, "type": spec.visual_type }),
+    ) {
+        return Ok(());
+    }
+    push_parts(client, workspace, id, &new_parts, op).await?;
+    output::render_object(
+        cli,
+        &serde_json::json!({ "status": "visual_added", "id": id, "page": page, "visual": visual_name }),
+        "status",
+    );
+    Ok(())
+}
+
+pub(super) async fn delete_visual(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    page: &str,
+    visual: &str,
+) -> Result<()> {
+    let op = "report delete-visual";
+    let parts = fetch_parts(client, workspace, id, op).await?;
+    require_pbir(&parts)?;
+    let prefix = format!("definition/pages/{page}/visuals/{visual}/");
+    if !parts.iter().any(|(p, _)| p.starts_with(&prefix)) {
+        return Err(FabioError::with_hint(
+            ErrorCode::NotFound,
+            format!("Visual '{visual}' not found on page '{page}'."),
+            "List visuals with `fabio report list-visuals`.".to_string(),
+        )
+        .into());
+    }
+    let new_parts = remove_prefix(&parts, &prefix);
+
+    if output::dry_run_guard(
+        cli,
+        op,
+        &serde_json::json!({ "id": id, "page": page, "visual": visual }),
+    ) {
+        return Ok(());
+    }
+    push_parts(client, workspace, id, &new_parts, op).await?;
+    output::render_object(
+        cli,
+        &serde_json::json!({ "status": "visual_deleted", "id": id, "page": page, "visual": visual }),
+        "status",
+    );
+    Ok(())
+}
+
 // ── shared ────────────────────────────────────────────────────────────────────
 
 pub(super) fn page_not_found(name: &str) -> anyhow::Error {
@@ -676,5 +968,133 @@ mod tests {
             out.iter()
                 .any(|(p, _)| p.starts_with("definition/pages/p2/"))
         );
+    }
+
+    #[test]
+    fn parse_field_spec_forms() {
+        let (f, q) = parse_field_spec("Sales.Country", false).unwrap();
+        assert_eq!(q, "Sales.Country");
+        assert_eq!(f["Column"]["Property"], "Country");
+        let (f, q) = parse_field_spec("Sum(Sales.Revenue)", false).unwrap();
+        assert_eq!(q, "Sum(Sales.Revenue)");
+        assert_eq!(f["Aggregation"]["Function"], 0);
+        let (_f, q) = parse_field_spec("Sales.Revenue", true).unwrap();
+        assert_eq!(q, "Sum(Sales.Revenue)");
+        let (f, q) = parse_field_spec("Measure(Sales.Total)", true).unwrap();
+        assert_eq!(q, "Sales.Total");
+        assert_eq!(f["Measure"]["Property"], "Total");
+        let (_f, q) = parse_field_spec("Avg('Sales Fact'.'Net')", false).unwrap();
+        assert_eq!(q, "Avg(Sales Fact.Net)");
+        assert!(parse_field_spec("NoDot", false).is_err());
+        assert!(parse_field_spec("Bogus(Sales.X)", false).is_err());
+    }
+
+    #[test]
+    fn build_visual_json_bar_chart() {
+        let measures = vec!["Sum(Sales.Revenue)".to_string()];
+        let spec = VisualSpec {
+            visual_type: "clusteredBarChart",
+            name: None,
+            title: Some("Revenue by Country"),
+            text: None,
+            category: Some("Sales.Country"),
+            measures: &measures,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+        };
+        let s = build_visual_json("v1", 1, &spec).unwrap();
+        let v: Value = serde_json::from_str(&s).unwrap();
+        assert_eq!(v["name"], "v1");
+        assert_eq!(v["visual"]["visualType"], "clusteredBarChart");
+        assert_eq!(
+            v["visual"]["query"]["queryState"]["Category"]["projections"][0]["queryRef"],
+            "Sales.Country"
+        );
+        assert_eq!(
+            v["visual"]["query"]["queryState"]["Y"]["projections"][0]["queryRef"],
+            "Sum(Sales.Revenue)"
+        );
+        assert!(
+            v["visual"]["visualContainerObjects"]["title"][0]["properties"]["text"]["expr"]
+                ["Literal"]["Value"]
+                .as_str()
+                .unwrap()
+                .contains("Revenue by Country")
+        );
+    }
+
+    #[test]
+    fn build_visual_json_card_has_values_role_only() {
+        let measures = vec!["Sales.Revenue".to_string()];
+        let spec = VisualSpec {
+            visual_type: "card",
+            name: None,
+            title: None,
+            text: None,
+            category: None,
+            measures: &measures,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+        };
+        let s = build_visual_json("c1", 2, &spec).unwrap();
+        let v: Value = serde_json::from_str(&s).unwrap();
+        assert!(v["visual"]["query"]["queryState"].get("Category").is_none());
+        assert_eq!(
+            v["visual"]["query"]["queryState"]["Values"]["projections"][0]["queryRef"],
+            "Sum(Sales.Revenue)"
+        );
+        assert_eq!(v["position"]["z"], 2);
+    }
+
+    #[test]
+    fn build_visual_json_textbox() {
+        let spec = VisualSpec {
+            visual_type: "textbox",
+            name: None,
+            title: None,
+            text: Some("Hello"),
+            category: None,
+            measures: &[],
+            x: Some(10.0),
+            y: Some(20.0),
+            width: Some(200.0),
+            height: Some(50.0),
+        };
+        let s = build_visual_json("t1", 1, &spec).unwrap();
+        let v: Value = serde_json::from_str(&s).unwrap();
+        assert_eq!(v["visual"]["visualType"], "textbox");
+        assert_eq!(
+            v["visual"]["objects"]["general"][0]["properties"]["paragraphs"][0]["textRuns"][0]["value"],
+            "Hello"
+        );
+        assert_eq!(v["position"]["x"], 10.0);
+        assert!(v["visual"]["query"].is_null());
+    }
+
+    #[test]
+    fn build_visual_json_table_puts_all_in_values() {
+        let measures = vec!["Sum(Sales.Revenue)".to_string()];
+        let spec = VisualSpec {
+            visual_type: "tableEx",
+            name: None,
+            title: None,
+            text: None,
+            category: Some("Sales.Country"),
+            measures: &measures,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+        };
+        let s = build_visual_json("tab", 1, &spec).unwrap();
+        let v: Value = serde_json::from_str(&s).unwrap();
+        let projs = v["visual"]["query"]["queryState"]["Values"]["projections"]
+            .as_array()
+            .unwrap();
+        assert_eq!(projs.len(), 2);
     }
 }

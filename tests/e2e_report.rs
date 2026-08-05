@@ -760,3 +760,283 @@ fn report_page_authoring_lifecycle() {
         .assert()
         .success();
 }
+
+/// Full PBIR visual-authoring lifecycle: create a model with data + a minimal
+/// PBIR report bound to it, then add a textbox, a card, and a data-bound bar
+/// chart via `report add-visual`, prove they RENDER by exporting the report to
+/// PDF, then list/delete a visual. Cleans up report + model.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn report_visual_authoring_lifecycle() {
+    use std::io::Write;
+
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.dest_workspace;
+
+    // 1. A model with a category (string) and a numeric column, with data.
+    let dir = tempfile::tempdir().unwrap();
+    let bim = dir.path().join("model.bim");
+    let mut f = std::fs::File::create(&bim).unwrap();
+    f.write_all(
+        br#"{"compatibilityLevel":1604,"model":{"defaultPowerBIDataSourceVersion":"powerBI_V3","culture":"en-US","tables":[{"name":"T","columns":[{"name":"Category","dataType":"string","sourceColumn":"[Category]","type":"calculatedTableColumn"},{"name":"Amount","dataType":"int64","sourceColumn":"[Amount]","type":"calculatedTableColumn"}],"partitions":[{"name":"T","mode":"import","source":{"type":"calculated","expression":"DATATABLE(\"Category\", STRING, \"Amount\", INTEGER, {{\"A\", 10}, {\"B\", 20}})"}}]}]}}"#,
+    )
+    .unwrap();
+    let sm_assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            ws,
+            "--name",
+            "fabio-e2e-visual-model",
+            "--file",
+            bim.to_str().unwrap(),
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let sm_id = parse_json(&sm_assert)["data"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // 2. A minimal PBIR report bound to the model.
+    let rdir = tempfile::tempdir().unwrap();
+    let root = rdir.path();
+    let write = |rel: &str, content: &str| {
+        let p = root.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, content).unwrap();
+    };
+    write(
+        "definition.pbir",
+        &format!(
+            r#"{{"$schema":"https://developer.microsoft.com/json-schemas/fabric/item/report/definitionProperties/2.0.0/schema.json","version":"4.0","datasetReference":{{"byConnection":{{"connectionString":"semanticmodelid={sm_id}"}}}}}}"#
+        ),
+    );
+    write(
+        "definition/version.json",
+        r#"{"$schema":"https://developer.microsoft.com/json-schemas/fabric/item/report/definition/versionMetadata/1.0.0/schema.json","version":"2.0.0"}"#,
+    );
+    write(
+        "definition/report.json",
+        r#"{"$schema":"https://developer.microsoft.com/json-schemas/fabric/item/report/definition/report/1.0.0/schema.json","layoutOptimization":"None","themeCollection":{"baseTheme":{"name":"fabioTheme","reportVersionAtImport":"5.55","type":"SharedResources"}},"resourcePackages":[{"name":"SharedResources","type":"SharedResources","items":[{"name":"fabioTheme","path":"BaseThemes/fabioTheme.json","type":"BaseTheme"}]}]}"#,
+    );
+    write(
+        "StaticResources/SharedResources/BaseThemes/fabioTheme.json",
+        r##"{"name":"fabioTheme","dataColors":["#118DFF"],"background":"#FFFFFF","foreground":"#000000","tableAccent":"#118DFF"}"##,
+    );
+    write(
+        "definition/pages/pages.json",
+        r#"{"$schema":"https://developer.microsoft.com/json-schemas/fabric/item/report/definition/pagesMetadata/1.1.0/schema.json","pageOrder":["page1"],"activePageName":"page1"}"#,
+    );
+    write(
+        "definition/pages/page1/page.json",
+        r#"{"$schema":"https://developer.microsoft.com/json-schemas/fabric/item/report/definition/page/2.1.0/schema.json","name":"page1","displayName":"Overview","displayOption":"FitToPage","width":1280,"height":720}"#,
+    );
+
+    let rep_assert = fabio()
+        .args([
+            "report",
+            "create",
+            "--workspace",
+            ws,
+            "--name",
+            "fabio-e2e-visual-report",
+            "--definition",
+            root.to_str().unwrap(),
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let rep_id = parse_json(&rep_assert)["data"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // 3. add a textbox, a card (Sum), and a bar chart (category + measure).
+    fabio()
+        .args([
+            "report",
+            "add-visual",
+            "--workspace",
+            ws,
+            "--id",
+            &rep_id,
+            "--page",
+            "page1",
+            "--type",
+            "textbox",
+            "--text",
+            "Sales Overview",
+            "--x",
+            "40",
+            "--y",
+            "20",
+            "--width",
+            "600",
+            "--height",
+            "40",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    fabio()
+        .args([
+            "report",
+            "add-visual",
+            "--workspace",
+            ws,
+            "--id",
+            &rep_id,
+            "--page",
+            "page1",
+            "--type",
+            "card",
+            "--measure",
+            "Sum(T.Amount)",
+            "--title",
+            "Total",
+            "--x",
+            "40",
+            "--y",
+            "80",
+            "--width",
+            "200",
+            "--height",
+            "120",
+            "--name",
+            "cardvisual",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    fabio()
+        .args([
+            "report",
+            "add-visual",
+            "--workspace",
+            ws,
+            "--id",
+            &rep_id,
+            "--page",
+            "page1",
+            "--type",
+            "clusteredBarChart",
+            "--category",
+            "T.Category",
+            "--measure",
+            "Sum(T.Amount)",
+            "--title",
+            "Amount by Category",
+            "--x",
+            "40",
+            "--y",
+            "220",
+            "--width",
+            "600",
+            "--height",
+            "300",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    // 4. list-visuals → three visuals.
+    let lv = fabio()
+        .args(["report", "list-visuals", "--workspace", ws, "--id", &rep_id])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&lv)).as_array().unwrap().len(), 3);
+
+    // 5. Prove the fabio-built visuals RENDER: export the report to PDF.
+    let pdf = rdir.path().join("out.pdf");
+    let ex = fabio()
+        .args([
+            "report",
+            "export",
+            "--workspace",
+            ws,
+            "--id",
+            &rep_id,
+            "--format",
+            "PDF",
+            "--out",
+            pdf.to_str().unwrap(),
+            "--timeout",
+            "180",
+        ])
+        .timeout(std::time::Duration::from_mins(4))
+        .assert()
+        .success();
+    assert_eq!(parse_json(&ex)["data"]["status"], "Succeeded");
+    assert!(pdf.exists() && std::fs::metadata(&pdf).unwrap().len() > 1000);
+
+    // 6. delete-visual (the card) → two remain.
+    fabio()
+        .args([
+            "report",
+            "delete-visual",
+            "--workspace",
+            ws,
+            "--id",
+            &rep_id,
+            "--page",
+            "page1",
+            "--name",
+            "cardvisual",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let lv2 = fabio()
+        .args(["report", "list-visuals", "--workspace", ws, "--id", &rep_id])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&lv2)).as_array().unwrap().len(), 2);
+
+    // 7. add-visual to a nonexistent page → NOT_FOUND.
+    let nf = fabio()
+        .args([
+            "report",
+            "add-visual",
+            "--workspace",
+            ws,
+            "--id",
+            &rep_id,
+            "--page",
+            "ghost",
+            "--type",
+            "card",
+            "--measure",
+            "Sum(T.Amount)",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&nf.get_output().stderr);
+    assert!(
+        stderr.contains("NOT_FOUND"),
+        "expected NOT_FOUND, got: {stderr}"
+    );
+
+    // Cleanup.
+    fabio()
+        .args(["report", "delete", "--workspace", ws, "--id", &rep_id])
+        .assert()
+        .success();
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            ws,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
+}

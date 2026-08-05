@@ -129,9 +129,11 @@ Manage reports (Power BI)
 | Command | Mutates | Description |
 |---|---|---|
 | `fabio report add-page` | yes | Add a page to a PBIR report by editing its definition. Overwrites the definition (irreversible) — dry-run guarded |
+| `fabio report add-visual` | yes | Add a visual to a page of a PBIR report by editing its definition. Build a data-bound visual with --category/--measure (fields as Table.Column or Sum(Table.Column)) or a textbox with --text. Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio report create` | yes | Create a new report from a definition file |
 | `fabio report delete` | yes | Delete a report |
 | `fabio report delete-page` | yes | Delete a page from a PBIR report by editing its definition (a report must keep at least one page). Overwrites the definition (irreversible) — dry-run guarded |
+| `fabio report delete-visual` | yes | Delete a visual from a page of a PBIR report by editing its definition. Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio report export` | no | Export (render) the Power BI report to a file (PDF, PPTX, PNG) |
 | `fabio report get-definition` | no | Get the definition of a report |
 | `fabio report list` | no | List reports in a workspace |

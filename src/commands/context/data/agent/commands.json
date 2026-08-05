@@ -9764,6 +9764,98 @@
         "returns": "object",
         "destructive": true
       },
+      "add-visual": {
+        "description": "Add a visual to a page of a PBIR report by editing its definition. Build a data-bound visual with --category/--measure (fields as Table.Column or Sum(Table.Column)) or a textbox with --text. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Report ID"
+          },
+          "--page": {
+            "type": "string",
+            "required": true,
+            "description": "Page name to add the visual to"
+          },
+          "--type": {
+            "type": "string",
+            "required": true,
+            "description": "Visual type: card, clusteredBarChart, clusteredColumnChart, lineChart, pieChart, tableEx, slicer, textbox, …"
+          },
+          "--name": {
+            "type": "string",
+            "description": "Internal visual name (default: a generated 20-hex id)"
+          },
+          "--title": {
+            "type": "string",
+            "description": "Visual title text"
+          },
+          "--text": {
+            "type": "string",
+            "description": "Text content (for a textbox visual)"
+          },
+          "--category": {
+            "type": "string",
+            "description": "Category / axis / legend field (Table.Column)"
+          },
+          "--measure": {
+            "type": "string",
+            "description": "Value field(s), repeatable: Table.Column (auto-Sum), Sum(Table.Column), Avg/Min/Max/Count/CountNonNull(…), or Measure(Table.Name)"
+          },
+          "--x": {
+            "type": "string",
+            "description": "X position (default 40)"
+          },
+          "--y": {
+            "type": "string",
+            "description": "Y position (default 40)"
+          },
+          "--width": {
+            "type": "string",
+            "description": "Width (default 400)"
+          },
+          "--height": {
+            "type": "string",
+            "description": "Height (default 300)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "delete-visual": {
+        "description": "Delete a visual from a page of a PBIR report by editing its definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Report ID"
+          },
+          "--page": {
+            "type": "string",
+            "required": true,
+            "description": "Page name containing the visual"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Visual name to delete"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
       "publish-to-web": {
         "description": "Publish a report to the web (generates a publicly accessible embed URL)",
         "flags": {

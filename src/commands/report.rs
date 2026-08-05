@@ -264,6 +264,86 @@ pub enum ReportCommand {
         #[arg(long)]
         name: String,
     },
+    /// Add a visual to a page of a PBIR report by editing its definition. Build
+    /// a data-bound visual with --category/--measure (fields as Table.Column or
+    /// Sum(Table.Column)) or a textbox with --text. Overwrites the definition
+    /// (irreversible) — dry-run guarded.
+    #[command(name = "add-visual", display_order = 9)]
+    AddVisual {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Report ID
+        #[arg(long)]
+        id: String,
+
+        /// Page name to add the visual to
+        #[arg(long)]
+        page: String,
+
+        /// Visual type: card, clusteredBarChart, clusteredColumnChart, lineChart,
+        /// pieChart, tableEx, slicer, textbox, …
+        #[arg(long = "type")]
+        visual_type: String,
+
+        /// Internal visual name (default: a generated 20-hex id)
+        #[arg(long)]
+        name: Option<String>,
+
+        /// Visual title text
+        #[arg(long)]
+        title: Option<String>,
+
+        /// Text content (for a textbox visual)
+        #[arg(long)]
+        text: Option<String>,
+
+        /// Category / axis / legend field (Table.Column)
+        #[arg(long)]
+        category: Option<String>,
+
+        /// Value field(s), repeatable: Table.Column (auto-Sum), Sum(Table.Column),
+        /// Avg/Min/Max/Count/CountNonNull(…), or Measure(Table.Name)
+        #[arg(long = "measure")]
+        measures: Vec<String>,
+
+        /// X position (default 40)
+        #[arg(long)]
+        x: Option<f64>,
+
+        /// Y position (default 40)
+        #[arg(long)]
+        y: Option<f64>,
+
+        /// Width (default 400)
+        #[arg(long)]
+        width: Option<f64>,
+
+        /// Height (default 300)
+        #[arg(long)]
+        height: Option<f64>,
+    },
+    /// Delete a visual from a page of a PBIR report by editing its definition.
+    /// Overwrites the definition (irreversible) — dry-run guarded.
+    #[command(name = "delete-visual", display_order = 9)]
+    DeleteVisual {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Report ID
+        #[arg(long)]
+        id: String,
+
+        /// Page name containing the visual
+        #[arg(long)]
+        page: String,
+
+        /// Visual name to delete
+        #[arg(long)]
+        name: String,
+    },
 
     // ── Sharing & Publishing ─────────────────────────────────────────────
     /// Publish a report to the web (generates a publicly accessible embed URL)
@@ -408,6 +488,48 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) 
             id,
             name,
         } => authoring::set_active_page(cli, client, workspace, id, name).await,
+        ReportCommand::AddVisual {
+            workspace,
+            id,
+            page,
+            visual_type,
+            name,
+            title,
+            text,
+            category,
+            measures,
+            x,
+            y,
+            width,
+            height,
+        } => {
+            authoring::add_visual(
+                cli,
+                client,
+                workspace,
+                id,
+                page,
+                &authoring::VisualSpec {
+                    visual_type,
+                    name: name.as_deref(),
+                    title: title.as_deref(),
+                    text: text.as_deref(),
+                    category: category.as_deref(),
+                    measures,
+                    x: *x,
+                    y: *y,
+                    width: *width,
+                    height: *height,
+                },
+            )
+            .await
+        }
+        ReportCommand::DeleteVisual {
+            workspace,
+            id,
+            page,
+            name,
+        } => authoring::delete_visual(cli, client, workspace, id, page, name).await,
         ReportCommand::PublishToWeb { workspace, id } => {
             publish_to_web(cli, client, workspace, id).await
         }
