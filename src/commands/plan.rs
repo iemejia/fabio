@@ -53,6 +53,10 @@ pub enum PlanCommand {
         /// Sensitivity label ID to apply on creation
         #[arg(long)]
         sensitivity_label: Option<String>,
+
+        /// Folder ID to create the plan in (defaults to the workspace root)
+        #[arg(long)]
+        folder_id: Option<String>,
     },
     /// Update plan properties
     #[command(display_order = 4)]
