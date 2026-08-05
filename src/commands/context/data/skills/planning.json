@@ -1,0 +1,51 @@
+{
+  "family": "planning",
+  "title": "Planning — Fabric plans (connected planning)",
+  "description": "Intent-scoped fabio skill for Fabric plan items: create, inspect, and update plan items and their definitions. Use to manage connected-planning/FP&A style plan artifacts in a workspace. Triggers: \"plan\", \"connected planning\", \"create plan\", \"plan definition\", \"fp&a\".",
+  "command_groups": ["plan"],
+  "when_to_use": [
+    "Creating/listing/inspecting plan items in a workspace.",
+    "Editing a plan's definition (get-definition / update-definition).",
+    "Scoping a plan listing to a specific folder via --root-folder-id / --no-recursive."
+  ],
+  "when_not_to_use": [
+    "Data pipelines/orchestration -> use fabio-data-engineering.",
+    "Reports/dashboards over plan data -> use fabio-bi.",
+    "Deploying a plan across environments -> use fabio-deploy-cicd (deploy export/plan/apply)."
+  ],
+  "must": [
+    "Edit plan content via the definition part (get-definition / update-definition), not plain metadata flags.",
+    "Use --name/--description on plan update for metadata-only changes (PATCH is fully optional — provide at least one field)."
+  ],
+  "prefer": [
+    "Runtime introspection (context agent --group plan, context describe plan create) for exact flags and the definition shape.",
+    "Omitting --definition on create for an empty plan, then populating it via update-definition."
+  ],
+  "avoid": [
+    "Passing --hard-delete on plan delete — the API has no such parameter; plan delete is a simple, non-recoverable delete.",
+    "Assuming plan list returns all folders by default without checking --no-recursive/--root-folder-id semantics."
+  ],
+  "key_gotchas": [
+    "Plan definitions use the PlanV1 format with a canonical part path of connectedPlanning/infobridge.json; get-definition/update-definition round-trip this part.",
+    "plan list supports --root-folder-id (scope to a folder; defaults to workspace root) and --no-recursive (list only direct children, not nested folders); the API default for recursion is true.",
+    "plan delete has no --hard-delete flag — the Plan REST API defines no such query parameter, unlike some other item types."
+  ],
+  "troubleshooting": [
+    {
+      "symptom": "plan create fails with ItemDisplayNameAlreadyInUse",
+      "fix": "Choose a different --name, or fabio plan list --workspace <WS> to find the existing plan and update/delete it instead."
+    },
+    {
+      "symptom": "plan update-definition returns an empty body",
+      "fix": "This is expected — Fabric's updateDefinition endpoint often returns no content on success; check the command's status field."
+    }
+  ],
+  "safety": [
+    "plan delete is destructive (dry-run guarded) and irreversible; no --hard-delete flag exists for this item type."
+  ],
+  "shared_references": ["lro", "pagination"],
+  "see_also": [
+    "fabio context persona data-engineer",
+    "fabio context persona fabric-admin"
+  ]
+}

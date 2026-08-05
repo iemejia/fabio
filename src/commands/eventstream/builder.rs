@@ -487,13 +487,16 @@ pub(super) fn list_components(cli: &Cli, category: &str) {
         {"type": "CustomEndpoint", "category": "source", "description": "Custom app endpoint (Event Hub-compatible)"},
         {"type": "AzureEventHub", "category": "source", "description": "Azure Event Hub"},
         {"type": "AzureIoTHub", "category": "source", "description": "Azure IoT Hub"},
+        {"type": "AzureIoTHubExtended", "category": "source", "description": "Azure IoT Hub Extended"},
         {"type": "SampleData", "category": "source", "description": "Built-in sample/simulated data"},
         {"type": "AmazonKinesis", "category": "source", "description": "Amazon Kinesis Data Streams"},
         {"type": "ApacheKafka", "category": "source", "description": "Apache Kafka cluster"},
         {"type": "ConfluentCloud", "category": "source", "description": "Confluent Cloud Kafka"},
         {"type": "GooglePubSub", "category": "source", "description": "Google Cloud Pub/Sub"},
         {"type": "AzureSQLDBCDC", "category": "source", "description": "Azure SQL Database CDC"},
+        {"type": "MirroredDatabaseChangeFeed", "category": "source", "description": "Mirrored Database Change Feed"},
         {"type": "MySQLCDC", "category": "source", "description": "MySQL Change Data Capture"},
+        {"type": "OracleDBCDC", "category": "source", "description": "Oracle DB Change Data Capture"},
         {"type": "PostgreSQLCDC", "category": "source", "description": "PostgreSQL Change Data Capture"},
         {"type": "FabricWorkspaceItemEvents", "category": "source", "description": "Fabric workspace item events"},
         {"type": "FabricJobEvents", "category": "source", "description": "Fabric job events"},
@@ -506,6 +509,7 @@ pub(super) fn list_components(cli: &Cli, category: &str) {
         {"type": "Lakehouse", "category": "destination", "description": "Delta tables in a Lakehouse"},
         {"type": "CustomEndpoint", "category": "destination", "description": "Custom app endpoint (Event Hub-compatible)"},
         {"type": "Activator", "category": "destination", "description": "Data Activator (Reflex) trigger"},
+        {"type": "Notebook", "category": "destination", "description": "Fabric Notebook (real-time processing)"},
     ]);
 
     let items: Vec<Value> = match category {

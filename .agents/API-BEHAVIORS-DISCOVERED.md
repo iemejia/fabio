@@ -2777,3 +2777,85 @@ recommended-actions view. The Spark native-execution-engine/remote-shuffle/diagn
 CA/mTLS and Event Hubs Workspace Identity auth are connection-layer concerns (Event Hubs unblocked by
 `connection create --creation-method EventHub.Contents`). The Lakehouse table health check is shipped
 as `lakehouse table-health`.
+
+## Fabric REST API spec sync — 4a7d6e4 (Aug 2026): Plan item type, admin network policy filter, eventstream source/destination types
+
+Sync against `microsoft/fabric-rest-api-specs` commit `4a7d6e4` (`admin/`, `common/`, `eventstream/`,
+`plan/` (new), `platform/`). Full inventory below; every diff hunk was mapped to fabio and either
+implemented or confirmed to require no code change.
+
+- **New `Plan` item type (Connected Planning / "infobridge")**: A brand-new top-level command group
+  `fabio plan {list,show,create,update,delete,get-definition,update-definition}` was added
+  (`src/commands/plan.rs`), covering the full CRUD + definition surface at
+  `/workspaces/{workspaceId}/plans[/{planId}][/getDefinition|/updateDefinition]`. Like most Fabric
+  item types, create/update-definition are LRO-polled. `list` supports the standard
+  `recursive`/`rootFolderId`/`continuationToken` query params. The canonical (and currently only)
+  definition part is `connectedPlanning/infobridge.json` with `definitionFormat: "PlanV1"`.
+  `get-definition` accepts an optional `--format` query parameter (mirrors the `ontology`/
+  `sql-database`/`kql-database`/`lakehouse` convention: `?format=<value>` appended only when
+  supplied — defaults to the server's canonical `PlanV1` format when omitted). `Plan` was added to
+  `KNOWN_ITEM_TYPES`, `DEPLOY_ORDER` (deploy is generic content-hash based; Plan needs no special
+  casing), and given its own skill family (`data/skills/planning.json`) plus
+  `definition_requirements.json` entry. Plan has no `hardDelete` semantics and is not in
+  `PROTECTED_DELETE_TYPES` (it holds planning metadata, not bulk data) or `SHELL_ONLY_TYPES` (it DOES
+  support `getDefinition`/`updateDefinition`, unlike shell-only types such as Warehouse/SQLDatabase).
+- **Admin network communication policy `filter` query parameter + response enrichment**:
+  `GET /admin/workspaces/networking/communicationpolicies` gained an OData-style `filter` query
+  parameter (e.g. `inbound/publicAccessRules/defaultAction eq 'deny'`) and three new response
+  fields: `workspaceName`, `workspaceType` (sibling to the existing `workspaceId`), and per-workspace
+  `inbound.firewall.rules[]` (`{displayName, value}` IP-range allow rules) and
+  `outbound.managedPrivateEndpoints[]` (`{id, name, targetPrivateLinkResourceId,
+  targetSubresourceType, provisioningState, connectionState}`). `fabio admin list-network-policies`
+  already exposed `--filter` and rendered these fields (implemented in a prior sync session) — no
+  further code change needed this round; re-verified against the updated example JSON
+  (`ListNetworkingCommunicationPolicies.json`, and the new
+  `ListNetworkingCommunicationPoliciesFilteredByInbound.json` example) which also shows a legacy
+  `"Maria DB"` outbound connection-type rule being removed from the sample data (cosmetic example
+  cleanup, not a schema change) and the pagination token values switching to URL-encoded form
+  (`%3D` instead of raw `=` — an encoding-hygiene fix in the example only, `get_list`'s
+  `continuationToken` handling already treats the token as an opaque string so this needed no code
+  change).
+- **Eventstream new source/destination types (generic passthrough, already covered)**:
+  `eventstream/definitions/source.json` added `AzureIoTHubExtended`, `OracleDBCDC`, and
+  `MirroredDatabaseChangeFeed` source types; `eventstream/definitions/destination.json` added a
+  `Notebook` destination type; and the existing custom-endpoint HTTP source gained
+  `responseDataJsonPointer` + a `pagination` object (`{type, initialPage, pageIncrement}`) for
+  paginated REST polling. All of these were confirmed (in a prior sync session) to already round-trip
+  correctly through `fabio eventstream add-source`/`add-destination`'s generic
+  `--properties <json>` passthrough — the source/destination `type` enum values and their
+  `properties` bag are not individually modeled in fabio (by design, to avoid churn on every new
+  connector), so no code change was needed. The updated `GetEventstreamTopology.json` example
+  (showing all four new node types plus the new HTTP pagination fields in a live topology response)
+  was cross-checked and confirms `eventstream get-topology`'s raw-passthrough rendering already
+  displays these fields correctly.
+- **`GitConnectionType` (`Full`/`Selective`) read-only field on `GitSyncDetails`**: New enum field
+  `gitConnectionType` was added to the Git connection status shape returned by
+  `GET /workspaces/{workspaceId}/git/connection`. `fabio git connect show` (`connection_show()` in
+  `src/commands/git/connect.rs`) is a raw JSON passthrough (`client.get()` → `render_object()`), so
+  the new field surfaces automatically with zero code change — it distinguishes a full-workspace Git
+  connection from a selective (folder-scoped) one.
+- **`platform/swagger.json` — Git workspace-relations endpoints relocated, not new**: A large
+  (~390-line, roughly balanced +/-) diff hunk moves the
+  `/workspaces/{workspaceId}/git/workspaceRelations[/{workspaceRelationId}]` endpoint definitions to
+  an earlier position in the file (swagger tag changed from `WorkspaceRelations` to `Git`, and
+  `operationId` prefixes changed from `WorkspaceRelations_*` to `Git_*`). The actual HTTP
+  method/path/request/response schemas are byte-for-byte unchanged — confirmed by finding the same
+  unique error codes (`WorkspaceRelationAlreadyExists`, `WorkspaceRelationRootDirectoryMismatch`)
+  appear as both a `+` line at the new position and a `-` line at the old position. This is a spec
+  file reorganization only; fabio's `git relation {list,create,delete}`
+  (`src/commands/git/relation.rs`) already implements these endpoints from a prior sync and needed
+  no changes. Swagger `tags`/`operationId` are not consumed by fabio (only path/method/schema
+  matter).
+- **OneLake shortcuts/data-access-roles: preview-banner removal (GA promotion) for bulk operations**:
+  `platform/swagger.json` removed the `> [!NOTE] This API is part of a Preview release...` banner
+  from the descriptions of `POST /workspaces/{workspaceId}/items/{itemId}/shortcuts/bulkCreate`
+  (bulk shortcut creation), and `GET`/`PUT /workspaces/{workspaceId}/items/{itemId}/dataAccessRoles`
+  (list all roles / bulk upsert all roles). This signals these bulk operations have graduated from
+  Preview to GA — a documentation-only change with no schema/behavior impact, so no fabio code
+  change is required (`fabio lakehouse create-shortcut --bulk`-style bulk creation and
+  `fabio onelake-security list`/`upsert` already call these endpoints unconditionally). By contrast,
+  the single-role endpoints (`POST .../dataAccessRoles` upsert-one, `GET`/`DELETE
+  .../dataAccessRoles/{roleName}`) keep their unchanged "callers must specify `true` for the
+  `preview` query parameter" requirement text (that sentence was not touched by this diff — it
+  predates this sync and is out of scope here since no diff hunk modified it), so it was not
+  altered by this sync.

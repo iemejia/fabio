@@ -282,8 +282,18 @@
       },
       "list-network-policies": {
         "description": "List network communication policies",
+        "flags": {
+          "--filter": {
+            "type": "string",
+            "description": "Filter by policy direction (e.g. \"inbound/publicAccessRules/defaultAction eq 'deny'\", \"outbound/publicAccessRules/defaultAction eq 'deny'\", or both combined with `or`)"
+          }
+        },
         "mutates": false,
-        "returns": "list"
+        "returns": "list",
+        "examples": [
+          "fabio admin list-network-policies",
+          "fabio admin list-network-policies --filter \"inbound/publicAccessRules/defaultAction eq 'deny'\""
+        ]
       },
       "list-items": {
         "description": "List items (admin view)",
@@ -15922,6 +15932,189 @@
         "mutates": true,
         "returns": "void",
         "async": true
+      }
+    }
+  },
+  "plan": {
+    "auth_scope": "fabric",
+    "description": "Manage plans (connected planning)",
+    "subcommands": {
+      "list": {
+        "description": "List plans in a workspace",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--no-recursive": {
+            "type": "bool",
+            "description": "Only list plans directly in the root folder (default lists nested folders too)"
+          },
+          "--root-folder-id": {
+            "type": "string",
+            "description": "Filter plans to a specific root folder ID (defaults to the workspace root)"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio plan list --workspace $WS",
+          "fabio plan list --workspace $WS --no-recursive --root-folder-id $FOLDER_ID"
+        ]
+      },
+      "show": {
+        "description": "Show details of a plan",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Plan ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio plan show --workspace $WS --id $PLAN_ID"
+        ]
+      },
+      "create": {
+        "description": "Create a new plan",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Display name"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Optional description (max 256 characters)"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio plan create --workspace $WS --name \"Retail FP&A Plan\" --description \"Q3 forecast\""
+        ]
+      },
+      "update": {
+        "description": "Update plan properties",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Plan ID"
+          },
+          "--name": {
+            "type": "string",
+            "description": "New display name"
+          },
+          "--description": {
+            "type": "string",
+            "description": "New description (max 256 characters)"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "examples": [
+          "fabio plan update --workspace $WS --id $PLAN_ID --name \"Renamed Plan\""
+        ]
+      },
+      "delete": {
+        "description": "Delete a plan",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Plan ID"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true,
+        "examples": [
+          "fabio plan delete --workspace $WS --id $PLAN_ID"
+        ]
+      },
+      "get-definition": {
+        "description": "Get the definition of a plan",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Plan ID"
+          },
+          "--format": {
+            "type": "string",
+            "description": "Definition format (defaults to the server's canonical format, `PlanV1`)"
+          },
+          "--decode": {
+            "type": "bool",
+            "description": "Decode base64 payloads inline (adds decodedPayload field)"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio plan get-definition --workspace $WS --id $PLAN_ID --decode"
+        ]
+      },
+      "update-definition": {
+        "description": "Update the definition of a plan",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Plan ID"
+          },
+          "--file": {
+            "type": "string",
+            "description": "Path to definition file (a single raw part, or a full envelope JSON)"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline definition content"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "examples": [
+          "fabio plan update-definition --workspace $WS --id $PLAN_ID --file connectedPlanning/infobridge.json"
+        ]
       }
     }
   },

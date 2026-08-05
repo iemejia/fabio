@@ -10,7 +10,7 @@ use crate::commands::{
     managed_private_endpoint, map, mirrored_catalog, mirrored_database,
     mirrored_databricks_catalog, mirrored_warehouse, ml_experiment, ml_model, mounted_data_factory,
     notebook, onelake_security, ontology, operations_agent, org_app, org_app_audience,
-    paginated_report, profile, reflex, report, rest, rti, semantic_model, snowflake_database,
+    paginated_report, plan, profile, reflex, report, rest, rti, semantic_model, snowflake_database,
     spark, spark_job_definition, sql_database, sql_endpoint, user_data_function, variable_library,
     warehouse, warehouse_snapshot, workspace,
 };
@@ -500,6 +500,12 @@ pub enum Command {
     Map {
         #[command(subcommand)]
         command: map::MapCommand,
+    },
+    /// Manage plans (connected planning)
+    #[command(display_order = 69)]
+    Plan {
+        #[command(subcommand)]
+        command: plan::PlanCommand,
     },
     /// Manage graph query sets
     #[command(display_order = 48)]
