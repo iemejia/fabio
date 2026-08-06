@@ -22,3 +22,6 @@ Thumbs.db
 
 # Rust compiler ICE (internal compiler error) logs
 rustc-ice-*.txt
+
+# Transient curated release notes (written per-release, published via gh)
+release-notes.md
