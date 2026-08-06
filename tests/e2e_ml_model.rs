@@ -128,3 +128,65 @@ fn ml_model_dry_run_create() {
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(json["data"]["would_execute"], "ml-model create");
 }
+
+// ---------------------------------------------------------------------------
+// MLflow model registry versions
+// ---------------------------------------------------------------------------
+
+#[test]
+fn ml_model_get_registry_version_requires_version() {
+    // --version is required for get-registry-version.
+    fabio()
+        .args([
+            "ml-model",
+            "get-registry-version",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with a registered ML model version"]
+#[serial]
+fn ml_model_registry_versions_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let Ok(model_id) = std::env::var("FABIO_TEST_ML_MODEL_ID") else {
+        return; // skip when not configured
+    };
+
+    // list-registry-versions -> proper list envelope
+    let assert = fabio()
+        .args([
+            "ml-model",
+            "list-registry-versions",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &model_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(extract_data(&json).is_array());
+
+    // get-registry-version --version 1
+    fabio()
+        .args([
+            "ml-model",
+            "get-registry-version",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &model_id,
+            "--version",
+            "1",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+}

@@ -245,6 +245,34 @@ pub enum MlModelCommand {
         #[arg(long)]
         id: String,
     },
+
+    /// List the `MLflow` model-registry versions of an ML model (the trained model versions)
+    #[command(display_order = 30)]
+    ListRegistryVersions {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// ML model ID
+        #[arg(long)]
+        id: String,
+    },
+
+    /// Get a specific `MLflow` model-registry version (source run, stage, status)
+    #[command(display_order = 31, disable_version_flag = true)]
+    GetRegistryVersion {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// ML model ID
+        #[arg(long)]
+        id: String,
+
+        /// `MLflow` model-registry version number (e.g. 1, 2, 3)
+        #[arg(long)]
+        version: String,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -381,6 +409,14 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &MlModelCommand)
         MlModelCommand::DeactivateAllVersions { workspace, id } => {
             deactivate_all_versions(cli, client, workspace, id).await
         }
+        MlModelCommand::ListRegistryVersions { workspace, id } => {
+            list_registry_versions(cli, client, workspace, id).await
+        }
+        MlModelCommand::GetRegistryVersion {
+            workspace,
+            id,
+            version,
+        } => get_registry_version(cli, client, workspace, id, version).await,
     }
 }
 
@@ -656,6 +692,93 @@ async fn list_versions(cli: &Cli, client: &FabricClient, workspace: &str, id: &s
     Ok(())
 }
 
+// ─── MLflow model registry ───────────────────────────────────────────────────
+
+/// The per-workspace Fabric-hosted `MLflow` REST base. A Fabric ML Model item is
+/// an `MLflow` *registered model* whose name equals the item's display name, so
+/// the registry is queried by name (not by item GUID).
+fn mlflow_base(workspace: &str) -> String {
+    format!("/workspaces/{workspace}/mlflow/api/2.0/mlflow")
+}
+
+/// Build an `MLflow` `model-versions/search` filter for a registered model name,
+/// doubling single quotes to keep the filter well-formed.
+fn model_versions_filter(name: &str) -> String {
+    let escaped = name.replace('\'', "''");
+    format!("name='{escaped}'")
+}
+
+/// Resolve an ML Model item id to its display name (the `MLflow` registered-model name).
+async fn resolve_model_name(client: &FabricClient, workspace: &str, id: &str) -> Result<String> {
+    let item = client
+        .get(&format!("/workspaces/{workspace}/mlModels/{id}"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "ml-model", "Viewer"))?;
+    item.get("displayName")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| {
+            FabioError::new(
+                ErrorCode::ApiError,
+                "ML model has no displayName; cannot resolve the MLflow registered-model name."
+                    .to_string(),
+            )
+            .into()
+        })
+}
+
+async fn list_registry_versions(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let name = resolve_model_name(client, workspace, id).await?;
+    let filter_expr = model_versions_filter(&name);
+    let filter = urlencoding::encode(&filter_expr);
+    let data = client
+        .get(&format!(
+            "{}/model-versions/search?filter={filter}",
+            mlflow_base(workspace)
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "ml-model list-registry-versions", "Viewer"))?;
+    let versions = data
+        .get("model_versions")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    output::render_list(
+        cli,
+        &versions,
+        &["name", "version", "current_stage", "status", "run_id"],
+        &["NAME", "VERSION", "STAGE", "STATUS", "RUN ID"],
+        "version",
+    );
+    Ok(())
+}
+
+async fn get_registry_version(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    version: &str,
+) -> Result<()> {
+    let name = resolve_model_name(client, workspace, id).await?;
+    let name_q = urlencoding::encode(&name);
+    let version_q = urlencoding::encode(version);
+    let data = client
+        .get(&format!(
+            "{}/model-versions/get?name={name_q}&version={version_q}",
+            mlflow_base(workspace)
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "ml-model get-registry-version", "Viewer"))?;
+    output::render_object(cli, &data, "model_version");
+    Ok(())
+}
+
 async fn get_version(
     cli: &Cli,
     client: &FabricClient,
@@ -819,4 +942,28 @@ async fn deactivate_all_versions(
         .map_err(|e| enrich_forbidden(e, "ml-model deactivate-all-versions", "Contributor"))?;
     output::render_object(cli, &data, "id");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mlflow_base_path() {
+        assert_eq!(
+            mlflow_base("ws-1"),
+            "/workspaces/ws-1/mlflow/api/2.0/mlflow"
+        );
+    }
+
+    #[test]
+    fn model_versions_filter_builds_name_clause() {
+        assert_eq!(model_versions_filter("MyModel"), "name='MyModel'");
+    }
+
+    #[test]
+    fn model_versions_filter_escapes_single_quotes() {
+        // Single quotes are doubled to keep the MLflow filter well-formed.
+        assert_eq!(model_versions_filter("O'Brien"), "name='O''Brien'");
+    }
 }

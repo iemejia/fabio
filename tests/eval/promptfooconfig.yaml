@@ -291,6 +291,15 @@ tests:
       - type: icontains
         value: "--app-id"
 
+  - description: "List a model's trained MLflow registry versions"
+    vars:
+      user_query: "List the registered/trained model versions of ML model model-1 in workspace ws-456 (the MLflow registry versions, not the serving endpoint)"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('list-registry-versions')
+        metric: ml-model-registry-versions-command
+
   # ============================================================
   # AUTHENTICATION
   # ============================================================

@@ -15486,6 +15486,45 @@
         },
         "mutates": true,
         "returns": "object"
+      },
+      "list-registry-versions": {
+        "description": "List the `MLflow` model-registry versions of an ML model (the trained model versions)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "ML model ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "get-registry-version": {
+        "description": "Get a specific `MLflow` model-registry version (source run, stage, status)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "ML model ID"
+          },
+          "--version": {
+            "type": "string",
+            "required": true,
+            "description": "`MLflow` model-registry version number (e.g. 1, 2, 3)"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
       }
     }
   },

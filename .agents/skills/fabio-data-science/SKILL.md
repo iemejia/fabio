@@ -52,8 +52,10 @@ Manage ML models (data science)
 | `fabio ml-model deactivate-version` | yes | Deactivate a specific endpoint version |
 | `fabio ml-model delete` | yes | Delete an ML model |
 | `fabio ml-model get-endpoint` | no | Get the ML model serving endpoint configuration |
+| `fabio ml-model get-registry-version` | no | Get a specific `MLflow` model-registry version (source run, stage, status) |
 | `fabio ml-model get-version` | no | Get a specific endpoint version |
 | `fabio ml-model list` | no | List ML models in a workspace |
+| `fabio ml-model list-registry-versions` | no | List the `MLflow` model-registry versions of an ML model (the trained model versions) |
 | `fabio ml-model list-versions` | no | List endpoint versions |
 | `fabio ml-model score` | no | Score against the ML model endpoint |
 | `fabio ml-model score-version` | no | Score against a specific endpoint version |
