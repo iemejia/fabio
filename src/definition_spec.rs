@@ -451,6 +451,31 @@ mod tests {
     }
 
     #[test]
+    fn graph_model_definition_is_five_parts_not_graphmodel_json() {
+        // Regression: a graph model definition is graphType.json + dataSources.json +
+        // graphDefinition.json (+ optional styling/settings), NOT a single GraphModel.json.
+        let spec = spec_for("GraphModel").expect("GraphModel spec");
+        assert!(spec.required_parts.contains(&"graphType.json".to_string()));
+        assert!(
+            spec.required_parts
+                .contains(&"dataSources.json".to_string())
+        );
+        assert!(
+            spec.required_parts
+                .contains(&"graphDefinition.json".to_string())
+        );
+        assert!(
+            !spec.required_parts.contains(&"GraphModel.json".to_string()),
+            "the bogus single-part GraphModel.json must be gone"
+        );
+        // The note must warn about the portal-init load gate.
+        assert!(
+            spec.note.as_deref().unwrap_or("").contains("PORTAL-GATED"),
+            "note must document the portal-init load limitation"
+        );
+    }
+
+    #[test]
     fn lookup_is_case_and_separator_insensitive() {
         assert_eq!(
             canonical_type_name("spark-job-definition"),

@@ -84,9 +84,9 @@
       "note": "Format is PlanV1. connectedPlanning/infobridge.json is the canonical part path observed in the Fabric REST API spec examples; definition is optional on create (omit for an empty plan)."
     },
     "GraphModel": {
-      "requiredParts": ["GraphModel.json"],
-      "optionalParts": [".platform"],
-      "note": "GraphModel.json defines the graph model (node/edge types and bindings)."
+      "requiredParts": ["graphType.json", "dataSources.json", "graphDefinition.json"],
+      "optionalParts": ["stylingConfiguration.json", "graphSettings.json", ".platform"],
+      "note": "A graph model definition is FIVE JSON parts (NOT a single GraphModel.json), each with a $schema under .../item/graphIndex/definition/. (1) graphType.json = the schema: nodeTypes[{alias, labels[], primaryKeyProperties[], properties[{name,type}]}] and edgeTypes[{alias, labels[], sourceNodeType:{alias}, destinationNodeType:{alias}, properties?[]}]; property type is one of STRING/INT/UINT/BOOL/DOUBLE (temporal not supported). (2) dataSources.json = dataSources[{name, type:'DeltaTable', properties:{path:'abfss://<ws>@onelake.dfs.fabric.microsoft.com/<lakehouseId>/Tables/<table>'}}]. (3) graphDefinition.json = nodeTables[{nodeTypeAlias, id:<guid>, dataSourceName, propertyMappings[{propertyName, sourceColumn}]}] and edgeTables[{edgeTypeAlias, id:<guid>, dataSourceName, sourceNodeKeyColumns[], destinationNodeKeyColumns[], propertyMappings?[]}]. (4) stylingConfiguration.json and (5) graphSettings.json are portal visual/settings state. alias = numeric-string InternalIdentifier; id = GUID. Author via update-definition (the API accepts a schema-valid definition), but the graph LOAD/refresh is PORTAL-GATED: a REST-created graph must be initialized once in the Fabric portal (provisions internal loading infra) before refresh-graph/GQL query work — see fabio graph-model initialize."
     },
     "OperationsAgent": {
       "requiredParts": ["Configurations.json"],
