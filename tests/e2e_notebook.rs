@@ -858,6 +858,39 @@ fn notebook_run_dry_run_with_execution_data() {
 }
 
 #[test]
+fn notebook_update_definition_ipynb_envelope_preserves_format() {
+    // Regression: build_update_definition_body must NOT drop definition.format.
+    // An ipynb envelope must round-trip `format:"ipynb"` to updateDefinition,
+    // else the server misreads the payload as raw .py (PyToIPynbFailure).
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("nb-envelope.json");
+    std::fs::write(
+        &file_path,
+        r#"{"definition":{"format":"ipynb","parts":[{"path":"notebook-content.py","payload":"e30=","payloadType":"InlineBase64"}]}}"#,
+    )
+    .unwrap();
+
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "notebook",
+            "update-definition",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--file",
+            &file_path.display().to_string(),
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["details"]["definition"]["format"], "ipynb");
+}
+
+#[test]
 fn notebook_run_dry_run_execution_data_from_file() {
     let dir = tempfile::tempdir().unwrap();
     let file_path = dir.path().join("exec_data.json");

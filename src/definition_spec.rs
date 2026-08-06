@@ -148,12 +148,22 @@ pub fn definition_input_hint(item_type: &str, group: &str, command: &str) -> Str
 #[must_use]
 pub fn build_update_definition_body(raw: &str, default_part_path: &str) -> Value {
     if let Ok(parsed) = serde_json::from_str::<Value>(raw) {
-        let parts = parsed
-            .get("definition")
+        let definition = parsed.get("definition");
+        let parts = definition
             .and_then(|d| d.get("parts"))
             .or_else(|| parsed.get("parts"));
         if let Some(parts) = parts.and_then(Value::as_array) {
-            return serde_json::json!({ "definition": { "parts": parts } });
+            let mut def = serde_json::json!({ "parts": parts });
+            // Preserve a `format` (definitionFormat) if the caller supplied one
+            // — e.g. a notebook `ipynb` envelope. Dropping it makes the server
+            // misinterpret the payload (notebook-content.py treated as raw .py).
+            if let Some(format) = definition
+                .and_then(|d| d.get("format"))
+                .or_else(|| parsed.get("format"))
+            {
+                def["format"] = format.clone();
+            }
+            return serde_json::json!({ "definition": def });
         }
     }
     serde_json::json!({
@@ -669,5 +679,33 @@ mod tests {
         let parts = body["definition"]["parts"].as_array().unwrap();
         assert_eq!(parts.len(), 1);
         assert_eq!(parts[0]["path"], "a.json");
+    }
+
+    #[test]
+    fn build_body_preserves_definition_format() {
+        // A notebook ipynb envelope carries `definition.format` — it must NOT be
+        // dropped, or the server misreads the payload as raw .py.
+        let raw = r#"{"definition":{"format":"ipynb","parts":[
+            {"path":"notebook-content.py","payload":"e30=","payloadType":"InlineBase64"}
+        ]}}"#;
+        let body = build_update_definition_body(raw, "notebook-content.py");
+        assert_eq!(body["definition"]["format"], "ipynb");
+        assert_eq!(body["definition"]["parts"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn build_body_preserves_top_level_format() {
+        let raw = r#"{"format":"ipynb","parts":[
+            {"path":"notebook-content.py","payload":"e30=","payloadType":"InlineBase64"}
+        ]}"#;
+        let body = build_update_definition_body(raw, "notebook-content.py");
+        assert_eq!(body["definition"]["format"], "ipynb");
+    }
+
+    #[test]
+    fn build_body_omits_format_when_absent() {
+        let raw = r#"{"definition":{"parts":[{"path":"a.json","payload":"e30=","payloadType":"InlineBase64"}]}}"#;
+        let body = build_update_definition_body(raw, "fallback.json");
+        assert!(body["definition"].get("format").is_none());
     }
 }
