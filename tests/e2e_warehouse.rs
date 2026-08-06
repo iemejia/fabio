@@ -655,6 +655,34 @@ fn warehouse_queries_history() {
         .success();
 }
 
+// warehouse queries-history --label — filter to labeled queries + perf columns
+// (queryinsights views populate asynchronously; a fresh warehouse may return an
+// "Invalid object name" error, so this only asserts the --label flag is accepted
+// and the command runs against a warehouse that already has query history).
+#[test]
+#[ignore = "requires live Fabric tenant with populated query insights"]
+#[serial]
+fn warehouse_queries_history_label_filter() {
+    let cfg = TestConfig::from_env();
+
+    fabio()
+        .args([
+            "warehouse",
+            "queries-history",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--top",
+            "10",
+            "--label",
+            "Clustered",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+}
+
 // ---------------------------------------------------------------------------
 // warehouse pool-insights — SQL pool state / pressure events
 // ---------------------------------------------------------------------------

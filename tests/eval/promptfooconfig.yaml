@@ -258,6 +258,28 @@ tests:
       - type: icontains
         value: "--wait"
 
+  - description: "Author a KQL queryset tab bound to a KQL database"
+    vars:
+      user_query: "Add a saved query tab to KQL queryset qs-123 in workspace ws-456 that runs 'Sales | count' against KQL database db-789"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('kql-queryset add-tab')
+        metric: kql-queryset-add-tab-command
+      - type: icontains
+        value: "--kql-database"
+
+  - description: "Compare labeled queries in query insights (clustering effectiveness)"
+    vars:
+      user_query: "Show the query history for warehouse wh-123 in workspace ws-456 for only the queries I tagged with the label 'Clustered'"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('queries-history')
+        metric: queries-history-command
+      - type: icontains
+        value: "--label"
+
   # ============================================================
   # AUTHENTICATION
   # ============================================================
