@@ -12,7 +12,24 @@ use super::{detect_format_from_extension, expand_table_glob, render_batch_result
 
 // ─── Load / Upload Table ─────────────────────────────────────────────────────
 
-#[allow(clippy::too_many_arguments)]
+/// Map the Fabric "operation not supported for schemas-enabled lakehouse" error
+/// (raised when no schema is supplied to the load API) into a teaching hint that
+/// points the caller at `--schema`. Other errors pass through unchanged.
+fn map_schemas_enabled_error(e: anyhow::Error, schema: Option<&str>) -> anyhow::Error {
+    if schema.is_none() && super::files::is_schemas_enabled_error(&e) {
+        return crate::errors::FabioError::with_hint(
+            crate::errors::ErrorCode::InvalidInput,
+            "This lakehouse has schemas enabled, so the load-table API requires a schema."
+                .to_string(),
+            "Pass --schema <name> (for example --schema dbo). Inspect schemas/tables with: fabio lakehouse list-tables --workspace <WS> --id <ID>."
+                .to_string(),
+        )
+        .into();
+    }
+    e
+}
+
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub(super) async fn load_table(
     cli: &Cli,
     client: &FabricClient,
@@ -118,7 +135,10 @@ pub(super) async fn load_table(
         },
     );
 
-    let data = client.post(&url, &body, true).await?;
+    let data = client
+        .post(&url, &body, true)
+        .await
+        .map_err(|e| map_schemas_enabled_error(e, schema))?;
 
     let obj = if data.is_null() {
         serde_json::json!({
@@ -147,6 +167,7 @@ pub(super) async fn upload_table(
     table: &str,
     mode: &str,
     format: Option<&str>,
+    schema: Option<&str>,
 ) -> Result<()> {
     const VALID_MODES: &[&str] = &["Overwrite", "Append"];
     const VALID_FORMATS: &[&str] = &["Csv", "Parquet"];
@@ -249,11 +270,19 @@ pub(super) async fn upload_table(
 
     let load_result = client
         .post(
-            &format!("/workspaces/{workspace}/lakehouses/{id}/tables/{table}/load"),
+            &schema.map_or_else(
+                || format!("/workspaces/{workspace}/lakehouses/{id}/tables/{table}/load"),
+                |schema_name| {
+                    format!(
+                        "/workspaces/{workspace}/lakehouses/{id}/schemas/{schema_name}/tables/{table}/load?beta=true"
+                    )
+                },
+            ),
             &body,
             true,
         )
-        .await;
+        .await
+        .map_err(|e| map_schemas_enabled_error(e, schema));
 
     // Step 3: Clean up the staging file (best-effort)
     let _ = client
@@ -752,4 +781,39 @@ pub(super) async fn move_table(
     });
     output::render_object(cli, &obj, "status");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::map_schemas_enabled_error;
+
+    #[test]
+    fn schemas_enabled_error_becomes_schema_hint_when_no_schema() {
+        let e = anyhow::anyhow!(
+            "UnsupportedOperationForSchemasEnabledLakehouse: The operation is not supported for Lakehouse with schemas enabled."
+        );
+        let mapped = map_schemas_enabled_error(e, None);
+        let s = mapped.to_string();
+        assert!(s.contains("schemas enabled"), "got: {s}");
+        // The teaching hint lives on the FabioError; verify it surfaces --schema.
+        let fe = mapped
+            .downcast_ref::<crate::errors::FabioError>()
+            .expect("FabioError");
+        assert!(fe.hint.as_deref().unwrap_or("").contains("--schema"));
+    }
+
+    #[test]
+    fn schemas_enabled_error_passes_through_when_schema_supplied() {
+        let e = anyhow::anyhow!("UnsupportedOperationForSchemasEnabledLakehouse: not supported");
+        // With a schema already supplied, we must not rewrite the error.
+        let mapped = map_schemas_enabled_error(e, Some("dbo"));
+        assert!(mapped.downcast_ref::<crate::errors::FabioError>().is_none());
+    }
+
+    #[test]
+    fn unrelated_error_passes_through() {
+        let e = anyhow::anyhow!("ItemNotFound: nope");
+        let mapped = map_schemas_enabled_error(e, None);
+        assert!(mapped.to_string().contains("ItemNotFound"));
+    }
 }

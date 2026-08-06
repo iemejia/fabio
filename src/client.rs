@@ -892,6 +892,64 @@ impl FabricClient {
         Ok(paths)
     }
 
+    /// List a single `OneLake` directory (non-recursive). Returns the immediate
+    /// children (files and subdirectories) of `{item}/{directory}`. Used to
+    /// enumerate the schemas/tables of a schemas-enabled lakehouse, where the
+    /// Fabric REST `GET /lakehouses/{id}/tables` endpoint is unsupported.
+    ///
+    /// Uses the workspace-scoped DFS filesystem-list shape (filesystem =
+    /// workspace, `directory={item}/{dir}`), which — unlike the item-in-path
+    /// shape used by `list_onelake_files` — correctly scopes `directory` to a
+    /// subtree. Returned `name` fields carry the full `{item}/...` prefix.
+    pub async fn list_onelake_dir(
+        &self,
+        workspace: &str,
+        item: &str,
+        directory: &str,
+    ) -> Result<Vec<Value>> {
+        validate_uuid(workspace, "workspace")?;
+        validate_uuid(item, "item")?;
+        let dir = format!("{item}/{}", directory.trim_start_matches('/'));
+        let url = self.onelake_dfs_url(
+            workspace,
+            &format!(
+                "?resource=filesystem&recursive=false&directory={}",
+                urlencoding::encode(&dir)
+            ),
+        );
+
+        verbose::trace_request("GET", &url, None);
+        let start = std::time::Instant::now();
+
+        let mut resp = self
+            .http
+            .get(&url)
+            .header(AUTHORIZATION, &self.require_storage_auth().await?)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_storage_token().await;
+            resp = self
+                .http
+                .get(&url)
+                .header(AUTHORIZATION, &self.require_storage_auth().await?)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+        }
+
+        let mut body = handle_response(resp).await?;
+        let paths = match body.get_mut("paths").map(Value::take) {
+            Some(Value::Array(arr)) => arr,
+            _ => Vec::new(),
+        };
+        Ok(paths)
+    }
+
     /// Server-side file copy via `OneLake` Blob API. Retries once on 401.
     pub async fn copy_onelake_file(
         &self,

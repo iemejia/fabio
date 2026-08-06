@@ -1400,3 +1400,150 @@ fn lakehouse_load_table_with_append_mode() {
         .assert()
         .success();
 }
+
+// ─── Schemas-enabled lakehouse: --schema on upload-table + list-tables fallback ─
+
+#[test]
+fn upload_table_schema_flag_dry_run() {
+    // The --schema flag must be accepted by upload-table (parity with load-table)
+    // so schemas-enabled lakehouses can be targeted in one step.
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "lakehouse",
+            "upload-table",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--source-path",
+            "/tmp/does-not-matter.csv",
+            "--table",
+            "my_table",
+            "--format",
+            "Csv",
+            "--schema",
+            "dbo",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "lakehouse upload-table");
+}
+
+/// Live: a schemas-enabled lakehouse (the Fabric REST load/list-tables endpoints
+/// reject these). fabio must (1) load via `--schema`, (2) enumerate tables via the
+/// `OneLake` fallback in `list-tables`, and (3) teach `--schema` when it is omitted.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn lakehouse_schemas_enabled_table_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("lh_schemas");
+
+    // Create a schemas-enabled lakehouse.
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+            "--enable-schemas",
+        ])
+        .assert()
+        .success();
+    let lh_json = parse_json(&assert);
+    let lh_id = extract_data(&lh_json)["id"].as_str().unwrap().to_string();
+
+    // Seed a small CSV.
+    let dir = TempDir::new().unwrap();
+    let csv = dir.path().join("dim.csv");
+    fs::write(&csv, "Id,Name\n1,alpha\n2,beta\n").unwrap();
+
+    // load via upload-table --schema dbo (the one-step path).
+    fabio()
+        .args([
+            "lakehouse",
+            "upload-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &lh_id,
+            "--source-path",
+            csv.to_str().unwrap(),
+            "--table",
+            "dim_test",
+            "--format",
+            "Csv",
+            "--mode",
+            "Overwrite",
+            "--schema",
+            "dbo",
+        ])
+        .assert()
+        .success();
+
+    // list-tables must succeed via the OneLake fallback and show the table + schema.
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "list-tables",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &lh_id,
+        ])
+        .assert()
+        .success();
+    let list_json = parse_json(&assert);
+    let data = extract_data(&list_json);
+    let rows = data.as_array().unwrap();
+    let row = rows
+        .iter()
+        .find(|r| r["name"] == "dim_test")
+        .expect("dim_test should be listed");
+    assert_eq!(row["schema"], "dbo");
+
+    // upload-table WITHOUT --schema must fail with a teaching hint about --schema.
+    let assert = fabio()
+        .args([
+            "lakehouse",
+            "upload-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &lh_id,
+            "--source-path",
+            csv.to_str().unwrap(),
+            "--table",
+            "dim_noschema",
+            "--format",
+            "Csv",
+            "--mode",
+            "Overwrite",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("--schema"),
+        "expected teaching hint about --schema, got stderr: {stderr}"
+    );
+
+    // Cleanup.
+    fabio()
+        .args([
+            "lakehouse",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &lh_id,
+        ])
+        .assert()
+        .success();
+}

@@ -317,6 +317,10 @@ pub enum LakehouseCommand {
         /// File format: Csv, Parquet (auto-detected from extension if omitted)
         #[arg(short, long)]
         format: Option<String>,
+
+        /// Schema name for multi-schema (schemas-enabled) lakehouses (beta; e.g., dbo)
+        #[arg(long)]
+        schema: Option<String>,
     },
     /// Load a file (already in the lakehouse) into a Delta table
     #[command(display_order = 13)]
@@ -1412,6 +1416,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             table,
             mode,
             format,
+            schema,
         } => tables::upload_table(
             cli,
             client,
@@ -1421,6 +1426,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             table,
             mode,
             format.as_deref(),
+            schema.as_deref(),
         )
         .await
         .map_err(|e| enrich_forbidden(e, "lakehouse upload-table", "Contributor")),

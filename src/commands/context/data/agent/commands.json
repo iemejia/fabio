@@ -2801,6 +2801,10 @@
           "--format": {
             "type": "string",
             "description": "File format: Csv, Parquet (auto-detected from extension if omitted)"
+          },
+          "--schema": {
+            "type": "string",
+            "description": "Schema name for multi-schema (schemas-enabled) lakehouses (beta; e.g., dbo)"
           }
         },
         "mutates": true,

@@ -18,24 +18,110 @@ pub(super) async fn tables(
     workspace: &str,
     id: &str,
 ) -> Result<()> {
-    let resp = client
+    match client
         .get_list(
             &format!("/workspaces/{workspace}/lakehouses/{id}/tables"),
             "data",
             cli.all,
             cli.continuation_token.as_deref(),
         )
-        .await?;
+        .await
+    {
+        Ok(resp) => {
+            output::render_list_with_token(
+                cli,
+                &resp.items,
+                &["name", "type", "format"],
+                &["NAME", "TYPE", "FORMAT"],
+                "name",
+                resp.continuation_token.as_deref(),
+            );
+            Ok(())
+        }
+        // The Fabric `GET /lakehouses/{id}/tables` endpoint is not supported for
+        // schemas-enabled lakehouses. Fall back to enumerating the managed tables
+        // directly from OneLake (`Tables/<schema>/<table>`).
+        Err(e) if is_schemas_enabled_error(&e) => {
+            let rows = enumerate_schema_tables(client, workspace, id).await?;
+            output::render_list(
+                cli,
+                &rows,
+                &["name", "schema", "type", "format"],
+                &["NAME", "SCHEMA", "TYPE", "FORMAT"],
+                "name",
+            );
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
+}
 
-    output::render_list_with_token(
-        cli,
-        &resp.items,
-        &["name", "type", "format"],
-        &["NAME", "TYPE", "FORMAT"],
-        "name",
-        resp.continuation_token.as_deref(),
-    );
-    Ok(())
+/// True when an error is the Fabric "operation not supported for schemas-enabled
+/// lakehouse" error (raised by the REST tables/load endpoints).
+pub(super) fn is_schemas_enabled_error(e: &anyhow::Error) -> bool {
+    e.to_string().contains("SchemasEnabledLakehouse")
+}
+
+/// Enumerate managed tables of a schemas-enabled lakehouse from `OneLake`:
+/// list the schema directories under `Tables/`, then the table directories under
+/// each `Tables/<schema>/`.
+async fn enumerate_schema_tables(
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<Vec<serde_json::Value>> {
+    let schema_dirs = client.list_onelake_dir(workspace, id, "Tables").await?;
+    let mut rows = Vec::new();
+    for schema in subdir_basenames(&schema_dirs) {
+        let table_dirs = client
+            .list_onelake_dir(workspace, id, &format!("Tables/{schema}"))
+            .await?;
+        rows.extend(schema_table_rows(&schema, &table_dirs));
+    }
+    rows.sort_by(|a, b| {
+        let ka = (
+            a["schema"].as_str().unwrap_or(""),
+            a["name"].as_str().unwrap_or(""),
+        );
+        let kb = (
+            b["schema"].as_str().unwrap_or(""),
+            b["name"].as_str().unwrap_or(""),
+        );
+        ka.cmp(&kb)
+    });
+    Ok(rows)
+}
+
+/// Immediate subdirectory basenames from a `OneLake` DFS non-recursive listing.
+/// Each entry has a full `name` path and an `isDirectory` flag (string or bool).
+fn subdir_basenames(paths: &[serde_json::Value]) -> Vec<String> {
+    paths
+        .iter()
+        .filter(|p| {
+            let d = &p["isDirectory"];
+            d.as_str() == Some("true") || d.as_bool() == Some(true)
+        })
+        .filter_map(|p| p["name"].as_str())
+        .filter_map(|n| n.trim_end_matches('/').rsplit('/').next())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Build table rows for one schema from the non-recursive listing of
+/// `Tables/<schema>`.
+fn schema_table_rows(schema: &str, table_paths: &[serde_json::Value]) -> Vec<serde_json::Value> {
+    subdir_basenames(table_paths)
+        .into_iter()
+        .map(|name| {
+            serde_json::json!({
+                "name": name,
+                "schema": schema,
+                "type": "Managed",
+                "format": "Delta",
+                "location": format!("Tables/{schema}/{name}"),
+            })
+        })
+        .collect()
 }
 
 pub(super) async fn files(
@@ -457,6 +543,8 @@ pub(super) async fn move_file(
 #[cfg(test)]
 mod tests {
     use super::validate_delete_directory_path;
+    use super::{is_schemas_enabled_error, schema_table_rows, subdir_basenames};
+    use serde_json::json;
 
     #[test]
     fn delete_directory_path_rejects_root_variants() {
@@ -482,5 +570,45 @@ mod tests {
                 "path {p:?} should be allowed"
             );
         }
+    }
+
+    #[test]
+    fn schemas_enabled_error_is_detected() {
+        let e = anyhow::anyhow!(
+            "UnsupportedOperationForSchemasEnabledLakehouse: The operation is not supported for Lakehouse with schemas enabled."
+        );
+        assert!(is_schemas_enabled_error(&e));
+        assert!(!is_schemas_enabled_error(&anyhow::anyhow!("ItemNotFound")));
+    }
+
+    #[test]
+    fn subdir_basenames_extracts_directory_leaf_names() {
+        // DFS returns full paths (itemId/Tables/dbo) and a string isDirectory flag.
+        let paths = vec![
+            json!({"name": "017d/Tables/dbo", "isDirectory": "true"}),
+            json!({"name": "017d/Tables/sales/", "isDirectory": "true"}),
+            json!({"name": "017d/Tables/readme.txt", "isDirectory": "false"}),
+            json!({"name": "017d/Tables/other", "isDirectory": true}),
+        ];
+        let mut got = subdir_basenames(&paths);
+        got.sort();
+        assert_eq!(got, vec!["dbo", "other", "sales"]);
+    }
+
+    #[test]
+    fn schema_table_rows_builds_qualified_rows() {
+        let paths = vec![
+            json!({"name": "017d/Tables/dbo/fact_sale", "isDirectory": "true"}),
+            json!({"name": "017d/Tables/dbo/_probe", "isDirectory": "true"}),
+        ];
+        let rows = schema_table_rows("dbo", &paths);
+        assert_eq!(rows.len(), 2);
+        let fact = rows.iter().find(|r| r["name"] == "fact_sale").unwrap();
+        assert_eq!(fact["schema"], "dbo");
+        assert_eq!(fact["type"], "Managed");
+        assert_eq!(fact["format"], "Delta");
+        assert_eq!(fact["location"], "Tables/dbo/fact_sale");
+        // underscore-prefixed tables are NOT filtered out (they are valid tables).
+        assert!(rows.iter().any(|r| r["name"] == "_probe"));
     }
 }
