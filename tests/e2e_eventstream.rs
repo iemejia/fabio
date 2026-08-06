@@ -517,6 +517,89 @@ fn eventstream_list_components_filter_destination() {
 }
 
 #[test]
+fn eventstream_list_components_filter_operator() {
+    let output = fabio()
+        .args(["eventstream", "list-components", "--category", "operator"])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    let items = data.as_array().expect("should be array");
+    assert_eq!(items.len(), 7, "Should have 7 event-processor operators");
+    let types: Vec<&str> = items.iter().filter_map(|i| i["type"].as_str()).collect();
+    for expected in [
+        "Filter",
+        "ManageFields",
+        "Aggregate",
+        "GroupBy",
+        "Join",
+        "Union",
+        "Expand",
+    ] {
+        assert!(types.contains(&expected), "missing operator {expected}");
+    }
+    for item in items {
+        assert_eq!(item["category"], "operator");
+    }
+}
+
+#[test]
+fn eventstream_add_operator_unknown_type_fails() {
+    // Unknown operator type is rejected client-side with the valid enum in the hint.
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "eventstream",
+            "add-operator",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "op1",
+            "--type",
+            "NotAnOperator",
+            "--input-node",
+            "s1",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("Filter") && stderr.contains("ManageFields"));
+}
+
+#[test]
+fn eventstream_add_operator_dry_run_builds_node() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "eventstream",
+            "add-operator",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "KeepMSFT",
+            "--type",
+            "filter",
+            "--input-node",
+            "src-stream",
+            "--properties",
+            r#"{"conditions":[]}"#,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "eventstream add-operator");
+    let op = &data["details"]["operator"];
+    assert_eq!(op["type"], "Filter"); // case-normalized
+    assert_eq!(op["inputNodes"][0]["name"], "src-stream");
+}
+
+#[test]
 fn eventstream_validate_valid_definition() {
     let def = serde_json::json!({
         "sources": [{"name": "src1", "type": "CustomEndpoint"}],

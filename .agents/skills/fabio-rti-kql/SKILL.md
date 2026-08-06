@@ -108,6 +108,7 @@ Manage eventstreams (real-time data ingestion)
 |---|---|---|
 | `fabio eventstream add-derived-stream` | yes | Add a derived stream (filtered/transformed) between existing nodes |
 | `fabio eventstream add-destination` | yes | Add a destination to an eventstream (fetches current definition, merges, and updates) |
+| `fabio eventstream add-operator` | yes | Add an event-processor operator (Filter/ManageFields/Aggregate/GroupBy/Join/Union/Expand) node |
 | `fabio eventstream add-sample-source` | yes | Add a sample data source to an eventstream (high-level helper) |
 | `fabio eventstream add-source` | yes | Add a source to an eventstream (fetches current definition, merges, and updates) |
 | `fabio eventstream create` | yes | Create a new eventstream |

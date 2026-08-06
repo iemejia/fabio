@@ -348,6 +348,10 @@ pub enum EventstreamCommand {
         /// Source name (unique within the eventstream)
         #[arg(long)]
         name: String,
+
+        /// Sample dataset: `Bicycles`, `YellowTaxi`, `StockMarket`, `Buses` (default: `Bicycles`)
+        #[arg(long = "sample-type", default_value = "Bicycles")]
+        sample_type: String,
     },
 
     /// Add a derived stream (filtered/transformed) between existing nodes
@@ -374,6 +378,34 @@ pub enum EventstreamCommand {
         properties: Option<String>,
     },
 
+    /// Add an event-processor operator (Filter/ManageFields/Aggregate/GroupBy/Join/Union/Expand) node
+    #[command(name = "add-operator", display_order = 44)]
+    AddOperator {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Eventstream ID
+        #[arg(long)]
+        id: String,
+
+        /// Operator name (unique within the eventstream)
+        #[arg(long)]
+        name: String,
+
+        /// Operator type: `Filter`, `ManageFields`, `Aggregate`, `GroupBy`, `Join`, `Union`, `Expand`
+        #[arg(long = "type")]
+        operator_type: String,
+
+        /// Input node name (the source, stream, or operator to transform)
+        #[arg(long)]
+        input_node: String,
+
+        /// Operator properties as JSON string (operator-specific, e.g. Filter → {"conditions":[…]})
+        #[arg(long)]
+        properties: Option<String>,
+    },
+
     /// Validate an eventstream definition (client-side checks, no API call)
     #[command(display_order = 44)]
     Validate {
@@ -393,7 +425,7 @@ pub enum EventstreamCommand {
     /// List available eventstream component types (sources, destinations, operators)
     #[command(name = "list-components", display_order = 45)]
     ListComponents {
-        /// Filter by category: source, destination, all (default: all)
+        /// Filter by category: source, destination, operator, all (default: all)
         #[arg(long, default_value = "all")]
         category: String,
     },
@@ -553,7 +585,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EventstreamComm
             workspace,
             id,
             name,
-        } => builder::add_sample_source(cli, client, workspace, id, name).await,
+            sample_type,
+        } => builder::add_sample_source(cli, client, workspace, id, name, sample_type).await,
         EventstreamCommand::AddDerivedStream {
             workspace,
             id,
@@ -567,6 +600,26 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EventstreamComm
                 workspace,
                 id,
                 name,
+                input_node,
+                properties.as_deref(),
+            )
+            .await
+        }
+        EventstreamCommand::AddOperator {
+            workspace,
+            id,
+            name,
+            operator_type,
+            input_node,
+            properties,
+        } => {
+            builder::add_operator(
+                cli,
+                client,
+                workspace,
+                id,
+                name,
+                operator_type,
                 input_node,
                 properties.as_deref(),
             )

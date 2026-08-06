@@ -236,20 +236,41 @@ pub(super) async fn add_destination(
 
 // ─── Builder Helpers ─────────────────────────────────────────────────────────
 
+/// Normalize a sample-data type to its canonical `properties.type` value.
+/// Accepts common labels/casing ("yellow taxi", "stock-market", "bicycle").
+pub(super) fn normalize_sample_type(input: &str) -> &'static str {
+    let key: String = input
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .collect::<String>()
+        .to_ascii_lowercase();
+    match key.as_str() {
+        "yellowtaxi" | "taxi" => "YellowTaxi",
+        "stockmarket" | "stock" | "stocks" => "StockMarket",
+        "buses" | "bus" => "Buses",
+        // default and "bicycles"/"bicycle"/"bikes"
+        _ => "Bicycles",
+    }
+}
+
 pub(super) async fn add_sample_source(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
     id: &str,
     name: &str,
+    sample_type: &str,
 ) -> Result<()> {
+    // The SampleData source's `properties.type` is the dataset name (Bicycles,
+    // YellowTaxi, StockMarket, Buses) — accept common aliases/casing.
+    let sample_type = normalize_sample_type(sample_type);
     if output::dry_run_guard(
         cli,
         "eventstream add-sample-source",
         &serde_json::json!({
             "workspace": workspace,
             "id": id,
-            "source": { "name": name, "type": "SampleData" }
+            "source": { "name": name, "type": "SampleData", "properties": { "type": sample_type } }
         }),
     ) {
         return Ok(());
@@ -261,7 +282,7 @@ pub(super) async fn add_sample_source(
     let new_source = serde_json::json!({
         "name": name,
         "type": "SampleData",
-        "properties": {},
+        "properties": { "type": sample_type },
     });
 
     let sources = def["sources"]
@@ -338,6 +359,79 @@ pub(super) async fn add_derived_stream(
         .as_array_mut()
         .ok_or_else(|| anyhow::anyhow!("Definition missing streams array"))?;
     streams.push(new_stream);
+
+    push_definition(cli, client, workspace, id, &def).await?;
+    Ok(())
+}
+
+/// Valid event-processor operator types.
+const OPERATOR_TYPES: &[&str] = &[
+    "Filter",
+    "ManageFields",
+    "Aggregate",
+    "GroupBy",
+    "Join",
+    "Union",
+    "Expand",
+];
+
+/// Add an event-processor operator (Filter/ManageFields/Aggregate/…) node to the
+/// eventstream's `operators` array, wired to `input_node`. The `properties` shape
+/// is operator-specific (e.g. Filter → `{conditions:[…]}`).
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn add_operator(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    name: &str,
+    operator_type: &str,
+    input_node: &str,
+    properties: Option<&str>,
+) -> Result<()> {
+    let operator_type = OPERATOR_TYPES
+        .iter()
+        .find(|t| t.eq_ignore_ascii_case(operator_type))
+        .copied()
+        .ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Unknown operator type: '{operator_type}'"),
+                format!("Valid operator types: {}", OPERATOR_TYPES.join(", ")),
+            )
+        })?;
+
+    let props: Value = match properties {
+        Some(p) => serde_json::from_str(p).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid JSON in --properties: {e}"),
+                "Example (Filter): --properties '{\"conditions\":[…]}'. Discover operator types with: fabio eventstream list-components --category operator".to_string(),
+            )
+        })?,
+        None => serde_json::json!({}),
+    };
+
+    let new_operator = serde_json::json!({
+        "name": name,
+        "type": operator_type,
+        "inputNodes": [{"name": input_node}],
+        "properties": props,
+    });
+
+    if output::dry_run_guard(
+        cli,
+        "eventstream add-operator",
+        &serde_json::json!({ "workspace": workspace, "id": id, "operator": new_operator }),
+    ) {
+        return Ok(());
+    }
+
+    let mut def = fetch_current_definition(client, workspace, id).await?;
+    let operators = def["operators"]
+        .as_array_mut()
+        .ok_or_else(|| anyhow::anyhow!("Definition missing operators array"))?;
+    operators.push(new_operator);
 
     push_definition(cli, client, workspace, id, &def).await?;
     Ok(())
@@ -512,12 +606,27 @@ pub(super) fn list_components(cli: &Cli, category: &str) {
         {"type": "Notebook", "category": "destination", "description": "Fabric Notebook (real-time processing)"},
     ]);
 
+    // Event-processor operators (transform nodes between sources and destinations).
+    // Authored via `add-derived-stream --properties` (the derived stream carries
+    // the operator's `operatorProperties`).
+    let operators = serde_json::json!([
+        {"type": "Filter", "category": "operator", "description": "Keep only events matching a condition (WHERE)"},
+        {"type": "ManageFields", "category": "operator", "description": "Add, remove, or rename output fields (incl. built-in function fields)"},
+        {"type": "Aggregate", "category": "operator", "description": "Aggregate a field (SUM/AVG/MIN/MAX/COUNT) over a tumbling time window"},
+        {"type": "GroupBy", "category": "operator", "description": "Aggregate over a time window grouped by one or more fields"},
+        {"type": "Join", "category": "operator", "description": "Join two input streams on a condition (inner/left)"},
+        {"type": "Union", "category": "operator", "description": "Combine multiple streams that share a schema into one"},
+        {"type": "Expand", "category": "operator", "description": "Expand (unroll) an array field into multiple events"},
+    ]);
+
     let items: Vec<Value> = match category {
         "source" => sources.as_array().cloned().unwrap_or_default(),
         "destination" => destinations.as_array().cloned().unwrap_or_default(),
+        "operator" => operators.as_array().cloned().unwrap_or_default(),
         _ => {
             let mut all = sources.as_array().cloned().unwrap_or_default();
             all.extend(destinations.as_array().cloned().unwrap_or_default());
+            all.extend(operators.as_array().cloned().unwrap_or_default());
             all
         }
     };
@@ -529,4 +638,38 @@ pub(super) fn list_components(cli: &Cli, category: &str) {
         &["TYPE", "CATEGORY", "DESCRIPTION"],
         "type",
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{OPERATOR_TYPES, normalize_sample_type};
+
+    #[test]
+    fn sample_type_normalizes_labels_and_casing() {
+        assert_eq!(normalize_sample_type("StockMarket"), "StockMarket");
+        assert_eq!(normalize_sample_type("stock market"), "StockMarket");
+        assert_eq!(normalize_sample_type("stock-market"), "StockMarket");
+        assert_eq!(normalize_sample_type("Yellow Taxi"), "YellowTaxi");
+        assert_eq!(normalize_sample_type("taxi"), "YellowTaxi");
+        assert_eq!(normalize_sample_type("buses"), "Buses");
+        assert_eq!(normalize_sample_type("bicycle"), "Bicycles");
+        // Unknown falls back to the default sample dataset.
+        assert_eq!(normalize_sample_type("whatever"), "Bicycles");
+    }
+
+    #[test]
+    fn operator_types_cover_the_seven_event_processors() {
+        for t in [
+            "Filter",
+            "ManageFields",
+            "Aggregate",
+            "GroupBy",
+            "Join",
+            "Union",
+            "Expand",
+        ] {
+            assert!(OPERATOR_TYPES.contains(&t), "missing operator type {t}");
+        }
+        assert_eq!(OPERATOR_TYPES.len(), 7);
+    }
 }

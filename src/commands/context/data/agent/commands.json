@@ -13103,6 +13103,10 @@
             "type": "string",
             "required": true,
             "description": "Source name (unique within the eventstream)"
+          },
+          "--sample-type": {
+            "type": "string",
+            "description": "Sample dataset: Bicycles, YellowTaxi, StockMarket, Buses (default: Bicycles)"
           }
         },
         "mutates": true,
@@ -13145,6 +13149,42 @@
           "fabio eventstream add-derived-stream --workspace $WS --id $ES --name \"high-temp-stream\" --input-node \"app-source-stream\""
         ]
       },
+      "add-operator": {
+        "description": "Add an event-processor operator (Filter/ManageFields/Aggregate/GroupBy/Join/Union/Expand) node",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Eventstream ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Operator name (unique within the eventstream)"
+          },
+          "--type": {
+            "type": "string",
+            "required": true,
+            "description": "Operator type: Filter, ManageFields, Aggregate, GroupBy, Join, Union, Expand"
+          },
+          "--input-node": {
+            "type": "string",
+            "required": true,
+            "description": "Input node name (the source, stream, or operator to transform)"
+          },
+          "--properties": {
+            "type": "string",
+            "description": "Operator properties as JSON string (operator-specific, e.g. Filter → {\"conditions\":[…]})"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
       "validate": {
         "description": "Validate an eventstream definition (client-side checks, no API call)",
         "flags": {
@@ -13173,7 +13213,7 @@
         "flags": {
           "--category": {
             "type": "enum",
-            "description": "Filter by category: source, destination, all (default: all)"
+            "description": "Filter by category: source, destination, operator, all (default: all)"
           }
         },
         "mutates": false,
