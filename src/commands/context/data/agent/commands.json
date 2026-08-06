@@ -8058,6 +8058,33 @@
         "returns": "void",
         "destructive": true
       },
+      "rename-entity-type": {
+        "description": "Rename an entity type (relationship/binding references use the stable id, so they are unaffected)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Ontology ID"
+          },
+          "--entity": {
+            "type": "string",
+            "required": true,
+            "description": "Current entity type name or id"
+          },
+          "--new-name": {
+            "type": "string",
+            "required": true,
+            "description": "New entity type name (e.g. `Products`)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
       "add-relationship-type": {
         "description": "Add a relationship type between two entity types",
         "flags": {

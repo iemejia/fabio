@@ -400,6 +400,24 @@ pub enum OntologyCommand {
         #[arg(long)]
         entity: String,
     },
+    /// Rename an entity type (relationship/binding references use the stable id, so they are unaffected)
+    RenameEntityType {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Ontology ID
+        #[arg(long)]
+        id: String,
+
+        /// Current entity type name or id
+        #[arg(long)]
+        entity: String,
+
+        /// New entity type name (e.g. `Products`)
+        #[arg(long = "new-name")]
+        new_name: String,
+    },
     /// Add a relationship type between two entity types
     AddRelationshipType {
         /// Workspace ID
@@ -702,6 +720,14 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
         } => elements::delete_entity_type(cli, client, workspace, id, entity)
             .await
             .map_err(|e| enrich_forbidden(e, "ontology delete-entity-type", "Contributor")),
+        OntologyCommand::RenameEntityType {
+            workspace,
+            id,
+            entity,
+            new_name,
+        } => elements::rename_entity_type(cli, client, workspace, id, entity, new_name)
+            .await
+            .map_err(|e| enrich_ontology_definition_error(e, "ontology rename-entity-type")),
         OntologyCommand::AddRelationshipType {
             workspace,
             id,

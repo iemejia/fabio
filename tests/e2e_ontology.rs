@@ -4361,6 +4361,82 @@ fn ontology_granular_elements_lifecycle() {
         .collect();
     assert!(names.contains(&"Product".to_string()) && names.contains(&"Store".to_string()));
 
+    // Rename an entity type (Product -> ProductCatalog), then back. The
+    // relationship references the stable entity id, so it must survive the rename.
+    let assert = fabio()
+        .args([
+            "ontology",
+            "rename-entity-type",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--entity",
+            "Product",
+            "--new-name",
+            "ProductCatalog",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    assert_eq!(
+        extract_data(&parse_json(&assert))["status"],
+        "entity_type_renamed"
+    );
+    // The new name is present, the old is gone.
+    let assert = fabio()
+        .args([
+            "ontology",
+            "list-entity-types",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+        ])
+        .assert()
+        .success();
+    let names: Vec<String> = extract_data(&parse_json(&assert))["values"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["name"].as_str().map(str::to_string))
+        .collect();
+    assert!(names.contains(&"ProductCatalog".to_string()));
+    assert!(!names.contains(&"Product".to_string()));
+    // Renaming to an existing name (Store) is rejected.
+    fabio()
+        .args([
+            "ontology",
+            "rename-entity-type",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--entity",
+            "ProductCatalog",
+            "--new-name",
+            "Store",
+        ])
+        .assert()
+        .failure();
+    // Rename back so the subsequent report-link steps still target "Product".
+    fabio()
+        .args([
+            "ontology",
+            "rename-entity-type",
+            "--workspace",
+            ws,
+            "--id",
+            &ont_id,
+            "--entity",
+            "ProductCatalog",
+            "--new-name",
+            "Product",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
     // Add + list + delete a report link on Product.
     fabio()
         .args([

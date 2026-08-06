@@ -53,6 +53,7 @@ Manage ontologies (entity types, data bindings)
 | `fabio ontology list-entity-types` | no | List the ontology's entity types and their properties (schema exploration) |
 | `fabio ontology list-report-links` | no | List report (resource) links on an ontology's entity types |
 | `fabio ontology mcp-url` | no | Print the Model Context Protocol (MCP) server URL for consuming this ontology |
+| `fabio ontology rename-entity-type` | yes | Rename an entity type (relationship/binding references use the stable id, so they are unaffected) |
 | `fabio ontology search` | no | Ask a natural-language question over the ontology's data (MCP `search_ontology` tool) |
 | `fabio ontology show` | no | Show details of an ontology |
 | `fabio ontology update` | yes | Update ontology properties (name and/or description) |

@@ -455,6 +455,92 @@ pub(super) async fn delete_entity_type(
     Ok(())
 }
 
+/// Rename an entity type's `name` in the definition parts.
+///
+/// Relationship types and data bindings reference an entity by its stable
+/// `entityTypeId`, NOT its name, so a rename only rewrites the entity's own
+/// `EntityTypes/{id}/definition.json` `name` field. Returns the updated parts
+/// (or `None` if the entity id was not found).
+fn rename_entity_in_parts(parts: &[Value], entity_id: &str, new_name: &str) -> Option<Vec<Value>> {
+    let target = entity_def_path(entity_id);
+    let mut found = false;
+    let out: Vec<Value> = parts
+        .iter()
+        .map(|p| {
+            let path = p.get("path").and_then(Value::as_str).unwrap_or("");
+            if path == target
+                && let Some(mut obj) = part_json(p)
+            {
+                obj["name"] = Value::from(new_name);
+                found = true;
+                return encode_part(path, &obj);
+            }
+            p.clone()
+        })
+        .collect();
+    found.then_some(out)
+}
+
+/// Rename an entity type (updates its `name`; relationship/binding references
+/// use the stable id, so they are unaffected).
+pub(super) async fn rename_entity_type(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    entity: &str,
+    new_name: &str,
+) -> Result<()> {
+    let parts = fetch_parts(client, workspace, id).await?;
+    let entity_id = resolve_entity_id(&parts, entity).ok_or_else(|| {
+        FabioError::with_hint(
+            ErrorCode::NotFound,
+            format!("Entity type '{entity}' not found in ontology '{id}'"),
+            format!(
+                "Existing entity types: {}",
+                entity_type_names(&parts).join(", ")
+            ),
+        )
+    })?;
+
+    // A different entity already using the new name → conflict.
+    if let Some(existing) = resolve_entity_id(&parts, new_name)
+        && existing != entity_id
+    {
+        return Err(FabioError::with_hint(
+            ErrorCode::Conflict,
+            format!("Entity type '{new_name}' already exists in this ontology"),
+            "Choose a different --new-name.",
+        )
+        .into());
+    }
+
+    if output::dry_run_guard(
+        cli,
+        "ontology rename-entity-type",
+        &json!({ "ontology": id, "entityType": entity, "entityTypeId": entity_id, "newName": new_name }),
+    ) {
+        return Ok(());
+    }
+
+    let updated = rename_entity_in_parts(&parts, &entity_id, new_name).ok_or_else(|| {
+        FabioError::invalid_input("Failed to locate the entity type definition part")
+    })?;
+    push_parts(client, workspace, id, updated).await?;
+
+    output::render_object(
+        cli,
+        &json!({
+            "status": "entity_type_renamed",
+            "entityType": entity,
+            "newName": new_name,
+            "entityTypeId": entity_id,
+        }),
+        "status",
+    );
+    Ok(())
+}
+
 /// Add a relationship type between two entity types.
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn add_relationship_type(
@@ -913,5 +999,48 @@ mod tests {
         let part = encode_part("EntityTypes/1/definition.json", &v);
         assert_eq!(part["payloadType"], "InlineBase64");
         assert_eq!(part_json(&part).unwrap(), v);
+    }
+
+    #[test]
+    fn rename_entity_in_parts_updates_name_only_and_preserves_others() {
+        let def = build_entity_type_def(
+            "e1",
+            "dimproducts",
+            &[build_property("p1", "ProductId", "String")],
+            &["p1".to_string()],
+        );
+        let other = build_entity_type_def("e2", "dimstore", &[], &[]);
+        let rel = build_relationship_type_def("r1", "sells", "e2", "e1");
+        let parts = vec![
+            encode_part(&entity_def_path("e1"), &def),
+            encode_part(&entity_def_path("e2"), &other),
+            encode_part("RelationshipTypes/r1/definition.json", &rel),
+        ];
+        let out = rename_entity_in_parts(&parts, "e1", "Products").expect("renamed");
+        // e1's name is updated, its properties/keys preserved.
+        let e1 = part_json(&out[0]).unwrap();
+        assert_eq!(e1["name"], "Products");
+        assert_eq!(e1["id"], "e1");
+        assert!(
+            e1["properties"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|p| p["name"] == "ProductId")
+        );
+        // e2 and the relationship (which references e1 by id) are untouched.
+        assert_eq!(part_json(&out[1]).unwrap()["name"], "dimstore");
+        let r = part_json(&out[2]).unwrap();
+        assert_eq!(r["source"]["entityTypeId"], "e2");
+        assert_eq!(r["target"]["entityTypeId"], "e1");
+    }
+
+    #[test]
+    fn rename_entity_in_parts_returns_none_for_unknown_id() {
+        let parts = vec![encode_part(
+            &entity_def_path("e1"),
+            &build_entity_type_def("e1", "A", &[], &[]),
+        )];
+        assert!(rename_entity_in_parts(&parts, "nope", "X").is_none());
     }
 }
