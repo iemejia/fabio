@@ -18,7 +18,9 @@
     "Create is LRO",
     "Start/stop mirroring: POST .../startMirroring and .../stopMirroring with empty body {}",
     "Status endpoints use GET (not POST): GET .../getMirroringStatus",
-    "getDefinition/updateDefinition are both LRO"
+    "getDefinition/updateDefinition are both LRO",
+    "OPEN mirroring (push-based, no source connection): fabio mirrored-database create --open-mirroring [--default-schema dbo] configures the mirroring.json source type 'GenericMirror' (target 'MountedRelationalDatabase', format Delta). An empty create leaves the item MirroringDefinitionMissing. A fresh item is briefly MirroredDatabaseNotReady, so the definition push is retried.",
+    "OPEN mirroring landing zone: fabio mirrored-database landing-zone prints the OneLake URL (onelake.dfs.fabric.microsoft.com/<ws>/<id>/Files/LandingZone). Push a numbered <n>.parquet (20-digit zero-padded) per table under Files/LandingZone/<Table>/ plus a _metadata.json ({keyColumns:[...]}) in that folder (upload via: fabio lakehouse upload --id <mirroredDbId> ...), then: fabio mirrored-database start"
   ],
   "related_commands": [
     "fabio mirrored-database start --workspace <WS> --id <ID>",

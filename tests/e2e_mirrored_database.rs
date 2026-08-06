@@ -133,3 +133,104 @@ fn mirrored_database_stop_dry_run() {
     let data = extract_data(&json);
     assert_eq!(data["status"], "dry_run");
 }
+
+/// `mirrored-database landing-zone` builds the `OneLake` landing-zone URL purely
+/// from the workspace + item id — no API call, so it runs without a tenant.
+#[test]
+fn mirrored_database_landing_zone_url_is_constructed() {
+    let ws = "aaaaaaaa-1111-2222-3333-444444444444";
+    let id = "bbbbbbbb-1111-2222-3333-444444444444";
+    let assert = fabio()
+        .args([
+            "mirrored-database",
+            "landing-zone",
+            "--workspace",
+            ws,
+            "--id",
+            id,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let url = data["landingZoneUrl"].as_str().unwrap();
+    assert!(url.starts_with("https://onelake.dfs.fabric.microsoft.com/"));
+    assert!(url.contains(ws) && url.contains(id));
+    assert!(url.ends_with("/Files/LandingZone"));
+}
+
+/// Live: `create --open-mirroring` configures the push-based `GenericMirror`
+/// definition (an empty create leaves the item `MirroringDefinitionMissing`), and
+/// `landing-zone` returns the item's `OneLake` landing-zone URL.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial_test::serial]
+fn mirrored_database_open_mirroring_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+    let name = common::unique_name("openmirror");
+
+    let assert = fabio()
+        .args([
+            "mirrored-database",
+            "create",
+            "--workspace",
+            ws,
+            "--name",
+            &name,
+            "--open-mirroring",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+    let md_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // The GenericMirror definition must be present (no MirroringDefinitionMissing).
+    let assert = fabio()
+        .args([
+            "mirrored-database",
+            "get-definition",
+            "--workspace",
+            ws,
+            "--id",
+            &md_id,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(stdout.contains("mirroring.json"));
+
+    // Landing zone URL targets this item's OneLake Files.
+    let assert = fabio()
+        .args([
+            "mirrored-database",
+            "landing-zone",
+            "--workspace",
+            ws,
+            "--id",
+            &md_id,
+        ])
+        .assert()
+        .success();
+    let url = extract_data(&parse_json(&assert))["landingZoneUrl"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(url.contains(&md_id) && url.ends_with("/Files/LandingZone"));
+
+    fabio()
+        .args([
+            "mirrored-database",
+            "delete",
+            "--workspace",
+            ws,
+            "--id",
+            &md_id,
+        ])
+        .assert()
+        .success();
+}

@@ -429,6 +429,13 @@ impl FabricClient {
         self.onelake_blob_url(workspace, suffix)
     }
 
+    /// Construct a `OneLake` DFS URL for a workspace-relative item path (honors the
+    /// `FABIO_ONELAKE_DFS_ENDPOINT` override and private-link transform). `suffix`
+    /// is the item-relative path such as `{item_id}/Files/LandingZone`.
+    pub fn onelake_dfs_item_url(&self, workspace: &str, suffix: &str) -> String {
+        self.onelake_dfs_url(workspace, suffix)
+    }
+
     /// Construct a `OneLake` Blob URL, applying private link transform if configured.
     ///
     /// If `FABIO_ONELAKE_BLOB_ENDPOINT` is set, that value is used directly (no private link

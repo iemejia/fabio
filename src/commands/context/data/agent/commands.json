@@ -1833,7 +1833,7 @@
         ]
       },
       "show-endorsement": {
-        "description": "Show an item's endorsement (certification) status [read-only — setting is portal-only]",
+        "description": "Show an item's endorsement (certification) status [read-only \u2014 setting is portal-only]",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -4458,7 +4458,7 @@
           },
           "--budget": {
             "type": "string",
-            "description": "Approximate token budget — returns the most compact useful subset that fits within this many tokens (4 chars/token estimate). Overrides --full"
+            "description": "Approximate token budget \u2014 returns the most compact useful subset that fits within this many tokens (4 chars/token estimate). Overrides --full"
           }
         },
         "mutates": false,
@@ -4469,7 +4469,7 @@
         "notes": "Returns the full command surface as JSON. Call once at session start for tool discovery."
       },
       "describe": {
-        "description": "Deep-dive on a single command: flags, examples, output shape, notes — everything to invoke it",
+        "description": "Deep-dive on a single command: flags, examples, output shape, notes \u2014 everything to invoke it",
         "mutates": false,
         "returns": "object",
         "notes": "Cross-references command metadata with output examples when available. Use after `fabio context agent` to get full details on a specific command."
@@ -4534,7 +4534,7 @@
         "notes": "Returns top-10 matching commands ranked by relevance. Use when unsure which command to use."
       },
       "tenant": {
-        "description": "Scan your Fabric tenant — build a relationship graph from workspace(s)",
+        "description": "Scan your Fabric tenant \u2014 build a relationship graph from workspace(s)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -4565,7 +4565,7 @@
               "rdf",
               "full"
             ],
-            "description": "Output format: graph (default) — native arrays for fabio merge/query; jsonld — instance data as RDF for triple stores; owl — OWL schema as JSON-LD for `fabio ontology import`; rdf — OWL schema as RDF/XML for `fabio ontology import` and Ontology Playground"
+            "description": "Output format: graph (default) \u2014 native arrays for fabio merge/query; jsonld \u2014 instance data as RDF for triple stores; owl \u2014 OWL schema as JSON-LD for `fabio ontology import`; rdf \u2014 OWL schema as RDF/XML for `fabio ontology import` and Ontology Playground"
           },
           "--merge": {
             "type": "string",
@@ -9630,7 +9630,7 @@
           "--file": {
             "type": "string",
             "required": true,
-            "description": "Path to definition.pbir file (semantic model binding — always required)"
+            "description": "Path to definition.pbir file (semantic model binding \u2014 always required)"
           },
           "--report-json": {
             "type": "string",
@@ -9657,7 +9657,7 @@
         "returns": "object"
       },
       "list-pages": {
-        "description": "List the pages of a report (name, display name, visual count) — read-only",
+        "description": "List the pages of a report (name, display name, visual count) \u2014 read-only",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -9674,7 +9674,7 @@
         "returns": "list"
       },
       "list-visuals": {
-        "description": "List the visuals of a report (page, name, type, title) — read-only",
+        "description": "List the visuals of a report (page, name, type, title) \u2014 read-only",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -9695,7 +9695,7 @@
         "returns": "list"
       },
       "add-page": {
-        "description": "Add a page to a PBIR report by editing its definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Add a page to a PBIR report by editing its definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -9726,7 +9726,7 @@
         "destructive": true
       },
       "delete-page": {
-        "description": "Delete a page from a PBIR report by editing its definition (a report must keep at least one page). Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Delete a page from a PBIR report by editing its definition (a report must keep at least one page). Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -9749,7 +9749,7 @@
         "destructive": true
       },
       "rename-page": {
-        "description": "Rename a page's display name in a PBIR report. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Rename a page's display name in a PBIR report. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -9777,7 +9777,7 @@
         "destructive": true
       },
       "set-active-page": {
-        "description": "Set the active (default) page of a PBIR report. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Set the active (default) page of a PBIR report. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -9800,7 +9800,7 @@
         "destructive": true
       },
       "add-visual": {
-        "description": "Add a visual to a page of a PBIR report by editing its definition. Build a data-bound visual with --category/--measure (fields as Table.Column or Sum(Table.Column)) or a textbox with --text. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Add a visual to a page of a PBIR report by editing its definition. Build a data-bound visual with --category/--measure (fields as Table.Column or Sum(Table.Column)) or a textbox with --text. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -9820,7 +9820,7 @@
           "--type": {
             "type": "string",
             "required": true,
-            "description": "Visual type: card, clusteredBarChart, clusteredColumnChart, lineChart, pieChart, tableEx, slicer, textbox, …"
+            "description": "Visual type: card, clusteredBarChart, clusteredColumnChart, lineChart, pieChart, tableEx, slicer, textbox, \u2026"
           },
           "--name": {
             "type": "string",
@@ -9840,7 +9840,7 @@
           },
           "--measure": {
             "type": "string",
-            "description": "Value field(s), repeatable: Table.Column (auto-Sum), Sum(Table.Column), Avg/Min/Max/Count/CountNonNull(…), or Measure(Table.Name)"
+            "description": "Value field(s), repeatable: Table.Column (auto-Sum), Sum(Table.Column), Avg/Min/Max/Count/CountNonNull(\u2026), or Measure(Table.Name)"
           },
           "--x": {
             "type": "string",
@@ -9864,7 +9864,7 @@
         "destructive": true
       },
       "delete-visual": {
-        "description": "Delete a visual from a page of a PBIR report by editing its definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Delete a visual from a page of a PBIR report by editing its definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -9892,7 +9892,7 @@
         "destructive": true
       },
       "scaffold": {
-        "description": "Scaffold a complete PBIR report from a compact JSON spec (pages + visuals) and create it — or write the PBIR folder to disk with --out",
+        "description": "Scaffold a complete PBIR report from a compact JSON spec (pages + visuals) and create it \u2014 or write the PBIR folder to disk with --out",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10043,7 +10043,7 @@
           },
           "--definition": {
             "type": "string",
-            "description": "Path to a FULL model definition folder (a `.SemanticModel` folder or any folder with definition.pbism + definition/ TMDL files or model.bim). All files are gathered recursively — the way a real multi-file TMDL model ships"
+            "description": "Path to a FULL model definition folder (a `.SemanticModel` folder or any folder with definition.pbism + definition/ TMDL files or model.bim). All files are gathered recursively \u2014 the way a real multi-file TMDL model ships"
           },
           "--connection": {
             "type": "string",
@@ -10347,7 +10347,7 @@
         "returns": "list"
       },
       "list-tables": {
-        "description": "List tables of a semantic model (via DAX INFO.VIEW.TABLES — no definition parsing)",
+        "description": "List tables of a semantic model (via DAX INFO.VIEW.TABLES \u2014 no definition parsing)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10415,7 +10415,7 @@
         "returns": "list"
       },
       "analyze": {
-        "description": "Analyze a model against best-practice rules (Best Practice Analyzer / Memory Analyzer over INFO.VIEW metadata) — descriptions, naming, implicit aggregation, duplicate measures, relationship hygiene, star schema, calculated columns, and (opt-in) high cardinality",
+        "description": "Analyze a model against best-practice rules (Best Practice Analyzer / Memory Analyzer over INFO.VIEW metadata) \u2014 descriptions, naming, implicit aggregation, duplicate measures, relationship hygiene, star schema, calculated columns, and (opt-in) high cardinality",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10441,7 +10441,7 @@
           },
           "--fix": {
             "type": "bool",
-            "description": "Auto-fix the SAFE, mechanical issues (currently: set default summarization to None on identifier columns). Overwrites the model definition (irreversible) — dry-run guarded. Naming/schema/dedup issues are NOT auto-fixed (they need human judgment)"
+            "description": "Auto-fix the SAFE, mechanical issues (currently: set default summarization to None on identifier columns). Overwrites the model definition (irreversible) \u2014 dry-run guarded. Naming/schema/dedup issues are NOT auto-fixed (they need human judgment)"
           }
         },
         "mutates": true,
@@ -10449,7 +10449,7 @@
         "destructive": true
       },
       "measure-dependencies": {
-        "description": "List each measure's dependencies (the measures/columns/tables its DAX references) — useful for including dependent objects in an AI data schema",
+        "description": "List each measure's dependencies (the measures/columns/tables its DAX references) \u2014 useful for including dependent objects in an AI data schema",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10466,7 +10466,7 @@
         "returns": "list"
       },
       "set-description": {
-        "description": "Set the description of a table, column, or measure by editing the model definition (getDefinition → edit TMDL/model.bim → updateDefinition). Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Set the description of a table, column, or measure by editing the model definition (getDefinition \u2192 edit TMDL/model.bim \u2192 updateDefinition). Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10501,7 +10501,7 @@
         "destructive": true
       },
       "add-measure": {
-        "description": "Add a measure to a table by editing the model definition (getDefinition → edit TMDL/model.bim → updateDefinition). Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Add a measure to a table by editing the model definition (getDefinition \u2192 edit TMDL/model.bim \u2192 updateDefinition). Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10546,7 +10546,7 @@
         "destructive": true
       },
       "update-measure": {
-        "description": "Update an existing measure's expression and/or properties by editing the model definition (getDefinition → edit TMDL/model.bim → updateDefinition). Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Update an existing measure's expression and/or properties by editing the model definition (getDefinition \u2192 edit TMDL/model.bim \u2192 updateDefinition). Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10585,7 +10585,7 @@
         "destructive": true
       },
       "delete-measure": {
-        "description": "Delete a measure from the model by editing the definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Delete a measure from the model by editing the definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10608,7 +10608,7 @@
         "destructive": true
       },
       "rename-measure": {
-        "description": "Rename a measure (its declaration only; DAX references are NOT rewritten). Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Rename a measure (its declaration only; DAX references are NOT rewritten). Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10636,7 +10636,7 @@
         "destructive": true
       },
       "move-measure": {
-        "description": "Move a measure to a different home table (name and definition preserved). Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Move a measure to a different home table (name and definition preserved). Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10664,7 +10664,7 @@
         "destructive": true
       },
       "add-relationship": {
-        "description": "Add a relationship between two tables by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Add a relationship between two tables by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10718,7 +10718,7 @@
         "destructive": true
       },
       "delete-relationship": {
-        "description": "Delete a relationship (by --relationship-id or by the from/to columns). Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Delete a relationship (by --relationship-id or by the from/to columns). Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10756,7 +10756,7 @@
         "destructive": true
       },
       "update-relationship": {
-        "description": "Update a relationship's active state and/or cross-filter direction (by --relationship-id or by the from/to columns). Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Update a relationship's active state and/or cross-filter direction (by --relationship-id or by the from/to columns). Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10806,7 +10806,7 @@
         "destructive": true
       },
       "list-roles": {
-        "description": "List security roles (RLS) of a semantic model (name, model permission, and per-table filters) — read-only",
+        "description": "List security roles (RLS) of a semantic model (name, model permission, and per-table filters) \u2014 read-only",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10823,7 +10823,7 @@
         "returns": "list"
       },
       "add-role": {
-        "description": "Add a security role by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Add a security role by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10850,7 +10850,7 @@
         "destructive": true
       },
       "delete-role": {
-        "description": "Delete a security role (and its RLS filters) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Delete a security role (and its RLS filters) by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10873,7 +10873,7 @@
         "destructive": true
       },
       "set-rls": {
-        "description": "Set a row-level-security (RLS) filter on a table for a role (a DAX predicate). Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Set a row-level-security (RLS) filter on a table for a role (a DAX predicate). Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10906,7 +10906,7 @@
         "destructive": true
       },
       "delete-rls": {
-        "description": "Remove a row-level-security (RLS) filter from a table for a role. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Remove a row-level-security (RLS) filter from a table for a role. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10934,7 +10934,7 @@
         "destructive": true
       },
       "add-calculated-column": {
-        "description": "Add a calculated column (a DAX-defined column) to a table by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Add a calculated column (a DAX-defined column) to a table by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10991,7 +10991,7 @@
         "destructive": true
       },
       "delete-column": {
-        "description": "Delete a column from a table by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Delete a column from a table by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11019,7 +11019,7 @@
         "destructive": true
       },
       "rename-column": {
-        "description": "Rename a column (declaration only; DAX/relationship references are NOT rewritten). Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Rename a column (declaration only; DAX/relationship references are NOT rewritten). Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11052,7 +11052,7 @@
         "destructive": true
       },
       "update-column": {
-        "description": "Update a column's properties (data type, format, summarization, display folder, description, hidden). Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Update a column's properties (data type, format, summarization, display folder, description, hidden). Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11108,7 +11108,7 @@
         "destructive": true
       },
       "add-table": {
-        "description": "Add a calculated table (a DAX table expression) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Add a calculated table (a DAX table expression) by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11136,7 +11136,7 @@
         "destructive": true
       },
       "delete-table": {
-        "description": "Delete a table by editing the model definition. CASCADES: also removes relationships and role RLS filters that reference the table. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Delete a table by editing the model definition. CASCADES: also removes relationships and role RLS filters that reference the table. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11159,7 +11159,7 @@
         "destructive": true
       },
       "rename-table": {
-        "description": "Rename a table (declaration, file, and model.tmdl ref; DAX/relationship references are NOT rewritten). Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Rename a table (declaration, file, and model.tmdl ref; DAX/relationship references are NOT rewritten). Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11187,7 +11187,7 @@
         "destructive": true
       },
       "update-table": {
-        "description": "Update a table's properties (hidden state, data category, description) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Update a table's properties (hidden state, data category, description) by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11226,7 +11226,7 @@
         "destructive": true
       },
       "list-cultures": {
-        "description": "List translation cultures of a semantic model (culture + translation count) — read-only",
+        "description": "List translation cultures of a semantic model (culture + translation count) \u2014 read-only",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11243,7 +11243,7 @@
         "returns": "list"
       },
       "add-culture": {
-        "description": "Add a translation culture (e.g. fr-FR) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Add a translation culture (e.g. fr-FR) by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11266,7 +11266,7 @@
         "destructive": true
       },
       "delete-culture": {
-        "description": "Delete a translation culture by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Delete a translation culture by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11289,7 +11289,7 @@
         "destructive": true
       },
       "set-translation": {
-        "description": "Set a translated caption for a table/column/measure in a culture. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Set a translated caption for a table/column/measure in a culture. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11304,7 +11304,7 @@
           "--culture": {
             "type": "string",
             "required": true,
-            "description": "Culture / locale name (must already exist — add it with add-culture)"
+            "description": "Culture / locale name (must already exist \u2014 add it with add-culture)"
           },
           "--table": {
             "type": "string",
@@ -11330,7 +11330,7 @@
         "destructive": true
       },
       "list-hierarchies": {
-        "description": "List user hierarchies of a semantic model (table, name, level count) — read-only",
+        "description": "List user hierarchies of a semantic model (table, name, level count) \u2014 read-only",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11351,7 +11351,7 @@
         "returns": "list"
       },
       "add-hierarchy": {
-        "description": "Add a user (drill-down) hierarchy to a table by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Add a user (drill-down) hierarchy to a table by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11384,7 +11384,7 @@
         "destructive": true
       },
       "delete-hierarchy": {
-        "description": "Delete a hierarchy from a table by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Delete a hierarchy from a table by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11412,7 +11412,7 @@
         "destructive": true
       },
       "list-partitions": {
-        "description": "List a table's partitions (name + mode) — read-only",
+        "description": "List a table's partitions (name + mode) \u2014 read-only",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11433,7 +11433,7 @@
         "returns": "list"
       },
       "add-partition": {
-        "description": "Add a partition to a table (an extra data-source query, e.g. for incremental refresh) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Add a partition to a table (an extra data-source query, e.g. for incremental refresh) by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11469,7 +11469,7 @@
         "destructive": true
       },
       "update-partition": {
-        "description": "Update a partition's source expression by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Update a partition's source expression by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11505,7 +11505,7 @@
         "destructive": true
       },
       "delete-partition": {
-        "description": "Delete a partition from a table by editing the model definition (a table must keep at least one). Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Delete a partition from a table by editing the model definition (a table must keep at least one). Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11533,7 +11533,7 @@
         "destructive": true
       },
       "list-calculation-groups": {
-        "description": "List calculation groups of a semantic model (name + item count) — read-only",
+        "description": "List calculation groups of a semantic model (name + item count) \u2014 read-only",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11550,7 +11550,7 @@
         "returns": "list"
       },
       "add-calculation-group": {
-        "description": "Add a calculation group (for time intelligence, etc.) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Add a calculation group (for time intelligence, etc.) by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11577,7 +11577,7 @@
         "destructive": true
       },
       "delete-calculation-group": {
-        "description": "Delete a calculation group (its whole table) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Delete a calculation group (its whole table) by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11600,7 +11600,7 @@
         "destructive": true
       },
       "add-calculation-item": {
-        "description": "Add a calculation item (a DAX time-intelligence variant) to a calculation group. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Add a calculation item (a DAX time-intelligence variant) to a calculation group. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11637,7 +11637,7 @@
         "destructive": true
       },
       "delete-calculation-item": {
-        "description": "Delete a calculation item from a calculation group by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Delete a calculation item from a calculation group by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11665,7 +11665,7 @@
         "destructive": true
       },
       "update-calculation-item": {
-        "description": "Update a calculation item's DAX expression (and optionally its ordinal) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Update a calculation item's DAX expression (and optionally its ordinal) by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11702,7 +11702,7 @@
         "destructive": true
       },
       "list-expressions": {
-        "description": "List named expressions / Power Query parameters of a semantic model — read-only",
+        "description": "List named expressions / Power Query parameters of a semantic model \u2014 read-only",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11719,7 +11719,7 @@
         "returns": "list"
       },
       "add-expression": {
-        "description": "Add a named expression (a shared M query) or Power Query parameter by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Add a named expression (a shared M query) or Power Query parameter by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11754,7 +11754,7 @@
         "destructive": true
       },
       "update-expression": {
-        "description": "Update a named expression / parameter's value by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Update a named expression / parameter's value by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11789,7 +11789,7 @@
         "destructive": true
       },
       "delete-expression": {
-        "description": "Delete a named expression / parameter by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Delete a named expression / parameter by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11812,7 +11812,7 @@
         "destructive": true
       },
       "list-functions": {
-        "description": "List DAX user-defined functions (UDFs) of a semantic model — read-only",
+        "description": "List DAX user-defined functions (UDFs) of a semantic model \u2014 read-only",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11829,7 +11829,7 @@
         "returns": "list"
       },
       "add-function": {
-        "description": "Add a DAX user-defined function (UDF) by editing the model definition (requires model compatibility level >=1702; bumped automatically). Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Add a DAX user-defined function (UDF) by editing the model definition (requires model compatibility level >=1702; bumped automatically). Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11857,7 +11857,7 @@
         "destructive": true
       },
       "update-function": {
-        "description": "Update a DAX user-defined function by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Update a DAX user-defined function by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11885,7 +11885,7 @@
         "destructive": true
       },
       "delete-function": {
-        "description": "Delete a DAX user-defined function by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Delete a DAX user-defined function by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11908,7 +11908,7 @@
         "destructive": true
       },
       "list-perspectives": {
-        "description": "List perspectives (filtered model views) of a semantic model — read-only",
+        "description": "List perspectives (filtered model views) of a semantic model \u2014 read-only",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11925,7 +11925,7 @@
         "returns": "list"
       },
       "add-perspective": {
-        "description": "Add a perspective (a filtered view of the model) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Add a perspective (a filtered view of the model) by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11948,7 +11948,7 @@
         "destructive": true
       },
       "delete-perspective": {
-        "description": "Delete a perspective by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Delete a perspective by editing the model definition. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11971,7 +11971,7 @@
         "destructive": true
       },
       "add-perspective-member": {
-        "description": "Add a member (a table, or a column/measure/hierarchy of a table) to a perspective. Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Add a member (a table, or a column/measure/hierarchy of a table) to a perspective. Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11986,7 +11986,7 @@
           "--perspective": {
             "type": "string",
             "required": true,
-            "description": "Perspective name (must already exist — add it with add-perspective)"
+            "description": "Perspective name (must already exist \u2014 add it with add-perspective)"
           },
           "--table": {
             "type": "string",
@@ -12011,7 +12011,7 @@
         "destructive": true
       },
       "remove-perspective-member": {
-        "description": "Remove a member from a perspective (a whole table, or one of its members). Overwrites the definition (irreversible) — dry-run guarded",
+        "description": "Remove a member from a perspective (a whole table, or one of its members). Overwrites the definition (irreversible) \u2014 dry-run guarded",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -13106,7 +13106,7 @@
           },
           "--sample-type": {
             "type": "string",
-            "description": "Sample dataset: Bicycles, YellowTaxi, StockMarket, Buses (default: Bicycles)"
+            "description": "Sample dataset: `Bicycles`, `YellowTaxi`, `StockMarket`, `Buses` (default: `Bicycles`)"
           }
         },
         "mutates": true,
@@ -13170,7 +13170,7 @@
           "--type": {
             "type": "string",
             "required": true,
-            "description": "Operator type: Filter, ManageFields, Aggregate, GroupBy, Join, Union, Expand"
+            "description": "Operator type: `Filter`, `ManageFields`, `Aggregate`, `GroupBy`, `Join`, `Union`, `Expand`"
           },
           "--input-node": {
             "type": "string",
@@ -13179,7 +13179,7 @@
           },
           "--properties": {
             "type": "string",
-            "description": "Operator properties as JSON string (operator-specific, e.g. Filter → {\"conditions\":[…]})"
+            "description": "Operator properties as JSON string (operator-specific, e.g. Filter \u2192 {\"conditions\":[\u2026]})"
           }
         },
         "mutates": true,
@@ -13499,7 +13499,7 @@
         ]
       },
       "ingest": {
-        "description": "Ingest data into a KQL table — inline (small) or from OneLake/blob storage (large files)",
+        "description": "Ingest data into a KQL table \u2014 inline (small) or from OneLake/blob storage (large files)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -14377,6 +14377,14 @@
           "--sensitivity-label": {
             "type": "string",
             "description": "Sensitivity label ID to apply on creation"
+          },
+          "--open-mirroring": {
+            "type": "bool",
+            "description": "Configure as an OPEN mirrored database (push-based; source type `GenericMirror`). Push data files to the landing zone (see `mirrored-database landing-zone`) \u2014 no source connection needed"
+          },
+          "--default-schema": {
+            "type": "string",
+            "description": "Default schema for the mirrored tables (open mirroring; default: dbo)"
           }
         },
         "mutates": true,
@@ -14384,6 +14392,23 @@
         "examples": [
           "fabio mirrored-database create --workspace $WS --name \"MirroredSalesDB\""
         ]
+      },
+      "landing-zone": {
+        "description": "Print the OneLake landing-zone URL of an OPEN mirrored database (push data files here)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Mirrored database ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
       },
       "update": {
         "description": "Update mirrored database properties (name and/or description)",
@@ -14986,7 +15011,7 @@
         ]
       },
       "delete-rule": {
-        "description": "Delete a monitoring rule (via the Activator MCP server) — irreversible",
+        "description": "Delete a monitoring rule (via the Activator MCP server) \u2014 irreversible",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -16822,7 +16847,7 @@
           "--name": {
             "type": "string",
             "required": true,
-            "description": "Display name (letters, numbers, underscores only — no hyphens)"
+            "description": "Display name (letters, numbers, underscores only \u2014 no hyphens)"
           },
           "--dtb-id": {
             "type": "string",
@@ -21645,7 +21670,7 @@
           },
           "--creation-method": {
             "type": "string",
-            "description": "Creation method (`connectionDetails.creationMethod`). If omitted, fabio auto-resolves it from the connection type via `supportedConnectionTypes` (most types differ, e.g. `SQL`→`Sql`, `EventHub`→`EventHub.Contents`). Specify explicitly only for types with multiple methods (e.g. `AzureDataExplorer`, `Spark`)"
+            "description": "Creation method (`connectionDetails.creationMethod`). If omitted, fabio auto-resolves it from the connection type via `supportedConnectionTypes` (most types differ, e.g. `SQL`\u2192`Sql`, `EventHub`\u2192`EventHub.Contents`). Specify explicitly only for types with multiple methods (e.g. `AzureDataExplorer`, `Spark`)"
           },
           "--parameters": {
             "type": "string",
@@ -22452,7 +22477,7 @@
           },
           "--no-workspace-id-replace": {
             "type": "bool",
-            "description": "Skip automatic workspace ID replacement (00000000-... → target workspace)"
+            "description": "Skip automatic workspace ID replacement (00000000-... \u2192 target workspace)"
           }
         },
         "mutates": false,
