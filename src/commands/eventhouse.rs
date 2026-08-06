@@ -1,6 +1,4 @@
 use anyhow::Result;
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Subcommand;
 use serde_json::Value;
 
@@ -423,19 +421,8 @@ async fn update_definition(
         }
     };
 
-    let encoded = BASE64.encode(raw.as_bytes());
-
-    let body = serde_json::json!({
-        "definition": {
-            "parts": [
-                {
-                    "path": "EventhouseProperties.json",
-                    "payload": encoded,
-                    "payloadType": "InlineBase64"
-                }
-            ]
-        }
-    });
+    let body =
+        crate::definition_spec::build_update_definition_body(&raw, "EventhouseProperties.json");
 
     if output::dry_run_guard(
         cli,

@@ -1,6 +1,4 @@
 use anyhow::Result;
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Subcommand;
 use serde_json::Value;
 
@@ -429,20 +427,7 @@ async fn update_definition(
         }
     };
 
-    let encoded = BASE64.encode(raw.as_bytes());
-
-    let body = serde_json::json!({
-        "definition": {
-            "format": "AzureDatabricksStorageV1",
-            "parts": [
-                {
-                    "path": "definition.json",
-                    "payload": encoded,
-                    "payloadType": "InlineBase64"
-                }
-            ]
-        }
-    });
+    let body = crate::definition_spec::build_update_definition_body(&raw, "definition.json");
 
     if output::dry_run_guard(
         cli,
@@ -483,6 +468,8 @@ async fn update_definition(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as BASE64;
 
     #[test]
     fn test_list_url_format() {

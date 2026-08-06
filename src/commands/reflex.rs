@@ -799,19 +799,7 @@ async fn update_definition(
         }
     };
 
-    let encoded = BASE64.encode(script.as_bytes());
-
-    let body = serde_json::json!({
-        "definition": {
-            "parts": [
-                {
-                    "path": "ReflexEntities.json",
-                    "payload": encoded,
-                    "payloadType": "InlineBase64"
-                }
-            ]
-        }
-    });
+    let body = crate::definition_spec::build_update_definition_body(&script, "ReflexEntities.json");
 
     if output::dry_run_guard(
         cli,

@@ -498,23 +498,40 @@ async fn update_definition(
         .into());
     }
 
-    // Build the definition payload using shared format detection
-    let encoded = if let Some(file_path) = file {
-        encode_notebook_file(file_path, workspace, None)?
+    // Build the definition payload. A `--file` that is a full definition
+    // envelope (e.g. notebook-content.ipynb + notebook-settings.json) is passed
+    // through verbatim; otherwise the file/content is treated as notebook source
+    // and wrapped as notebook-content.py (with shared format detection).
+    let envelope_raw = file
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .filter(|raw| {
+            serde_json::from_str::<serde_json::Value>(raw).is_ok_and(|v| {
+                v.get("definition")
+                    .and_then(|d| d.get("parts"))
+                    .or_else(|| v.get("parts"))
+                    .and_then(serde_json::Value::as_array)
+                    .is_some()
+            })
+        });
+    let body = if let Some(raw) = envelope_raw.as_deref() {
+        crate::definition_spec::build_update_definition_body(raw, "notebook-content.py")
     } else {
-        encode_notebook_code(content.unwrap(), workspace, None)
+        let encoded = if let Some(file_path) = file {
+            encode_notebook_file(file_path, workspace, None)?
+        } else {
+            encode_notebook_code(content.unwrap(), workspace, None)
+        };
+        serde_json::json!({
+            "definition": {
+                "format": "ipynb",
+                "parts": [{
+                    "path": "notebook-content.py",
+                    "payload": encoded,
+                    "payloadType": "InlineBase64"
+                }]
+            }
+        })
     };
-
-    let body = serde_json::json!({
-        "definition": {
-            "format": "ipynb",
-            "parts": [{
-                "path": "notebook-content.py",
-                "payload": encoded,
-                "payloadType": "InlineBase64"
-            }]
-        }
-    });
 
     if output::dry_run_guard(cli, "notebook update-definition", &body) {
         return Ok(());

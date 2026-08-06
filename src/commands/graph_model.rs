@@ -517,19 +517,8 @@ async fn update_definition(
         }
     };
 
-    let encoded = BASE64.encode(definition_json.as_bytes());
-
-    let body = serde_json::json!({
-        "definition": {
-            "parts": [
-                {
-                    "path": "GraphModel.json",
-                    "payload": encoded,
-                    "payloadType": "InlineBase64"
-                }
-            ]
-        }
-    });
+    let body =
+        crate::definition_spec::build_update_definition_body(&definition_json, "GraphModel.json");
 
     if output::dry_run_guard(
         cli,

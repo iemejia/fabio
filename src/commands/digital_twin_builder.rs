@@ -480,10 +480,7 @@ async fn update_definition(
             .into());
         }
     };
-    let encoded = BASE64.encode(script.as_bytes());
-    let body = serde_json::json!({
-        "definition": { "parts": [{ "path": "definition.json", "payload": encoded, "payloadType": "InlineBase64" }] }
-    });
+    let body = crate::definition_spec::build_update_definition_body(&script, "definition.json");
     if output::dry_run_guard(
         cli,
         "digital-twin-builder update-definition",
