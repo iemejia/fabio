@@ -619,28 +619,13 @@ async fn run(
         return Ok(());
     }
 
-    let data = client
-        .post(
-            &format!("/workspaces/{workspace}/items/{id}/jobs/instances?jobType=Pipeline"),
-            &serde_json::json!({}),
-            false,
-        )
+    let job_id = client
+        .trigger_item_job(workspace, id, "Pipeline", None)
         .await
         .map_err(|e| enrich_forbidden(e, "data-pipeline run", "Contributor"))?;
 
-    // Extract job instance ID from response
-    let job_id = data
-        .get("id")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .to_owned();
-
     if !wait {
-        let obj = if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
-            serde_json::json!({ "itemId": id, "status": "started" })
-        } else {
-            data
-        };
+        let obj = serde_json::json!({ "itemId": id, "jobInstanceId": job_id, "status": "started" });
         output::render_object(cli, &obj, "status");
         return Ok(());
     }

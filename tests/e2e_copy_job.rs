@@ -163,3 +163,55 @@ fn copy_job_reset_requires_all_or_entity_ids() {
         .assert()
         .failure();
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn copy_job_dry_run_run() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "copy-job",
+            "run",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "copy-job run");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with a copy job"]
+#[serial]
+fn copy_job_run_and_wait() {
+    let cfg = TestConfig::from_env();
+    let copy_job_id =
+        std::env::var("FABIO_TEST_COPY_JOB_ID").expect("FABIO_TEST_COPY_JOB_ID required");
+
+    // Trigger on demand and wait for the instance to reach a terminal state.
+    let assert = fabio()
+        .args([
+            "copy-job",
+            "run",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &copy_job_id,
+            "--wait",
+            "--timeout",
+            "180",
+        ])
+        .timeout(std::time::Duration::from_secs(200))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "Completed");
+    assert!(data.get("jobInstanceId").is_some());
+}

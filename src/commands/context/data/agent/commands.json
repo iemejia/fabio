@@ -9220,6 +9220,36 @@
         "mutates": true,
         "returns": "void",
         "async": true
+      },
+      "run": {
+        "description": "Run a copy job on demand",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Copy job ID"
+          },
+          "--wait": {
+            "type": "bool",
+            "description": "Wait for the job to complete (poll the job instance)"
+          },
+          "--timeout": {
+            "type": "string",
+            "description": "Max seconds to wait when --wait is set"
+          },
+          "--cancel-on-timeout": {
+            "type": "bool",
+            "description": "Cancel the job instance if the wait times out"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "async": true
       }
     }
   },

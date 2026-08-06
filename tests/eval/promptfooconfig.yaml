@@ -247,6 +247,17 @@ tests:
           output.includes('--timeout') || output.includes('--lro-timeout')
         metric: timeout-awareness
 
+  - description: "Run a copy job on demand and wait"
+    vars:
+      user_query: "Trigger copy job cj-777 in workspace ws-456 to run now and wait until it finishes"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('copy-job run')
+        metric: copy-job-run-command
+      - type: icontains
+        value: "--wait"
+
   # ============================================================
   # AUTHENTICATION
   # ============================================================

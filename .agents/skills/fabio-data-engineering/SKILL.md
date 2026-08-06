@@ -141,6 +141,7 @@ Manage copy jobs (data movement)
 | `fabio copy-job get-definition` | no | Get the definition of a copy job |
 | `fabio copy-job list` | no | List copy jobs in a workspace |
 | `fabio copy-job reset` | yes | Reset a copy job (all entities or selected entities) |
+| `fabio copy-job run` | yes | Run a copy job on demand |
 | `fabio copy-job show` | no | Show details of a copy job |
 | `fabio copy-job update` | yes | Update copy job properties (name and/or description) |
 | `fabio copy-job update-definition` | yes | Update the definition of a copy job |
