@@ -129,8 +129,9 @@ pub async fn resolve_query_uri(
 
 /// Execute a KQL query against a Kusto endpoint. Returns parsed rows and column names.
 ///
-/// Automatically routes management commands (starting with `.`) to `/v1/rest/mgmt`
-/// and data queries to `/v2/rest/query`.
+/// Routes management commands (starting with `.`) to `/v1/rest/mgmt`, T-SQL
+/// queries (starting with `SELECT`) to `/v1/rest/query` with the Kusto SQL
+/// dialect option, and KQL data queries to `/v2/rest/query`.
 pub async fn execute_kql(
     client: &FabricClient,
     kusto_uri: &str,
@@ -141,17 +142,26 @@ pub async fn execute_kql(
     let scope = format!("{kusto_uri}/.default");
     let token = client.require_token_for_scope(&scope).await?;
 
-    // Management commands (starting with '.') use /v1/rest/mgmt; queries use /v2/rest/query
+    // Management commands (starting with '.') use /v1/rest/mgmt; T-SQL queries
+    // (leading SELECT) use /v1/rest/query with the SQL dialect option; KQL
+    // queries use /v2/rest/query.
     let is_mgmt = kql_text.trim_start().starts_with('.');
+    let is_tsql = !is_mgmt && is_tsql_query(kql_text);
     let url = if is_mgmt {
         format!("{kusto_uri}/v1/rest/mgmt")
+    } else if is_tsql {
+        format!("{kusto_uri}/v1/rest/query")
     } else {
         format!("{kusto_uri}/v2/rest/query")
     };
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "db": db_name,
         "csl": kql_text,
     });
+    if is_tsql {
+        // Kusto executes T-SQL only when told the query language is SQL.
+        body["properties"] = serde_json::json!({ "Options": { "query_language": "Sql" } });
+    }
 
     let resp = client
         .http()
@@ -196,9 +206,22 @@ pub async fn execute_kql(
 
     if is_mgmt {
         parse_kusto_v1_response(&parsed)
+    } else if is_tsql {
+        // T-SQL over Kusto returns the v1 `{"Tables":[...]}` shape.
+        parse_kusto_v1_response(&parsed)
     } else {
         parse_kusto_v2_response(&parsed)
     }
+}
+
+/// True when `text` is a T-SQL query (a leading `SELECT`). Kusto has no `SELECT`
+/// operator, so a leading `SELECT` word unambiguously marks T-SQL. The leading
+/// alphabetic run must equal `select` (so an identifier like `SelectedRows` in a
+/// KQL query is not misdetected).
+fn is_tsql_query(text: &str) -> bool {
+    let t = text.trim_start();
+    let first: String = t.chars().take_while(char::is_ascii_alphabetic).collect();
+    first.eq_ignore_ascii_case("select")
 }
 
 // ─── Response Parsing ────────────────────────────────────────────────────────
@@ -383,6 +406,20 @@ pub fn render_kql_results(cli: &crate::cli::Cli, rows: &[Value], columns: &[Stri
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn tsql_detection_matches_leading_select_only() {
+        // T-SQL: a leading SELECT (any case, with leading whitespace).
+        assert!(is_tsql_query("SELECT TOP 3 * FROM T"));
+        assert!(is_tsql_query("  select a, b from T order by a"));
+        assert!(is_tsql_query("\n\tSELECT 1"));
+        // KQL: no leading SELECT statement.
+        assert!(!is_tsql_query("RawData | count"));
+        assert!(!is_tsql_query("TransformedData | where x > 1 | project a"));
+        assert!(!is_tsql_query(".show tables"));
+        // An identifier that merely starts with the letters "select" is NOT T-SQL.
+        assert!(!is_tsql_query("SelectedRows | count"));
+    }
 
     #[test]
     fn test_resolve_kql_input_inline() {

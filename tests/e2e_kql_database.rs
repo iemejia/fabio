@@ -273,6 +273,37 @@ fn kql_database_query_table_data() {
     assert!(rows[0].get("Count").is_some());
 }
 
+/// T-SQL over a KQL database: fabio must route a leading-`SELECT` query to the
+/// Kusto `/v1/rest/query` endpoint with the SQL dialect option (a leading SELECT
+/// is otherwise rejected as invalid KQL). Reproduces the RTI tutorial's
+/// "Query using T-SQL" step.
+#[test]
+#[ignore = "requires live Fabric tenant with Eventhouse"]
+fn kql_database_query_tsql() {
+    let (cfg, kql_db_id, _) = kql_test_config();
+
+    let output = fabio()
+        .args([
+            "kql-database",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &kql_db_id,
+            "--kql",
+            "SELECT TOP 2 Region, Amount FROM SalesEvents ORDER BY Amount DESC",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    let rows = data.as_array().unwrap();
+    assert!(!rows.is_empty(), "T-SQL query should return rows");
+    assert!(rows[0].get("Region").is_some());
+    assert!(rows[0].get("Amount").is_some());
+}
+
 #[test]
 #[ignore = "requires live Fabric tenant with Eventhouse"]
 fn kql_database_query_from_file() {
