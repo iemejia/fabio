@@ -5,6 +5,7 @@
 mod common;
 
 use common::{TestConfig, extract_data, fabio, parse_json};
+use serial_test::serial;
 
 #[test]
 #[ignore = "requires live Fabric tenant"]
@@ -232,4 +233,127 @@ fn spark_update_settings_runtime_version_lifecycle() {
         extract_data(&json)["environment"]["runtimeVersion"],
         original
     );
+}
+
+// ---------------------------------------------------------------------------
+// Spark monitoring APIs (advice / resource usage / logs)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn spark_get_advice_requires_flags() {
+    // Missing required --item-type/--item-id/--livy-id/--app-id -> parse failure.
+    fabio()
+        .args([
+            "spark",
+            "get-advice",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn spark_get_advice_rejects_bad_item_type() {
+    // --item-type is restricted to notebook/spark-job-definition/lakehouse.
+    fabio()
+        .args([
+            "spark",
+            "get-advice",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--item-type",
+            "warehouse",
+            "--item-id",
+            "x",
+            "--livy-id",
+            "y",
+            "--app-id",
+            "z",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn spark_get_logs_driver_requires_app_id() {
+    // Driver logs need --app-id; the error is a clean INVALID_INPUT.
+    let assert = fabio()
+        .args([
+            "spark",
+            "get-logs",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--item-type",
+            "notebook",
+            "--item-id",
+            "x",
+            "--livy-id",
+            "y",
+            "--type",
+            "driver",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err: serde_json::Value = serde_json::from_str(stderr.trim()).unwrap();
+    assert_eq!(err["error"]["code"], "INVALID_INPUT");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with a completed Spark application"]
+#[serial]
+fn spark_monitoring_lifecycle() {
+    // Requires FABIO_TEST_SPARK_ITEM_ID / _LIVY_ID / _APP_ID for a notebook that
+    // has a completed Spark application.
+    let cfg = TestConfig::from_env();
+    let (Ok(item_id), Ok(livy_id), Ok(app_id)) = (
+        std::env::var("FABIO_TEST_SPARK_ITEM_ID"),
+        std::env::var("FABIO_TEST_SPARK_LIVY_ID"),
+        std::env::var("FABIO_TEST_SPARK_APP_ID"),
+    ) else {
+        return; // skip when not configured
+    };
+
+    for cmd in ["get-advice", "get-resource-usage"] {
+        fabio()
+            .args([
+                "spark",
+                cmd,
+                "--workspace",
+                &cfg.source_workspace,
+                "--item-type",
+                "notebook",
+                "--item-id",
+                &item_id,
+                "--livy-id",
+                &livy_id,
+                "--app-id",
+                &app_id,
+            ])
+            .timeout(std::time::Duration::from_mins(1))
+            .assert()
+            .success();
+    }
+
+    // Livy log metadata (app id is "none" for livy).
+    fabio()
+        .args([
+            "spark",
+            "get-logs",
+            "--workspace",
+            &cfg.source_workspace,
+            "--item-type",
+            "notebook",
+            "--item-id",
+            &item_id,
+            "--livy-id",
+            &livy_id,
+            "--type",
+            "livy",
+            "--meta",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
 }

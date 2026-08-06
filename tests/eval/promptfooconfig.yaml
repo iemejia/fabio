@@ -280,6 +280,17 @@ tests:
       - type: icontains
         value: "--label"
 
+  - description: "Get Spark advisor advice for a Spark application"
+    vars:
+      user_query: "Get the Spark advisor recommendations for the Spark application app-1 (livy session lv-1) from notebook nb-1 in workspace ws-456"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('spark get-advice')
+        metric: spark-get-advice-command
+      - type: icontains
+        value: "--app-id"
+
   # ============================================================
   # AUTHENTICATION
   # ============================================================

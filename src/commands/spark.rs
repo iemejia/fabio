@@ -237,6 +237,102 @@ pub enum SparkCommand {
         #[arg(long)]
         livy_id: String,
     },
+
+    /// Get Spark advisor real-time advice for a Spark application (monitoring API)
+    #[command(display_order = 42)]
+    GetAdvice {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// The item type that ran the Spark application
+        #[arg(long, value_parser = ["notebook", "spark-job-definition", "lakehouse"])]
+        item_type: String,
+
+        /// The item ID (notebook / Spark job definition / lakehouse)
+        #[arg(long)]
+        item_id: String,
+
+        /// Livy session ID
+        #[arg(long)]
+        livy_id: String,
+
+        /// Spark application ID (e.g. `application_1741176604085_0001`)
+        #[arg(long)]
+        app_id: String,
+
+        /// Application attempt ID (defaults to the last attempt)
+        #[arg(long)]
+        attempt_id: Option<String>,
+    },
+
+    /// Get the resource usage timeline for a Spark application (monitoring API)
+    #[command(display_order = 43)]
+    GetResourceUsage {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// The item type that ran the Spark application
+        #[arg(long, value_parser = ["notebook", "spark-job-definition", "lakehouse"])]
+        item_type: String,
+
+        /// The item ID (notebook / Spark job definition / lakehouse)
+        #[arg(long)]
+        item_id: String,
+
+        /// Livy session ID
+        #[arg(long)]
+        livy_id: String,
+
+        /// Spark application ID
+        #[arg(long)]
+        app_id: String,
+
+        /// Application attempt ID (defaults to the last attempt)
+        #[arg(long)]
+        attempt_id: Option<String>,
+    },
+
+    /// Get Spark driver / executor / livy logs for a Spark application (monitoring API)
+    #[command(display_order = 44)]
+    GetLogs {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// The item type that ran the Spark application
+        #[arg(long, value_parser = ["notebook", "spark-job-definition", "lakehouse"])]
+        item_type: String,
+
+        /// The item ID (notebook / Spark job definition / lakehouse)
+        #[arg(long)]
+        item_id: String,
+
+        /// Livy session ID
+        #[arg(long)]
+        livy_id: String,
+
+        /// Log type
+        #[arg(long = "type", value_parser = ["driver", "executor", "livy"])]
+        log_type: String,
+
+        /// Spark application ID (not required for --type livy)
+        #[arg(long)]
+        app_id: Option<String>,
+
+        /// Application attempt ID (defaults to the last attempt)
+        #[arg(long)]
+        attempt_id: Option<String>,
+
+        /// Specific log file name (e.g. stderr, stdout) — required for driver/executor content
+        #[arg(long)]
+        file_name: Option<String>,
+
+        /// Return log file metadata (JSON) instead of the raw log content
+        #[arg(long)]
+        meta: bool,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -362,6 +458,72 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SparkCommand) -
         }
         SparkCommand::GetLivySession { workspace, livy_id } => {
             get_livy_session(cli, client, workspace, livy_id).await
+        }
+        SparkCommand::GetAdvice {
+            workspace,
+            item_type,
+            item_id,
+            livy_id,
+            app_id,
+            attempt_id,
+        } => {
+            get_advice(
+                cli,
+                client,
+                workspace,
+                item_type,
+                item_id,
+                livy_id,
+                app_id,
+                attempt_id.as_deref(),
+            )
+            .await
+        }
+        SparkCommand::GetResourceUsage {
+            workspace,
+            item_type,
+            item_id,
+            livy_id,
+            app_id,
+            attempt_id,
+        } => {
+            get_resource_usage(
+                cli,
+                client,
+                workspace,
+                item_type,
+                item_id,
+                livy_id,
+                app_id,
+                attempt_id.as_deref(),
+            )
+            .await
+        }
+        SparkCommand::GetLogs {
+            workspace,
+            item_type,
+            item_id,
+            livy_id,
+            log_type,
+            app_id,
+            attempt_id,
+            file_name,
+            meta,
+        } => {
+            get_logs(
+                cli,
+                client,
+                workspace,
+                item_type,
+                item_id,
+                livy_id,
+                log_type,
+                app_id.as_deref(),
+                attempt_id.as_deref(),
+                file_name.as_deref(),
+                *meta,
+            )
+            .await
         }
     }
 }
@@ -805,6 +967,148 @@ fn read_json_body(file: Option<&str>, content: Option<&str>, command: &str) -> R
     }
 }
 
+// ─── Spark monitoring APIs (advice / resource usage / logs) ──────────────────
+
+/// Map an `--item-type` value to its Fabric REST URL segment.
+fn spark_item_segment(item_type: &str) -> &'static str {
+    match item_type {
+        "spark-job-definition" => "sparkJobDefinitions",
+        "lakehouse" => "lakehouses",
+        // clap `value_parser` restricts this to the three known values;
+        // "notebook" (and any fallthrough) maps to notebooks.
+        _ => "notebooks",
+    }
+}
+
+/// Build the `applications/{appId}[/{attemptId}]` base path for the monitoring
+/// APIs (advice / resourceUsage / logs).
+fn applications_base(
+    workspace: &str,
+    segment: &str,
+    item_id: &str,
+    livy_id: &str,
+    app_id: &str,
+    attempt_id: Option<&str>,
+) -> String {
+    let base = format!(
+        "/workspaces/{workspace}/{segment}/{item_id}/livySessions/{livy_id}/applications/{app_id}"
+    );
+    match attempt_id {
+        Some(a) => format!("{base}/{a}"),
+        None => base,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn get_advice(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    item_type: &str,
+    item_id: &str,
+    livy_id: &str,
+    app_id: &str,
+    attempt_id: Option<&str>,
+) -> Result<()> {
+    let segment = spark_item_segment(item_type);
+    let base = applications_base(workspace, segment, item_id, livy_id, app_id, attempt_id);
+    let data = client
+        .get(&format!("{base}/advice"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "spark get-advice", "Viewer"))?;
+    output::render_object(cli, &data, "advices");
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn get_resource_usage(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    item_type: &str,
+    item_id: &str,
+    livy_id: &str,
+    app_id: &str,
+    attempt_id: Option<&str>,
+) -> Result<()> {
+    let segment = spark_item_segment(item_type);
+    let base = applications_base(workspace, segment, item_id, livy_id, app_id, attempt_id);
+    let data = client
+        .get(&format!("{base}/resourceUsage"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "spark get-resource-usage", "Viewer"))?;
+    output::render_object(cli, &data, "resourceUsage");
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn get_logs(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    item_type: &str,
+    item_id: &str,
+    livy_id: &str,
+    log_type: &str,
+    app_id: Option<&str>,
+    attempt_id: Option<&str>,
+    file_name: Option<&str>,
+    meta: bool,
+) -> Result<()> {
+    // Livy logs live under application id `none`; driver/executor logs need a
+    // real application id.
+    let effective_app_id = if log_type == "livy" {
+        "none"
+    } else {
+        app_id.ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("--app-id is required for --type {log_type} logs."),
+                "Get the application id from 'fabio spark get-livy-session --livy-id <ID>'."
+                    .to_string(),
+            )
+        })?
+    };
+    let segment = spark_item_segment(item_type);
+    // Livy logs never use an attempt id.
+    let attempt = if log_type == "livy" { None } else { attempt_id };
+    let base = applications_base(
+        workspace,
+        segment,
+        item_id,
+        livy_id,
+        effective_app_id,
+        attempt,
+    );
+
+    let mut query = format!("type={log_type}&meta={meta}");
+    if let Some(f) = file_name {
+        use std::fmt::Write as _;
+        let _ = write!(query, "&fileName={f}");
+    }
+    let path = format!("{base}/logs?{query}");
+
+    if meta {
+        let data = client
+            .get(&path)
+            .await
+            .map_err(|e| enrich_forbidden(e, "spark get-logs", "Viewer"))?;
+        output::render_object(cli, &data, "log");
+    } else {
+        // Raw log content is plain text, not JSON.
+        let text = client
+            .get_text(&path)
+            .await
+            .map_err(|e| enrich_forbidden(e, "spark get-logs", "Viewer"))?;
+        output::render_object(
+            cli,
+            &serde_json::json!({ "type": log_type, "content": text }),
+            "content",
+        );
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -841,5 +1145,29 @@ mod tests {
     fn apply_runtime_version_recovers_from_non_object() {
         let out = apply_workspace_runtime_version(json!("nope"), "2.0");
         assert_eq!(out["environment"]["runtimeVersion"], json!("2.0"));
+    }
+
+    #[test]
+    fn spark_item_segment_maps_all_types() {
+        assert_eq!(spark_item_segment("notebook"), "notebooks");
+        assert_eq!(
+            spark_item_segment("spark-job-definition"),
+            "sparkJobDefinitions"
+        );
+        assert_eq!(spark_item_segment("lakehouse"), "lakehouses");
+    }
+
+    #[test]
+    fn applications_base_with_and_without_attempt() {
+        let with = applications_base("ws", "notebooks", "nb", "lv", "app_1", Some("1"));
+        assert_eq!(
+            with,
+            "/workspaces/ws/notebooks/nb/livySessions/lv/applications/app_1/1"
+        );
+        let without = applications_base("ws", "sparkJobDefinitions", "sjd", "lv", "app_1", None);
+        assert_eq!(
+            without,
+            "/workspaces/ws/sparkJobDefinitions/sjd/livySessions/lv/applications/app_1"
+        );
     }
 }

@@ -57,10 +57,13 @@ Manage Spark compute (settings, custom pools)
 | `fabio spark create-pool` | yes | Create a custom Spark pool |
 | `fabio spark delete-capacity-pool` | yes | Delete a capacity Spark pool |
 | `fabio spark delete-pool` | yes | Delete a custom Spark pool |
+| `fabio spark get-advice` | no | Get Spark advisor real-time advice for a Spark application (monitoring API) |
 | `fabio spark get-capacity-pool` | no | Get details of a capacity Spark pool |
 | `fabio spark get-capacity-settings` | no | Get capacity-level Spark settings |
 | `fabio spark get-livy-session` | no | Get details of a Livy session |
+| `fabio spark get-logs` | no | Get Spark driver / executor / livy logs for a Spark application (monitoring API) |
 | `fabio spark get-pool` | no | Show details of a custom Spark pool |
+| `fabio spark get-resource-usage` | no | Get the resource usage timeline for a Spark application (monitoring API) |
 | `fabio spark get-settings` | no | Get workspace-level Spark settings (custom pools, starter pools, etc.) |
 | `fabio spark list-capacity-pools` | no | List custom Spark pools in a capacity |
 | `fabio spark list-livy-sessions` | no | List Livy sessions in a workspace |

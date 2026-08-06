@@ -15984,6 +15984,146 @@
         },
         "mutates": false,
         "returns": "object"
+      },
+      "get-advice": {
+        "description": "Get Spark advisor real-time advice for a Spark application (monitoring API)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--item-type": {
+            "type": "enum",
+            "values": [
+              "notebook",
+              "spark-job-definition",
+              "lakehouse"
+            ],
+            "required": true,
+            "description": "The item type that ran the Spark application"
+          },
+          "--item-id": {
+            "type": "string",
+            "required": true,
+            "description": "The item ID (notebook / Spark job definition / lakehouse)"
+          },
+          "--livy-id": {
+            "type": "string",
+            "required": true,
+            "description": "Livy session ID"
+          },
+          "--app-id": {
+            "type": "string",
+            "required": true,
+            "description": "Spark application ID (e.g. `application_1741176604085_0001`)"
+          },
+          "--attempt-id": {
+            "type": "string",
+            "description": "Application attempt ID (defaults to the last attempt)"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "get-resource-usage": {
+        "description": "Get the resource usage timeline for a Spark application (monitoring API)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--item-type": {
+            "type": "enum",
+            "values": [
+              "notebook",
+              "spark-job-definition",
+              "lakehouse"
+            ],
+            "required": true,
+            "description": "The item type that ran the Spark application"
+          },
+          "--item-id": {
+            "type": "string",
+            "required": true,
+            "description": "The item ID (notebook / Spark job definition / lakehouse)"
+          },
+          "--livy-id": {
+            "type": "string",
+            "required": true,
+            "description": "Livy session ID"
+          },
+          "--app-id": {
+            "type": "string",
+            "required": true,
+            "description": "Spark application ID"
+          },
+          "--attempt-id": {
+            "type": "string",
+            "description": "Application attempt ID (defaults to the last attempt)"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "get-logs": {
+        "description": "Get Spark driver / executor / livy logs for a Spark application (monitoring API)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--item-type": {
+            "type": "enum",
+            "values": [
+              "notebook",
+              "spark-job-definition",
+              "lakehouse"
+            ],
+            "required": true,
+            "description": "The item type that ran the Spark application"
+          },
+          "--item-id": {
+            "type": "string",
+            "required": true,
+            "description": "The item ID (notebook / Spark job definition / lakehouse)"
+          },
+          "--livy-id": {
+            "type": "string",
+            "required": true,
+            "description": "Livy session ID"
+          },
+          "--type": {
+            "type": "enum",
+            "values": [
+              "driver",
+              "executor",
+              "livy"
+            ],
+            "required": true,
+            "description": "Log type"
+          },
+          "--app-id": {
+            "type": "string",
+            "description": "Spark application ID (not required for --type livy)"
+          },
+          "--attempt-id": {
+            "type": "string",
+            "description": "Application attempt ID (defaults to the last attempt)"
+          },
+          "--file-name": {
+            "type": "string",
+            "description": "Specific log file name (e.g. stderr, stdout) — required for driver/executor content"
+          },
+          "--meta": {
+            "type": "bool",
+            "description": "Return log file metadata (JSON) instead of the raw log content"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
       }
     }
   },
