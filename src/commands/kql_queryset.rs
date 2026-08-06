@@ -144,6 +144,30 @@ pub enum KqlQuerysetCommand {
         #[arg(long)]
         query_uri: Option<String>,
     },
+
+    /// Add a saved query tab bound to a KQL database (authors the `RealTimeQueryset.json` data source + tab)
+    #[command(display_order = 7)]
+    AddTab {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// KQL queryset ID
+        #[arg(long)]
+        id: String,
+
+        /// The KQL database (in an eventhouse) the tab queries
+        #[arg(long = "kql-database")]
+        kql_database: String,
+
+        /// Tab title
+        #[arg(long)]
+        title: String,
+
+        /// KQL query text (inline, `@file`, or omit to read from stdin)
+        #[arg(long)]
+        kql: Option<String>,
+    },
 }
 
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &KqlQuerysetCommand) -> Result<()> {
@@ -221,6 +245,24 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &KqlQuerysetComm
                 id,
                 tab.as_deref(),
                 query_uri.as_deref(),
+            )
+            .await
+        }
+        KqlQuerysetCommand::AddTab {
+            workspace,
+            id,
+            kql_database,
+            title,
+            kql,
+        } => {
+            add_tab(
+                cli,
+                client,
+                workspace,
+                id,
+                kql_database,
+                title,
+                kql.as_deref(),
             )
             .await
         }
@@ -602,8 +644,11 @@ async fn run(
     // exfiltration via crafted updateDefinition with a malicious clusterUri)
     client::validate_trusted_url(&cluster_uri, "clusterUri (from queryset definition)")?;
 
+    // A `type: "Fabric"` data source (a Fabric KQL database) names its database
+    // as `databaseItemName`; an `AzureDataExplorer` source uses `databaseName`.
     let db_name = data_source
         .get("databaseName")
+        .or_else(|| data_source.get("databaseItemName"))
         .and_then(Value::as_str)
         .unwrap_or_default();
 
@@ -623,6 +668,178 @@ async fn run(
         output::render_list(cli, &rows, &col_refs, &col_refs, &columns[0]);
     }
 
+    Ok(())
+}
+
+/// A Fabric KQL-database data source for a queryset tab.
+struct FabricDbSource<'a> {
+    cluster_uri: &'a str,
+    db_item_id: &'a str,
+    db_item_name: &'a str,
+}
+
+/// Add (or reuse) a Fabric KQL-database data source and append a query tab to a
+/// queryset's `RealTimeQueryset.json` content. Pure read-modify-write so it is
+/// unit-testable; ids are supplied by the caller.
+fn queryset_add_tab(
+    existing: &Value,
+    source: &FabricDbSource,
+    title: &str,
+    content: &str,
+    new_ds_id: &str,
+    tab_id: &str,
+) -> Value {
+    let mut queryset = existing
+        .get("queryset")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+    if queryset.get("version").is_none() {
+        queryset["version"] = Value::from("1.0.0");
+    }
+    let mut data_sources = queryset
+        .get_mut("dataSources")
+        .and_then(Value::as_array_mut)
+        .map(std::mem::take)
+        .unwrap_or_default();
+    // Reuse an existing Fabric data source for this KQL database, else add one.
+    let existing_ds_id = data_sources
+        .iter()
+        .find(|ds| {
+            ds.get("type").and_then(Value::as_str) == Some("Fabric")
+                && ds.get("databaseItemId").and_then(Value::as_str) == Some(source.db_item_id)
+        })
+        .and_then(|ds| ds.get("id").and_then(Value::as_str))
+        .map(str::to_string);
+    let ds_id = existing_ds_id.unwrap_or_else(|| {
+        data_sources.push(serde_json::json!({
+            "id": new_ds_id,
+            "clusterUri": source.cluster_uri,
+            "type": "Fabric",
+            "databaseItemId": source.db_item_id,
+            "databaseItemName": source.db_item_name
+        }));
+        new_ds_id.to_string()
+    });
+    queryset["dataSources"] = Value::Array(data_sources);
+
+    let mut tabs = queryset
+        .get_mut("tabs")
+        .and_then(Value::as_array_mut)
+        .map(std::mem::take)
+        .unwrap_or_default();
+    tabs.push(serde_json::json!({
+        "id": tab_id,
+        "title": title,
+        "content": content,
+        "dataSourceId": ds_id
+    }));
+    queryset["tabs"] = Value::Array(tabs);
+
+    serde_json::json!({ "queryset": queryset })
+}
+
+/// Add a query tab bound to a KQL database (authors the RealTimeQueryset.json).
+async fn add_tab(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    kql_database: &str,
+    title: &str,
+    kql: Option<&str>,
+) -> Result<()> {
+    let content = crate::commands::query_input::resolve_query_input(
+        kql,
+        "KQL",
+        "--kql",
+        "fabio kql-queryset add-tab --id <ID> --kql-database <DB> --title <T> --kql \"Sales | count\"",
+    )?;
+
+    if output::dry_run_guard(
+        cli,
+        "kql-queryset add-tab",
+        &serde_json::json!({ "queryset": id, "title": title, "kqlDatabase": kql_database }),
+    ) {
+        return Ok(());
+    }
+
+    // Resolve the KQL database's cluster URI + name (for the Fabric data source).
+    let db = client
+        .get(&format!(
+            "/workspaces/{workspace}/kqlDatabases/{kql_database}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "kql-queryset add-tab", "Viewer"))?;
+    let cluster_uri = db
+        .pointer("/properties/queryServiceUri")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            FabioError::new(
+                ErrorCode::ApiError,
+                "KQL database has no queryServiceUri (cluster URI).".to_string(),
+            )
+        })?
+        .trim_end_matches('/')
+        .to_string();
+    let db_name = db
+        .get("displayName")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+
+    // Read-modify-write the queryset definition.
+    let def_data = client
+        .post(
+            &format!("/workspaces/{workspace}/kqlQuerysets/{id}/getDefinition"),
+            &serde_json::json!({}),
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "kql-queryset add-tab", "Contributor"))?;
+    let existing = decode_queryset_definition(&def_data).unwrap_or_else(|_| serde_json::json!({}));
+
+    let new_ds_id = uuid::Uuid::new_v4().to_string();
+    let tab_id = uuid::Uuid::new_v4().to_string();
+    let new_def = queryset_add_tab(
+        &existing,
+        &FabricDbSource {
+            cluster_uri: &cluster_uri,
+            db_item_id: kql_database,
+            db_item_name: &db_name,
+        },
+        title,
+        &content,
+        &new_ds_id,
+        &tab_id,
+    );
+
+    let payload = BASE64.encode(serde_json::to_vec(&new_def).unwrap_or_default());
+    let body = serde_json::json!({
+        "definition": { "parts": [{
+            "path": "RealTimeQueryset.json",
+            "payload": payload,
+            "payloadType": "InlineBase64"
+        }]}
+    });
+    client
+        .post(
+            &format!("/workspaces/{workspace}/kqlQuerysets/{id}/updateDefinition"),
+            &body,
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "kql-queryset add-tab", "Contributor"))?;
+
+    output::render_object(
+        cli,
+        &serde_json::json!({
+            "status": "tab_added",
+            "queryset": id,
+            "title": title,
+            "tabId": tab_id
+        }),
+        "status",
+    );
     Ok(())
 }
 
@@ -782,6 +999,74 @@ fn resolve_data_source<'a>(data_sources: &'a [Value], ds_id: Option<&str>) -> Re
 mod tests {
     use super::*;
     use crate::commands::kql_utils::{parse_kusto_v1_response, parse_kusto_v2_response};
+
+    #[test]
+    fn test_queryset_add_tab_from_empty() {
+        let def = queryset_add_tab(
+            &serde_json::json!({}),
+            &FabricDbSource {
+                cluster_uri: "https://c.kusto.fabric.microsoft.com",
+                db_item_id: "db-item-id",
+                db_item_name: "MyDb",
+            },
+            "ByRegion",
+            "Sales | count",
+            "new-ds",
+            "new-tab",
+        );
+        let qs = &def["queryset"];
+        assert_eq!(qs["version"], "1.0.0");
+        let ds = qs["dataSources"].as_array().unwrap();
+        assert_eq!(ds.len(), 1);
+        assert_eq!(ds[0]["id"], "new-ds");
+        assert_eq!(ds[0]["type"], "Fabric");
+        assert_eq!(ds[0]["databaseItemId"], "db-item-id");
+        assert_eq!(ds[0]["databaseItemName"], "MyDb");
+        let tabs = qs["tabs"].as_array().unwrap();
+        assert_eq!(tabs.len(), 1);
+        assert_eq!(tabs[0]["id"], "new-tab");
+        assert_eq!(tabs[0]["title"], "ByRegion");
+        assert_eq!(tabs[0]["content"], "Sales | count");
+        assert_eq!(tabs[0]["dataSourceId"], "new-ds");
+    }
+
+    #[test]
+    fn test_queryset_add_tab_reuses_existing_datasource() {
+        let existing = serde_json::json!({
+            "queryset": {
+                "version": "1.0.0",
+                "dataSources": [{
+                    "id": "existing-ds",
+                    "clusterUri": "https://c.kusto.fabric.microsoft.com",
+                    "type": "Fabric",
+                    "databaseItemId": "db-item-id",
+                    "databaseItemName": "MyDb"
+                }],
+                "tabs": [{
+                    "id": "t1", "title": "First", "content": "Sales | take 1", "dataSourceId": "existing-ds"
+                }]
+            }
+        });
+        let def = queryset_add_tab(
+            &existing,
+            &FabricDbSource {
+                cluster_uri: "https://c.kusto.fabric.microsoft.com",
+                db_item_id: "db-item-id",
+                db_item_name: "MyDb",
+            },
+            "Second",
+            "Sales | count",
+            "unused-new-ds",
+            "new-tab",
+        );
+        let qs = &def["queryset"];
+        // No new data source added — the existing one is reused.
+        assert_eq!(qs["dataSources"].as_array().unwrap().len(), 1);
+        let tabs = qs["tabs"].as_array().unwrap();
+        assert_eq!(tabs.len(), 2);
+        assert_eq!(tabs[1]["dataSourceId"], "existing-ds");
+        assert_eq!(tabs[1]["title"], "Second");
+    }
 
     #[test]
     fn test_decode_queryset_definition_success() {

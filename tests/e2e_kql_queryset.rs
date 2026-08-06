@@ -334,3 +334,86 @@ fn kql_queryset_run_not_found_queryset() {
     let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
     assert_eq!(err_json["error"]["code"], "NOT_FOUND");
 }
+
+// ─── Add-Tab Tests ────────────────────────────────────────────────────────────
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn kql_queryset_add_tab_dry_run() {
+    let cfg = TestConfig::from_env();
+    // Dry-run fires before any network call, so it needs no real ids.
+    let assert = fabio()
+        .args([
+            "kql-queryset",
+            "add-tab",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--kql-database",
+            "00000000-0000-0000-0000-000000000001",
+            "--title",
+            "DryRunTab",
+            "--kql",
+            "Sales | count",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "kql-queryset add-tab");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with a KQL queryset + KQL database"]
+#[serial]
+fn kql_queryset_add_tab_and_run() {
+    let cfg = TestConfig::from_env();
+    let queryset_id =
+        std::env::var("FABIO_TEST_KQL_QUERYSET_ID").expect("FABIO_TEST_KQL_QUERYSET_ID required");
+    let kql_db_id =
+        std::env::var("FABIO_TEST_KQL_DATABASE_ID").expect("FABIO_TEST_KQL_DATABASE_ID required");
+    let title = "e2e-add-tab";
+
+    // Author a tab bound to the KQL database.
+    let add = fabio()
+        .args([
+            "kql-queryset",
+            "add-tab",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &queryset_id,
+            "--kql-database",
+            &kql_db_id,
+            "--title",
+            title,
+            "--kql",
+            "Sales | summarize Total=sum(Amount) by Region",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let add_json = parse_json(&add);
+    assert_eq!(extract_data(&add_json)["status"], "tab_added");
+
+    // Run the newly authored tab.
+    let run = fabio()
+        .args([
+            "kql-queryset",
+            "run",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &queryset_id,
+            "--tab",
+            title,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let run_json = parse_json(&run);
+    assert!(run_json.get("data").is_some() || run_json.get("count").is_some());
+}

@@ -36,7 +36,7 @@ Manage mirrored databases (real-time replication)
 | `fabio mirrored-database create` | yes | Create a new mirrored database |
 | `fabio mirrored-database delete` | yes | Delete a mirrored database |
 | `fabio mirrored-database get-definition` | no | Get the definition of a mirrored database |
-| `fabio mirrored-database landing-zone` | no | Print the OneLake landing-zone URL of an OPEN mirrored database (push data files here) |
+| `fabio mirrored-database landing-zone` | no | Print the `OneLake` landing-zone URL of an OPEN mirrored database (push data files here) |
 | `fabio mirrored-database list` | no | List mirrored databases in a workspace |
 | `fabio mirrored-database show` | no | Show details of a mirrored database |
 | `fabio mirrored-database start` | yes | Start mirroring |

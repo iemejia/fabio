@@ -79,6 +79,7 @@ Manage KQL querysets (saved KQL queries)
 
 | Command | Mutates | Description |
 |---|---|---|
+| `fabio kql-queryset add-tab` | yes | Add a saved query tab bound to a KQL database (authors the `RealTimeQueryset.json` data source + tab) |
 | `fabio kql-queryset create` | yes | Create a new KQL queryset |
 | `fabio kql-queryset delete` | yes | Delete a KQL queryset |
 | `fabio kql-queryset get-definition` | no | Get the definition of a KQL queryset |
