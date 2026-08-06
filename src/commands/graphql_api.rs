@@ -1,6 +1,4 @@
 use anyhow::Result;
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Subcommand;
 use serde_json::Value;
 
@@ -457,19 +455,10 @@ async fn update_definition(
         }
     };
 
-    let encoded = BASE64.encode(script.as_bytes());
-
-    let body = serde_json::json!({
-        "definition": {
-            "parts": [
-                {
-                    "path": "schema.graphql",
-                    "payload": encoded,
-                    "payloadType": "InlineBase64"
-                }
-            ]
-        }
-    });
+    // Accept EITHER a full definition envelope (JSON with definition.parts —
+    // e.g. a graphql-definition.json datasource binding, needed to wire the API
+    // to a SQL source) OR a raw GraphQL SDL string (wrapped as schema.graphql).
+    let body = crate::definition_spec::build_update_definition_body(&script, "schema.graphql");
 
     if output::dry_run_guard(
         cli,
@@ -591,6 +580,29 @@ async fn graphql_query(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn update_definition_wraps_raw_sdl_as_schema_graphql() {
+        // A raw GraphQL SDL string is wrapped as a single schema.graphql part.
+        let body = crate::definition_spec::build_update_definition_body(
+            "type Query { hello: String }",
+            "schema.graphql",
+        );
+        let parts = body["definition"]["parts"].as_array().unwrap();
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0]["path"], "schema.graphql");
+    }
+
+    #[test]
+    fn update_definition_passes_through_datasource_binding_envelope() {
+        // A full envelope (graphql-definition.json datasource binding, needed to
+        // wire the API to a SQL source) is passed through verbatim.
+        let env = r#"{"definition":{"parts":[{"path":"graphql-definition.json","payload":"e30=","payloadType":"InlineBase64"}]}}"#;
+        let body = crate::definition_spec::build_update_definition_body(env, "schema.graphql");
+        let parts = body["definition"]["parts"].as_array().unwrap();
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0]["path"], "graphql-definition.json");
+    }
 
     #[test]
     fn test_graphql_body_construction_basic() {
