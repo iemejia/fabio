@@ -63,6 +63,9 @@ pub enum WorkspaceCommand {
         /// Optional description
         #[arg(long)]
         description: Option<String>,
+        /// Assign the new workspace to this capacity on creation (Fabric `capacityId`)
+        #[arg(long = "capacity-id", env = "FABIO_CAPACITY")]
+        capacity_id: Option<String>,
     },
     /// Update workspace properties (name and/or description)
     #[command(display_order = 11)]
@@ -543,8 +546,19 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceComman
         }
         WorkspaceCommand::Show { id } => crud::show(cli, client, id).await,
         WorkspaceCommand::Url { id } => crud::url(cli, id),
-        WorkspaceCommand::Create { name, description } => {
-            crud::create(cli, client, name, description.as_deref()).await
+        WorkspaceCommand::Create {
+            name,
+            description,
+            capacity_id,
+        } => {
+            crud::create(
+                cli,
+                client,
+                name,
+                description.as_deref(),
+                capacity_id.as_deref(),
+            )
+            .await
         }
         WorkspaceCommand::Update {
             id,

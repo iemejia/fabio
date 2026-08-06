@@ -844,6 +844,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 ## Workspace API Behaviors Discovered
 - **Endpoint scope**: All workspace operations are tenant-level at `/workspaces/{id}` (no parent scope).
 - **Capacity assignment body**: `POST /workspaces/{id}/assignToCapacity` with `{"capacityId": "<id>"}`. Unassign uses empty body `{}` to `POST /workspaces/{id}/unassignFromCapacity`.
+- **Create-on-capacity in one step (`capacityId` on `POST /workspaces`, verified live)**: the workspace create body accepts an optional `capacityId` (`{"displayName": "...", "capacityId": "<id>"}`), so a workspace can be created directly on a Fabric/Trial capacity without the separate `assignToCapacity` call — the response echoes `capacityId` + `capacityRegion`. `fabio workspace create --capacity-id <id>` (env `FABIO_CAPACITY`) uses this; on failure it reuses the `assign-capacity` error enrichment (teaches `az fabric capacity ...`). Every E2E tutorial starts by creating a workspace on a capacity, so this collapses the two-step create+assign into one.
 - **Capacity assignment is idempotent**: Re-assigning the same capacity succeeds without error.
 - **Identity provisioning is LRO**: `POST /workspaces/{id}/provisionIdentity` uses `poll: true` (may return 202). Deprovision is fire-and-forget.
 - **Identity provisioning response**: Returns `{"applicationId": "<uuid>", "servicePrincipalId": "<uuid>"}`. Re-provisioning is idempotent — returns the same identity without error.

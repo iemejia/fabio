@@ -101,10 +101,14 @@ pub(super) async fn create(
     client: &FabricClient,
     name: &str,
     description: Option<&str>,
+    capacity_id: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({ "displayName": name });
     if let Some(desc) = description {
         body["description"] = Value::from(desc);
+    }
+    if let Some(cap) = capacity_id {
+        body["capacityId"] = Value::from(cap);
     }
     if output::dry_run_guard(cli, "workspace create", &body) {
         return Ok(());
@@ -112,7 +116,13 @@ pub(super) async fn create(
     let data = client
         .post("/workspaces", &body, false)
         .await
-        .map_err(|e| enrich_forbidden(e, "workspace create", "Fabric user (tenant-level)"))?;
+        .map_err(|e| {
+            let e = enrich_forbidden(e, "workspace create", "Fabric user (tenant-level)");
+            match capacity_id {
+                Some(cap) => super::enrich_assign_capacity_error(e, cap),
+                None => e,
+            }
+        })?;
     output::render_object(cli, &data, "id");
     Ok(())
 }

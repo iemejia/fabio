@@ -756,6 +756,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--capacity-id": {
+            "type": "string",
+            "description": "Assign the new workspace to this capacity on creation (Fabric `capacityId`)"
           }
         },
         "mutates": true,

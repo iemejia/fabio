@@ -171,6 +171,66 @@ fn workspace_create_without_description_and_delete() {
         .success();
 }
 
+// `workspace create --capacity-id` (network-free): the request body must carry
+// `capacityId` so the workspace is created directly on the capacity in one step
+// (Fabric `POST /workspaces` accepts `capacityId`), instead of a two-step
+// create + assign-capacity.
+#[test]
+fn workspace_create_capacity_id_dry_run_includes_capacity() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "create",
+            "--name",
+            "fabio-capflag-dryrun",
+            "--capacity-id",
+            "11111111-2222-3333-4444-555555555555",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(
+        data["details"]["capacityId"],
+        "11111111-2222-3333-4444-555555555555"
+    );
+    assert_eq!(data["details"]["displayName"], "fabio-capflag-dryrun");
+}
+
+// `workspace create --capacity-id` (live): the created workspace is assigned to
+// the capacity on creation (the response includes `capacityId`).
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_create_with_capacity_and_delete() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("ws_capflag");
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "create",
+            "--name",
+            &name,
+            "--capacity-id",
+            &cfg.capacity_id,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["displayName"], name);
+    assert_eq!(data["capacityId"], cfg.capacity_id);
+    let ws_id = data["id"].as_str().unwrap().to_string();
+
+    fabio()
+        .args(["workspace", "delete", "--id", &ws_id])
+        .assert()
+        .success();
+}
+
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
