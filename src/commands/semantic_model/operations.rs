@@ -252,8 +252,84 @@ pub(super) async fn query(
         buf
     };
 
+    execute_dax_and_render(
+        cli,
+        client,
+        workspace,
+        id,
+        dax_query.trim(),
+        "semantic-model query",
+    )
+    .await
+}
+
+/// Qualify a group-by column spec for DAX. `Table.Column` → `'Table'[Column]`;
+/// an already-bracketed spec (`'T'[C]` / `T[C]`) is passed through. Single
+/// quotes in the table name are doubled.
+fn qualify_column(spec: &str) -> String {
+    let spec = spec.trim();
+    if spec.contains('[') {
+        return spec.to_string();
+    }
+    if let Some((table, column)) = spec.split_once('.') {
+        let table = table.trim().trim_matches('\'').replace('\'', "''");
+        let column = column.trim().trim_matches(['[', ']']);
+        return format!("'{table}'[{column}]");
+    }
+    // Bare column name — leave as-is (DAX will resolve if unambiguous).
+    spec.to_string()
+}
+
+/// Build an `EVALUATE` DAX query that evaluates one or more measures, optionally
+/// grouped by columns and limited to the top N rows. This is the fabio
+/// equivalent of semantic-link's `fabric.evaluate_measure`.
+fn build_evaluate_measure_dax(
+    measures: &[String],
+    group_by: &[String],
+    top: Option<u32>,
+) -> String {
+    let measure_pairs: Vec<String> = measures
+        .iter()
+        .map(|m| {
+            let name = m.trim().trim_matches(['[', ']']);
+            format!("\"{name}\", [{name}]")
+        })
+        .collect();
+
+    if group_by.is_empty() {
+        // No grouping: a single-row ROW() of the measure values.
+        return format!("EVALUATE ROW({})", measure_pairs.join(", "));
+    }
+
+    let cols: Vec<String> = group_by.iter().map(|c| qualify_column(c)).collect();
+    let summarize = format!(
+        "SUMMARIZECOLUMNS({}, {})",
+        cols.join(", "),
+        measure_pairs.join(", ")
+    );
+
+    top.map_or_else(
+        || format!("EVALUATE {summarize}"),
+        |n| {
+            // Sort by the first measure descending for a meaningful "top N".
+            let first = measures[0].trim().trim_matches(['[', ']']);
+            format!("EVALUATE TOPN({n}, {summarize}, [{first}], DESC)")
+        },
+    )
+}
+
+/// Execute a DAX query via the Power BI `executeQueries` endpoint and render the
+/// first result table as a list (shared by `query` and `evaluate-measure`).
+async fn execute_dax_and_render(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    dax_query: &str,
+    command_name: &str,
+) -> Result<()> {
     let body = serde_json::json!({
-        "queries": [{"query": dax_query.trim()}],
+        "queries": [{"query": dax_query}],
         "serializerSettings": {"includeNulls": true}
     });
 
@@ -263,9 +339,8 @@ pub(super) async fn query(
             &body,
         )
         .await
-        .map_err(|e| enrich_dax_error(enrich_forbidden(e, "semantic-model query", "Viewer")))?;
+        .map_err(|e| enrich_dax_error(enrich_forbidden(e, command_name, "Viewer")))?;
 
-    // Extract rows from the response: results[0].tables[0].rows
     let rows = data
         .get("results")
         .and_then(|r| r.as_array())
@@ -277,7 +352,6 @@ pub(super) async fn query(
         .and_then(Value::as_array);
 
     if let Some(rows) = rows {
-        // Build column names from the first row's keys
         let columns: Vec<&str> = rows
             .first()
             .and_then(Value::as_object)
@@ -293,11 +367,42 @@ pub(super) async fn query(
             None,
         );
     } else {
-        // No rows — might be an error or empty result
         output::render_object(cli, &data, "results");
     }
 
     Ok(())
+}
+
+/// Evaluate one or more measures (optionally grouped) — the fabio equivalent of
+/// semantic-link's `evaluate_measure`. Builds the DAX and runs it.
+pub(super) async fn evaluate_measure(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    measures: &[String],
+    group_by: &[String],
+    top: Option<u32>,
+) -> Result<()> {
+    if measures.is_empty() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "At least one --measure is required.".to_string(),
+            "Example: fabio semantic-model evaluate-measure --id <ID> --measure \"Total Sales\" --group-by Store.Region"
+                .to_string(),
+        )
+        .into());
+    }
+    let dax = build_evaluate_measure_dax(measures, group_by, top);
+    execute_dax_and_render(
+        cli,
+        client,
+        workspace,
+        id,
+        &dax,
+        "semantic-model evaluate-measure",
+    )
+    .await
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -810,6 +915,55 @@ fn enrich_dax_error(err: anyhow::Error) -> anyhow::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn qualify_column_dotted_to_dax() {
+        assert_eq!(qualify_column("Store.Region"), "'Store'[Region]");
+        assert_eq!(qualify_column(" Sales.Amount "), "'Sales'[Amount]");
+    }
+
+    #[test]
+    fn qualify_column_passthrough_bracketed() {
+        assert_eq!(qualify_column("'Store'[Region]"), "'Store'[Region]");
+        assert_eq!(qualify_column("Store[Region]"), "Store[Region]");
+    }
+
+    #[test]
+    fn qualify_column_escapes_quotes_in_table() {
+        assert_eq!(qualify_column("O'Neil.City"), "'O''Neil'[City]");
+    }
+
+    #[test]
+    fn evaluate_measure_dax_no_group_by() {
+        let dax = build_evaluate_measure_dax(&["Total Sales".to_string()], &[], None);
+        assert_eq!(dax, "EVALUATE ROW(\"Total Sales\", [Total Sales])");
+    }
+
+    #[test]
+    fn evaluate_measure_dax_grouped() {
+        let dax = build_evaluate_measure_dax(
+            &["Total Sales".to_string()],
+            &["Store.Region".to_string()],
+            None,
+        );
+        assert_eq!(
+            dax,
+            "EVALUATE SUMMARIZECOLUMNS('Store'[Region], \"Total Sales\", [Total Sales])"
+        );
+    }
+
+    #[test]
+    fn evaluate_measure_dax_multi_measure_and_top() {
+        let dax = build_evaluate_measure_dax(
+            &["Sales".to_string(), "Profit".to_string()],
+            &["Store.Region".to_string(), "Date.Year".to_string()],
+            Some(10),
+        );
+        assert_eq!(
+            dax,
+            "EVALUATE TOPN(10, SUMMARIZECOLUMNS('Store'[Region], 'Date'[Year], \"Sales\", [Sales], \"Profit\", [Profit]), [Sales], DESC)"
+        );
+    }
 
     #[test]
     fn strip_bracket_keys_unwraps_dax_columns() {

@@ -10276,6 +10276,36 @@
           "fabio semantic-model query --workspace $WS --id $SM --dax \"EVALUATE SUMMARIZECOLUMNS('Sales'[Country], \\\"Revenue\\\", SUM('Sales'[Amount]))\""
         ]
       },
+      "evaluate-measure": {
+        "description": "Evaluate one or more measures (optionally grouped by columns) — the fabio equivalent of semantic-link's `evaluate_measure`",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--measure": {
+            "type": "string",
+            "required": true,
+            "description": "Measure name to evaluate (repeatable)"
+          },
+          "--group-by": {
+            "type": "string",
+            "description": "Group-by column as `Table.Column` (repeatable; omit for a single-row total)"
+          },
+          "--top": {
+            "type": "string",
+            "description": "Return only the top N rows (sorted by the first measure, descending)"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
       "bind-connection": {
         "description": "Bind a semantic model to a connection",
         "flags": {

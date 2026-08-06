@@ -300,6 +300,15 @@ tests:
           output.includes('list-registry-versions')
         metric: ml-model-registry-versions-command
 
+  - description: "Evaluate a measure grouped by a column"
+    vars:
+      user_query: "Evaluate the 'Total Sales' measure in semantic model sm-1 (workspace ws-456) broken down by Store.Region"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('evaluate-measure') || output.includes('SUMMARIZECOLUMNS')
+        metric: evaluate-measure-command
+
   # ============================================================
   # AUTHENTICATION
   # ============================================================

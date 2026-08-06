@@ -206,6 +206,29 @@ pub enum SemanticModelCommand {
         #[arg(long, conflicts_with = "dax")]
         file: Option<String>,
     },
+    /// Evaluate one or more measures (optionally grouped by columns) — the fabio equivalent of semantic-link's `evaluate_measure`
+    #[command(display_order = 9)]
+    EvaluateMeasure {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Measure name to evaluate (repeatable)
+        #[arg(long = "measure", required = true)]
+        measures: Vec<String>,
+
+        /// Group-by column as `Table.Column` (repeatable; omit for a single-row total)
+        #[arg(long = "group-by")]
+        group_by: Vec<String>,
+
+        /// Return only the top N rows (sorted by the first measure, descending)
+        #[arg(long)]
+        top: Option<u32>,
+    },
     /// Bind a semantic model to a connection
     #[command(name = "bind-connection", display_order = 10)]
     BindConnection {
@@ -1960,6 +1983,15 @@ pub async fn execute(
             dax,
             file,
         } => operations::query(cli, client, workspace, id, dax.as_deref(), file.as_deref()).await,
+        SemanticModelCommand::EvaluateMeasure {
+            workspace,
+            id,
+            measures,
+            group_by,
+            top,
+        } => {
+            operations::evaluate_measure(cli, client, workspace, id, measures, group_by, *top).await
+        }
         SemanticModelCommand::BindConnection {
             workspace,
             id,

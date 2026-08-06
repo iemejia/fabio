@@ -70,6 +70,7 @@ Manage semantic models (Power BI datasets)
 | `fabio semantic-model delete-role` | yes | Delete a security role (and its RLS filters) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio semantic-model delete-table` | yes | Delete a table by editing the model definition. CASCADES: also removes relationships and role RLS filters that reference the table. Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio semantic-model delete-user` | yes | Remove a user from a semantic model |
+| `fabio semantic-model evaluate-measure` | no | Evaluate one or more measures (optionally grouped by columns) — the fabio equivalent of semantic-link's `evaluate_measure` |
 | `fabio semantic-model export-pbix` | no | Export a semantic model as a .pbix file |
 | `fabio semantic-model generate` | yes | Generate a Direct Lake semantic model from a lakehouse or warehouse (reads the SQL analytics endpoint schema and picks tables, like the Fabric portal's "New semantic model") |
 | `fabio semantic-model get-bound-gateway-datasources` | no | List the gateway datasources bound to a semantic model |

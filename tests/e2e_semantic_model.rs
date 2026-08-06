@@ -3658,6 +3658,56 @@ fn semantic_model_query_not_found() {
 // ---------------------------------------------------------------------------
 
 #[test]
+fn semantic_model_evaluate_measure_requires_measure() {
+    // --measure is required.
+    fabio()
+        .args([
+            "semantic-model",
+            "evaluate-measure",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with a semantic model that has a measure"]
+#[serial]
+fn semantic_model_evaluate_measure_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let (Ok(model_id), Ok(measure), Ok(group_by)) = (
+        std::env::var("FABIO_TEST_SEMANTIC_MODEL"),
+        std::env::var("FABIO_TEST_SM_MEASURE"),
+        std::env::var("FABIO_TEST_SM_GROUP_BY"),
+    ) else {
+        return; // skip when not configured
+    };
+
+    // Grouped evaluation returns a list.
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "evaluate-measure",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &model_id,
+            "--measure",
+            &measure,
+            "--group-by",
+            &group_by,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(extract_data(&json).is_array());
+}
+
+#[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn semantic_model_query_csv_output() {
