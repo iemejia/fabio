@@ -70,18 +70,9 @@ pub(super) async fn queries_history(
     workspace: &str,
     id: &str,
     top: u32,
+    label: Option<&str>,
 ) -> Result<()> {
-    let sql = format!(
-        "SELECT TOP ({top}) \
-         command, status, \
-         total_elapsed_time_ms, \
-         login_name, \
-         start_time, end_time, \
-         row_count, \
-         query_hash \
-         FROM queryinsights.exec_requests_history \
-         ORDER BY start_time DESC"
-    );
+    let sql = crate::commands::tds_utils::queries_history_sql(top, label);
     super::execute_insights_query(cli, client, workspace, id, &sql).await
 }
 

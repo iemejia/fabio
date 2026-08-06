@@ -362,6 +362,10 @@ pub enum WarehouseCommand {
         /// Maximum rows to return (default: 100)
         #[arg(long, default_value = "100")]
         top: u32,
+
+        /// Filter to queries tagged with this OPTION (LABEL = '...') value
+        #[arg(long)]
+        label: Option<String>,
     },
     /// Kill a running query session by session ID
     #[command(display_order = 44)]
@@ -676,8 +680,21 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
             ))
             .await
         }
-        WarehouseCommand::QueriesHistory { workspace, id, top } => {
-            Box::pin(insights::queries_history(cli, client, workspace, id, *top)).await
+        WarehouseCommand::QueriesHistory {
+            workspace,
+            id,
+            top,
+            label,
+        } => {
+            Box::pin(insights::queries_history(
+                cli,
+                client,
+                workspace,
+                id,
+                *top,
+                label.as_deref(),
+            ))
+            .await
         }
         WarehouseCommand::QueriesKill {
             workspace,

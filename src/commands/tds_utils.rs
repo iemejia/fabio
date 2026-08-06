@@ -98,6 +98,37 @@ pub fn pool_insights_sql(top: u32) -> String {
     )
 }
 
+/// Build the `queries-history` SQL over `queryinsights.exec_requests_history`.
+///
+/// Includes the query `label` and the performance columns
+/// (`allocated_cpu_time_ms`, `data_scanned_remote_storage_mb`,
+/// `data_scanned_memory_mb`, `data_scanned_disk_mb`) needed to compare query
+/// executions (e.g. to assess data-clustering effectiveness by label). When
+/// `label` is provided it filters `WHERE label = N'...'` (single quotes are
+/// doubled to prevent injection).
+pub fn queries_history_sql(top: u32, label: Option<&str>) -> String {
+    let where_clause = label.map_or_else(String::new, |l| {
+        let escaped = l.replace('\'', "''");
+        format!(" WHERE label = N'{escaped}'")
+    });
+    format!(
+        "SELECT TOP ({top}) \
+         command, status, \
+         label, \
+         total_elapsed_time_ms, \
+         allocated_cpu_time_ms, \
+         data_scanned_remote_storage_mb, \
+         data_scanned_memory_mb, \
+         data_scanned_disk_mb, \
+         login_name, \
+         start_time, end_time, \
+         row_count, \
+         query_hash \
+         FROM queryinsights.exec_requests_history{where_clause} \
+         ORDER BY start_time DESC"
+    )
+}
+
 /// Parse a connection string into (server, database).
 pub fn parse_connection_string(connection_string: &str) -> (String, String) {
     let cleaned = connection_string
@@ -639,5 +670,30 @@ mod tests {
         assert!(sql.contains("ORDER BY timestamp DESC"));
         assert!(sql.contains("is_pool_under_pressure"));
         assert!(sql.contains("max_resource_percentage"));
+    }
+
+    #[test]
+    fn queries_history_sql_no_label() {
+        let sql = queries_history_sql(50, None);
+        assert!(sql.contains("SELECT TOP (50)"));
+        assert!(sql.contains("label,"));
+        assert!(sql.contains("allocated_cpu_time_ms,"));
+        assert!(sql.contains("data_scanned_remote_storage_mb,"));
+        assert!(sql.contains("FROM queryinsights.exec_requests_history ORDER BY"));
+        assert!(!sql.contains("WHERE"));
+    }
+
+    #[test]
+    fn queries_history_sql_with_label() {
+        let sql = queries_history_sql(10, Some("Clustered"));
+        assert!(sql.contains("WHERE label = N'Clustered'"));
+        assert!(sql.contains("ORDER BY start_time DESC"));
+    }
+
+    #[test]
+    fn queries_history_sql_escapes_label_quotes() {
+        let sql = queries_history_sql(10, Some("O'Brien"));
+        // Single quote is doubled to prevent injection.
+        assert!(sql.contains("WHERE label = N'O''Brien'"));
     }
 }

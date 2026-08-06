@@ -204,6 +204,10 @@ pub enum SqlEndpointCommand {
         /// Maximum rows to return (default: 100)
         #[arg(long, default_value = "100")]
         top: u32,
+
+        /// Filter to queries tagged with this OPTION (LABEL = '...') value
+        #[arg(long)]
+        label: Option<String>,
     },
     /// Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`)
     #[command(display_order = 24)]
@@ -288,8 +292,21 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlEndpointComm
         SqlEndpointCommand::QueriesLongRunning { workspace, id, top } => {
             Box::pin(insights_long_running(cli, client, workspace, id, *top)).await
         }
-        SqlEndpointCommand::QueriesHistory { workspace, id, top } => {
-            Box::pin(insights_history(cli, client, workspace, id, *top)).await
+        SqlEndpointCommand::QueriesHistory {
+            workspace,
+            id,
+            top,
+            label,
+        } => {
+            Box::pin(insights_history(
+                cli,
+                client,
+                workspace,
+                id,
+                *top,
+                label.as_deref(),
+            ))
+            .await
         }
         SqlEndpointCommand::PoolInsights { workspace, id, top } => {
             Box::pin(insights_pool(cli, client, workspace, id, *top)).await
@@ -760,18 +777,9 @@ async fn insights_history(
     workspace: &str,
     id: &str,
     top: u32,
+    label: Option<&str>,
 ) -> Result<()> {
-    let sql = format!(
-        "SELECT TOP ({top}) \
-         command, status, \
-         total_elapsed_time_ms, \
-         login_name, \
-         start_time, end_time, \
-         row_count, \
-         query_hash \
-         FROM queryinsights.exec_requests_history \
-         ORDER BY start_time DESC"
-    );
+    let sql = crate::commands::tds_utils::queries_history_sql(top, label);
     Box::pin(execute_endpoint_query(cli, client, workspace, id, &sql)).await
 }
 

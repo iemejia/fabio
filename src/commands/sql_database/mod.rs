@@ -353,6 +353,10 @@ pub enum SqlDatabaseCommand {
         /// Number of rows to return
         #[arg(long, default_value = "100")]
         top: u32,
+
+        /// Filter to queries tagged with this OPTION (LABEL = '...') value
+        #[arg(long)]
+        label: Option<String>,
     },
     /// Kill a running query session by session ID
     #[command(display_order = 72)]
@@ -605,9 +609,12 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlDatabaseComm
         SqlDatabaseCommand::QueriesRunning { workspace, id } => {
             insights::queries_running(cli, client, workspace, id).await
         }
-        SqlDatabaseCommand::QueriesHistory { workspace, id, top } => {
-            insights::queries_history(cli, client, workspace, id, *top).await
-        }
+        SqlDatabaseCommand::QueriesHistory {
+            workspace,
+            id,
+            top,
+            label,
+        } => insights::queries_history(cli, client, workspace, id, *top, label.as_deref()).await,
         SqlDatabaseCommand::QueriesKill {
             workspace,
             id,

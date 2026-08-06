@@ -217,6 +217,10 @@ pub enum LakehouseCommand {
         /// Maximum rows to return (default: 100)
         #[arg(long, default_value = "100")]
         top: u32,
+
+        /// Filter to queries tagged with this OPTION (LABEL = '...') value
+        #[arg(long)]
+        label: Option<String>,
     },
     /// Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`)
     #[command(display_order = 9)]
@@ -1384,9 +1388,12 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
         LakehouseCommand::QueriesLongRunning { workspace, id, top } => {
             insights::queries_long_running(cli, client, workspace, id, *top).await
         }
-        LakehouseCommand::QueriesHistory { workspace, id, top } => {
-            insights::queries_history(cli, client, workspace, id, *top).await
-        }
+        LakehouseCommand::QueriesHistory {
+            workspace,
+            id,
+            top,
+            label,
+        } => insights::queries_history(cli, client, workspace, id, *top, label.as_deref()).await,
         LakehouseCommand::PoolInsights { workspace, id, top } => {
             insights::pool_insights(cli, client, workspace, id, *top).await
         }

@@ -2662,6 +2662,10 @@
           "--top": {
             "type": "string",
             "description": "Maximum rows to return (default: 100)"
+          },
+          "--label": {
+            "type": "string",
+            "description": "Filter to queries tagged with this OPTION (LABEL = '...') value"
           }
         },
         "mutates": true,
@@ -5472,6 +5476,10 @@
           "--top": {
             "type": "string",
             "description": "Maximum rows to return (default: 100)"
+          },
+          "--label": {
+            "type": "string",
+            "description": "Filter to queries tagged with this OPTION (LABEL = '...') value"
           }
         },
         "mutates": true,
@@ -6128,6 +6136,10 @@
           "--top": {
             "type": "string",
             "description": "Number of rows to return"
+          },
+          "--label": {
+            "type": "string",
+            "description": "Filter to queries tagged with this OPTION (LABEL = '...') value"
           }
         },
         "mutates": true,
@@ -6551,6 +6563,10 @@
           "--top": {
             "type": "string",
             "description": "Maximum rows to return (default: 100)"
+          },
+          "--label": {
+            "type": "string",
+            "description": "Filter to queries tagged with this OPTION (LABEL = '...') value"
           }
         },
         "mutates": true,
