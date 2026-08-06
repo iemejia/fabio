@@ -437,10 +437,10 @@ async fn update_definition(
             .into());
         }
     };
-    let encoded = BASE64.encode(script.as_bytes());
-    let body = serde_json::json!({
-        "definition": { "parts": [{ "path": "variables.json", "payload": encoded, "payloadType": "InlineBase64" }] }
-    });
+    // Accept EITHER a full definition envelope (JSON with definition.parts —
+    // needed to author settings.json + valueSets/* alongside variables.json) OR
+    // a raw variables.json (wrapped as the single variables.json part).
+    let body = crate::definition_spec::build_update_definition_body(&script, "variables.json");
     if output::dry_run_guard(
         cli,
         "variable-library update-definition",
@@ -591,4 +591,34 @@ async fn activate_value_set(
 
     output::render_object(cli, &data, "id");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn update_definition_wraps_raw_variables_json() {
+        // A raw variables.json is wrapped as a single variables.json part.
+        let raw = r#"{"variables":[{"name":"x","type":"String","value":"1"}]}"#;
+        let body = crate::definition_spec::build_update_definition_body(raw, "variables.json");
+        let parts = body["definition"]["parts"].as_array().unwrap();
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0]["path"], "variables.json");
+    }
+
+    #[test]
+    fn update_definition_passes_through_multipart_envelope() {
+        // A full envelope (variables.json + settings.json + valueSets/*) needed to
+        // author alternate value sets is passed through verbatim.
+        let env = r#"{"definition":{"parts":[
+            {"path":"variables.json","payload":"e30=","payloadType":"InlineBase64"},
+            {"path":"settings.json","payload":"e30=","payloadType":"InlineBase64"},
+            {"path":"valueSets/Prod.json","payload":"e30=","payloadType":"InlineBase64"}
+        ]}}"#;
+        let body = crate::definition_spec::build_update_definition_body(env, "variables.json");
+        let parts = body["definition"]["parts"].as_array().unwrap();
+        assert_eq!(parts.len(), 3);
+        let paths: Vec<&str> = parts.iter().filter_map(|p| p["path"].as_str()).collect();
+        assert!(paths.contains(&"settings.json"));
+        assert!(paths.contains(&"valueSets/Prod.json"));
+    }
 }

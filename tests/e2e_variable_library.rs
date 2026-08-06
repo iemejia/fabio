@@ -446,3 +446,126 @@ fn variable_library_list_value_sets_default_only() {
         .assert()
         .success();
 }
+
+/// Live: author a multi-part variable-library definition (variables.json +
+/// settings.json + an alternate valueSets/*.json) through
+/// `variable-library update-definition --file` — the envelope-passthrough path.
+/// Previously that command wrapped the file as a single variables.json, so
+/// alternate value sets could not be authored via the CLI. Reproduces the
+/// Variable Library tutorial's value-set creation.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial_test::serial]
+fn variable_library_update_definition_multipart_via_cli() {
+    let cfg = TestConfig::from_env();
+    let vl_name = unique_name("fabio-test-vl-mp");
+
+    let assert = fabio()
+        .args([
+            "variable-library",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &vl_name,
+        ])
+        .assert()
+        .success();
+    let vl_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let sb = "https://developer.microsoft.com/json-schemas/fabric/item/variableLibrary/definition";
+    let variables = serde_json::json!({
+        "$schema": format!("{sb}/variables/1.0.0/schema.json"),
+        "variables": [{"name": "Env", "type": "String", "value": "dev"}]
+    });
+    let settings = serde_json::json!({
+        "$schema": format!("{sb}/settings/1.0.0/schema.json"),
+        "valueSetsOrder": ["Prod"]
+    });
+    let prod = serde_json::json!({
+        "$schema": format!("{sb}/valueSet/1.0.0/schema.json"),
+        "name": "Prod",
+        "variableOverrides": [{"name": "Env", "value": "prod"}]
+    });
+    let enc = |v: &serde_json::Value| BASE64.encode(serde_json::to_vec(v).unwrap());
+    let envelope = serde_json::json!({
+        "definition": {"parts": [
+            {"path": "variables.json", "payload": enc(&variables), "payloadType": "InlineBase64"},
+            {"path": "settings.json", "payload": enc(&settings), "payloadType": "InlineBase64"},
+            {"path": "valueSets/Prod.json", "payload": enc(&prod), "payloadType": "InlineBase64"},
+        ]}
+    });
+    let dir = tempfile::TempDir::new().unwrap();
+    let env_path = dir.path().join("vlenv.json");
+    std::fs::write(&env_path, serde_json::to_vec(&envelope).unwrap()).unwrap();
+
+    fabio()
+        .args([
+            "variable-library",
+            "update-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &vl_id,
+            "--file",
+            env_path.to_str().unwrap(),
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    // The alternate value set must now exist (proving the multi-part envelope
+    // reached the server, not a single wrapped variables.json).
+    let assert = fabio()
+        .args([
+            "variable-library",
+            "list-value-sets",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &vl_id,
+        ])
+        .assert()
+        .success();
+    let names: Vec<String> = extract_data(&parse_json(&assert))
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|v| v["name"].as_str().map(str::to_string))
+        .collect();
+    assert!(
+        names.iter().any(|n| n == "Prod"),
+        "expected a 'Prod' value set, got {names:?}"
+    );
+
+    // Activate it.
+    fabio()
+        .args([
+            "variable-library",
+            "activate-value-set",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &vl_id,
+            "--value-set",
+            "Prod",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    fabio()
+        .args([
+            "variable-library",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &vl_id,
+        ])
+        .assert()
+        .success();
+}
