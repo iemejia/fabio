@@ -96,7 +96,8 @@
     "AnomalyDetector": {
       "requiredParts": ["Configurations.json"],
       "optionalParts": [".platform"],
-      "note": "Configurations.json holds the anomaly detector configuration."
+      "definitionFormat": "AnomalyDetectorV1",
+      "note": "Configurations.json holds the anomaly detector configuration: {\"$schema\":\"https://json-schema.org/draft-07/schema#\", \"univariateConfigurations\":[...]}. A fresh detector starts with an empty univariateConfigurations array. The per-entry config (value-to-watch column, group-by columns, timestamp column, detection model) is authored in the Fabric portal's 'Detect anomalies' flow — its schema is NOT published (a hand-crafted entry is rejected server-side with InternalError), and the 'Analyze my data' model-recommendation + results are portal/compute-only. CRUD + get/update-definition (empty/round-trip) work over REST."
     },
     "EventSchemaSet": {
       "requiredParts": ["EventSchemaSetDefinition.json"],
