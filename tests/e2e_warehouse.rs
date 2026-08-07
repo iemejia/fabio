@@ -1033,3 +1033,27 @@ fn warehouse_restore_to_point_dry_run_needs_no_name() {
     // No bogus warehouse-name body field.
     assert!(details.get("restoreToWarehouseName").is_none());
 }
+
+#[test]
+fn warehouse_update_restore_point_dry_run_uses_display_name() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "update-restore-point",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+            "--restore-point-id",
+            "1786086539000",
+            "--name",
+            "Renamed",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let details = &extract_data(&json)["details"];
+    assert_eq!(details["displayName"], "Renamed");
+    assert!(details.get("restorePointLabel").is_none());
+}

@@ -5348,7 +5348,11 @@
           },
           "--name": {
             "type": "string",
-            "description": "New label for the restore point"
+            "description": "New display name for the restore point"
+          },
+          "--description": {
+            "type": "string",
+            "description": "New description for the restore point"
           }
         },
         "mutates": true,

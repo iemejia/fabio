@@ -25,8 +25,8 @@ pub(super) async fn list_restore_points(
     output::render_list_with_token(
         cli,
         &resp.items,
-        &["restorePointLabel", "id", "createdDateTime"],
-        &["LABEL", "ID", "CREATED"],
+        &["displayName", "id", "creationMode", "description"],
+        &["DISPLAY NAME", "ID", "CREATION MODE", "DESCRIPTION"],
         "id",
         resp.continuation_token.as_deref(),
     );
@@ -120,10 +120,16 @@ pub(super) async fn update_restore_point(
     id: &str,
     restore_point_id: &str,
     name: Option<&str>,
+    description: Option<&str>,
 ) -> Result<()> {
+    // UpdateRestorePointRequest is {displayName, description} — NOT
+    // {restorePointLabel} (silently ignored).
     let mut body = serde_json::json!({});
     if let Some(n) = name {
-        body["restorePointLabel"] = Value::from(n);
+        body["displayName"] = Value::from(n);
+    }
+    if let Some(d) = description {
+        body["description"] = Value::from(d);
     }
 
     if output::dry_run_guard(cli, "warehouse update-restore-point", &body) {

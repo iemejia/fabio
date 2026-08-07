@@ -271,9 +271,13 @@ pub enum WarehouseCommand {
         #[arg(long)]
         restore_point_id: String,
 
-        /// New label for the restore point
+        /// New display name for the restore point
         #[arg(long)]
         name: Option<String>,
+
+        /// New description for the restore point
+        #[arg(long)]
+        description: Option<String>,
     },
     /// Delete a restore point
     #[command(display_order = 34)]
@@ -650,6 +654,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
             id,
             restore_point_id,
             name,
+            description,
         } => {
             restore_points::update_restore_point(
                 cli,
@@ -658,6 +663,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
                 id,
                 restore_point_id,
                 name.as_deref(),
+                description.as_deref(),
             )
             .await
         }
