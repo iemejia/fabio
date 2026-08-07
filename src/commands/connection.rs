@@ -602,7 +602,56 @@ async fn update(
         );
     }
 
-    let mut body = json!({});
+    // `UpdateConnectionRequest` is a discriminated union on `connectivityType`
+    // (a REQUIRED field). Fetch the current connection so the PATCH body carries
+    // the correct discriminator — omitting it fails with `InvalidInput`.
+    let current = client.get(&format!("/connections/{id}")).await?;
+    let connectivity_type = current["connectivityType"]
+        .as_str()
+        .unwrap_or("ShareableCloud")
+        .to_string();
+
+    let body = build_connection_update_body(
+        &connectivity_type,
+        name,
+        privacy_level,
+        credential_type,
+        credentials,
+    )?;
+
+    if cli.dry_run {
+        // Redact credential values from the dry-run preview
+        let mut safe_body = body.clone();
+        if let Some(cred) = safe_body.get_mut("credentialDetails")
+            && let Some(creds) = cred.get_mut("credentials")
+        {
+            *creds = serde_json::json!("[REDACTED]");
+        }
+        let preview = json!({
+            "status": "dry_run",
+            "message": format!("Would update connection '{id}'"),
+            "updates": safe_body,
+        });
+        output::render_object(cli, &preview, "status");
+        return Ok(());
+    }
+
+    let data = client.patch(&format!("/connections/{id}"), &body).await?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+/// Build the `PATCH /connections/{id}` body. The request is a discriminated
+/// union on `connectivityType` (a REQUIRED field), so the caller must pass the
+/// connection's current type; omitting it fails with `InvalidInput`.
+fn build_connection_update_body(
+    connectivity_type: &str,
+    name: Option<&str>,
+    privacy_level: Option<&str>,
+    credential_type: Option<&str>,
+    credentials: Option<&str>,
+) -> Result<Value> {
+    let mut body = json!({ "connectivityType": connectivity_type });
     if let Some(n) = name {
         body["displayName"] = json!(n);
     }
@@ -634,27 +683,7 @@ async fn update(
         }
         body["credentialDetails"] = cred_details;
     }
-
-    if cli.dry_run {
-        // Redact credential values from the dry-run preview
-        let mut safe_body = body.clone();
-        if let Some(cred) = safe_body.get_mut("credentialDetails")
-            && let Some(creds) = cred.get_mut("credentials")
-        {
-            *creds = serde_json::json!("[REDACTED]");
-        }
-        let preview = json!({
-            "status": "dry_run",
-            "message": format!("Would update connection '{id}'"),
-            "updates": safe_body,
-        });
-        output::render_object(cli, &preview, "status");
-        return Ok(());
-    }
-
-    let data = client.patch(&format!("/connections/{id}"), &body).await?;
-    output::render_object(cli, &data, "id");
-    Ok(())
+    Ok(body)
 }
 
 async fn list_supported_types(cli: &Cli, client: &FabricClient) -> Result<()> {
@@ -829,6 +858,49 @@ async fn test_connection(cli: &Cli, client: &FabricClient, id: &str) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn update_body_always_includes_connectivity_type() {
+        // The PATCH body is a discriminated union on connectivityType — it must
+        // always be present, even when only unrelated fields change.
+        let body =
+            build_connection_update_body("ShareableCloud", Some("New Name"), None, None, None)
+                .unwrap();
+        assert_eq!(body["connectivityType"], "ShareableCloud");
+        assert_eq!(body["displayName"], "New Name");
+    }
+
+    #[test]
+    fn update_body_sets_privacy_level() {
+        let body = build_connection_update_body(
+            "OnPremisesGateway",
+            None,
+            Some("Organizational"),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(body["connectivityType"], "OnPremisesGateway");
+        assert_eq!(body["privacyLevel"], "Organizational");
+        assert!(body.get("displayName").is_none());
+    }
+
+    #[test]
+    fn update_body_wraps_credential_type() {
+        let body = build_connection_update_body("ShareableCloud", None, None, Some("Basic"), None)
+            .unwrap();
+        assert_eq!(
+            body["credentialDetails"]["credentials"]["credentialType"],
+            "Basic"
+        );
+    }
+
+    #[test]
+    fn update_body_rejects_invalid_credentials_json() {
+        assert!(
+            build_connection_update_body("ShareableCloud", None, None, None, Some("{bad")).is_err()
+        );
+    }
 
     #[test]
     fn gateway_id_required_for_virtual_network_gateway() {
