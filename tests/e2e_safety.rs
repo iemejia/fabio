@@ -55,6 +55,55 @@ fn readonly_blocks_mutations() {
 }
 
 #[test]
+fn readonly_blocks_onelake_writes_and_job_triggers() {
+    // Regression: OneLake data-plane writes (upload/copy-file/create-directory)
+    // and job triggers (notebook run) previously bypassed --readonly because
+    // their client methods didn't call guard_readonly.
+    let ws = "00000000-0000-0000-0000-000000000000";
+    let id = "11111111-1111-1111-1111-111111111111";
+    let cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--readonly",
+            "lakehouse",
+            "create-directory",
+            "--workspace",
+            ws,
+            "--id",
+            id,
+            "--path",
+            "Files/newdir",
+        ],
+        vec![
+            "--readonly",
+            "notebook",
+            "run",
+            "--workspace",
+            ws,
+            "--id",
+            id,
+        ],
+        vec![
+            "--readonly",
+            "copy-job",
+            "run",
+            "--workspace",
+            ws,
+            "--id",
+            id,
+        ],
+    ];
+    for args in cases {
+        let assert = fabio().args(&args).assert().failure();
+        let json = parse_stderr_error(&assert);
+        assert_eq!(
+            json["error"]["code"].as_str().unwrap(),
+            "READONLY_MODE",
+            "{args:?} must be blocked by --readonly"
+        );
+    }
+}
+
+#[test]
 fn readonly_env_var() {
     // FABIO_READONLY=true should have the same effect as --readonly flag.
     // (clap bool flags require "true"/"false" string values from env vars)

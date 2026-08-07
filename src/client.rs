@@ -611,6 +611,7 @@ impl FabricClient {
     ) -> Result<Value> {
         validate_uuid(workspace, "workspace")?;
         validate_uuid(item, "item")?;
+        self.guard_readonly("PUT", &format!("onelake:{item}/{path}"))?;
         let mut token = self.require_storage_auth().await?;
         let encoded_path = encode_onelake_path(path);
         let base = self.onelake_dfs_url(workspace, &format!("{item}/{encoded_path}"));
@@ -978,6 +979,7 @@ impl FabricClient {
         validate_uuid(src_item, "source-item")?;
         validate_uuid(dst_workspace, "dest-workspace")?;
         validate_uuid(dst_item, "dest-item")?;
+        self.guard_readonly("PUT", &format!("onelake-copy:{dst_item}/{dst_path}"))?;
         let token = self.require_storage_auth().await?;
         let source_url = self.onelake_blob_url(
             src_workspace,
@@ -1059,6 +1061,7 @@ impl FabricClient {
     ) -> Result<Option<Value>> {
         validate_uuid(workspace, "workspace")?;
         validate_uuid(item, "item")?;
+        self.guard_readonly("PUT", &format!("onelake-rename:{item}/{dst_path}"))?;
         let token = self.require_storage_auth().await?;
         let dst_encoded = encode_onelake_path(dst_path);
         let src_encoded = encode_onelake_path(src_path);
@@ -2731,6 +2734,7 @@ impl FabricClient {
     ) -> Result<Value> {
         validate_uuid(workspace, "workspace")?;
         validate_uuid(item, "item")?;
+        self.guard_readonly("PUT", &format!("onelake-mkdir:{item}/{path}"))?;
         let token = self.require_storage_auth().await?;
         let encoded_path = encode_onelake_path(path);
         let url = self.onelake_dfs_url(
@@ -2840,6 +2844,7 @@ impl FabricClient {
         item_id: &str,
         body: Option<&Value>,
     ) -> Result<String> {
+        self.guard_readonly("POST", &format!("run-notebook:{item_id}"))?;
         let token = self.require_auth().await?;
         let url = self.fabric_url(&format!(
             "/workspaces/{workspace}/items/{item_id}/jobs/instances?jobType=RunNotebook"
@@ -2890,6 +2895,7 @@ impl FabricClient {
         job_type: &str,
         execution_data: Option<&Value>,
     ) -> Result<String> {
+        self.guard_readonly("POST", &format!("trigger-job:{item_id}?jobType={job_type}"))?;
         let token = self.require_auth().await?;
         let url = self.fabric_url(&format!(
             "/workspaces/{workspace}/items/{item_id}/jobs/instances?jobType={job_type}"
@@ -2957,6 +2963,7 @@ impl FabricClient {
     /// Trigger a job at a specific URL path (for item types that use path-based
     /// job endpoints instead of `?jobType=` query parameter).
     pub async fn trigger_item_job_at(&self, path: &str, body: Option<&Value>) -> Result<String> {
+        self.guard_readonly("POST", path)?;
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
