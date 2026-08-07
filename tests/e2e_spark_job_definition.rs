@@ -134,6 +134,29 @@ fn spark_job_definition_dry_run_create() {
     assert_eq!(json["data"]["would_execute"], "spark-job-definition create");
 }
 
+#[test]
+fn spark_job_definition_run_dry_run() {
+    // Offline: dry-run short-circuits before the job-instance trigger. Guards the
+    // run path that reads the job id from the 202 Location header (was: empty body
+    // id → --wait polled nothing and always timed out).
+    let assert = fabio()
+        .args([
+            "spark-job-definition",
+            "run",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["data"]["dry_run"], true);
+    assert_eq!(json["data"]["would_execute"], "spark-job-definition run");
+}
+
 // ---------------------------------------------------------------------------
 // Livy sessions (spec parity with notebook/lakehouse/spark)
 // ---------------------------------------------------------------------------

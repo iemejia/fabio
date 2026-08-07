@@ -612,23 +612,17 @@ async fn run(
         return Ok(());
     }
 
-    let data = client
-        .post(
-            &format!("/workspaces/{workspace}/items/{id}/jobs/instances?jobType=sparkjob"),
-            &serde_json::json!({}),
-            false,
-        )
+    // The job-instance trigger returns 202 with an EMPTY body and the new
+    // instance URL in the `Location` header, so the id must be read from that
+    // header (via trigger_item_job), NOT from the response body.
+    let job_id = client
+        .trigger_item_job(workspace, id, "sparkjob", None)
         .await
         .map_err(|e| enrich_forbidden(e, "spark-job-definition run", "Contributor"))?;
 
-    let job_id = data
-        .get("id")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .to_owned();
-
     if !wait {
-        output::render_object(cli, &data, "id");
+        let obj = serde_json::json!({ "itemId": id, "jobInstanceId": job_id, "status": "started" });
+        output::render_object(cli, &obj, "status");
         return Ok(());
     }
 
