@@ -204,7 +204,7 @@ fn job_scheduler_create_schedule_dry_run() {
             "--job-type",
             "RunNotebook",
             "--config",
-            r#"{"type":"Cron","expression":"0 0 * * *","timezone":"UTC"}"#,
+            r#"{"type":"Cron","startDateTime":"2026-01-01T00:00:00","endDateTime":"2026-12-31T23:59:00","localTimeZoneId":"UTC","interval":10}"#,
             "--dry-run",
         ])
         .assert()
@@ -213,6 +213,39 @@ fn job_scheduler_create_schedule_dry_run() {
     let json = parse_json(&output);
     let data = extract_data(&json);
     assert_eq!(data["dry_run"], true);
+}
+
+// The schedule config must be NESTED under `configuration` — the API rejects a
+// flat/top-level spread with InvalidInput. Offline dry-run regression.
+#[test]
+fn job_scheduler_create_schedule_nests_configuration() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "job-scheduler",
+            "create-schedule",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--job-type",
+            "RunNotebook",
+            "--enabled",
+            "--config",
+            r#"{"type":"Cron","startDateTime":"2026-01-01T00:00:00","endDateTime":"2026-12-31T23:59:00","localTimeZoneId":"UTC","interval":10}"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    let details = &data["details"];
+    assert_eq!(details["enabled"], true);
+    assert_eq!(details["configuration"]["type"], "Cron");
+    assert_eq!(details["configuration"]["interval"], 10);
+    // Must NOT be spread at the top level.
+    assert!(details.get("type").is_none());
+    assert!(details.get("interval").is_none());
 }
 
 #[test]

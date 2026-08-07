@@ -154,8 +154,11 @@ pub enum JobSchedulerCommand {
         #[arg(long, default_value_t = true)]
         enabled: bool,
 
-        /// Schedule configuration as JSON (cron or recurrence)
-        /// Example: '{"type":"Cron","expression":"0 0 * * *","timezone":"UTC"}'
+        /// Schedule `configuration` object as JSON. Required fields: `type`
+        /// (Cron|Daily|Weekly|Monthly), `startDateTime`, `endDateTime`,
+        /// `localTimeZoneId`; plus per-type: Cron→`interval`, Daily→`times[]`,
+        /// Weekly→`times[]`+`weekdays[]`. Example:
+        /// '{"type":"Cron","startDateTime":"2026-01-01T00:00:00","endDateTime":"2026-12-31T23:59:00","localTimeZoneId":"UTC","interval":10}'
         #[arg(long)]
         config: String,
     },
@@ -622,6 +625,17 @@ async fn get_schedule(
     Ok(())
 }
 
+/// Normalize a user-supplied `--config` value into the schedule `configuration`
+/// object the API expects. Accepts either the bare configuration object
+/// (`{type, startDateTime, endDateTime, localTimeZoneId, ...}`) or a
+/// `{"configuration": {...}}` wrapper (unwrapped for convenience).
+fn schedule_configuration_from(config: Value) -> Value {
+    match config.get("configuration") {
+        Some(inner) if inner.is_object() => inner.clone(),
+        _ => config,
+    }
+}
+
 async fn create_schedule(
     cli: &Cli,
     client: &FabricClient,
@@ -632,19 +646,15 @@ async fn create_schedule(
     config: &str,
 ) -> Result<()> {
     let config_value: Value = serde_json::from_str(config)
-        .map_err(|e| anyhow::anyhow!("Invalid --config JSON: {e}. Expected schedule configuration, e.g.: {{\"type\":\"Cron\",\"expression\":\"0 0 * * *\",\"timezone\":\"UTC\"}}"))?;
+        .map_err(|e| anyhow::anyhow!("Invalid --config JSON: {e}. Expected a schedule configuration, e.g.: {{\"type\":\"Cron\",\"startDateTime\":\"2026-01-01T00:00:00\",\"endDateTime\":\"2026-12-31T23:59:00\",\"localTimeZoneId\":\"UTC\",\"interval\":10}}"))?;
 
-    let mut body = serde_json::json!({
+    // The API requires the config NESTED under `configuration`
+    // ({enabled, configuration:{type, startDateTime, endDateTime,
+    // localTimeZoneId, ...}}) — a flat/top-level spread is rejected (InvalidInput).
+    let body = serde_json::json!({
         "enabled": enabled,
+        "configuration": schedule_configuration_from(config_value),
     });
-    // Merge config into body at top-level (Fabric API expects flat schedule object)
-    if let Some(config_obj) = config_value.as_object() {
-        for (k, v) in config_obj {
-            body[k] = v.clone();
-        }
-    } else {
-        body["configuration"] = config_value;
-    }
 
     if output::dry_run_guard(cli, "job-scheduler create-schedule", &body) {
         return Ok(());
@@ -689,13 +699,7 @@ async fn update_schedule(
     if let Some(c) = config {
         let config_value: Value =
             serde_json::from_str(c).map_err(|e| anyhow::anyhow!("Invalid --config JSON: {e}"))?;
-        if let Some(config_obj) = config_value.as_object() {
-            for (k, v) in config_obj {
-                body[k] = v.clone();
-            }
-        } else {
-            body["configuration"] = config_value;
-        }
+        body["configuration"] = schedule_configuration_from(config_value);
     }
 
     if output::dry_run_guard(cli, "job-scheduler update-schedule", &body) {
@@ -754,6 +758,28 @@ async fn delete_schedule(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn schedule_config_bare_object_used_as_is() {
+        let cfg = serde_json::json!({
+            "type": "Cron", "startDateTime": "2026-01-01T00:00:00",
+            "endDateTime": "2026-12-31T23:59:00", "localTimeZoneId": "UTC", "interval": 10
+        });
+        let out = schedule_configuration_from(cfg.clone());
+        assert_eq!(out, cfg);
+        assert_eq!(out["type"], "Cron");
+        assert_eq!(out["interval"], 10);
+    }
+
+    #[test]
+    fn schedule_config_wrapper_is_unwrapped() {
+        let wrapped = serde_json::json!({
+            "configuration": { "type": "Daily", "times": ["09:00"] }
+        });
+        let out = schedule_configuration_from(wrapped);
+        assert_eq!(out["type"], "Daily");
+        assert!(out.get("configuration").is_none());
+    }
 
     #[test]
     fn known_job_types_are_non_empty() {

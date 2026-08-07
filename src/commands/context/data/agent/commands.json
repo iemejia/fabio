@@ -23293,7 +23293,7 @@
           "--config": {
             "type": "string",
             "required": true,
-            "description": "Schedule configuration as JSON (cron or recurrence) Example: '{\"type\":\"Cron\",\"expression\":\"0 0 * * *\",\"timezone\":\"UTC\"}'"
+            "description": "Schedule `configuration` object as JSON. Required fields: `type` (Cron|Daily|Weekly|Monthly), `startDateTime`, `endDateTime`, `localTimeZoneId`; plus per-type: Cron→`interval`, Daily→`times[]`, Weekly→`times[]`+`weekdays[]`. Example: '{\"type\":\"Cron\",\"startDateTime\":\"2026-01-01T00:00:00\",\"endDateTime\":\"2026-12-31T23:59:00\",\"localTimeZoneId\":\"UTC\",\"interval\":10}'"
           }
         },
         "mutates": true,
