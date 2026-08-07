@@ -1113,11 +1113,12 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Role JSON input**: `--role` accepts inline JSON or `@path/to/file.json` (file prefix). Validated client-side before sending.
 
 ## Managed Private Endpoint API Behaviors Discovered
-- **Create body**: `{"name": "<endpoint_name>", "privateLinkResourceId": "<ARM_resource_id>", "groupId": "<subresource_type>", "requestMessage"?: "<approval_message>"}`.
-- **Group ID values**: `blob`, `sqlServer`, `dfs`, `queue`, etc. (maps to Azure resource sub-resource types).
+- **Create body fields are `targetPrivateLinkResourceId` + `targetSubresourceType` (bug fix, verified live)**: The `CreateManagedPrivateEndpointRequest` is `{name, targetPrivateLinkResourceId (required), targetSubresourceType, requestMessage?, targetFQDNs?}`. fabio was sending `{name, privateLinkResourceId, groupId}` — the wrong field names (a stale note here documented `privateLinkResourceId`/`groupId`), so the REQUIRED `targetPrivateLinkResourceId` was missing and the create failed. Fixed. Live-verified: with the corrected fields the create is ACCEPTED (returns `{id, provisioningState:"Provisioning", name, targetPrivateLinkResourceId, targetSubresourceType, connectionState}` even against a bogus resource id — the field validation passes and provisioning begins).
+- **Sub-resource type values**: `blob`, `sqlServer`, `dfs`, `queue`, etc. (the Azure resource sub-resource type; sent as `targetSubresourceType`).
 - **Create is LRO**: Returns 202, requires polling.
 - **No update**: Endpoints are immutable after creation. Only create and delete.
 - **Response status fields**: `provisioningState` and `connectionState` track endpoint lifecycle.
+- **Workspace delete is blocked while a managed endpoint exists**: deleting the workspace returns `WorkspaceContainsManagedEndpoints` — delete the managed private endpoint(s) first.
 - **Requires Admin role**: All mutations require workspace Admin.
 
 ## Capacity API Behaviors Discovered

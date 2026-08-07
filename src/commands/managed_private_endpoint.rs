@@ -140,10 +140,14 @@ async fn create(
     target_subresource_type: &str,
     request_message: Option<&str>,
 ) -> Result<()> {
+    // The CreateManagedPrivateEndpointRequest fields are
+    // `targetPrivateLinkResourceId` (required) + `targetSubresourceType` — NOT
+    // `privateLinkResourceId`/`groupId` (those are ignored, and the missing
+    // required field fails the request).
     let mut body = serde_json::json!({
         "name": name,
-        "privateLinkResourceId": target_resource_id,
-        "groupId": target_subresource_type
+        "targetPrivateLinkResourceId": target_resource_id,
+        "targetSubresourceType": target_subresource_type
     });
     if let Some(msg) = request_message {
         body["requestMessage"] = Value::from(msg);
