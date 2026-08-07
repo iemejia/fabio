@@ -397,19 +397,25 @@ pub(super) async fn assign_identity(
     client: &FabricClient,
     workspace: &str,
     id: &str,
+    assignment_type: &str,
 ) -> Result<()> {
+    // The associate-identity request REQUIRES `assignmentType` and the endpoint
+    // is gated behind the REQUIRED `?beta=true` query parameter — omitting
+    // either fails (`InvalidInput` / `BetaParameterRequired`).
+    let body = serde_json::json!({ "assignmentType": assignment_type });
+
     if output::dry_run_guard(
         cli,
         "item assign-identity",
-        &serde_json::json!({ "workspace": workspace, "id": id }),
+        &serde_json::json!({ "workspace": workspace, "id": id, "assignmentType": assignment_type }),
     ) {
         return Ok(());
     }
 
     client
         .post(
-            &format!("/workspaces/{workspace}/items/{id}/identities/default/assign"),
-            &serde_json::json!({}),
+            &format!("/workspaces/{workspace}/items/{id}/identities/default/assign?beta=true"),
+            &body,
             false,
         )
         .await?;

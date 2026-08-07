@@ -1925,3 +1925,31 @@ fn create_external_data_share_user_requires_email() {
         .assert()
         .failure();
 }
+
+// ---------------------------------------------------------------------------
+// assign-identity body/beta shape (offline dry-run regression)
+//
+// The associate-identity API requires an `assignmentType` body field and the
+// `?beta=true` query param; the old empty {} body without beta always failed
+// (InvalidInput / BetaParameterRequired).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn assign_identity_includes_assignment_type() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "item",
+            "assign-identity",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["details"]["assignmentType"], "Caller");
+}

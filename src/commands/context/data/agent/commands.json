@@ -2333,6 +2333,10 @@
             "type": "string",
             "required": true,
             "description": "Item ID"
+          },
+          "--assignment-type": {
+            "type": "string",
+            "description": "Identity assignment type (the subject making the request)"
           }
         },
         "mutates": true,

@@ -536,6 +536,10 @@ pub enum ItemCommand {
         /// Item ID
         #[arg(long)]
         id: String,
+
+        /// Identity assignment type (the subject making the request).
+        #[arg(long, default_value = "Caller")]
+        assignment_type: String,
     },
 
     // ── External Data Share Invitations ──────────────────────────────────
@@ -838,9 +842,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             id,
             share_id,
         } => bulk::delete_external_data_share(cli, client, workspace, id, share_id).await,
-        ItemCommand::AssignIdentity { workspace, id } => {
-            crud::assign_identity(cli, client, workspace, id).await
-        }
+        ItemCommand::AssignIdentity {
+            workspace,
+            id,
+            assignment_type,
+        } => crud::assign_identity(cli, client, workspace, id, assignment_type).await,
         ItemCommand::GetInvitation { invitation_id } => {
             crud::get_invitation(cli, client, invitation_id).await
         }
