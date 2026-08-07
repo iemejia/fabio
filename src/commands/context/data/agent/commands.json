@@ -15031,11 +15031,11 @@
           },
           "--eventhouse-id": {
             "type": "string",
-            "description": "Fabric eventhouse KQL database item id (source; mutually exclusive with --cluster)"
+            "description": "KQL DATABASE item id to monitor (NOT the eventhouse id — pass the KQL database inside the eventhouse). Mutually exclusive with --cluster"
           },
           "--eventhouse-workspace": {
             "type": "string",
-            "description": "Workspace of the eventhouse (defaults to --workspace)"
+            "description": "Workspace of the KQL database (defaults to --workspace)"
           },
           "--cluster": {
             "type": "string",

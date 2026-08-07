@@ -218,12 +218,13 @@ pub enum ReflexCommand {
         #[arg(long, default_value_t = 300)]
         interval: u32,
 
-        /// Fabric eventhouse KQL database item id (source; mutually exclusive with --cluster)
-        #[arg(long, conflicts_with = "cluster")]
+        /// KQL DATABASE item id to monitor (NOT the eventhouse id — pass the KQL
+        /// database inside the eventhouse). Mutually exclusive with --cluster.
+        #[arg(long, visible_alias = "kql-database-id", conflicts_with = "cluster")]
         eventhouse_id: Option<String>,
 
-        /// Workspace of the eventhouse (defaults to --workspace)
-        #[arg(long)]
+        /// Workspace of the KQL database (defaults to --workspace)
+        #[arg(long, visible_alias = "kql-database-workspace")]
         eventhouse_workspace: Option<String>,
 
         /// Azure Data Explorer cluster host (source; use with --database)

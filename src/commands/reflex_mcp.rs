@@ -120,6 +120,19 @@ async fn call_reflex_tool(
     let text = result.text();
     let parsed: Value = serde_json::from_str(&text).unwrap_or_else(|_| Value::from(text.clone()));
     if result.is_error {
+        // The MCP server's "Getting cluster for kql database failed" is cryptic;
+        // it almost always means the wrong item id was passed as the KQL source
+        // (e.g. an eventhouse id instead of the KQL DATABASE item id).
+        if text.contains("Getting cluster for kql database failed") {
+            return Err(FabioError::with_hint(
+                ErrorCode::ApiError,
+                format!("Activator tool '{tool}' returned an error: {text}"),
+                "The KQL source could not be resolved. Pass the KQL DATABASE item id \
+                 to --eventhouse-id (alias --kql-database-id) — NOT the eventhouse id — \
+                 or use --cluster <queryServiceUri> + --database <name>.",
+            )
+            .into());
+        }
         return Err(FabioError::api_error(format!(
             "Activator tool '{tool}' returned an error: {text}"
         ))
