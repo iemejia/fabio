@@ -2473,3 +2473,61 @@ tests:
       - type: llm-rubric
         value: "The response uses 'fabio ontology search' (with --workspace, --id, and --prompt for the natural-language question) to query the ontology. It does not confuse this with ontology list-entity-types (schema) or data-agent query."
         metric: ontology-search-routing
+
+  # ============================================================
+  # v0.60 / SESSION ADDITIONS (deployment-pipeline stages,
+  # semantic-model generate, data-agent fewshot query language)
+  # ============================================================
+
+  - description: "Deployment pipeline: create requires stages"
+    vars:
+      user_query: "Create a deployment pipeline named Release Pipeline with Development, Test, and a public Production stage"
+    assert:
+      - type: icontains
+        value: "deployment-pipeline create"
+      - type: icontains
+        value: "--stage"
+      - type: llm-rubric
+        value: "The response creates the pipeline with its stages specified at create time (a repeatable --stage flag naming Development, Test, and Production, with Production marked public e.g. Production:public). It does NOT create an empty pipeline and then try to add stages afterward."
+        metric: deployment-pipeline-stages
+
+  - description: "Deployment pipeline: promote content between stages"
+    vars:
+      user_query: "Promote the content from the Development stage to the Test stage in my deployment pipeline"
+    assert:
+      - type: icontains
+        value: "deployment-pipeline deploy"
+      - type: javascript
+        value: |
+          output.includes('--source-stage-id') && output.includes('--target-stage-id')
+        metric: deployment-pipeline-deploy-flags
+
+  - description: "Semantic model: generate a Direct Lake model from a warehouse"
+    vars:
+      user_query: "Create a Direct Lake semantic model called Sales Model over my warehouse, using just the dimension_city and fact_sale tables"
+    assert:
+      - type: icontains
+        value: "semantic-model generate"
+      - type: icontains
+        value: "--warehouse"
+      - type: javascript
+        value: |
+          output.includes('--tables')
+        metric: semantic-model-generate-tables
+      - type: llm-rubric
+        value: "The response uses 'fabio semantic-model generate' with --warehouse and --tables dimension_city,fact_sale to reproduce the portal 'New semantic model' Direct Lake flow. It does not hand-author TMDL from scratch for this."
+        metric: semantic-model-generate-routing
+
+  - description: "Data agent: add a SQL few-shot example"
+    vars:
+      user_query: "Add a few-shot example to my data agent's lakehouse data source: the question 'top selling products' answered by a SQL SELECT query"
+    assert:
+      - type: icontains
+        value: "data-agent add-fewshot"
+      - type: javascript
+        value: |
+          output.includes('--sql') || output.includes('--answer')
+        metric: data-agent-fewshot-sql-flag
+      - type: llm-rubric
+        value: "The response uses 'fabio data-agent add-fewshot' with --question for the natural-language question and --sql (or --answer) for the SQL query that answers it. The example query is carried in a flag, not in the global --query."
+        metric: data-agent-fewshot-routing

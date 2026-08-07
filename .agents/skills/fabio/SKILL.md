@@ -313,6 +313,10 @@ fabio gateway list                                           # tenant-scoped (no
 fabio gateway create-streaming --name "MyVNetGW" \           # streaming VNet gateway
   --subscription-id $SUB --resource-group $RG --vnet $VNET --subnet $SUBNET
 fabio deployment-pipeline list                               # tenant-scoped (no --workspace)
+fabio deployment-pipeline create --name "Release Pipeline" \  # stages are REQUIRED at create time
+  --stage Development --stage Test --stage Production:public  # ordered; ':public' marks a public stage
+fabio deployment-pipeline assign-workspace --id $DP --stage-id $SID --workspace $WS
+fabio deployment-pipeline deploy --id $DP --source-stage-id $SRC --target-stage-id $DST  # promote content
 # Command aliases: app-backend (aliases: rayfin-app, data-app), data-build-tool-job (aliases: dbt-job, dbt)
 fabio dbt list --workspace $WS                               # same as: fabio data-build-tool-job list
 ```
