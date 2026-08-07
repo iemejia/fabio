@@ -16383,6 +16383,45 @@
         "examples": [
           "fabio spark-job-definition run --workspace $WS --id $SJD --wait"
         ]
+      },
+      "list-livy-sessions": {
+        "description": "List Livy (Spark) sessions for a Spark job definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Spark Job Definition ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "get-livy-session": {
+        "description": "Get details of a Livy (Spark) session for a Spark job definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Spark Job Definition ID"
+          },
+          "--livy-id": {
+            "type": "string",
+            "required": true,
+            "description": "Livy session ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
       }
     }
   },

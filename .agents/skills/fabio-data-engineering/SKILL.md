@@ -81,7 +81,9 @@ Manage Spark job definitions (batch Spark jobs)
 | `fabio spark-job-definition create` | yes | Create a new Spark job definition |
 | `fabio spark-job-definition delete` | yes | Delete a Spark job definition |
 | `fabio spark-job-definition get-definition` | no | Get the definition of a Spark job definition |
+| `fabio spark-job-definition get-livy-session` | no | Get details of a Livy (Spark) session for a Spark job definition |
 | `fabio spark-job-definition list` | no | List Spark job definitions in a workspace |
+| `fabio spark-job-definition list-livy-sessions` | no | List Livy (Spark) sessions for a Spark job definition |
 | `fabio spark-job-definition run` | yes | Run a Spark job definition |
 | `fabio spark-job-definition show` | no | Show details of a Spark job definition |
 | `fabio spark-job-definition update` | yes | Update Spark job definition properties (name and/or description) |

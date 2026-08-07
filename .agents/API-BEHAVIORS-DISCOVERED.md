@@ -1067,6 +1067,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Create is LRO**: `POST /workspaces/{ws}/sparkJobDefinitions` with `poll: true`.
 - **Get/Update definition are LRO**: Both use `poll: true`.
 - **Definition format**: JSON content with Spark job configuration (main file path, arguments, language, etc.).
+- **Livy sessions (spec-parity gap filled)**: `GET /workspaces/{ws}/sparkJobDefinitions/{id}/livySessions` and `GET .../livySessions/{livyId}` list/get the Spark (Livy) sessions for a SJD — the same shape as `notebook`/`lakehouse`/`spark` livy sessions (`{value:[{livyId, sparkApplicationId, state, jobType, attemptNumber, …}]}`). fabio's `spark-job-definition` group was missing these (present in the swagger and in the sibling groups), so an agent could not discover a SJD's `livyId`/`sparkApplicationId` to then call `spark get-advice`/`get-logs`/`get-resource-usage --item-type spark-job-definition`. Added `spark-job-definition list-livy-sessions`/`get-livy-session` (read-only). Endpoint reachability + list shape live-verified (empty list on a fresh SJD; `NOT_FOUND` for a bogus livy id).
 
 ## Data Pipeline API Behaviors Discovered
 - **Run job type**: `POST /workspaces/{ws}/items/{id}/jobs/instances?jobType=Pipeline` (PascalCase `Pipeline`).

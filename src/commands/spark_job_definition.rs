@@ -143,6 +143,34 @@ pub enum SparkJobDefinitionCommand {
         #[arg(long)]
         cancel_on_timeout: bool,
     },
+
+    /// List Livy (Spark) sessions for a Spark job definition
+    #[command(display_order = 9)]
+    ListLivySessions {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Spark Job Definition ID
+        #[arg(long)]
+        id: String,
+    },
+
+    /// Get details of a Livy (Spark) session for a Spark job definition
+    #[command(display_order = 10)]
+    GetLivySession {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Spark Job Definition ID
+        #[arg(long)]
+        id: String,
+
+        /// Livy session ID
+        #[arg(long)]
+        livy_id: String,
+    },
 }
 
 pub async fn execute(
@@ -229,10 +257,61 @@ pub async fn execute(
             )
             .await
         }
+        SparkJobDefinitionCommand::ListLivySessions { workspace, id } => {
+            list_livy_sessions(cli, client, workspace, id).await
+        }
+        SparkJobDefinitionCommand::GetLivySession {
+            workspace,
+            id,
+            livy_id,
+        } => get_livy_session(cli, client, workspace, id, livy_id).await,
     }
 }
 
-// ─── CRUD ────────────────────────────────────────────────────────────────────
+// ─── Livy sessions ───────────────────────────────────────────────────────────
+
+async fn list_livy_sessions(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let resp = client
+        .get_list(
+            &format!("/workspaces/{workspace}/sparkJobDefinitions/{id}/livySessions"),
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "spark-job-definition list-livy-sessions", "Viewer"))?;
+    output::render_list_with_token(
+        cli,
+        &resp.items,
+        &["livyId", "sparkApplicationId", "state", "jobType"],
+        &["LIVY ID", "APP ID", "STATE", "JOB TYPE"],
+        "livyId",
+        resp.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+async fn get_livy_session(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    livy_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/sparkJobDefinitions/{id}/livySessions/{livy_id}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "spark-job-definition get-livy-session", "Viewer"))?;
+    output::render_object(cli, &data, "livyId");
+    Ok(())
+}
 
 async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
     let resp = client

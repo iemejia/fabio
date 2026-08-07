@@ -133,3 +133,55 @@ fn spark_job_definition_dry_run_create() {
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(json["data"]["would_execute"], "spark-job-definition create");
 }
+
+// ---------------------------------------------------------------------------
+// Livy sessions (spec parity with notebook/lakehouse/spark)
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant with a Spark job definition"]
+#[serial]
+fn spark_job_definition_list_livy_sessions() {
+    let cfg = TestConfig::from_env();
+    let Ok(sjd_id) = std::env::var("FABIO_TEST_SPARK_JOB_DEFINITION_ID") else {
+        return; // skip when not configured
+    };
+    let assert = fabio()
+        .args([
+            "spark-job-definition",
+            "list-livy-sessions",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &sjd_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(extract_data(&json).is_array());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn spark_job_definition_get_livy_session_not_found() {
+    let cfg = TestConfig::from_env();
+    let Ok(sjd_id) = std::env::var("FABIO_TEST_SPARK_JOB_DEFINITION_ID") else {
+        return;
+    };
+    fabio()
+        .args([
+            "spark-job-definition",
+            "get-livy-session",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &sjd_id,
+            "--livy-id",
+            "00000000-0000-0000-0000-000000000000",
+        ])
+        .timeout(std::time::Duration::from_secs(30))
+        .assert()
+        .failure();
+}
