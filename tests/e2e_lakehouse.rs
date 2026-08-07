@@ -146,6 +146,20 @@ fn lakehouse_files_with_path_filter() {
     });
     assert!(found, "uploaded file not found with --path filter");
 
+    // Scoping regression guard: --path must scope to the subdirectory — the
+    // results must NOT include the lakehouse root dirs (Tables/Functions).
+    // (Previously the item-in-path DFS shape ignored `directory`, returning the
+    // whole lakehouse.)
+    let subdir_leaf = subdir.rsplit('/').next().unwrap_or(&subdir);
+    for f in arr {
+        if let Some(name) = f.get("name").and_then(|n| n.as_str()) {
+            assert!(
+                name.contains(subdir_leaf),
+                "list-files --path {subdir} returned an out-of-scope entry: {name}"
+            );
+        }
+    }
+
     // Cleanup
     fabio()
         .args([

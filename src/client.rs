@@ -1,6 +1,5 @@
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use std::fmt::Write;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
@@ -851,13 +850,21 @@ impl FabricClient {
         validate_uuid(workspace, "workspace")?;
         validate_uuid(item, "item")?;
         let token = self.require_storage_auth().await?;
-        let mut url = self.onelake_dfs_url(
-            workspace,
-            &format!("{item}?resource=filesystem&recursive=true"),
+        // Use the workspace-scoped filesystem-list shape (filesystem = workspace,
+        // `directory={item}/{dir}`). The item-in-path shape
+        // (`{workspace}/{item}?...&directory={dir}`) does NOT scope `directory`,
+        // so `--path <subdir>` returned the whole lakehouse with a bogus prefix.
+        let dir = directory.map_or_else(
+            || item.to_string(),
+            |d| format!("{item}/{}", d.trim_start_matches('/')),
         );
-        if let Some(dir) = directory {
-            let _ = write!(url, "&directory={}", urlencoding::encode(dir));
-        }
+        let url = self.onelake_dfs_url(
+            workspace,
+            &format!(
+                "?resource=filesystem&recursive=true&directory={}",
+                urlencoding::encode(&dir)
+            ),
+        );
 
         verbose::trace_request("GET", &url, None);
         let start = std::time::Instant::now();
@@ -905,9 +912,9 @@ impl FabricClient {
     /// Fabric REST `GET /lakehouses/{id}/tables` endpoint is unsupported.
     ///
     /// Uses the workspace-scoped DFS filesystem-list shape (filesystem =
-    /// workspace, `directory={item}/{dir}`), which — unlike the item-in-path
-    /// shape used by `list_onelake_files` — correctly scopes `directory` to a
-    /// subtree. Returned `name` fields carry the full `{item}/...` prefix.
+    /// workspace, `directory={item}/{dir}`), which correctly scopes `directory`
+    /// to a subtree (the same shape `list_onelake_files` now uses). Returned
+    /// `name` fields carry the full `{item}/...` prefix.
     pub async fn list_onelake_dir(
         &self,
         workspace: &str,
