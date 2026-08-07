@@ -15,7 +15,15 @@ pub(super) async fn bind_connection(
     id: &str,
     connection_id: &str,
 ) -> Result<()> {
-    let body = serde_json::json!({ "connectionId": connection_id });
+    // The bindConnection API takes a full `connectionBinding` object
+    // {id, connectivityType, connectionDetails} — NOT a flat {connectionId}.
+    // Fetch the connection to resolve its connectivityType + connectionDetails
+    // (the {type, path} that identifies the model's data-source reference).
+    let conn = client
+        .get(&format!("/connections/{connection_id}"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model bind-connection", "Contributor"))?;
+    let body = build_bind_connection_body(Some(connection_id), &conn)?;
 
     if output::dry_run_guard(cli, "semantic-model bind-connection", &body) {
         return Ok(());
@@ -39,13 +47,50 @@ pub(super) async fn bind_connection(
     Ok(())
 }
 
+/// Build the `bindConnection` request body from a connection's GET response.
+/// When `connection_id` is `Some`, this is a BIND (`connectivityType` from the
+/// connection, plus its `id`); when `None`, this is an UNBIND
+/// (`connectivityType: "None"`, no `id`). `connectionDetails` (the `{type, path}`
+/// that matches the model's data-source reference) is required either way.
+fn build_bind_connection_body(connection_id: Option<&str>, conn: &Value) -> Result<Value> {
+    let connection_details = conn.get("connectionDetails").cloned().ok_or_else(|| {
+        FabioError::new(
+            ErrorCode::ApiError,
+            "Connection has no connectionDetails; cannot build a bindConnection request"
+                .to_string(),
+        )
+    })?;
+
+    let mut binding = serde_json::json!({ "connectionDetails": connection_details });
+    if let Some(cid) = connection_id {
+        binding["id"] = Value::from(cid);
+        let connectivity_type = conn
+            .get("connectivityType")
+            .and_then(Value::as_str)
+            .unwrap_or("ShareableCloud");
+        binding["connectivityType"] = Value::from(connectivity_type);
+    } else {
+        // Unbind: connectivityType "None" detaches the data source from the connection.
+        binding["connectivityType"] = Value::from("None");
+    }
+
+    Ok(serde_json::json!({ "connectionBinding": binding }))
+}
+
 pub(super) async fn unbind_connection(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
     id: &str,
+    connection_id: &str,
 ) -> Result<()> {
-    let body = serde_json::json!({ "connectionId": null });
+    // Unbind still needs the data-source `connectionDetails` ({type, path}) to
+    // identify which reference to detach; resolve it from the bound connection.
+    let conn = client
+        .get(&format!("/connections/{connection_id}"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "semantic-model unbind-connection", "Contributor"))?;
+    let body = build_bind_connection_body(None, &conn)?;
 
     if output::dry_run_guard(cli, "semantic-model unbind-connection", &body) {
         return Ok(());
@@ -915,6 +960,43 @@ fn enrich_dax_error(err: anyhow::Error) -> anyhow::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bind_body_uses_connection_binding_object() {
+        let conn = serde_json::json!({
+            "id": "conn-1",
+            "connectivityType": "ShareableCloud",
+            "connectionDetails": { "type": "SQL", "path": "srv;db" }
+        });
+        let body = build_bind_connection_body(Some("conn-1"), &conn).unwrap();
+        let binding = &body["connectionBinding"];
+        assert_eq!(binding["id"], "conn-1");
+        assert_eq!(binding["connectivityType"], "ShareableCloud");
+        assert_eq!(binding["connectionDetails"]["type"], "SQL");
+        assert_eq!(binding["connectionDetails"]["path"], "srv;db");
+        // Must NOT use the old flat shape.
+        assert!(body.get("connectionId").is_none());
+    }
+
+    #[test]
+    fn unbind_body_sets_connectivity_none_and_omits_id() {
+        let conn = serde_json::json!({
+            "id": "conn-1",
+            "connectivityType": "ShareableCloud",
+            "connectionDetails": { "type": "SQL", "path": "srv;db" }
+        });
+        let body = build_bind_connection_body(None, &conn).unwrap();
+        let binding = &body["connectionBinding"];
+        assert_eq!(binding["connectivityType"], "None");
+        assert!(binding.get("id").is_none());
+        assert_eq!(binding["connectionDetails"]["path"], "srv;db");
+    }
+
+    #[test]
+    fn bind_body_requires_connection_details() {
+        let conn = serde_json::json!({ "id": "conn-1", "connectivityType": "ShareableCloud" });
+        assert!(build_bind_connection_body(Some("conn-1"), &conn).is_err());
+    }
 
     #[test]
     fn qualify_column_dotted_to_dax() {

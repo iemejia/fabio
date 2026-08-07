@@ -254,6 +254,11 @@ pub enum SemanticModelCommand {
         /// Semantic model ID
         #[arg(long)]
         id: String,
+
+        /// The currently-bound connection ID (used to resolve the data-source
+        /// details of the reference to detach).
+        #[arg(long)]
+        connection_id: String,
     },
     /// Refresh a semantic model (required to frame Direct Lake models after creation)
     ///
@@ -1997,9 +2002,11 @@ pub async fn execute(
             id,
             connection_id,
         } => operations::bind_connection(cli, client, workspace, id, connection_id).await,
-        SemanticModelCommand::UnbindConnection { workspace, id } => {
-            operations::unbind_connection(cli, client, workspace, id).await
-        }
+        SemanticModelCommand::UnbindConnection {
+            workspace,
+            id,
+            connection_id,
+        } => operations::unbind_connection(cli, client, workspace, id, connection_id).await,
         SemanticModelCommand::Refresh {
             workspace,
             id,

@@ -4228,17 +4228,25 @@ fn semantic_model_import_pbix_invalid_file() {
 
 // ─── Unbind Connection ───────────────────────────────────────────────────────
 
+// bind/unbind-connection resolve the connection's details via a GET before the
+// dry-run guard (the bindConnection API needs the full connectionBinding
+// object), so these require a live tenant. The body-building logic is unit-tested
+// in src/commands/semantic_model/operations.rs (build_bind_connection_body).
 #[test]
+#[ignore = "requires live Fabric tenant"]
 fn semantic_model_unbind_connection_dry_run() {
+    let cfg = TestConfig::from_env();
     let assert = fabio()
         .args([
             "--dry-run",
             "semantic-model",
             "unbind-connection",
             "--workspace",
-            "aaaaaaaa-1111-2222-3333-444444444444",
+            &cfg.source_workspace,
             "--id",
             "bbbbbbbb-1111-2222-3333-444444444444",
+            "--connection-id",
+            "cccccccc-1111-2222-3333-444444444444",
         ])
         .assert()
         .success();
@@ -4247,19 +4255,24 @@ fn semantic_model_unbind_connection_dry_run() {
     let data = extract_data(&json);
     assert_eq!(data["dry_run"], true);
     assert_eq!(data["would_execute"], "semantic-model unbind-connection");
-    // Should show null connectionId in the details
-    assert!(data["details"]["connectionId"].is_null());
+    // Unbind sends connectivityType "None" inside the connectionBinding.
+    assert_eq!(
+        data["details"]["connectionBinding"]["connectivityType"],
+        "None"
+    );
 }
 
 #[test]
+#[ignore = "requires live Fabric tenant"]
 fn semantic_model_bind_connection_dry_run() {
+    let cfg = TestConfig::from_env();
     let assert = fabio()
         .args([
             "--dry-run",
             "semantic-model",
             "bind-connection",
             "--workspace",
-            "aaaaaaaa-1111-2222-3333-444444444444",
+            &cfg.source_workspace,
             "--id",
             "bbbbbbbb-1111-2222-3333-444444444444",
             "--connection-id",
@@ -4272,10 +4285,8 @@ fn semantic_model_bind_connection_dry_run() {
     let data = extract_data(&json);
     assert_eq!(data["dry_run"], true);
     assert_eq!(data["would_execute"], "semantic-model bind-connection");
-    assert_eq!(
-        data["details"]["connectionId"],
-        "cccccccc-1111-2222-3333-444444444444"
-    );
+    // The body must be a full connectionBinding object (not a flat connectionId).
+    assert!(data["details"]["connectionBinding"].is_object());
 }
 
 // ─── Hard Delete ─────────────────────────────────────────────────────────────

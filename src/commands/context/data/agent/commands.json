@@ -10364,6 +10364,11 @@
             "type": "string",
             "required": true,
             "description": "Semantic model ID"
+          },
+          "--connection-id": {
+            "type": "string",
+            "required": true,
+            "description": "The currently-bound connection ID (used to resolve the data-source details of the reference to detach)"
           }
         },
         "mutates": true,
