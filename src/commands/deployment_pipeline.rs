@@ -33,6 +33,17 @@ pub enum DeploymentPipelineCommand {
         /// Optional description
         #[arg(long)]
         description: Option<String>,
+
+        /// A pipeline stage (repeatable, ordered). Each value is a stage display
+        /// name, optionally suffixed with `:public` to make it a public stage
+        /// (e.g. `--stage Development --stage Test --stage Production:public`).
+        #[arg(long = "stage", value_name = "NAME[:public]")]
+        stages: Vec<String>,
+
+        /// Full stages definition as JSON (overrides --stage): an array of
+        /// `{"displayName","description"?,"isPublic"?}` (inline, @file, or stdin).
+        #[arg(long = "stages-json", value_name = "JSON")]
+        stages_json: Option<String>,
     },
     /// Update a deployment pipeline
     #[command(display_order = 4)]
@@ -229,8 +240,21 @@ pub async fn execute(
     match command {
         DeploymentPipelineCommand::List => list(cli, client).await,
         DeploymentPipelineCommand::Show { id } => show(cli, client, id).await,
-        DeploymentPipelineCommand::Create { name, description } => {
-            create(cli, client, name, description.as_deref()).await
+        DeploymentPipelineCommand::Create {
+            name,
+            description,
+            stages,
+            stages_json,
+        } => {
+            create(
+                cli,
+                client,
+                name,
+                description.as_deref(),
+                stages,
+                stages_json.as_deref(),
+            )
+            .await
         }
         DeploymentPipelineCommand::Update {
             id,
@@ -340,8 +364,12 @@ async fn create(
     client: &FabricClient,
     name: &str,
     description: Option<&str>,
+    stages: &[String],
+    stages_json: Option<&str>,
 ) -> Result<()> {
-    let mut body = serde_json::json!({ "displayName": name });
+    let stage_values = build_stages(stages, stages_json)?;
+
+    let mut body = serde_json::json!({ "displayName": name, "stages": stage_values });
     if let Some(desc) = description {
         body["description"] = Value::from(desc);
     }
@@ -356,6 +384,63 @@ async fn create(
         .map_err(|e| enrich_forbidden(e, "deployment-pipeline create", "Admin"))?;
     output::render_object(cli, &data, "id");
     Ok(())
+}
+
+/// Build the required `stages` array for a create request from either the
+/// repeatable `--stage NAME[:public]` flag or a full `--stages-json` array.
+/// The modern deployment-pipelines API requires at least one stage on create.
+fn build_stages(stages: &[String], stages_json: Option<&str>) -> Result<Vec<Value>> {
+    if let Some(raw) = stages_json {
+        let text = if let Some(path) = raw.strip_prefix('@') {
+            std::fs::read_to_string(path)
+                .map_err(|e| FabioError::not_found(format!("stages file not found: {path}: {e}")))?
+        } else {
+            raw.to_string()
+        };
+        let parsed: Value = serde_json::from_str(text.trim()).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("--stages-json is not valid JSON: {e}"),
+                r#"Example: --stages-json '[{"displayName":"Dev"},{"displayName":"Prod","isPublic":true}]'"#
+                    .to_string(),
+            )
+        })?;
+        let arr = parsed.as_array().ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "--stages-json must be a JSON array of stage objects".to_string(),
+                r#"Example: --stages-json '[{"displayName":"Dev"},{"displayName":"Prod","isPublic":true}]'"#
+                    .to_string(),
+            )
+        })?;
+        if arr.is_empty() {
+            return Err(empty_stages_err());
+        }
+        return Ok(arr.clone());
+    }
+
+    if stages.is_empty() {
+        return Err(empty_stages_err());
+    }
+
+    Ok(stages
+        .iter()
+        .map(|s| {
+            let (display, is_public) = s
+                .strip_suffix(":public")
+                .map_or((s.as_str(), false), |base| (base, true));
+            serde_json::json!({ "displayName": display, "isPublic": is_public })
+        })
+        .collect())
+}
+
+fn empty_stages_err() -> anyhow::Error {
+    FabioError::with_hint(
+        ErrorCode::InvalidInput,
+        "A deployment pipeline requires at least one stage (the create API rejects an empty pipeline).".to_string(),
+        "Add stages with repeatable --stage, e.g.: fabio deployment-pipeline create --name \"My Pipeline\" --stage Development --stage Test --stage Production:public".to_string(),
+    )
+    .into()
 }
 
 async fn update(
@@ -771,5 +856,42 @@ mod tests {
         let val: Value = serde_json::from_str(items).unwrap();
         assert!(val.is_array());
         assert_eq!(val.as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn build_stages_from_repeatable_flag() {
+        let stages = vec![
+            "Development".to_string(),
+            "Test".to_string(),
+            "Production:public".to_string(),
+        ];
+        let out = build_stages(&stages, None).unwrap();
+        assert_eq!(out.len(), 3);
+        assert_eq!(out[0]["displayName"], "Development");
+        assert_eq!(out[0]["isPublic"], false);
+        assert_eq!(out[2]["displayName"], "Production");
+        assert_eq!(out[2]["isPublic"], true);
+    }
+
+    #[test]
+    fn build_stages_from_json_overrides_flag() {
+        let json =
+            r#"[{"displayName":"Dev","description":"d"},{"displayName":"Prod","isPublic":true}]"#;
+        let out = build_stages(&["ignored".to_string()], Some(json)).unwrap();
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0]["description"], "d");
+        assert_eq!(out[1]["isPublic"], true);
+    }
+
+    #[test]
+    fn build_stages_rejects_empty() {
+        assert!(build_stages(&[], None).is_err());
+        assert!(build_stages(&[], Some("[]")).is_err());
+    }
+
+    #[test]
+    fn build_stages_rejects_non_array_json() {
+        assert!(build_stages(&[], Some(r#"{"displayName":"x"}"#)).is_err());
+        assert!(build_stages(&[], Some("not json")).is_err());
     }
 }

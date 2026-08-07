@@ -22297,6 +22297,14 @@
           "--description": {
             "type": "string",
             "description": "Optional description"
+          },
+          "--stage": {
+            "type": "string",
+            "description": "A pipeline stage (repeatable, ordered). Each value is a stage display name, optionally suffixed with `:public` to make it a public stage (e.g. `--stage Development --stage Test --stage Production:public`)"
+          },
+          "--stages-json": {
+            "type": "string",
+            "description": "Full stages definition as JSON (overrides --stage): an array of `{\"displayName\",\"description\"?,\"isPublic\"?}` (inline, @file, or stdin)"
           }
         },
         "mutates": true,

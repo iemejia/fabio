@@ -46,6 +46,10 @@ fn deployment_pipeline_create_dry_run() {
             &name,
             "--description",
             "E2E test pipeline",
+            "--stage",
+            "Development",
+            "--stage",
+            "Production:public",
             "--dry-run",
         ])
         .assert()
@@ -54,6 +58,46 @@ fn deployment_pipeline_create_dry_run() {
     let json = parse_json(&output);
     let data = extract_data(&json);
     assert_eq!(data["status"], "dry_run");
+}
+
+// The create API requires a `stages` array; these run offline (guard/validation
+// happen before any network call).
+#[test]
+fn deployment_pipeline_create_includes_stages_in_body() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "deployment-pipeline",
+            "create",
+            "--name",
+            "offline-dp",
+            "--stage",
+            "Development",
+            "--stage",
+            "Production:public",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    let stages = data["details"]["stages"]
+        .as_array()
+        .expect("stages array in dry-run body");
+    assert_eq!(stages.len(), 2);
+    assert_eq!(stages[0]["displayName"], "Development");
+    assert_eq!(stages[0]["isPublic"], false);
+    assert_eq!(stages[1]["displayName"], "Production");
+    assert_eq!(stages[1]["isPublic"], true);
+}
+
+#[test]
+fn deployment_pipeline_create_requires_stages() {
+    // No --stage / --stages-json → must fail before any network call.
+    fabio()
+        .args(["deployment-pipeline", "create", "--name", "no-stages"])
+        .assert()
+        .failure();
 }
 
 #[test]
