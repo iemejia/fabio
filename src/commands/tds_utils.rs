@@ -2,6 +2,7 @@ use std::io;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use chrono::{Duration, NaiveDate, NaiveTime};
 use mssql_tds::connection::client_context::{ClientContext, TdsAuthenticationMethod};
 use mssql_tds::connection::tds_client::{ResultSet, ResultSetClient};
 use mssql_tds::connection_provider::tds_connection_provider::TdsConnectionProvider;
@@ -357,6 +358,58 @@ pub async fn execute_sql_rows(
 }
 
 /// Convert a TDS `ColumnValues` to a `serde_json::Value`.
+/// Convert a TDS day count measured from 0001-01-01 (day 0) to a `NaiveDate`.
+/// chrono's `from_num_days_from_ce` treats day 1 as 0001-01-01, so add 1.
+fn ce_date(days: i64) -> Option<NaiveDate> {
+    i32::try_from(days)
+        .ok()
+        .and_then(|d| NaiveDate::from_num_days_from_ce_opt(d + 1))
+}
+
+/// Convert a day count measured from 1900-01-01 (legacy DATETIME/SMALLDATETIME).
+fn date_1900(days: i64) -> Option<NaiveDate> {
+    NaiveDate::from_ymd_opt(1900, 1, 1).and_then(|b| b.checked_add_signed(Duration::days(days)))
+}
+
+/// Build a `NaiveTime` from nanoseconds since midnight.
+fn time_from_nanos(nanos: u64) -> Option<NaiveTime> {
+    let secs = u32::try_from(nanos / 1_000_000_000).ok()?;
+    let nano = u32::try_from(nanos % 1_000_000_000).ok()?;
+    NaiveTime::from_num_seconds_from_midnight_opt(secs, nano)
+}
+
+/// Format a DATETIME2 (`days` since 0001-01-01, `ns_ticks` in 100-ns ticks).
+fn fmt_datetime2(days: i64, ns_ticks: u64) -> Value {
+    let nanos = ns_ticks.saturating_mul(100);
+    ce_date(days).zip(time_from_nanos(nanos)).map_or_else(
+        || Value::from(format!("{days} days + {ns_ticks} ticks")),
+        |(d, t)| Value::from(d.and_time(t).format("%Y-%m-%dT%H:%M:%S%.9f").to_string()),
+    )
+}
+
+/// Format a DATETIMEOFFSET. The wire format stores the datetime2 in UTC + a
+/// separate offset (minutes); add the offset back to render the local time.
+fn fmt_datetimeoffset(days: i64, ns_ticks: u64, off: i16) -> Value {
+    let nanos = ns_ticks.saturating_mul(100);
+    let sign = if off < 0 { '-' } else { '+' };
+    let (oh, om) = (off.unsigned_abs() / 60, off.unsigned_abs() % 60);
+    ce_date(days)
+        .zip(time_from_nanos(nanos))
+        .and_then(|(d, t)| {
+            d.and_time(t)
+                .checked_add_signed(Duration::minutes(i64::from(off)))
+        })
+        .map_or_else(
+            || Value::from(format!("{days} days + offset {sign}{oh:02}:{om:02}")),
+            |dt| {
+                Value::from(format!(
+                    "{}{sign}{oh:02}:{om:02}",
+                    dt.format("%Y-%m-%dT%H:%M:%S%.9f")
+                ))
+            },
+        )
+}
+
 pub fn column_value_to_json(val: &ColumnValues) -> Value {
     match val {
         ColumnValues::Null => Value::Null,
@@ -377,51 +430,56 @@ pub fn column_value_to_json(val: &ColumnValues) -> Value {
             Value::from(d.to_string())
         }
         ColumnValues::Uuid(u) => Value::from(u.to_string()),
-        ColumnValues::DateTime(dt) => Value::from(format!(
-            "{}-{:02}-{:02}T{:02}:{:02}:{:02}",
-            1900 + dt.days / 365,
-            1 + (dt.days % 365) / 30,
-            1 + (dt.days % 30),
-            dt.time / 1_080_000,
-            (dt.time / 18000) % 60,
-            (dt.time / 300) % 60
-        )),
+        ColumnValues::DateTime(dt) => {
+            // Legacy DATETIME: days since 1900-01-01, time in 1/300-second ticks.
+            let nanos = u64::from(dt.time) * 10_000_000 / 3;
+            match (date_1900(i64::from(dt.days)), time_from_nanos(nanos)) {
+                (Some(d), Some(t)) => Value::from(format!(
+                    "{}T{}",
+                    d.format("%Y-%m-%d"),
+                    t.format("%H:%M:%S%.3f")
+                )),
+                _ => Value::from(format!("{} days since 1900-01-01", dt.days)),
+            }
+        }
         ColumnValues::Date(d) => {
-            // Days since 0001-01-01
-            let days = d.get_days();
-            Value::from(format!("{days} days since 0001-01-01"))
+            // TDS DATE: days since 0001-01-01.
+            let days = i64::from(d.get_days());
+            ce_date(days).map_or_else(
+                || Value::from(format!("{days} days since 0001-01-01")),
+                |dt| Value::from(dt.format("%Y-%m-%d").to_string()),
+            )
         }
         ColumnValues::Time(t) => {
-            let total_ns = t.time_nanoseconds;
-            let hours = total_ns / 3_600_000_000_000;
-            let minutes = (total_ns / 60_000_000_000) % 60;
-            let seconds = (total_ns / 1_000_000_000) % 60;
-            let frac = total_ns % 1_000_000_000;
-            Value::from(format!("{hours:02}:{minutes:02}:{seconds:02}.{frac:07}"))
+            // `time_nanoseconds` is actually a count of 100-ns ticks.
+            let nanos = t.time_nanoseconds.saturating_mul(100);
+            time_from_nanos(nanos).map_or_else(
+                || Value::from(format!("{} ticks", t.time_nanoseconds)),
+                |tm| Value::from(tm.format("%H:%M:%S%.9f").to_string()),
+            )
         }
         ColumnValues::DateTime2(dt2) => {
-            let days = dt2.days;
-            let t = &dt2.time;
-            let total_ns = t.time_nanoseconds;
-            let hours = total_ns / 3_600_000_000_000;
-            let minutes = (total_ns / 60_000_000_000) % 60;
-            let seconds = (total_ns / 1_000_000_000) % 60;
-            Value::from(format!(
-                "{days} days + {hours:02}:{minutes:02}:{seconds:02}"
-            ))
+            fmt_datetime2(i64::from(dt2.days), dt2.time.time_nanoseconds)
         }
-        ColumnValues::DateTimeOffset(dto) => {
-            let offset_hours = dto.offset / 60;
-            let offset_mins = (dto.offset % 60).unsigned_abs();
-            Value::from(format!(
-                "{} days + offset {offset_hours:+03}:{offset_mins:02}",
-                dto.datetime2.days
-            ))
+        ColumnValues::DateTimeOffset(dto) => fmt_datetimeoffset(
+            i64::from(dto.datetime2.days),
+            dto.datetime2.time.time_nanoseconds,
+            dto.offset,
+        ),
+        ColumnValues::SmallDateTime(sdt) => {
+            // SMALLDATETIME: days since 1900-01-01, time in minutes since midnight.
+            let days = i64::from(sdt.days);
+            let mins = u32::from(sdt.time);
+            match (
+                date_1900(days),
+                NaiveTime::from_hms_opt(mins / 60, mins % 60, 0),
+            ) {
+                (Some(d), Some(t)) => {
+                    Value::from(format!("{}T{}", d.format("%Y-%m-%d"), t.format("%H:%M")))
+                }
+                _ => Value::from(format!("{days} days since 1900 + {mins} minutes")),
+            }
         }
-        ColumnValues::SmallDateTime(sdt) => Value::from(format!(
-            "{} days since 1900 + {} minutes",
-            sdt.days, sdt.time
-        )),
         ColumnValues::Money(m) => {
             let lsb_i64 = i64::from(m.lsb_part) & 0x0000_0000_FFFF_FFFF;
             let val = lsb_i64 | (i64::from(m.msb_part) << 32);
@@ -544,6 +602,28 @@ mod tests {
     use mssql_tds::datatypes::sql_json::SqlJson;
     use mssql_tds::datatypes::sql_string::{EncodingType, SqlString};
     use mssql_tds::token::tokens::SqlCollation;
+
+    #[test]
+    fn ce_date_converts_days_to_iso() {
+        // 0001-01-01 is TDS day 0.
+        assert_eq!(ce_date(0).unwrap().to_string(), "0001-01-01");
+        // 739630 days since 0001-01-01 == 2026-01-15 (live-verified InvoiceDate).
+        assert_eq!(ce_date(739_630).unwrap().to_string(), "2026-01-15");
+    }
+
+    #[test]
+    fn date_1900_bases_on_1900_01_01() {
+        assert_eq!(date_1900(0).unwrap().to_string(), "1900-01-01");
+        assert_eq!(date_1900(1).unwrap().to_string(), "1900-01-02");
+    }
+
+    #[test]
+    fn time_from_nanos_builds_time() {
+        // 14:30:45.5 = 52245.5 s = 52_245_500_000_000 ns
+        let t = time_from_nanos(52_245_500_000_000).unwrap();
+        assert_eq!(t.to_string(), "14:30:45.500");
+        assert_eq!(time_from_nanos(0).unwrap().to_string(), "00:00:00");
+    }
 
     #[test]
     fn sql_scope_hint_only_when_generic_token_without_sql_token() {
