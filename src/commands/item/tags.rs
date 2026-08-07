@@ -13,7 +13,7 @@ pub(super) async fn apply_tags(
     id: &str,
     tag_ids: &[String],
 ) -> Result<()> {
-    let body = serde_json::json!({ "tagIds": tag_ids });
+    let body = serde_json::json!({ "tags": tag_ids });
 
     if output::dry_run_guard(cli, "item apply-tags", &body) {
         return Ok(());
@@ -41,7 +41,7 @@ pub(super) async fn unapply_tags(
     id: &str,
     tag_ids: &[String],
 ) -> Result<()> {
-    let body = serde_json::json!({ "tagIds": tag_ids });
+    let body = serde_json::json!({ "tags": tag_ids });
 
     if output::dry_run_guard(cli, "item unapply-tags", &body) {
         return Ok(());

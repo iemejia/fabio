@@ -1953,3 +1953,28 @@ fn assign_identity_includes_assignment_type() {
     let data = extract_data(&json);
     assert_eq!(data["details"]["assignmentType"], "Caller");
 }
+
+// item apply-tags body field must be `tags` (not `tagIds`, which the API
+// rejects with InvalidInput). Offline dry-run regression.
+#[test]
+fn item_apply_tags_uses_tags_field() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "item",
+            "apply-tags",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--tag-ids",
+            "cccccccc-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(data["details"]["tags"].is_array());
+    assert!(data["details"].get("tagIds").is_none());
+}

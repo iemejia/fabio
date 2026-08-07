@@ -1545,10 +1545,9 @@ fn workspace_tags_lifecycle() {
 }
 
 fn workspace_tags_lifecycle_inner(cfg: &TestConfig, tag_id: &str, _tag_name: &str) {
-    // Step 2: Apply tag to workspace
-    // NOTE: applyTags returns API_ERROR "invalid input" on some tenants/capacities
-    // (root cause unknown — body format matches documented spec). Handle gracefully.
-    let output = fabio()
+    // Step 2: Apply tag to workspace. The request body field is `tags` (an array
+    // of tag ID UUIDs) — NOT `tagIds`, which the API rejects with InvalidInput.
+    fabio()
         .args([
             "workspace",
             "apply-tags",
@@ -1557,24 +1556,8 @@ fn workspace_tags_lifecycle_inner(cfg: &TestConfig, tag_id: &str, _tag_name: &st
             "--tag-ids",
             tag_id,
         ])
-        .output()
-        .unwrap();
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("API_ERROR") || stderr.contains("invalid input") {
-            eprintln!(
-                "SKIP apply-tags: endpoint returns API_ERROR on this tenant (known limitation)"
-            );
-            // Cleanup: delete the tag even though apply failed
-            fabio()
-                .args(["admin", "delete-tag", "--tag-id", tag_id])
-                .assert()
-                .success();
-            return;
-        }
-        panic!("workspace apply-tags failed unexpectedly: {stderr}");
-    }
+        .assert()
+        .success();
 
     // Step 3: Unapply tag from workspace
     fabio()
@@ -1619,6 +1602,9 @@ fn workspace_apply_tags_dry_run() {
     let data = extract_data(&json);
     assert_eq!(data["dry_run"], true);
     assert_eq!(data["would_execute"], "workspace apply-tags");
+    // The request body field must be `tags` (not `tagIds`, which the API rejects).
+    assert!(data["details"]["tags"].is_array());
+    assert!(data["details"].get("tagIds").is_none());
 }
 
 // ===========================================================================
