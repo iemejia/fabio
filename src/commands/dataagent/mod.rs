@@ -440,8 +440,10 @@ pub enum DataAgentCommand {
         #[arg(long)]
         question: String,
 
-        /// SQL/KQL/DAX query that answers the question
-        #[arg(long, visible_alias = "sql")]
+        /// The example query that answers the question, in the data source's
+        /// language (SQL for lakehouse/warehouse, KQL for a KQL database, GQL
+        /// for graph/ontology). Aliases: --sql/--kql/--dax/--gql.
+        #[arg(long, visible_aliases = ["sql", "kql", "dax", "gql"])]
         answer: String,
     },
     /// Update an existing few-shot example (question and/or query)
@@ -467,8 +469,8 @@ pub enum DataAgentCommand {
         #[arg(long)]
         question: Option<String>,
 
-        /// Updated SQL/KQL/DAX query
-        #[arg(long, visible_alias = "sql")]
+        /// Updated example query (aliases: --sql/--kql/--dax/--gql)
+        #[arg(long, visible_aliases = ["sql", "kql", "dax", "gql"])]
         answer: Option<String>,
     },
     /// Remove a few-shot example by ID

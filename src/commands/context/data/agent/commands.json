@@ -7220,7 +7220,7 @@
           "--answer": {
             "type": "string",
             "required": true,
-            "description": "SQL/KQL/DAX query that answers the question"
+            "description": "The example query that answers the question, in the data source's language (SQL for lakehouse/warehouse, KQL for a KQL database, GQL for graph/ontology). Aliases: --sql/--kql/--dax/--gql"
           }
         },
         "mutates": true,
@@ -7258,7 +7258,7 @@
           },
           "--answer": {
             "type": "string",
-            "description": "Updated SQL/KQL/DAX query"
+            "description": "Updated example query (aliases: --sql/--kql/--dax/--gql)"
           }
         },
         "mutates": true,
