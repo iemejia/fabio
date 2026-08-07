@@ -977,3 +977,59 @@ fn warehouse_retention_get_set_roundtrip() {
         .assert()
         .success();
 }
+
+// ---------------------------------------------------------------------------
+// Restore points — create sets displayName (not the ignored restorePointLabel);
+// restore-to-point is in-place (no --name / no body).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn warehouse_create_restore_point_dry_run_uses_display_name() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "create-restore-point",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+            "--name",
+            "MyPoint",
+            "--description",
+            "a note",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let details = &extract_data(&json)["details"];
+    // The body must use displayName/description, NOT the ignored restorePointLabel.
+    assert_eq!(details["displayName"], "MyPoint");
+    assert_eq!(details["description"], "a note");
+    assert!(details.get("restorePointLabel").is_none());
+    assert!(details.get("restoreToWarehouseName").is_none());
+}
+
+#[test]
+fn warehouse_restore_to_point_dry_run_needs_no_name() {
+    // Restore is in-place: --name must NOT be required.
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "restore-to-point",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+            "--restore-point-id",
+            "1786086539000",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let details = &extract_data(&json)["details"];
+    assert_eq!(details["restorePointId"], "1786086539000");
+    // No bogus warehouse-name body field.
+    assert!(details.get("restoreToWarehouseName").is_none());
+}

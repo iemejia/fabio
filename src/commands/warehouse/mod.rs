@@ -233,9 +233,13 @@ pub enum WarehouseCommand {
         #[arg(long)]
         id: String,
 
-        /// Optional label for the restore point
+        /// Display name for the restore point
         #[arg(long)]
         name: Option<String>,
+
+        /// Optional description for the restore point
+        #[arg(long)]
+        description: Option<String>,
     },
     /// Show details of a restore point
     #[command(display_order = 32)]
@@ -300,10 +304,6 @@ pub enum WarehouseCommand {
         /// Restore point ID
         #[arg(long)]
         restore_point_id: String,
-
-        /// Name for the restored warehouse
-        #[arg(long)]
-        name: String,
     },
 
     // ── Query Insights ───────────────────────────────────────────────────
@@ -628,8 +628,17 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
             workspace,
             id,
             name,
+            description,
         } => {
-            restore_points::create_restore_point(cli, client, workspace, id, name.as_deref()).await
+            restore_points::create_restore_point(
+                cli,
+                client,
+                workspace,
+                id,
+                name.as_deref(),
+                description.as_deref(),
+            )
+            .await
         }
         WarehouseCommand::ShowRestorePoint {
             workspace,
@@ -663,11 +672,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
             workspace,
             id,
             restore_point_id,
-            name,
-        } => {
-            restore_points::restore_to_point(cli, client, workspace, id, restore_point_id, name)
-                .await
-        }
+        } => restore_points::restore_to_point(cli, client, workspace, id, restore_point_id).await,
         WarehouseCommand::QueriesRunning { workspace, id } => {
             Box::pin(insights::queries_running(cli, client, workspace, id)).await
         }

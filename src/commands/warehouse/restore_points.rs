@@ -39,11 +39,18 @@ pub(super) async fn create_restore_point(
     workspace: &str,
     id: &str,
     name: Option<&str>,
+    description: Option<&str>,
 ) -> Result<()> {
-    let body = name.map_or_else(
-        || serde_json::json!({}),
-        |n| serde_json::json!({ "restorePointLabel": n }),
-    );
+    // The API's CreateRestorePointRequest is {displayName, description} — NOT
+    // {restorePointLabel} (that field is silently ignored, leaving every point
+    // named "Restore point").
+    let mut body = serde_json::json!({});
+    if let Some(n) = name {
+        body["displayName"] = Value::from(n);
+    }
+    if let Some(d) = description {
+        body["description"] = Value::from(d);
+    }
 
     if output::dry_run_guard(cli, "warehouse create-restore-point", &body) {
         return Ok(());
@@ -53,11 +60,39 @@ pub(super) async fn create_restore_point(
         .post(
             &format!("/workspaces/{workspace}/warehouses/{id}/restorePoints"),
             &body,
-            false,
+            true,
         )
         .await
         .map_err(|e| enrich_forbidden(e, "warehouse create-restore-point", "Contributor"))?;
-    output::render_object(cli, &data, "id");
+
+    // A 201 returns the RestorePoint; a 202 (async) may leave an empty LRO body.
+    // If we didn't get a restore point back, re-fetch the list and return the
+    // most-recent restore point (ids are creation timestamps, so the max id is
+    // the one just created) — so agents always get an id to reference.
+    if data.get("id").and_then(Value::as_str).is_some() {
+        output::render_object(cli, &data, "id");
+        return Ok(());
+    }
+    let listed = client
+        .get_list(
+            &format!("/workspaces/{workspace}/warehouses/{id}/restorePoints"),
+            "value",
+            true,
+            None,
+        )
+        .await;
+    if let Ok(resp) = listed
+        && let Some(newest) = resp.items.iter().max_by_key(|rp| {
+            rp.get("id")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_owned()
+        })
+    {
+        output::render_object(cli, newest, "id");
+    } else {
+        output::render_object(cli, &serde_json::json!({ "status": "created" }), "status");
+    }
     Ok(())
 }
 
@@ -143,13 +178,17 @@ pub(super) async fn restore_to_point(
     workspace: &str,
     id: &str,
     restore_point_id: &str,
-    name: &str,
 ) -> Result<()> {
-    let body = serde_json::json!({
-        "restoreToWarehouseName": name,
-    });
+    // Restore-in-place: the API takes NO request body (only the restore point id
+    // in the path). fabio previously required a bogus `--name` and sent a
+    // `{restoreToWarehouseName}` body the server ignores.
+    let body = serde_json::json!({});
 
-    if output::dry_run_guard(cli, "warehouse restore-to-point", &body) {
+    if output::dry_run_guard(
+        cli,
+        "warehouse restore-to-point",
+        &serde_json::json!({ "id": id, "restorePointId": restore_point_id }),
+    ) {
         return Ok(());
     }
 
@@ -163,6 +202,14 @@ pub(super) async fn restore_to_point(
         )
         .await
         .map_err(|e| enrich_forbidden(e, "warehouse restore-to-point", "Contributor"))?;
-    output::render_object(cli, &data, "id");
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        output::render_object(
+            cli,
+            &serde_json::json!({ "id": id, "restorePointId": restore_point_id, "status": "restored" }),
+            "status",
+        );
+    } else {
+        output::render_object(cli, &data, "id");
+    }
     Ok(())
 }

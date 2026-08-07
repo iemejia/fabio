@@ -5293,7 +5293,11 @@
           },
           "--name": {
             "type": "string",
-            "description": "Optional label for the restore point"
+            "description": "Display name for the restore point"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Optional description for the restore point"
           }
         },
         "mutates": true,
@@ -5390,11 +5394,6 @@
             "type": "string",
             "required": true,
             "description": "Restore point ID"
-          },
-          "--name": {
-            "type": "string",
-            "required": true,
-            "description": "Name for the restored warehouse"
           }
         },
         "mutates": true,
