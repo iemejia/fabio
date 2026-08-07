@@ -1057,3 +1057,28 @@ fn warehouse_update_restore_point_dry_run_uses_display_name() {
     assert_eq!(details["displayName"], "Renamed");
     assert!(details.get("restorePointLabel").is_none());
 }
+
+// warehouse create --collation sets creationPayload.collationType. Offline
+// dry-run regression.
+#[test]
+fn warehouse_create_collation_in_body() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "create",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--name",
+            "wh_ci",
+            "--collation",
+            "Latin1_General_100_CI_AS_KS_WS_SC_UTF8",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert_eq!(
+        extract_data(&json)["details"]["collation"],
+        "Latin1_General_100_CI_AS_KS_WS_SC_UTF8"
+    );
+}

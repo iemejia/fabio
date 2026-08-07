@@ -56,6 +56,12 @@ pub enum WarehouseCommand {
         /// Sensitivity label ID to apply on creation
         #[arg(long)]
         sensitivity_label: Option<String>,
+
+        /// Collation for the warehouse (create-time only). Values:
+        /// `Latin1_General_100_BIN2_UTF8` (case-sensitive, default) or
+        /// `Latin1_General_100_CI_AS_KS_WS_SC_UTF8` (case-insensitive).
+        #[arg(long)]
+        collation: Option<String>,
     },
     /// Update warehouse properties (name and/or description)
     #[command(display_order = 4)]
@@ -524,6 +530,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
             name,
             description,
             sensitivity_label,
+            collation,
         } => {
             crud::create(
                 cli,
@@ -532,6 +539,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
                 name,
                 description.as_deref(),
                 sensitivity_label.as_deref(),
+                collation.as_deref(),
             )
             .await
         }

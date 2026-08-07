@@ -168,3 +168,25 @@ fn eventhouse_dry_run_create() {
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(json["data"]["would_execute"], "eventhouse create");
 }
+
+// eventhouse create --min-consumption-units sets
+// creationPayload.minimumConsumptionUnits. Offline dry-run regression.
+#[test]
+fn eventhouse_create_min_consumption_units_in_body() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "eventhouse",
+            "create",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--name",
+            "eh_min",
+            "--min-consumption-units",
+            "2.25",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert_eq!(extract_data(&json)["details"]["minConsumptionUnits"], 2.25);
+}

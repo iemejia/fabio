@@ -48,6 +48,11 @@ pub enum EventhouseCommand {
         /// Sensitivity label ID to apply on creation
         #[arg(long)]
         sensitivity_label: Option<String>,
+
+        /// Minimum consumption units to keep the eventhouse always-on
+        /// (create-time only, `creationPayload.minimumConsumptionUnits`).
+        #[arg(long)]
+        min_consumption_units: Option<f64>,
     },
     /// Update eventhouse properties (name and/or description)
     #[command(display_order = 4)]
@@ -130,6 +135,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EventhouseComma
             name,
             description,
             sensitivity_label,
+            min_consumption_units,
         } => {
             create(
                 cli,
@@ -138,6 +144,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EventhouseComma
                 name,
                 description.as_deref(),
                 sensitivity_label.as_deref(),
+                *min_consumption_units,
             )
             .await
         }
@@ -268,6 +275,7 @@ async fn create(
     name: &str,
     description: Option<&str>,
     sensitivity_label: Option<&str>,
+    min_consumption_units: Option<f64>,
 ) -> Result<()> {
     let mut body = serde_json::json!({
         "displayName": name,
@@ -280,6 +288,10 @@ async fn create(
             "sensitivityLabelId": label_id
         });
     }
+    if let Some(units) = min_consumption_units {
+        // Always-on minimum consumption is set at create time via creationPayload.
+        body["creationPayload"] = serde_json::json!({ "minimumConsumptionUnits": units });
+    }
 
     if output::dry_run_guard(
         cli,
@@ -288,7 +300,8 @@ async fn create(
             "workspace": workspace,
             "displayName": name,
             "description": description,
-            "sensitivityLabel": sensitivity_label
+            "sensitivityLabel": sensitivity_label,
+            "minConsumptionUnits": min_consumption_units
         }),
     ) {
         return Ok(());

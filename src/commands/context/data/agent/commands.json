@@ -5041,6 +5041,10 @@
           "--sensitivity-label": {
             "type": "string",
             "description": "Sensitivity label ID to apply on creation"
+          },
+          "--collation": {
+            "type": "string",
+            "description": "Collation for the warehouse (create-time only). Values: `Latin1_General_100_BIN2_UTF8` (case-sensitive, default) or `Latin1_General_100_CI_AS_KS_WS_SC_UTF8` (case-insensitive)"
           }
         },
         "mutates": true,
@@ -12628,6 +12632,10 @@
           "--sensitivity-label": {
             "type": "string",
             "description": "Sensitivity label ID to apply on creation"
+          },
+          "--min-consumption-units": {
+            "type": "string",
+            "description": "Minimum consumption units to keep the eventhouse always-on (create-time only, `creationPayload.minimumConsumptionUnits`)"
           }
         },
         "mutates": true,

@@ -87,6 +87,7 @@ pub(super) async fn create(
     name: &str,
     description: Option<&str>,
     sensitivity_label: Option<&str>,
+    collation: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({
         "displayName": name,
@@ -99,6 +100,10 @@ pub(super) async fn create(
             "sensitivityLabelId": label_id
         });
     }
+    if let Some(c) = collation {
+        // Warehouse collation is set at create time via creationPayload.collationType.
+        body["creationPayload"] = serde_json::json!({ "collationType": c });
+    }
 
     if output::dry_run_guard(
         cli,
@@ -107,7 +112,8 @@ pub(super) async fn create(
             "workspace": workspace,
             "displayName": name,
             "description": description,
-            "sensitivityLabel": sensitivity_label
+            "sensitivityLabel": sensitivity_label,
+            "collation": collation
         }),
     ) {
         return Ok(());
