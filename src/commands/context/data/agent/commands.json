@@ -389,7 +389,8 @@
           }
         },
         "mutates": true,
-        "returns": "void"
+        "returns": "void",
+        "destructive": true
       },
       "remove-all-sharing-links": {
         "description": "Remove all sharing links for specified items",
@@ -1593,7 +1594,8 @@
           }
         },
         "mutates": true,
-        "returns": "void"
+        "returns": "void",
+        "destructive": true
       }
     }
   },
@@ -2290,7 +2292,8 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "destructive": true
       },
       "delete-external-data-share": {
         "description": "Delete an external data share",
@@ -5402,7 +5405,8 @@
         },
         "mutates": true,
         "returns": "object",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "queries-running": {
         "description": "List currently running queries on a warehouse",
@@ -5508,7 +5512,8 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "destructive": true
       },
       "pool-insights": {
         "description": "Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`)",
@@ -6168,7 +6173,8 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "destructive": true
       },
       "statistics-list": {
         "description": "List statistics on a SQL database",
@@ -7299,6 +7305,7 @@
         "mutates": true,
         "returns": "void",
         "async": false,
+        "destructive": true,
         "examples": [
           "fabio data-agent clear-fewshots -w $WS --id $AGENT --datasource \"SalesLakehouse\""
         ]
@@ -7575,6 +7582,7 @@
         "mutates": true,
         "returns": "void",
         "async": false,
+        "destructive": true,
         "examples": [
           "fabio data-agent reset -w $WS --id $AGENT"
         ]
@@ -9212,7 +9220,8 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "destructive": true
       },
       "update-definition": {
         "description": "Update the definition of a copy job",
@@ -23722,7 +23731,8 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "destructive": true
       }
     }
   },
