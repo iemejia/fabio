@@ -678,6 +678,13 @@ async fn publish(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) ->
 }
 
 async fn cancel_publish(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "environment cancel-publish",
+        &serde_json::json!({ "workspace": workspace, "id": id }),
+    ) {
+        return Ok(());
+    }
     client
         .post(
             &format!("/workspaces/{workspace}/environments/{id}/staging/cancelPublish"),

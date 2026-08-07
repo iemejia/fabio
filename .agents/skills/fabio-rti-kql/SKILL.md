@@ -59,13 +59,13 @@ Manage KQL databases (within eventhouses)
 | `fabio kql-database get-definition` | no | Get the definition of a KQL database (KQL script) |
 | `fabio kql-database get-shortcut` | no | Get a shortcut in a KQL database |
 | `fabio kql-database ingest` | yes | Ingest data into a KQL table — inline (small) or from OneLake/blob storage (large files) |
-| `fabio kql-database journal` | yes | Show the operations journal (completed operations history) |
+| `fabio kql-database journal` | no | Show the operations journal (completed operations history) |
 | `fabio kql-database list` | no | List KQL databases in a workspace |
 | `fabio kql-database list-entities` | no | List entities (tables, materialized views, external tables, functions) in a database |
 | `fabio kql-database list-shortcuts` | no | List shortcuts in a KQL database |
 | `fabio kql-database mcp-url` | no | Print the remote MCP server URL for consuming this KQL database with AI agents |
-| `fabio kql-database queries-completed` | yes | Show recently completed queries |
-| `fabio kql-database queries-running` | yes | Show currently running queries on the KQL database |
+| `fabio kql-database queries-completed` | no | Show recently completed queries |
+| `fabio kql-database queries-running` | no | Show currently running queries on the KQL database |
 | `fabio kql-database query` | no | Execute a KQL query against a KQL database |
 | `fabio kql-database sample` | no | Sample rows from a table, materialized view, external table, or function |
 | `fabio kql-database schema-context` | no | Retrieve relevant schema context (with column samples + stats) for a natural-language prompt (via the eventhouse remote MCP server) |

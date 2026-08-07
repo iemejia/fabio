@@ -322,6 +322,27 @@ pub(super) async fn sync_files(
         to_delete.len()
     );
 
+    // Sync can overwrite AND delete files (with --delete-extra). Guard AFTER the
+    // read-only diff so the dry-run plan enumerates exactly what would change,
+    // before any copy/rename/delete network call.
+    if output::dry_run_guard(
+        cli,
+        "lakehouse sync",
+        &serde_json::json!({
+            "destWorkspace": dst_ws,
+            "destId": dst_id,
+            "destPath": dst_path,
+            "toCopy": to_copy.len(),
+            "toRename": to_rename.len(),
+            "toDelete": to_delete.len(),
+            "deleteExtra": delete_extra,
+            "copyFiles": to_copy,
+            "deleteFiles": to_delete,
+        }),
+    ) {
+        return Ok(());
+    }
+
     // Execute renames first (atomic, O(1) per file)
     let (renamed, rename_failed) = if to_rename.is_empty() {
         (0, 0)

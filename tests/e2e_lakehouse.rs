@@ -1480,3 +1480,54 @@ fn lakehouse_delete_shortcut_dry_run_is_offline_guarded() {
     assert_eq!(data["dry_run"], true);
     assert_eq!(data["would_execute"], "lakehouse delete-shortcut");
 }
+
+#[test]
+fn lakehouse_upload_dry_run_is_guarded() {
+    // Regression: upload previously executed the real upload under --dry-run.
+    let dir = TempDir::new().unwrap();
+    let f = dir.path().join("x.txt");
+    fs::write(&f, "data").unwrap();
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "lakehouse",
+            "upload",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+            "--source-path",
+            f.to_str().unwrap(),
+            "--dest-path",
+            "Files/x.txt",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "lakehouse upload");
+}
+
+#[test]
+fn lakehouse_create_directory_dry_run_is_guarded() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "lakehouse",
+            "create-directory",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+            "--path",
+            "Files/newdir",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert_eq!(
+        extract_data(&json)["would_execute"],
+        "lakehouse create-directory"
+    );
+}

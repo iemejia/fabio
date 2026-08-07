@@ -2584,7 +2584,7 @@
             "description": "SQL query to plan (prefix with @ to read from file, omit to read from stdin)"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "queries-running": {
@@ -2601,7 +2601,7 @@
             "description": "Lakehouse ID"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "queries-frequent": {
@@ -2622,7 +2622,7 @@
             "description": "Maximum rows to return (default: 100)"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "queries-long-running": {
@@ -2643,7 +2643,7 @@
             "description": "Maximum rows to return (default: 100)"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "queries-history": {
@@ -2668,7 +2668,7 @@
             "description": "Filter to queries tagged with this OPTION (LABEL = '...') value"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "pool-insights": {
@@ -2689,7 +2689,7 @@
             "description": "Maximum rows to return (default: 100)"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "table-health": {
@@ -2711,7 +2711,7 @@
             "description": "Fully-qualified table name to analyze (format `schema.table`; schema optional if `dbo`)"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "upload": {
@@ -5128,7 +5128,7 @@
             "description": "SQL query to plan (prefix with @ to read from file, omit to read from stdin)"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "connection-string": {
@@ -5418,7 +5418,7 @@
             "description": "Warehouse or Lakehouse ID"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "queries-frequent": {
@@ -5439,7 +5439,7 @@
             "description": "Maximum rows to return (default: 100)"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "queries-long-running": {
@@ -5460,7 +5460,7 @@
             "description": "Maximum rows to return (default: 100)"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "queries-history": {
@@ -5485,7 +5485,7 @@
             "description": "Filter to queries tagged with this OPTION (LABEL = '...') value"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "queries-kill": {
@@ -5528,7 +5528,7 @@
             "description": "Maximum rows to return (default: 100)"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "statistics-list": {
@@ -5549,7 +5549,7 @@
             "description": "Filter by table name (schema.table)"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "statistics-show": {
@@ -5571,7 +5571,7 @@
             "description": "Statistic name to inspect"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "statistics-create": {
@@ -6040,7 +6040,7 @@
             "description": "SQL query to plan (prefix with @ to read from file, omit to read from stdin)"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "connection-string": {
@@ -6120,7 +6120,7 @@
             "description": "SQL database ID"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "queries-history": {
@@ -6145,7 +6145,7 @@
             "description": "Filter to queries tagged with this OPTION (LABEL = '...') value"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "queries-kill": {
@@ -6188,7 +6188,7 @@
             "description": "Filter by table (schema.table or just table name)"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "statistics-show": {
@@ -6210,7 +6210,7 @@
             "description": "Statistic name"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "statistics-create": {
@@ -6400,7 +6400,7 @@
             "description": "SQL query to plan (prefix with @ to read from file, omit to read from stdin)"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "refresh-metadata": {
@@ -6505,7 +6505,7 @@
             "description": "SQL endpoint ID"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "queries-frequent": {
@@ -6526,7 +6526,7 @@
             "description": "Maximum rows to return (default: 100)"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "queries-long-running": {
@@ -6547,7 +6547,7 @@
             "description": "Maximum rows to return (default: 100)"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "queries-history": {
@@ -6572,7 +6572,7 @@
             "description": "Filter to queries tagged with this OPTION (LABEL = '...') value"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "pool-insights": {
@@ -6593,7 +6593,7 @@
             "description": "Maximum rows to return (default: 100)"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       }
     }
@@ -13802,7 +13802,7 @@
             "description": "Override the Kusto query URI"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "journal": {
@@ -13823,7 +13823,7 @@
             "description": "Override the Kusto query URI"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "queries-completed": {
@@ -13844,7 +13844,7 @@
             "description": "Override the Kusto query URI"
           }
         },
-        "mutates": true,
+        "mutates": false,
         "returns": "object"
       },
       "get-definition": {

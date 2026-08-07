@@ -1149,3 +1149,24 @@ fn notebook_create_from_ipynb_file() {
 
     std::fs::remove_file(&ipynb_path).ok();
 }
+
+#[test]
+fn notebook_stop_dry_run_is_guarded() {
+    // Regression: notebook stop previously executed the real job cancel under --dry-run.
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "notebook",
+            "stop",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+            "--job-id",
+            "22222222-2222-2222-2222-222222222222",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert_eq!(extract_data(&json)["would_execute"], "notebook stop");
+}

@@ -876,6 +876,13 @@ async fn stop(
     id: &str,
     job_id: &str,
 ) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "notebook stop",
+        &serde_json::json!({ "workspace": workspace, "id": id, "jobId": job_id }),
+    ) {
+        return Ok(());
+    }
     client
         .post(
             &format!("/workspaces/{workspace}/items/{id}/jobs/instances/{job_id}/cancel"),

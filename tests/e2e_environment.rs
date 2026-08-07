@@ -567,3 +567,24 @@ fn environment_external_libraries_roundtrip() {
         .assert()
         .success();
 }
+
+#[test]
+fn environment_cancel_publish_dry_run_is_guarded() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "environment",
+            "cancel-publish",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert_eq!(
+        extract_data(&json)["would_execute"],
+        "environment cancel-publish"
+    );
+}

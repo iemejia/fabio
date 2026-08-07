@@ -155,6 +155,21 @@ pub(super) async fn upload(
     // Expand glob patterns for local files
     let local_files = expand_local_glob(source_path)?;
 
+    // An upload overwrites the destination path — guard after the read-only
+    // local glob expansion so the dry-run plan lists which files would upload.
+    if output::dry_run_guard(
+        cli,
+        "lakehouse upload",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "sourceFiles": local_files,
+            "destPath": dest_path,
+        }),
+    ) {
+        return Ok(());
+    }
+
     if local_files.len() == 1 {
         // Single file: upload directly
         let data = std::fs::read(&local_files[0]).map_err(|e| {
@@ -274,6 +289,23 @@ pub(super) async fn copy_file(
     // Check if source path contains a glob pattern
     let matched_files = expand_remote_glob(client, src_ws, src_id, src_path).await?;
 
+    // A copy can overwrite the destination — guard after the read-only glob
+    // expansion so the dry-run plan lists exactly which files would be copied.
+    if output::dry_run_guard(
+        cli,
+        "lakehouse copy-file",
+        &serde_json::json!({
+            "sourceWorkspace": src_ws,
+            "sourceId": src_id,
+            "sourceFiles": matched_files,
+            "destWorkspace": dst_ws,
+            "destId": dst_id,
+            "destPath": dst_path,
+        }),
+    ) {
+        return Ok(());
+    }
+
     if matched_files.len() == 1 && matched_files[0] == src_path {
         // Single file: copy directly
         let result = client
@@ -332,6 +364,13 @@ pub(super) async fn create_directory(
     id: &str,
     path: &str,
 ) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "lakehouse create-directory",
+        &serde_json::json!({ "workspace": workspace, "id": id, "path": path }),
+    ) {
+        return Ok(());
+    }
     let result = client.create_onelake_directory(workspace, id, path).await?;
     output::render_object(cli, &result, "status");
     Ok(())

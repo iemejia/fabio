@@ -388,6 +388,23 @@ pub(super) async fn copy_table(
 ) -> Result<()> {
     let tables = expand_table_glob(client, src_ws, src_id, src_table).await?;
 
+    // A copy can overwrite the destination table — guard after the read-only
+    // glob expansion so the dry-run plan lists which tables would be copied.
+    if output::dry_run_guard(
+        cli,
+        "lakehouse copy-table",
+        &serde_json::json!({
+            "sourceWorkspace": src_ws,
+            "sourceId": src_id,
+            "sourceTables": tables,
+            "destWorkspace": dst_ws,
+            "destId": dst_id,
+            "destTable": dst_table,
+        }),
+    ) {
+        return Ok(());
+    }
+
     if tables.len() > 1 {
         use crate::parallel::{self, BatchSummary};
 

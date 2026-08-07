@@ -74,19 +74,19 @@ Manage lakehouses (tables, files, shortcuts)
 | `fabio lakehouse move-file` | yes | Move files between lakehouses (supports glob patterns for parallel move) |
 | `fabio lakehouse move-table` | yes | Move a table between lakehouses (copy + delete source) |
 | `fabio lakehouse optimize-table` | yes | Optimize a Delta table (V-Order compaction + optional Z-Order) |
-| `fabio lakehouse plan` | yes | Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query |
-| `fabio lakehouse pool-insights` | yes | Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`) |
-| `fabio lakehouse queries-frequent` | yes | List frequently-run queries (from `queryinsights.frequently_run_queries`) |
-| `fabio lakehouse queries-history` | yes | List completed query history (from `queryinsights.exec_requests_history`) |
-| `fabio lakehouse queries-long-running` | yes | List long-running queries (from `queryinsights.long_running_queries`) |
-| `fabio lakehouse queries-running` | yes | List currently running queries on the lakehouse SQL endpoint |
+| `fabio lakehouse plan` | no | Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query |
+| `fabio lakehouse pool-insights` | no | Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`) |
+| `fabio lakehouse queries-frequent` | no | List frequently-run queries (from `queryinsights.frequently_run_queries`) |
+| `fabio lakehouse queries-history` | no | List completed query history (from `queryinsights.exec_requests_history`) |
+| `fabio lakehouse queries-long-running` | no | List long-running queries (from `queryinsights.long_running_queries`) |
+| `fabio lakehouse queries-running` | no | List currently running queries on the lakehouse SQL endpoint |
 | `fabio lakehouse query` | no | Execute SQL against the lakehouse SQL endpoint |
 | `fabio lakehouse refresh-materialized-views` | yes | Trigger a refresh of materialized lake views |
 | `fabio lakehouse run-table-maintenance` | yes | Run table maintenance on a lakehouse |
 | `fabio lakehouse show` | no | Show details of a lakehouse |
 | `fabio lakehouse show-execution-definition` | no | Show a materialized lake view execution definition |
 | `fabio lakehouse sync` | yes | Sync files between lakehouses (parallel, copies new/modified files) |
-| `fabio lakehouse table-health` | yes | Report file-level storage health metrics for a table (runs `sys.sp_get_table_health_metrics` on the SQL analytics endpoint) |
+| `fabio lakehouse table-health` | no | Report file-level storage health metrics for a table (runs `sys.sp_get_table_health_metrics` on the SQL analytics endpoint) |
 | `fabio lakehouse table-schema` | no | Show Delta table schema (reads from `OneLake` `_delta_log` without Spark/SQL) |
 | `fabio lakehouse update` | yes | Update a lakehouse (rename/redescribe) |
 | `fabio lakehouse update-definition` | yes | Update the definition of a lakehouse |

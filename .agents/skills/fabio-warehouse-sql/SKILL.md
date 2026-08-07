@@ -42,13 +42,13 @@ Manage warehouses and run SQL queries
 | `fabio warehouse get-sql-pools-config` | no | Get SQL pools configuration for a workspace |
 | `fabio warehouse list` | no | List warehouses in a workspace |
 | `fabio warehouse list-restore-points` | no | List restore points for a warehouse |
-| `fabio warehouse plan` | yes | Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query |
-| `fabio warehouse pool-insights` | yes | Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`) |
-| `fabio warehouse queries-frequent` | yes | List frequently-run queries (from `queryinsights.frequently_run_queries`) |
-| `fabio warehouse queries-history` | yes | List completed query history (from `queryinsights.exec_requests_history`) |
+| `fabio warehouse plan` | no | Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query |
+| `fabio warehouse pool-insights` | no | Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`) |
+| `fabio warehouse queries-frequent` | no | List frequently-run queries (from `queryinsights.frequently_run_queries`) |
+| `fabio warehouse queries-history` | no | List completed query history (from `queryinsights.exec_requests_history`) |
 | `fabio warehouse queries-kill` | yes | Kill a running query session by session ID |
-| `fabio warehouse queries-long-running` | yes | List long-running queries (from `queryinsights.long_running_queries`) |
-| `fabio warehouse queries-running` | yes | List currently running queries on a warehouse |
+| `fabio warehouse queries-long-running` | no | List long-running queries (from `queryinsights.long_running_queries`) |
+| `fabio warehouse queries-running` | no | List currently running queries on a warehouse |
 | `fabio warehouse query` | yes | Execute a SQL query against a warehouse or SQL endpoint |
 | `fabio warehouse restore-to-point` | yes | Restore a warehouse to a restore point |
 | `fabio warehouse set-audit-actions` | yes | Set audit actions and groups for a warehouse |
@@ -57,8 +57,8 @@ Manage warehouses and run SQL queries
 | `fabio warehouse show-restore-point` | no | Show details of a restore point |
 | `fabio warehouse statistics-create` | yes | Create a user-defined statistic on a column |
 | `fabio warehouse statistics-delete` | yes | Delete a user-defined statistic |
-| `fabio warehouse statistics-list` | yes | List user-defined statistics on a warehouse or SQL endpoint |
-| `fabio warehouse statistics-show` | yes | Show details of a statistic (header, density vector, histogram) |
+| `fabio warehouse statistics-list` | no | List user-defined statistics on a warehouse or SQL endpoint |
+| `fabio warehouse statistics-show` | no | Show details of a statistic (header, density vector, histogram) |
 | `fabio warehouse statistics-update` | yes | Update (refresh) an existing statistic |
 | `fabio warehouse update` | yes | Update warehouse properties (name and/or description) |
 | `fabio warehouse update-audit-settings` | yes | Update SQL audit settings for a warehouse |
@@ -78,18 +78,18 @@ Manage SQL databases (Fabric-native transactional databases)
 | `fabio sql-database import` | yes | Import data from a CSV or JSON file into a SQL database table |
 | `fabio sql-database list` | no | List SQL databases in a workspace |
 | `fabio sql-database list-deleted` | no | List restorable deleted SQL databases in a workspace |
-| `fabio sql-database plan` | yes | Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query |
-| `fabio sql-database queries-history` | yes | List completed query history |
+| `fabio sql-database plan` | no | Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query |
+| `fabio sql-database queries-history` | no | List completed query history |
 | `fabio sql-database queries-kill` | yes | Kill a running query session by session ID |
-| `fabio sql-database queries-running` | yes | List currently running queries on a SQL database |
+| `fabio sql-database queries-running` | no | List currently running queries on a SQL database |
 | `fabio sql-database query` | yes | Execute a SQL query against a SQL database via TDS |
 | `fabio sql-database revalidate-cmk` | yes | Revalidate Customer-Managed Key (CMK) for the SQL database |
 | `fabio sql-database show` | no | Show details of a SQL database |
 | `fabio sql-database start-mirroring` | yes | Start mirroring for the SQL database |
 | `fabio sql-database statistics-create` | yes | Create a user-defined statistic on a column |
 | `fabio sql-database statistics-delete` | yes | Delete a user-defined statistic |
-| `fabio sql-database statistics-list` | yes | List statistics on a SQL database |
-| `fabio sql-database statistics-show` | yes | Show details of a statistic |
+| `fabio sql-database statistics-list` | no | List statistics on a SQL database |
+| `fabio sql-database statistics-show` | no | Show details of a statistic |
 | `fabio sql-database statistics-update` | yes | Update (refresh) an existing statistic |
 | `fabio sql-database stop-mirroring` | yes | Stop mirroring for the SQL database |
 | `fabio sql-database update` | yes | Update SQL database properties |
@@ -104,12 +104,12 @@ Manage SQL endpoints (analytics endpoints for lakehouses)
 | `fabio sql-endpoint connection-string` | no | Get the SQL connection string for a SQL endpoint |
 | `fabio sql-endpoint get-audit-settings` | no | Get SQL audit settings for the endpoint |
 | `fabio sql-endpoint list` | no | List SQL endpoints in a workspace |
-| `fabio sql-endpoint plan` | yes | Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query |
-| `fabio sql-endpoint pool-insights` | yes | Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`) |
-| `fabio sql-endpoint queries-frequent` | yes | List frequently-run queries (from `queryinsights.frequently_run_queries`) |
-| `fabio sql-endpoint queries-history` | yes | List completed query history (from `queryinsights.exec_requests_history`) |
-| `fabio sql-endpoint queries-long-running` | yes | List long-running queries (from `queryinsights.long_running_queries`) |
-| `fabio sql-endpoint queries-running` | yes | List currently running queries on a SQL endpoint |
+| `fabio sql-endpoint plan` | no | Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query |
+| `fabio sql-endpoint pool-insights` | no | Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`) |
+| `fabio sql-endpoint queries-frequent` | no | List frequently-run queries (from `queryinsights.frequently_run_queries`) |
+| `fabio sql-endpoint queries-history` | no | List completed query history (from `queryinsights.exec_requests_history`) |
+| `fabio sql-endpoint queries-long-running` | no | List long-running queries (from `queryinsights.long_running_queries`) |
+| `fabio sql-endpoint queries-running` | no | List currently running queries on a SQL endpoint |
 | `fabio sql-endpoint query` | no | Execute a SQL query against a SQL endpoint |
 | `fabio sql-endpoint refresh-metadata` | yes | Refresh metadata for all tables in a SQL endpoint (LRO) |
 | `fabio sql-endpoint set-audit-actions` | yes | Set audit actions and groups for the endpoint |
