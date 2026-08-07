@@ -234,3 +234,49 @@ fn mirrored_database_open_mirroring_lifecycle() {
         .assert()
         .success();
 }
+
+// ---------------------------------------------------------------------------
+// status / table-status use POST (regression: they previously used GET and
+// returned EntityNotFound). table-status renders a per-table list.
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant with a mirrored database"]
+fn mirrored_database_status_and_table_status() {
+    let cfg = TestConfig::from_env();
+    let Ok(md_id) = std::env::var("FABIO_TEST_MIRRORED_DATABASE_ID") else {
+        return; // skip when not configured
+    };
+
+    // status returns a {status: ...} object (via POST).
+    let assert = fabio()
+        .args([
+            "mirrored-database",
+            "status",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &md_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(extract_data(&json).get("status").is_some());
+
+    // table-status returns a per-table list (via POST).
+    let assert = fabio()
+        .args([
+            "mirrored-database",
+            "table-status",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &md_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(extract_data(&json).is_array());
+}

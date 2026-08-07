@@ -660,22 +660,47 @@ async fn stop(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Re
 }
 
 async fn status(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    // getMirroringStatus is a POST action (NOT a GET).
     let data = client
-        .get(&format!(
-            "/workspaces/{workspace}/mirroredDatabases/{id}/getMirroringStatus"
-        ))
+        .post(
+            &format!("/workspaces/{workspace}/mirroredDatabases/{id}/getMirroringStatus"),
+            &serde_json::json!({}),
+            false,
+        )
         .await?;
     output::render_object(cli, &data, "status");
     Ok(())
 }
 
 async fn table_status(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    // getTablesMirroringStatus is a POST action (NOT a GET). It returns a
+    // paginated per-table list: {continuationToken, data:[{sourceSchemaName,
+    // sourceTableName, status, metrics:{processedBytes, processedRows,
+    // lastSyncDateTime}}]}. Render the per-table entries as a list so agents can
+    // filter (e.g. --query "[?status!='Replicating']").
     let data = client
-        .get(&format!(
-            "/workspaces/{workspace}/mirroredDatabases/{id}/getTablesMirroringStatus"
-        ))
+        .post(
+            &format!("/workspaces/{workspace}/mirroredDatabases/{id}/getTablesMirroringStatus"),
+            &serde_json::json!({}),
+            false,
+        )
         .await?;
-    output::render_object(cli, &data, "data");
+    if let Some(tables) = data.get("data").and_then(Value::as_array) {
+        let token = data
+            .get("continuationToken")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty());
+        output::render_list_with_token(
+            cli,
+            tables,
+            &["sourceSchemaName", "sourceTableName", "status"],
+            &["SCHEMA", "TABLE", "STATUS"],
+            "sourceTableName",
+            token,
+        );
+    } else {
+        output::render_object(cli, &data, "data");
+    }
     Ok(())
 }
 
