@@ -45,6 +45,10 @@ pub enum WarehouseSnapshotCommand {
         #[arg(long)]
         warehouse_id: String,
 
+        /// Point-in-time for the snapshot in UTC (`YYYY-MM-DDTHH:mm:ssZ`); omit for the current time
+        #[arg(long)]
+        snapshot_datetime: Option<String>,
+
         /// Optional description
         #[arg(long)]
         description: Option<String>,
@@ -101,6 +105,7 @@ pub async fn execute(
             workspace,
             name,
             warehouse_id,
+            snapshot_datetime,
             description,
             sensitivity_label,
         } => {
@@ -110,6 +115,7 @@ pub async fn execute(
                 workspace,
                 name,
                 warehouse_id,
+                snapshot_datetime.as_deref(),
                 description.as_deref(),
                 sensitivity_label.as_deref(),
             )
@@ -214,20 +220,28 @@ async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Re
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn create(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
     name: &str,
     warehouse_id: &str,
+    snapshot_datetime: Option<&str>,
     description: Option<&str>,
     sensitivity_label: Option<&str>,
 ) -> Result<()> {
+    // The creationPayload field is `parentWarehouseId` (NOT `warehouseId`, which
+    // the API rejects with `NotGenericWarehouseArtifact`). `snapshotDateTime`
+    // (UTC `YYYY-MM-DDTHH:mm:ssZ`) selects a point-in-time snapshot; omitted =
+    // current time.
+    let mut creation_payload = serde_json::json!({ "parentWarehouseId": warehouse_id });
+    if let Some(dt) = snapshot_datetime {
+        creation_payload["snapshotDateTime"] = Value::from(dt);
+    }
     let mut body = serde_json::json!({
         "displayName": name,
-        "creationPayload": {
-            "warehouseId": warehouse_id
-        }
+        "creationPayload": creation_payload
     });
     if let Some(desc) = description {
         body["description"] = Value::from(desc);
@@ -244,6 +258,8 @@ async fn create(
         &serde_json::json!({
             "workspace": workspace,
             "displayName": name,
+            "parentWarehouseId": warehouse_id,
+            "snapshotDateTime": snapshot_datetime,
             "description": description,
             "sensitivityLabel": sensitivity_label
         }),
@@ -259,7 +275,16 @@ async fn create(
         )
         .await
         .map_err(|e| enrich_forbidden(e, "warehouse-snapshot create", "Member"))?;
-    output::render_object(cli, &data, "id");
+    if data.get("id").and_then(Value::as_str).is_some() {
+        output::render_object(cli, &data, "id");
+    } else {
+        // A 202 async create may return an empty body — surface a useful status.
+        output::render_object(
+            cli,
+            &serde_json::json!({ "displayName": name, "status": "created" }),
+            "status",
+        );
+    }
     Ok(())
 }
 

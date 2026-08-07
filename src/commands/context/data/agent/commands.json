@@ -19439,6 +19439,10 @@
             "required": true,
             "description": "Source warehouse ID to snapshot"
           },
+          "--snapshot-datetime": {
+            "type": "string",
+            "description": "Point-in-time for the snapshot in UTC (`YYYY-MM-DDTHH:mm:ssZ`); omit for the current time"
+          },
           "--description": {
             "type": "string",
             "description": "Optional description"

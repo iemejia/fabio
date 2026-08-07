@@ -1462,10 +1462,12 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Definition is read-only**: `exportedDefinition.json` content (`ArtifactContents`, `dependencies`, `ConfigurationCategories`) is always empty arrays when retrieved via API. Query content is portal-managed only.
 
 ## Warehouse Snapshot API Behaviors Discovered
-- **Create requires `creationPayload` with warehouse ID**: Simple `displayName`-only creation returns "Invalid payload used for operation." Must include `{"creationPayload":{"warehouseId":"<warehouse-id>"}}`.
+- **Create field is `parentWarehouseId`, NOT `warehouseId` (bug fix, verified live)**: The `creationPayload` field is `parentWarehouseId` (`WarehouseSnapshotCreationPayload` in the swagger). fabio was sending `{"creationPayload":{"warehouseId":"…"}}` — the wrong field — so EVERY `warehouse-snapshot create` failed with `NotGenericWarehouseArtifact: Artifact must be a generic warehouse.` (the command was completely broken; a stale note here wrongly documented `warehouseId`). Fixed to `parentWarehouseId`. Live-proven side-by-side: `{parentWarehouseId}` → creates the snapshot; `{warehouseId}` → `NotGenericWarehouseArtifact`.
+- **`snapshotDateTime` = point-in-time (added)**: The `creationPayload` also accepts an optional `snapshotDateTime` (UTC `YYYY-MM-DDTHH:mm:ssZ`) to snapshot the warehouse AS OF a past time (the whole point of a snapshot — governed by the warehouse's time-travel retention window); omitted = current time. Exposed as `warehouse-snapshot create --snapshot-datetime`. The created snapshot's `show` reflects `parentWarehouseId` + `snapshotDateTime`.
+- **Create response**: `201` returns the snapshot item `{id, type:"WarehouseSnapshot", displayName, …}`; a `202` async create can return an empty body, so fabio falls back to `{displayName, status:"created"}`.
 - **Requires existing warehouse**: Cannot test without a warehouse item in the workspace.
 - **Endpoint pattern**: `/workspaces/{ws}/warehouseSnapshots/{id}`.
-- **Available commands**: list, show, create (with --warehouse-id), update, delete.
+- **Available commands**: list, show, create (`--warehouse-id` + optional `--snapshot-datetime`), update, delete.
 
 ## Dashboard/Datamart/Paginated Report API Behaviors Discovered
 - **Read-only list items**: Dashboard has only `list` command. Datamart has only `list`.

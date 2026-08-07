@@ -28,23 +28,33 @@ fn warehouse_snapshot_list_returns_array() {
 }
 
 #[test]
-#[ignore = "requires live Fabric tenant"]
-#[serial]
 fn warehouse_snapshot_dry_run_create() {
-    let cfg = TestConfig::from_env();
+    // Offline dry-run: regression guard that the creationPayload uses
+    // parentWarehouseId (NOT warehouseId, which the API rejects with
+    // NotGenericWarehouseArtifact) and supports snapshotDateTime.
     let assert = fabio()
         .args([
+            "--dry-run",
             "warehouse-snapshot",
             "create",
             "--workspace",
-            &cfg.source_workspace,
+            "00000000-0000-0000-0000-000000000000",
             "--name",
             "test-snapshot",
-            "--dry-run",
+            "--warehouse-id",
+            "11111111-1111-1111-1111-111111111111",
+            "--snapshot-datetime",
+            "2026-01-01T00:00:00Z",
         ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(json["data"]["would_execute"], "warehouse-snapshot create");
+    let details = &json["data"]["details"];
+    assert_eq!(
+        details["parentWarehouseId"],
+        "11111111-1111-1111-1111-111111111111"
+    );
+    assert_eq!(details["snapshotDateTime"], "2026-01-01T00:00:00Z");
 }
