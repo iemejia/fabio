@@ -262,6 +262,10 @@ pub enum EnvironmentCommand {
         /// Library name to remove
         #[arg(long)]
         library_name: String,
+
+        /// Library version to remove (the API requires the exact version).
+        #[arg(long)]
+        library_version: String,
     },
     /// Upload a custom library file into staging
     #[command(display_order = 45)]
@@ -423,7 +427,10 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EnvironmentComm
             workspace,
             id,
             library_name,
-        } => remove_staging_library(cli, client, workspace, id, library_name).await,
+            library_version,
+        } => {
+            remove_staging_library(cli, client, workspace, id, library_name, library_version).await
+        }
         EnvironmentCommand::UploadStagingLibrary {
             workspace,
             id,
@@ -976,6 +983,7 @@ async fn remove_staging_library(
     workspace: &str,
     id: &str,
     library_name: &str,
+    library_version: &str,
 ) -> Result<()> {
     if output::dry_run_guard(
         cli,
@@ -983,13 +991,17 @@ async fn remove_staging_library(
         &serde_json::json!({
             "workspace": workspace,
             "id": id,
-            "libraryName": library_name
+            "name": library_name,
+            "version": library_version
         }),
     ) {
         return Ok(());
     }
 
-    let body = serde_json::json!({ "libraryToRemove": library_name });
+    // The removeExternalLibrary API requires BOTH the library name and its exact
+    // version (fields `name`/`version`); the old `{libraryToRemove}` body was
+    // rejected with "Provide the name and version of external library".
+    let body = serde_json::json!({ "name": library_name, "version": library_version });
 
     let data = client
         .post(

@@ -8627,6 +8627,11 @@
             "type": "string",
             "required": true,
             "description": "Library name to remove"
+          },
+          "--library-version": {
+            "type": "string",
+            "required": true,
+            "description": "Library version to remove (the API requires the exact version)"
           }
         },
         "mutates": true,

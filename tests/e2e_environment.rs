@@ -588,3 +588,46 @@ fn environment_cancel_publish_dry_run_is_guarded() {
         "environment cancel-publish"
     );
 }
+
+// remove-staging-library requires BOTH name and version (the API rejects the
+// old {libraryToRemove} body). Offline dry-run regression.
+#[test]
+fn environment_remove_staging_library_sends_name_and_version() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "environment",
+            "remove-staging-library",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+            "--library-name",
+            "fuzzywuzzy",
+            "--library-version",
+            "0.18.0",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["details"]["name"], "fuzzywuzzy");
+    assert_eq!(data["details"]["version"], "0.18.0");
+}
+
+#[test]
+fn environment_remove_staging_library_requires_version() {
+    fabio()
+        .args([
+            "environment",
+            "remove-staging-library",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+            "--library-name",
+            "fuzzywuzzy",
+        ])
+        .assert()
+        .failure();
+}
