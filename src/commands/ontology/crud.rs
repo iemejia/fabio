@@ -183,6 +183,14 @@ pub(super) async fn delete(
         format!("/workspaces/{workspace}/ontologies/{id}")
     };
 
+    if output::dry_run_guard(
+        cli,
+        "ontology delete",
+        &serde_json::json!({ "workspace": workspace, "id": id, "hardDelete": hard }),
+    ) {
+        return Ok(());
+    }
+
     client.delete(&path).await?;
 
     output::render_object(

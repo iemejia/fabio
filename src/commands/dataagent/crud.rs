@@ -165,6 +165,14 @@ pub(super) async fn delete(
         format!("/workspaces/{workspace}/dataAgents/{id}")
     };
 
+    if output::dry_run_guard(
+        cli,
+        "data-agent delete",
+        &serde_json::json!({ "workspace": workspace, "id": id, "hardDelete": hard_delete }),
+    ) {
+        return Ok(());
+    }
+
     client.delete(&url).await?;
 
     let result = serde_json::json!({

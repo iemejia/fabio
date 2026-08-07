@@ -4546,3 +4546,27 @@ fn ontology_granular_elements_lifecycle() {
 
     delete_ontology(ws, &ont_id);
 }
+
+#[test]
+fn ontology_delete_dry_run_is_guarded() {
+    // Regression: ontology delete previously had no --dry-run guard and would
+    // execute the real (hard-)delete.
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "ontology",
+            "delete",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+            "--hard",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "ontology delete");
+    assert_eq!(data["details"]["hardDelete"], true);
+}
