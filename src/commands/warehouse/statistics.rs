@@ -106,7 +106,7 @@ pub(super) async fn update(
         return Ok(());
     }
 
-    let sql = format!("UPDATE STATISTICS [{name}]");
+    let sql = crate::commands::tds_utils::build_update_statistics_sql(name);
     execute_insights_query(cli, client, workspace, id, &sql).await?;
 
     let obj = serde_json::json!({ "name": name, "status": "updated" });
@@ -130,10 +130,53 @@ pub(super) async fn delete(
         return Ok(());
     }
 
-    let sql = format!("DROP STATISTICS [{name}]");
+    let sql = crate::commands::tds_utils::build_drop_statistics_sql(name);
     execute_insights_query(cli, client, workspace, id, &sql).await?;
 
     let obj = serde_json::json!({ "name": name, "status": "deleted" });
     output::render_object(cli, &obj, "status");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::commands::tds_utils::{build_drop_statistics_sql, build_update_statistics_sql};
+
+    /// Escape a T-SQL single-quoted string literal (double the single quotes).
+    fn escape_sql_literal(s: &str) -> String {
+        s.replace('\'', "''")
+    }
+
+    #[test]
+    fn escape_doubles_single_quotes() {
+        assert_eq!(escape_sql_literal("O'Brien"), "O''Brien");
+        assert_eq!(escape_sql_literal("plain"), "plain");
+    }
+
+    #[test]
+    fn update_sql_resolves_table_and_uses_dynamic_sql() {
+        let sql = build_update_statistics_sql("stat_id");
+        // Must look up the owning table (not treat the name as a table).
+        assert!(sql.contains("FROM sys.stats s JOIN sys.tables t"));
+        assert!(sql.contains("WHERE s.name = N'stat_id'"));
+        assert!(sql.contains("UPDATE STATISTICS ' + @tbl"));
+        assert!(sql.contains("EXEC sp_executesql"));
+        // Must NOT be the broken form that used the name as the table.
+        assert!(!sql.contains("UPDATE STATISTICS [stat_id]"));
+    }
+
+    #[test]
+    fn delete_sql_resolves_table_and_uses_object_dot_stat() {
+        let sql = build_drop_statistics_sql("stat_id");
+        assert!(sql.contains("FROM sys.stats s JOIN sys.tables t"));
+        assert!(sql.contains("DROP STATISTICS ' + @tbl + N'.'"));
+        assert!(sql.contains("EXEC sp_executesql"));
+        assert!(!sql.contains("DROP STATISTICS [stat_id]"));
+    }
+
+    #[test]
+    fn builders_escape_quotes() {
+        assert!(build_update_statistics_sql("a'b").contains("N'a''b'"));
+        assert!(build_drop_statistics_sql("a'b").contains("N'a''b'"));
+    }
 }

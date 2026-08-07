@@ -129,6 +129,39 @@ pub fn queries_history_sql(top: u32, label: Option<&str>) -> String {
     )
 }
 
+/// Build an `UPDATE STATISTICS` statement that first resolves the OWNING table
+/// of a statistic from `sys.stats` (a statistic is per-table), then runs the
+/// statement via dynamic SQL (the object name can't be a variable in
+/// `UPDATE`/`DROP STATISTICS`). Shared by `warehouse` + `sql-database`.
+pub fn build_update_statistics_sql(name: &str) -> String {
+    stats_ddl_sql(name, false)
+}
+
+/// Build a `DROP STATISTICS <schema>.<table>.<stat>` statement (see
+/// [`build_update_statistics_sql`]).
+pub fn build_drop_statistics_sql(name: &str) -> String {
+    stats_ddl_sql(name, true)
+}
+
+fn stats_ddl_sql(name: &str, drop: bool) -> String {
+    let esc = name.replace('\'', "''");
+    // UPDATE STATISTICS <table> (<stat>)   vs   DROP STATISTICS <table>.<stat>
+    let stmt = if drop {
+        format!("N'DROP STATISTICS ' + @tbl + N'.' + QUOTENAME(N'{esc}')")
+    } else {
+        format!("N'UPDATE STATISTICS ' + @tbl + N' (' + QUOTENAME(N'{esc}') + N')'")
+    };
+    format!(
+        "DECLARE @tbl NVARCHAR(500); \
+         SELECT @tbl = QUOTENAME(SCHEMA_NAME(t.schema_id)) + '.' + QUOTENAME(t.name) \
+         FROM sys.stats s JOIN sys.tables t ON s.object_id = t.object_id \
+         WHERE s.name = N'{esc}'; \
+         IF @tbl IS NULL RAISERROR('Statistic not found: {esc}', 16, 1); \
+         DECLARE @sql NVARCHAR(1000) = {stmt}; \
+         EXEC sp_executesql @sql;"
+    )
+}
+
 /// Parse a connection string into (server, database).
 pub fn parse_connection_string(connection_string: &str) -> (String, String) {
     let cleaned = connection_string

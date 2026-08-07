@@ -118,7 +118,7 @@ pub(super) async fn update(
         return Ok(());
     }
 
-    let sql = format!("UPDATE STATISTICS [{name}]");
+    let sql = crate::commands::tds_utils::build_update_statistics_sql(name);
     execute_sql_db_query(cli, client, workspace, id, &sql).await?;
 
     let obj = serde_json::json!({ "name": name, "status": "updated" });
@@ -142,7 +142,7 @@ pub(super) async fn delete(
         return Ok(());
     }
 
-    let sql = format!("DROP STATISTICS [{name}]");
+    let sql = crate::commands::tds_utils::build_drop_statistics_sql(name);
     execute_sql_db_query(cli, client, workspace, id, &sql).await?;
 
     let obj = serde_json::json!({ "name": name, "status": "deleted" });
