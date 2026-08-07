@@ -6415,7 +6415,7 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "list"
       },
       "get-audit-settings": {
         "description": "Get SQL audit settings for the endpoint",

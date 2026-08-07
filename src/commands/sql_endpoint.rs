@@ -560,7 +560,24 @@ async fn refresh_metadata(
         .await
         .map_err(|e| enrich_forbidden(e, "sql-endpoint refresh-metadata", "Contributor"))?;
 
-    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+    // The API returns a per-table sync result list: {"value":[{tableName, status,
+    // startDateTime, endDateTime, lastSuccessfulSyncDateTime}]}. Render it as a
+    // proper list so agents can filter (e.g. --query "[?status!='Success']").
+    if let Some(tables) = data.get("value").and_then(Value::as_array) {
+        output::render_list(
+            cli,
+            tables,
+            &[
+                "tableName",
+                "status",
+                "startDateTime",
+                "endDateTime",
+                "lastSuccessfulSyncDateTime",
+            ],
+            &["TABLE", "STATUS", "START", "END", "LAST SUCCESSFUL SYNC"],
+            "tableName",
+        );
+    } else if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
         let obj = serde_json::json!({ "id": id, "status": "metadata_refreshed" });
         output::render_object(cli, &obj, "status");
     } else {

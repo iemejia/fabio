@@ -48,6 +48,38 @@ fn sql_endpoint_dry_run_refresh_metadata() {
     assert_eq!(data["would_execute"], "sql-endpoint refresh-metadata");
 }
 
+// refresh-metadata renders the per-table sync results as a list so agents can
+// filter (e.g. --query "[?status!='Success']").
+#[test]
+#[ignore = "requires live Fabric tenant with a lakehouse SQL endpoint"]
+#[serial]
+fn sql_endpoint_refresh_metadata_returns_table_list() {
+    let cfg = TestConfig::from_env();
+    let Ok(endpoint_id) = std::env::var("FABIO_TEST_SQL_ENDPOINT_ID") else {
+        return; // skip when not configured
+    };
+    let assert = fabio()
+        .args([
+            "sql-endpoint",
+            "refresh-metadata",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &endpoint_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    // Per-table results are a list; each row has tableName + status.
+    let data = extract_data(&json);
+    assert!(data.is_array());
+    if let Some(first) = data.as_array().and_then(|a| a.first()) {
+        assert!(first.get("tableName").is_some());
+        assert!(first.get("status").is_some());
+    }
+}
+
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
