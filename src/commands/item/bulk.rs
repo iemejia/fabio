@@ -250,30 +250,17 @@ pub(super) async fn create_external_data_share(
     workspace: &str,
     id: &str,
     paths: &[String],
-    recipient_tenant_id: &str,
-    recipient_type: Option<&str>,
+    recipient_type: &str,
+    recipient_email: Option<&str>,
     recipient_id: Option<&str>,
+    recipient_tenant_id: Option<&str>,
 ) -> Result<()> {
-    // Validate: if recipient_type is provided, recipient_id must also be provided
-    if recipient_type.is_some() && recipient_id.is_none() {
-        return Err(FabioError::with_hint(
-            ErrorCode::InvalidInput,
-            "--recipient-id is required when --recipient-type is specified",
-            "Provide the object ID of the recipient principal. \
-             Example: --recipient-type User --recipient-id <object-id>",
-        )
-        .into());
-    }
-
-    let recipient = if let (Some(rtype), Some(rid)) = (recipient_type, recipient_id) {
-        serde_json::json!({
-            "tenantId": recipient_tenant_id,
-            "objectId": rid,
-            "recipientType": rtype
-        })
-    } else {
-        serde_json::json!({ "tenantId": recipient_tenant_id })
-    };
+    let recipient = build_eds_recipient(
+        recipient_type,
+        recipient_email,
+        recipient_id,
+        recipient_tenant_id,
+    )?;
 
     let body = serde_json::json!({
         "paths": paths,
@@ -294,6 +281,56 @@ pub(super) async fn create_external_data_share(
 
     output::render_object(cli, &data, "id");
     Ok(())
+}
+
+/// Build the external-data-share `recipient` object. The API models the
+/// recipient as a discriminated union on `type`: a `User` recipient is
+/// identified by `userPrincipalName` (email, `tenantId` optional), a
+/// `ServicePrincipal` recipient by `principalId` + `tenantId` (both required).
+/// The older `{objectId, recipientType}` shape is rejected by the API (500).
+fn build_eds_recipient(
+    recipient_type: &str,
+    recipient_email: Option<&str>,
+    recipient_id: Option<&str>,
+    recipient_tenant_id: Option<&str>,
+) -> Result<Value> {
+    if recipient_type.eq_ignore_ascii_case("User") {
+        let upn = recipient_email.ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "--recipient-email is required for --recipient-type User",
+                "Example: --recipient-type User --recipient-email alice@contoso.com",
+            )
+        })?;
+        let mut r = serde_json::json!({ "type": "User", "userPrincipalName": upn });
+        if let Some(tid) = recipient_tenant_id {
+            r["tenantId"] = Value::from(tid);
+        }
+        Ok(r)
+    } else if recipient_type.eq_ignore_ascii_case("ServicePrincipal") {
+        let (Some(pid), Some(tid)) = (recipient_id, recipient_tenant_id) else {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "--recipient-id and --recipient-tenant-id are both required for --recipient-type ServicePrincipal",
+                "Example: --recipient-type ServicePrincipal --recipient-id <object-id> --recipient-tenant-id <tenant-id>",
+            )
+            .into());
+        };
+        Ok(serde_json::json!({
+            "type": "ServicePrincipal",
+            "principalId": pid,
+            "tenantId": tid
+        }))
+    } else {
+        Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!(
+                "Invalid --recipient-type '{recipient_type}'. Valid values: User, ServicePrincipal"
+            ),
+            "Example: --recipient-type User --recipient-email alice@contoso.com",
+        )
+        .into())
+    }
 }
 
 pub(super) async fn show_external_data_share(
@@ -365,4 +402,50 @@ pub(super) async fn delete_external_data_share(
     let obj = serde_json::json!({ "id": share_id, "status": "deleted" });
     output::render_object(cli, &obj, "status");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_eds_recipient;
+
+    #[test]
+    fn user_recipient_uses_upn() {
+        let r = build_eds_recipient("User", Some("alice@contoso.com"), None, None).unwrap();
+        assert_eq!(r["type"], "User");
+        assert_eq!(r["userPrincipalName"], "alice@contoso.com");
+        assert!(r.get("tenantId").is_none());
+        assert!(r.get("objectId").is_none());
+        assert!(r.get("recipientType").is_none());
+    }
+
+    #[test]
+    fn user_recipient_includes_optional_tenant() {
+        let r = build_eds_recipient("user", Some("a@b.com"), None, Some("tid-123")).unwrap();
+        assert_eq!(r["tenantId"], "tid-123");
+    }
+
+    #[test]
+    fn user_recipient_requires_email() {
+        assert!(build_eds_recipient("User", None, None, None).is_err());
+    }
+
+    #[test]
+    fn service_principal_uses_principal_id() {
+        let r =
+            build_eds_recipient("ServicePrincipal", None, Some("obj-1"), Some("tid-1")).unwrap();
+        assert_eq!(r["type"], "ServicePrincipal");
+        assert_eq!(r["principalId"], "obj-1");
+        assert_eq!(r["tenantId"], "tid-1");
+    }
+
+    #[test]
+    fn service_principal_requires_id_and_tenant() {
+        assert!(build_eds_recipient("ServicePrincipal", None, Some("obj-1"), None).is_err());
+        assert!(build_eds_recipient("ServicePrincipal", None, None, Some("tid-1")).is_err());
+    }
+
+    #[test]
+    fn unknown_type_rejected() {
+        assert!(build_eds_recipient("Group", None, None, None).is_err());
+    }
 }

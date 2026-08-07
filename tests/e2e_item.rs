@@ -1829,3 +1829,99 @@ fn item_endorsement_read_lifecycle() {
             .failure();
     }
 }
+
+// ---------------------------------------------------------------------------
+// create-external-data-share recipient shape (offline dry-run regression)
+//
+// The API rejects the old {objectId, recipientType} recipient shape (HTTP 500);
+// it requires a discriminated union: User -> {type, userPrincipalName} and
+// ServicePrincipal -> {type, principalId, tenantId}. These run offline (the
+// recipient body is built and the dry-run guard fires before any network call).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn create_external_data_share_user_shape() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "item",
+            "create-external-data-share",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--paths",
+            "Files/data.csv",
+            "--recipient-type",
+            "User",
+            "--recipient-email",
+            "alice@contoso.com",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let recipient = &data["details"]["recipient"];
+    assert_eq!(recipient["type"], "User");
+    assert_eq!(recipient["userPrincipalName"], "alice@contoso.com");
+    // Must NOT use the old, rejected fields.
+    assert!(recipient.get("objectId").is_none());
+    assert!(recipient.get("recipientType").is_none());
+}
+
+#[test]
+fn create_external_data_share_service_principal_shape() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "item",
+            "create-external-data-share",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--paths",
+            "Files/data.csv",
+            "--recipient-type",
+            "ServicePrincipal",
+            "--recipient-id",
+            "cccccccc-1111-2222-3333-444444444444",
+            "--recipient-tenant-id",
+            "dddddddd-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let recipient = &data["details"]["recipient"];
+    assert_eq!(recipient["type"], "ServicePrincipal");
+    assert_eq!(
+        recipient["principalId"],
+        "cccccccc-1111-2222-3333-444444444444"
+    );
+    assert_eq!(
+        recipient["tenantId"],
+        "dddddddd-1111-2222-3333-444444444444"
+    );
+}
+
+#[test]
+fn create_external_data_share_user_requires_email() {
+    fabio()
+        .args([
+            "item",
+            "create-external-data-share",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--paths",
+            "Files/data.csv",
+            "--recipient-type",
+            "User",
+        ])
+        .assert()
+        .failure();
+}

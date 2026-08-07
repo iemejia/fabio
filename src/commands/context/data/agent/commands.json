@@ -2231,20 +2231,23 @@
           },
           "--paths": {
             "type": "string",
-            "description": "Comma-separated paths to share"
-          },
-          "--recipient-tenant-id": {
-            "type": "string",
-            "required": true,
-            "description": "Recipient tenant ID"
+            "description": "Comma-separated paths to share (must start with `Files/` or `Tables/`)"
           },
           "--recipient-type": {
             "type": "string",
-            "description": "Recipient type (`User` or `ServicePrincipal`). If omitted, shares with entire tenant"
+            "description": "Recipient type: `User` (default) or `ServicePrincipal`"
+          },
+          "--recipient-email": {
+            "type": "string",
+            "description": "Recipient user principal name / email (required for `--recipient-type User`)"
           },
           "--recipient-id": {
             "type": "string",
-            "description": "Object ID of the recipient principal (required when --recipient-type is set)"
+            "description": "Recipient service-principal ID / Entra object ID (required for `--recipient-type ServicePrincipal`)"
+          },
+          "--recipient-tenant-id": {
+            "type": "string",
+            "description": "Recipient tenant ID (required for `ServicePrincipal`, optional for `User`)"
           }
         },
         "mutates": true,

@@ -458,21 +458,26 @@ pub enum ItemCommand {
         #[arg(long)]
         id: String,
 
-        /// Comma-separated paths to share
+        /// Comma-separated paths to share (must start with `Files/` or `Tables/`)
         #[arg(long, value_delimiter = ',')]
         paths: Vec<String>,
 
-        /// Recipient tenant ID
-        #[arg(long)]
-        recipient_tenant_id: String,
+        /// Recipient type: `User` (default) or `ServicePrincipal`.
+        #[arg(long, default_value = "User")]
+        recipient_type: String,
 
-        /// Recipient type (`User` or `ServicePrincipal`). If omitted, shares with entire tenant.
+        /// Recipient user principal name / email (required for `--recipient-type User`).
         #[arg(long)]
-        recipient_type: Option<String>,
+        recipient_email: Option<String>,
 
-        /// Object ID of the recipient principal (required when --recipient-type is set)
+        /// Recipient service-principal ID / Entra object ID (required for
+        /// `--recipient-type ServicePrincipal`).
         #[arg(long)]
         recipient_id: Option<String>,
+
+        /// Recipient tenant ID (required for `ServicePrincipal`, optional for `User`).
+        #[arg(long)]
+        recipient_tenant_id: Option<String>,
     },
     /// Show details of an external data share
     #[command(display_order = 42)]
@@ -800,9 +805,10 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             workspace,
             id,
             paths,
-            recipient_tenant_id,
             recipient_type,
+            recipient_email,
             recipient_id,
+            recipient_tenant_id,
         } => {
             bulk::create_external_data_share(
                 cli,
@@ -810,9 +816,10 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
                 workspace,
                 id,
                 paths,
-                recipient_tenant_id,
-                recipient_type.as_deref(),
+                recipient_type,
+                recipient_email.as_deref(),
                 recipient_id.as_deref(),
+                recipient_tenant_id.as_deref(),
             )
             .await
         }
