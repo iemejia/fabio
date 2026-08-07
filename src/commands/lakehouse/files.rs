@@ -344,6 +344,14 @@ pub(super) async fn delete_file(
     id: &str,
     path: &str,
 ) -> Result<()> {
+    // Destructive: guard before the delete network call.
+    if output::dry_run_guard(
+        cli,
+        "lakehouse delete-file",
+        &serde_json::json!({ "workspace": workspace, "id": id, "path": path }),
+    ) {
+        return Ok(());
+    }
     let result = client.delete_onelake_file(workspace, id, path).await?;
     output::render_object(cli, &result, "status");
     Ok(())
@@ -416,6 +424,22 @@ pub(super) async fn move_file(
 
     // Check if source path contains a glob pattern
     let matched_files = expand_remote_glob(client, src_ws, src_id, src_path).await?;
+
+    // Destructive (removes the source): guard after the read-only glob expansion.
+    if output::dry_run_guard(
+        cli,
+        "lakehouse move-file",
+        &serde_json::json!({
+            "sourceWorkspace": src_ws,
+            "sourceId": src_id,
+            "sourceFiles": matched_files,
+            "destWorkspace": dst_ws,
+            "destId": dst_id,
+            "destPath": dst_path,
+        }),
+    ) {
+        return Ok(());
+    }
 
     if matched_files.len() == 1 && matched_files[0] == src_path {
         // Single file move

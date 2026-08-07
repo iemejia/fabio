@@ -1426,3 +1426,57 @@ fn lakehouse_table_health_lifecycle() {
         .assert()
         .success();
 }
+
+// ---------------------------------------------------------------------------
+// Destructive OneLake ops MUST honor --dry-run (regression: delete-file,
+// delete-table, delete-shortcut, move-file, move-table previously executed the
+// real operation under --dry-run because the guard was missing).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lakehouse_delete_file_dry_run_is_offline_guarded() {
+    // Fully offline: the guard fires before any network call.
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "lakehouse",
+            "delete-file",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+            "--path",
+            "Files/data/x.csv",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "lakehouse delete-file");
+    assert_eq!(data["details"]["path"], "Files/data/x.csv");
+}
+
+#[test]
+fn lakehouse_delete_shortcut_dry_run_is_offline_guarded() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "lakehouse",
+            "delete-shortcut",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+            "--name",
+            "mysc",
+            "--path",
+            "Files",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "lakehouse delete-shortcut");
+}

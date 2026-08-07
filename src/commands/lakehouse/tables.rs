@@ -316,6 +316,22 @@ pub(super) async fn delete_table(
 
     let tables = expand_table_glob(client, workspace, id, table).await?;
 
+    // Destructive: guard before any delete. `expand_table_glob` above is a
+    // read-only list, so the dry-run can show exactly which tables would be
+    // deleted.
+    if output::dry_run_guard(
+        cli,
+        "lakehouse delete-table",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "tables": tables,
+            "count": tables.len(),
+        }),
+    ) {
+        return Ok(());
+    }
+
     if tables.len() == 1 {
         let path = format!("Tables/{}", tables[0]);
         client
@@ -586,6 +602,23 @@ pub(super) async fn move_table(
     dst_table: Option<&str>,
 ) -> Result<()> {
     let tables = expand_table_glob(client, src_ws, src_id, src_table).await?;
+
+    // Destructive (removes the source table): guard after the read-only glob
+    // expansion.
+    if output::dry_run_guard(
+        cli,
+        "lakehouse move-table",
+        &serde_json::json!({
+            "sourceWorkspace": src_ws,
+            "sourceId": src_id,
+            "sourceTables": tables,
+            "destWorkspace": dst_ws,
+            "destId": dst_id,
+            "destTable": dst_table,
+        }),
+    ) {
+        return Ok(());
+    }
 
     if tables.len() > 1 {
         use crate::parallel::{self, BatchSummary};

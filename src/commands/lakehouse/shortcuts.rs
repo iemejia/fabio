@@ -349,6 +349,13 @@ pub(super) async fn delete_shortcut(
     name: &str,
     path: &str,
 ) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "lakehouse delete-shortcut",
+        &serde_json::json!({ "workspace": workspace, "id": id, "name": name, "path": path }),
+    ) {
+        return Ok(());
+    }
     client
         .delete(&format!(
             "/workspaces/{workspace}/items/{id}/shortcuts/{path}/{name}"
