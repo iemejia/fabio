@@ -2531,3 +2531,31 @@ tests:
       - type: llm-rubric
         value: "The response uses 'fabio data-agent add-fewshot' with --question for the natural-language question and --sql (or --answer) for the SQL query that answers it. The example query is carried in a flag, not in the global --query."
         metric: data-agent-fewshot-routing
+
+  - description: "Activator: create a rule that alerts on a KQL condition"
+    vars:
+      user_query: "In my Activator, create a rule named Too Hot that emails ops@contoso.com when the Value column in my KQL database exceeds 20"
+    assert:
+      - type: icontains
+        value: "reflex create-rule"
+      - type: javascript
+        value: |
+          output.includes('--kql-database-id') || output.includes('--cluster')
+        metric: reflex-rule-kql-source
+      - type: llm-rubric
+        value: "The response uses 'fabio reflex create-rule' with a KQL source (the KQL DATABASE item id via --kql-database-id, or --cluster+--database), a condition (--column Value --condition isGreaterThan --value 20), and an email action (--action email --recipients ops@contoso.com). It does NOT pass an eventhouse id where the KQL database id is expected."
+        metric: reflex-rule-routing
+
+  - description: "External data share: share a table with a user in another tenant"
+    vars:
+      user_query: "Share my lakehouse table (path Tables/sales) as an external data share with the user alice@othertenant.com"
+    assert:
+      - type: icontains
+        value: "item create-external-data-share"
+      - type: javascript
+        value: |
+          output.includes('--recipient-email') || output.includes('--recipient-type')
+        metric: external-data-share-recipient
+      - type: llm-rubric
+        value: "The response uses 'fabio item create-external-data-share' with --paths for the Tables/... path and identifies the recipient as a User by email (--recipient-type User --recipient-email alice@othertenant.com). It does not invent a tenantId/objectId recipient shape."
+        metric: external-data-share-routing

@@ -308,6 +308,9 @@ fabio item bulk-create --workspace $WS --items '[{"type":"Notebook","displayName
 fabio item bulk-delete --workspace $WS --ids "$ID1,$ID2"     # parallel delete
 fabio item list-upstream-relations --workspace $WS --id $ITEM_ID    # beta: items that $ITEM depends on
 fabio item list-downstream-relations --workspace $WS --id $ITEM_ID  # beta: items that depend on $ITEM
+# External data sharing (share OneLake Files/Tables paths with a User or Service Principal in ANOTHER tenant)
+fabio item create-external-data-share --workspace $WS --id $ITEM_ID --paths "Tables/mytable" \
+  --recipient-type User --recipient-email alice@othertenant.com          # or: --recipient-type ServicePrincipal --recipient-id <obj-id> --recipient-tenant-id <tid>
 fabio capacity list                                          # tenant-scoped (no --workspace)
 fabio gateway list                                           # tenant-scoped (no --workspace)
 fabio gateway create-streaming --name "MyVNetGW" \           # streaming VNet gateway
@@ -410,6 +413,14 @@ fabio eventstream add-destination --workspace $WS --id $ES --name "dest" --desti
 fabio eventstream get-source-connection --workspace $WS --id $ES --source-name "src"  # Event Hub connection string
 # Natural language to KQL
 fabio rti nl-to-kql --workspace $WS --item-id $KDB --cluster-url $URI --database $DB --question "how many events?"
+# Activator (Reflex): create rules that fire an action when a KQL condition is met
+fabio reflex create --workspace $WS --name "Alerts"
+fabio reflex create-rule --workspace $WS --id $RX --name "Too hot" \
+  --kql-database-id $KDB --kql "Sensors | where Type == 'temp'" \
+  --column Value --condition isGreaterThan --value 20 \
+  --action email --recipients ops@contoso.com   # NOTE: --kql-database-id is the KQL DB item id, NOT the eventhouse id
+fabio reflex list-rules --workspace $WS --id $RX
+fabio reflex start-rule --workspace $WS --id $RX --rule-id $RULE   # / stop-rule / delete-rule / rule-activations
 ```
 
 **Shortcuts (ADLS Gen2, S3, Dataverse, OneLake):**
