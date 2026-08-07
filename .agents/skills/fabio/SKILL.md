@@ -447,7 +447,11 @@ fabio semantic-model generate --workspace $WS --lakehouse $LH --name "Sales"    
 fabio semantic-model create --workspace $WS --name "Sales" --file model.tmdl --connection $SQLEP   # from hand-authored TMDL/model.bim
 fabio semantic-model query --workspace $WS --id $SM --dax "EVALUATE Sales"
 fabio semantic-model refresh --workspace $WS --id $SM
+fabio semantic-model add-relationship --workspace $WS --id $SM --from-table fact_sale --from-column CityKey --to-table dim_city --to-column CityKey  # generate does NOT infer relationships
 fabio report create --workspace $WS --name "Dashboard" --dataset $SM          # simple: 1-page report bound to a model
+# Scaffold a report from a compact page/visual spec (easiest agent path — no hand-authored PBIR folder)
+fabio report scaffold --workspace $WS --name "Sales Report" --dataset $SM \
+  --spec '{"pages":[{"displayName":"Overview","visuals":[{"type":"clusteredColumnChart","title":"Profit by Territory","category":"dim_city.SalesTerritory","measures":["Sum(fact_sale.Profit)"]}]}]}'
 # Author a full PBIR report (coding-agent path): validate a generated folder, then create the whole tree
 fabio report validate --source ./MyReport.Report                              # offline PBIR/PBIP structural + $schema checks
 fabio report create --workspace $WS --name "Sales" --definition ./MyReport.Report --dataset $SM  # full multi-page PBIR; --dataset rebinds byPath→byConnection
