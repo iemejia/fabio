@@ -12924,6 +12924,14 @@
             "type": "string",
             "required": true,
             "description": "Eventstream ID"
+          },
+          "--start-type": {
+            "type": "string",
+            "description": "Start type: `Now` (default), `WhenLastStopped`, or `CustomTime`"
+          },
+          "--custom-start-time": {
+            "type": "string",
+            "description": "Custom UTC start time (`YYYY-MM-DDTHH:mm:ssZ`); required for `--start-type CustomTime`"
           }
         },
         "mutates": true,
@@ -13012,6 +13020,14 @@
             "type": "string",
             "required": true,
             "description": "Destination ID"
+          },
+          "--start-type": {
+            "type": "string",
+            "description": "Start type: `Now` (default), `WhenLastStopped`, or `CustomTime`"
+          },
+          "--custom-start-time": {
+            "type": "string",
+            "description": "Custom UTC start time (`YYYY-MM-DDTHH:mm:ssZ`); required for `--start-type CustomTime`"
           }
         },
         "mutates": true,
@@ -13103,6 +13119,14 @@
             "type": "string",
             "required": true,
             "description": "Source ID"
+          },
+          "--start-type": {
+            "type": "string",
+            "description": "Start type: `Now` (default), `WhenLastStopped`, or `CustomTime`"
+          },
+          "--custom-start-time": {
+            "type": "string",
+            "description": "Custom UTC start time (`YYYY-MM-DDTHH:mm:ssZ`); required for `--start-type CustomTime`"
           }
         },
         "mutates": true,

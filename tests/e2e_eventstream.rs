@@ -418,6 +418,46 @@ fn eventstream_get_definition_returns_parts() {
 
 // ─── pause / resume tests ────────────────────────────────────────────────────
 
+// The resume API requires a `startType` body field (Now/WhenLastStopped/
+// CustomTime); the old empty {} body failed with "Required property
+// 'startType' not found". Offline dry-run regression.
+#[test]
+fn eventstream_resume_includes_start_type() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "eventstream",
+            "resume",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["details"]["startType"], "Now");
+}
+
+#[test]
+fn eventstream_resume_custom_time_requires_timestamp() {
+    fabio()
+        .args([
+            "eventstream",
+            "resume",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--start-type",
+            "CustomTime",
+        ])
+        .assert()
+        .failure();
+}
+
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]

@@ -155,6 +155,14 @@ pub enum EventstreamCommand {
         /// Eventstream ID
         #[arg(long)]
         id: String,
+
+        /// Start type: `Now` (default), `WhenLastStopped`, or `CustomTime`.
+        #[arg(long, default_value = "Now")]
+        start_type: String,
+
+        /// Custom UTC start time (`YYYY-MM-DDTHH:mm:ssZ`); required for `--start-type CustomTime`.
+        #[arg(long)]
+        custom_start_time: Option<String>,
     },
 
     // ── Destinations ─────────────────────────────────────────────────────
@@ -217,6 +225,14 @@ pub enum EventstreamCommand {
         /// Destination ID
         #[arg(long)]
         destination_id: String,
+
+        /// Start type: `Now` (default), `WhenLastStopped`, or `CustomTime`.
+        #[arg(long, default_value = "Now")]
+        start_type: String,
+
+        /// Custom UTC start time (`YYYY-MM-DDTHH:mm:ssZ`); required for `--start-type CustomTime`.
+        #[arg(long)]
+        custom_start_time: Option<String>,
     },
 
     // ── Sources ──────────────────────────────────────────────────────────
@@ -279,6 +295,14 @@ pub enum EventstreamCommand {
         /// Source ID
         #[arg(long)]
         source_id: String,
+
+        /// Start type: `Now` (default), `WhenLastStopped`, or `CustomTime`.
+        #[arg(long, default_value = "Now")]
+        start_type: String,
+
+        /// Custom UTC start time (`YYYY-MM-DDTHH:mm:ssZ`); required for `--start-type CustomTime`.
+        #[arg(long)]
+        custom_start_time: Option<String>,
     },
 
     // ── High-level helpers ───────────────────────────────────────────────
@@ -500,8 +524,21 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EventstreamComm
         EventstreamCommand::Pause { workspace, id } => {
             pause_stream(cli, client, workspace, id).await
         }
-        EventstreamCommand::Resume { workspace, id } => {
-            resume_stream(cli, client, workspace, id).await
+        EventstreamCommand::Resume {
+            workspace,
+            id,
+            start_type,
+            custom_start_time,
+        } => {
+            resume_stream(
+                cli,
+                client,
+                workspace,
+                id,
+                start_type,
+                custom_start_time.as_deref(),
+            )
+            .await
         }
         EventstreamCommand::GetDestination {
             workspace,
@@ -522,7 +559,20 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EventstreamComm
             workspace,
             id,
             destination_id,
-        } => resume_destination(cli, client, workspace, id, destination_id).await,
+            start_type,
+            custom_start_time,
+        } => {
+            resume_destination(
+                cli,
+                client,
+                workspace,
+                id,
+                destination_id,
+                start_type,
+                custom_start_time.as_deref(),
+            )
+            .await
+        }
         EventstreamCommand::GetSource {
             workspace,
             id,
@@ -542,7 +592,20 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EventstreamComm
             workspace,
             id,
             source_id,
-        } => resume_source(cli, client, workspace, id, source_id).await,
+            start_type,
+            custom_start_time,
+        } => {
+            resume_source(
+                cli,
+                client,
+                workspace,
+                id,
+                source_id,
+                start_type,
+                custom_start_time.as_deref(),
+            )
+            .await
+        }
         EventstreamCommand::AddSource {
             workspace,
             id,
@@ -956,11 +1019,19 @@ async fn pause_stream(cli: &Cli, client: &FabricClient, workspace: &str, id: &st
     Ok(())
 }
 
-async fn resume_stream(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+async fn resume_stream(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    start_type: &str,
+    custom_start_time: Option<&str>,
+) -> Result<()> {
+    let body = build_start_request(start_type, custom_start_time)?;
     if output::dry_run_guard(
         cli,
         "eventstream resume",
-        &serde_json::json!({ "workspace": workspace, "id": id }),
+        &serde_json::json!({ "workspace": workspace, "id": id, "startType": start_type }),
     ) {
         return Ok(());
     }
@@ -968,7 +1039,7 @@ async fn resume_stream(cli: &Cli, client: &FabricClient, workspace: &str, id: &s
     client
         .post(
             &format!("/workspaces/{workspace}/eventstreams/{id}/resume"),
-            &serde_json::json!({}),
+            &body,
             false,
         )
         .await
@@ -977,6 +1048,39 @@ async fn resume_stream(cli: &Cli, client: &FabricClient, workspace: &str, id: &s
     let obj = serde_json::json!({ "id": id, "status": "resumed" });
     output::render_object(cli, &obj, "status");
     Ok(())
+}
+
+/// Build the `DataSourceStartRequest` body for an eventstream/source/destination
+/// resume. `startType` is REQUIRED by the API (`Now`, `WhenLastStopped`, or
+/// `CustomTime`); `CustomTime` additionally requires `customStartDateTime`.
+fn build_start_request(start_type: &str, custom_start_time: Option<&str>) -> Result<Value> {
+    let valid = ["Now", "WhenLastStopped", "CustomTime"];
+    let matched = valid
+        .iter()
+        .find(|v| v.eq_ignore_ascii_case(start_type))
+        .ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid --start-type '{start_type}'"),
+                "Valid values: Now, WhenLastStopped, CustomTime",
+            )
+        })?;
+
+    let mut body = serde_json::json!({ "startType": matched });
+    if matched.eq_ignore_ascii_case("CustomTime") {
+        let ts = custom_start_time.ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "--custom-start-time is required when --start-type is CustomTime",
+                "Example: --start-type CustomTime --custom-start-time 2026-01-01T00:00:00Z",
+            )
+        })?;
+        body["customStartDateTime"] = Value::from(ts);
+    } else if let Some(ts) = custom_start_time {
+        // Allow supplying a custom time with any type; the API ignores it unless CustomTime.
+        body["customStartDateTime"] = Value::from(ts);
+    }
+    Ok(body)
 }
 
 // ─── Destinations ────────────────────────────────────────────────────────────
@@ -1050,11 +1154,14 @@ async fn resume_destination(
     workspace: &str,
     id: &str,
     destination_id: &str,
+    start_type: &str,
+    custom_start_time: Option<&str>,
 ) -> Result<()> {
+    let body = build_start_request(start_type, custom_start_time)?;
     if output::dry_run_guard(
         cli,
         "eventstream resume-destination",
-        &serde_json::json!({ "workspace": workspace, "id": id, "destinationId": destination_id }),
+        &serde_json::json!({ "workspace": workspace, "id": id, "destinationId": destination_id, "startType": start_type }),
     ) {
         return Ok(());
     }
@@ -1064,7 +1171,7 @@ async fn resume_destination(
             &format!(
                 "/workspaces/{workspace}/eventstreams/{id}/destinations/{destination_id}/resume"
             ),
-            &serde_json::json!({}),
+            &body,
             false,
         )
         .await
@@ -1144,11 +1251,14 @@ async fn resume_source(
     workspace: &str,
     id: &str,
     source_id: &str,
+    start_type: &str,
+    custom_start_time: Option<&str>,
 ) -> Result<()> {
+    let body = build_start_request(start_type, custom_start_time)?;
     if output::dry_run_guard(
         cli,
         "eventstream resume-source",
-        &serde_json::json!({ "workspace": workspace, "id": id, "sourceId": source_id }),
+        &serde_json::json!({ "workspace": workspace, "id": id, "sourceId": source_id, "startType": start_type }),
     ) {
         return Ok(());
     }
@@ -1156,7 +1266,7 @@ async fn resume_source(
     client
         .post(
             &format!("/workspaces/{workspace}/eventstreams/{id}/sources/{source_id}/resume"),
-            &serde_json::json!({}),
+            &body,
             false,
         )
         .await
@@ -1168,3 +1278,40 @@ async fn resume_source(
 }
 
 mod builder;
+
+#[cfg(test)]
+mod tests {
+    use super::build_start_request;
+
+    #[test]
+    fn default_now_start_type() {
+        let body = build_start_request("Now", None).unwrap();
+        assert_eq!(body["startType"], "Now");
+        assert!(body.get("customStartDateTime").is_none());
+    }
+
+    #[test]
+    fn when_last_stopped_is_valid() {
+        let body = build_start_request("WhenLastStopped", None).unwrap();
+        assert_eq!(body["startType"], "WhenLastStopped");
+    }
+
+    #[test]
+    fn custom_time_requires_timestamp() {
+        assert!(build_start_request("CustomTime", None).is_err());
+        let body = build_start_request("CustomTime", Some("2026-01-01T00:00:00Z")).unwrap();
+        assert_eq!(body["startType"], "CustomTime");
+        assert_eq!(body["customStartDateTime"], "2026-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn start_type_is_case_insensitive_and_canonicalized() {
+        let body = build_start_request("now", None).unwrap();
+        assert_eq!(body["startType"], "Now");
+    }
+
+    #[test]
+    fn invalid_start_type_rejected() {
+        assert!(build_start_request("Later", None).is_err());
+    }
+}
