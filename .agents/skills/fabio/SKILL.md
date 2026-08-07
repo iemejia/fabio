@@ -452,12 +452,41 @@ fabio report create --workspace $WS --name "Dashboard" --dataset $SM          # 
 # Scaffold a report from a compact page/visual spec (easiest agent path — no hand-authored PBIR folder)
 fabio report scaffold --workspace $WS --name "Sales Report" --dataset $SM \
   --spec '{"pages":[{"displayName":"Overview","visuals":[{"type":"clusteredColumnChart","title":"Profit by Territory","category":"dim_city.SalesTerritory","measures":["Sum(fact_sale.Profit)"]}]}]}'
+# Edit an existing report: add pages/visuals (data-bound: --category / --measure as Table.Column or Sum(Table.Column))
+fabio report add-visual --workspace $WS --id $RID --page $PAGE --type clusteredBarChart --title "Sales" --category dim_city.City --measure "Sum(fact_sale.Amount)"
 # Author a full PBIR report (coding-agent path): validate a generated folder, then create the whole tree
 fabio report validate --source ./MyReport.Report                              # offline PBIR/PBIP structural + $schema checks
 fabio report create --workspace $WS --name "Sales" --definition ./MyReport.Report --dataset $SM  # full multi-page PBIR; --dataset rebinds byPath→byConnection
 # Render a (paginated) report to a file (Power BI exportToFile flow)
 fabio report export --workspace $WS --id $RID --format PDF --out report.pdf                       # PDF/PPTX/PNG
 fabio paginated-report export --workspace $WS --id $PR --format XLSX --out data.xlsx --parameter Year=2026  # PDF/XLSX/DOCX/CSV/IMAGE/...
+```
+
+**Semantic model authoring** (edit the model definition — measures, RLS, hierarchies, calc groups, translations, perspectives, Power Query params; all do a getDefinition→edit→updateDefinition):
+```bash
+fabio semantic-model add-measure --workspace $WS --id $SM --table Sales --name "Total Profit" --expression "SUM(Sales[Profit])" --format-string "\$#,0"
+fabio semantic-model add-calculated-column --workspace $WS --id $SM --table Sales --name Margin --expression "Sales[Profit] / Sales[Amount]"
+fabio semantic-model set-description --workspace $WS --id $SM --table Sales --measure "Total Profit" --description "..."   # document an object
+# Row-Level Security (RLS): a role + a DAX filter predicate on a table
+fabio semantic-model add-role --workspace $WS --id $SM --name "US Only"
+fabio semantic-model set-rls --workspace $WS --id $SM --role "US Only" --table Sales --filter "Sales[Region] = \"US\""
+# Drill-down hierarchy (ordered levels)
+fabio semantic-model add-hierarchy --workspace $WS --id $SM --table dim_date --name "Calendar" --level Year --level Quarter --level Month
+# Time-intelligence calculation group (a group + items whose DAX are calc expressions)
+fabio semantic-model add-calculation-group --workspace $WS --id $SM --name "Time Intelligence"
+fabio semantic-model add-calculation-item --workspace $WS --id $SM --group "Time Intelligence" --name YTD --expression "CALCULATE(SELECTEDMEASURE(), DATESYTD(dim_date[Date]))"
+# Translations (multi-language): a culture + per-object captions
+fabio semantic-model add-culture --workspace $WS --id $SM --culture fr-FR
+fabio semantic-model set-translation --workspace $WS --id $SM --culture fr-FR --table Sales --caption "Ventes"
+# Power Query parameter / named expression, perspective (filtered view), and best-practice analysis
+fabio semantic-model add-expression --workspace $WS --id $SM --name ServerParam --parameter-value "myserver" --parameter-type Text
+fabio semantic-model add-perspective --workspace $WS --id $SM --name "Sales View"
+fabio semantic-model analyze --workspace $WS --id $SM            # best-practice analyzer (--fix auto-fixes safe issues); measure-dependencies too
+# More authoring: move/rename a measure, add a calculated table, edit a calc item, repoint a table's Power Query partition source
+fabio semantic-model move-measure --workspace $WS --id $SM --measure "Total Sales" --to-table Sales
+fabio semantic-model add-table --workspace $WS --id $SM --name Calendar --expression "CALENDAR(DATE(2024,1,1), DATE(2026,12,31))"   # calculated table
+fabio semantic-model update-calculation-item --workspace $WS --id $SM --group "Time Intelligence" --name YTD --expression "CALCULATE(SELECTEDMEASURE(), DATESYTD(Calendar[Date]))"
+fabio semantic-model update-partition --workspace $WS --id $SM --table Sales --name Partition --m 'let Source = Sql.Database("srv","db") in Source'   # repoint a table's Power Query (M) source
 ```
 
 **Plan (connected planning / FP&A):**
