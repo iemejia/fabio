@@ -13976,7 +13976,7 @@
         "returns": "list"
       },
       "create-shortcut": {
-        "description": "Create a shortcut in a KQL database",
+        "description": "Create a table shortcut in a KQL database (OneLake/S3/ADLS Gen2/GCS/S3-compatible/Azure Blob)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -13993,13 +13993,53 @@
             "required": true,
             "description": "Shortcut name"
           },
+          "--enable-query-acceleration": {
+            "type": "bool",
+            "description": "Enable query acceleration on the shortcut (required field; default false)"
+          },
+          "--target-type": {
+            "type": "string",
+            "description": "Target type (typed path): `OneLake`, `AmazonS3`, `AdlsGen2`, `GoogleCloudStorage`, `S3Compatible`, `AzureBlobStorage`. When set, the target is built from the typed flags below instead of `--file`/`--content`"
+          },
+          "--connection-id": {
+            "type": "string",
+            "description": "Connection ID for external (S3/ADLS/GCS/Blob) targets"
+          },
+          "--location": {
+            "type": "string",
+            "description": "Location URL for external targets (e.g. `https://acct.dfs.core.windows.net/container`)"
+          },
+          "--subpath": {
+            "type": "string",
+            "description": "Subpath under the location (optional)"
+          },
+          "--bucket": {
+            "type": "string",
+            "description": "Bucket name (`S3Compatible` only)"
+          },
+          "--target-workspace": {
+            "type": "string",
+            "description": "Target workspace ID (`OneLake` target)"
+          },
+          "--target-item": {
+            "type": "string",
+            "description": "Target item ID (`OneLake` target)"
+          },
+          "--target-path": {
+            "type": "string",
+            "description": "Target path within the target item (`OneLake` target, e.g. `Tables/sales`)"
+          },
+          "--target": {
+            "type": "string",
+            "description": "Raw target object as JSON (escape hatch; overrides typed target flags)"
+          },
           "--file": {
             "type": "string",
-            "description": "JSON file with shortcut configuration"
+            "description": "JSON file with the full shortcut body (escape hatch; must include `target`)"
           },
           "--content": {
             "type": "string",
-            "description": "Inline JSON shortcut configuration"
+            "description": "Inline JSON with the full shortcut body (escape hatch; must include `target`)"
           }
         },
         "mutates": true,

@@ -116,6 +116,97 @@ fn kql_database_query_no_input_fails() {
         .failure();
 }
 
+#[test]
+fn kql_database_create_shortcut_typed_dry_run() {
+    // Typed OneLake target builds the CreateTableShortcutRequest body with the
+    // required `enableQueryAcceleration` field, offline (dry-run short-circuits).
+    let output = fabio()
+        .args([
+            "kql-database",
+            "create-shortcut",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+            "--name",
+            "salesshortcut",
+            "--target-type",
+            "OneLake",
+            "--target-workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--target-item",
+            "22222222-2222-2222-2222-222222222222",
+            "--target-path",
+            "Tables/sales",
+            "--enable-query-acceleration",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "kql-database create-shortcut");
+    let details = &data["details"];
+    assert_eq!(details["name"], "salesshortcut");
+    assert_eq!(details["enableQueryAcceleration"], true);
+    assert_eq!(
+        details["target"]["oneLake"]["path"],
+        Value::from("Tables/sales")
+    );
+    assert_eq!(
+        details["target"]["oneLake"]["itemId"],
+        Value::from("22222222-2222-2222-2222-222222222222")
+    );
+}
+
+#[test]
+fn kql_database_create_shortcut_rejects_unsupported_target() {
+    // Dataverse / ExternalDataShare / OneDriveSharePoint are not valid KQL table
+    // shortcut targets — rejected offline before any network call.
+    fabio()
+        .args([
+            "kql-database",
+            "create-shortcut",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+            "--name",
+            "bad",
+            "--target-type",
+            "Dataverse",
+            "--target",
+            "{\"connectionId\":\"x\"}",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn kql_database_delete_shortcut_dry_run() {
+    let output = fabio()
+        .args([
+            "kql-database",
+            "delete-shortcut",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+            "--shortcut-name",
+            "salesshortcut",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "kql-database delete-shortcut");
+}
+
 // ─── Query Tests (live tenant) ───────────────────────────────────────────────
 
 /// Helper to get KQL test config from environment.

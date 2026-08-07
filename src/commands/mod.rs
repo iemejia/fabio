@@ -67,6 +67,7 @@ pub mod report;
 pub mod rest;
 pub mod rti;
 pub mod semantic_model;
+pub mod shortcut_target;
 pub mod snowflake_database;
 pub mod spark;
 pub mod spark_job_definition;

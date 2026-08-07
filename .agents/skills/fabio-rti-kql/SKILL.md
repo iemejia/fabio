@@ -48,7 +48,7 @@ Manage KQL databases (within eventhouses)
 |---|---|---|
 | `fabio kql-database bulk-create-shortcuts` | yes | Bulk-create multiple shortcuts (LRO) |
 | `fabio kql-database create` | yes | Create a new KQL database |
-| `fabio kql-database create-shortcut` | yes | Create a shortcut in a KQL database |
+| `fabio kql-database create-shortcut` | yes | Create a table shortcut in a KQL database (OneLake/S3/ADLS Gen2/GCS/S3-compatible/Azure Blob) |
 | `fabio kql-database deeplink` | no | Generate a deeplink URL for a KQL query in Fabric portal or ADX Web Explorer |
 | `fabio kql-database delete` | yes | Delete a KQL database |
 | `fabio kql-database delete-shortcut` | yes | Delete a shortcut in a KQL database |

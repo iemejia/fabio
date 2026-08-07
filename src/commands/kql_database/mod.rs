@@ -449,7 +449,7 @@ pub enum KqlDatabaseCommand {
         #[arg(long)]
         id: String,
     },
-    /// Create a shortcut in a KQL database
+    /// Create a table shortcut in a KQL database (OneLake/S3/ADLS Gen2/GCS/S3-compatible/Azure Blob)
     #[command(name = "create-shortcut", display_order = 11)]
     CreateShortcut {
         /// Workspace ID
@@ -464,11 +464,53 @@ pub enum KqlDatabaseCommand {
         #[arg(long)]
         name: String,
 
-        /// JSON file with shortcut configuration
+        /// Enable query acceleration on the shortcut (required field; default false)
+        #[arg(long)]
+        enable_query_acceleration: bool,
+
+        /// Target type (typed path): `OneLake`, `AmazonS3`, `AdlsGen2`, `GoogleCloudStorage`,
+        /// `S3Compatible`, `AzureBlobStorage`. When set, the target is built from the typed
+        /// flags below instead of `--file`/`--content`.
+        #[arg(long)]
+        target_type: Option<String>,
+
+        /// Connection ID for external (S3/ADLS/GCS/Blob) targets
+        #[arg(long)]
+        connection_id: Option<String>,
+
+        /// Location URL for external targets (e.g. `https://acct.dfs.core.windows.net/container`)
+        #[arg(long)]
+        location: Option<String>,
+
+        /// Subpath under the location (optional)
+        #[arg(long)]
+        subpath: Option<String>,
+
+        /// Bucket name (`S3Compatible` only)
+        #[arg(long)]
+        bucket: Option<String>,
+
+        /// Target workspace ID (`OneLake` target)
+        #[arg(long)]
+        target_workspace: Option<String>,
+
+        /// Target item ID (`OneLake` target)
+        #[arg(long)]
+        target_item: Option<String>,
+
+        /// Target path within the target item (`OneLake` target, e.g. `Tables/sales`)
+        #[arg(long)]
+        target_path: Option<String>,
+
+        /// Raw target object as JSON (escape hatch; overrides typed target flags)
+        #[arg(long)]
+        target: Option<String>,
+
+        /// JSON file with the full shortcut body (escape hatch; must include `target`)
         #[arg(long)]
         file: Option<String>,
 
-        /// Inline JSON shortcut configuration
+        /// Inline JSON with the full shortcut body (escape hatch; must include `target`)
         #[arg(long)]
         content: Option<String>,
     },
@@ -780,15 +822,39 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &KqlDatabaseComm
             workspace,
             id,
             name,
+            enable_query_acceleration,
+            target_type,
+            connection_id,
+            location,
+            subpath,
+            bucket,
+            target_workspace,
+            target_item,
+            target_path,
+            target,
             file,
             content,
         } => {
+            let flags = crate::commands::shortcut_target::ShortcutTargetFlags {
+                connection_id: connection_id.as_deref(),
+                location: location.as_deref(),
+                subpath: subpath.as_deref(),
+                bucket: bucket.as_deref(),
+                target_workspace: target_workspace.as_deref(),
+                target_item: target_item.as_deref(),
+                target_path: target_path.as_deref(),
+                ..Default::default()
+            };
             create_shortcut(
                 cli,
                 client,
                 workspace,
                 id,
                 name,
+                *enable_query_acceleration,
+                target_type.as_deref(),
+                target.as_deref(),
+                &flags,
                 file.as_deref(),
                 content.as_deref(),
             )
@@ -1099,6 +1165,52 @@ async fn update_definition(
 
 // ─── Shortcuts ───────────────────────────────────────────────────────────────
 
+/// The six target types a KQL-database table shortcut supports (a subset of the
+/// nine Fabric shortcut targets — `Dataverse`, `ExternalDataShare`, and
+/// `OneDriveSharePoint` are NOT valid for a KQL table shortcut).
+const KQL_SHORTCUT_TARGET_TYPES: &str =
+    "OneLake, AmazonS3, AdlsGen2, GoogleCloudStorage, S3Compatible, AzureBlobStorage";
+
+/// Reject a resolved target discriminator that a KQL table shortcut cannot use.
+fn ensure_kql_target_supported(disc: &str) -> Result<()> {
+    if matches!(
+        disc,
+        "dataverse" | "externalDataShare" | "oneDriveSharePoint"
+    ) {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Target type '{disc}' is not supported for a KQL-database table shortcut"),
+            format!("Supported target types: {KQL_SHORTCUT_TARGET_TYPES}."),
+        )
+        .into());
+    }
+    Ok(())
+}
+
+/// Build the typed `CreateTableShortcutRequest` body:
+/// `{name, enableQueryAcceleration, target: {<disc>: {...}}}`. Pure.
+fn build_kql_shortcut_body(
+    name: &str,
+    enable_query_acceleration: bool,
+    target_type: &str,
+    target_json: Option<&str>,
+    flags: &crate::commands::shortcut_target::ShortcutTargetFlags<'_>,
+) -> Result<Value> {
+    // Reject a KQL-unsupported target type up front (before validating type-specific
+    // flags) so the error names the real problem.
+    if let Some(disc) = crate::commands::shortcut_target::normalize_target_type(target_type) {
+        ensure_kql_target_supported(disc)?;
+    }
+    let (disc, target_body) =
+        crate::commands::shortcut_target::build_shortcut_target(target_type, target_json, flags)?;
+    ensure_kql_target_supported(&disc)?;
+    Ok(serde_json::json!({
+        "name": name,
+        "enableQueryAcceleration": enable_query_acceleration,
+        "target": { disc: target_body },
+    }))
+}
+
 async fn list_shortcuts(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
     let data = client
         .get(&format!(
@@ -1106,12 +1218,17 @@ async fn list_shortcuts(cli: &Cli, client: &FabricClient, workspace: &str, id: &
         ))
         .await?;
 
-    if let Some(arr) = data.as_array() {
+    // The TableShortcuts list response is `{ "value": [...] }`; fall back to a bare array.
+    let items = data
+        .get("value")
+        .and_then(Value::as_array)
+        .or_else(|| data.as_array());
+    if let Some(arr) = items {
         output::render_list_with_token(
             cli,
             arr,
-            &["name", "target"],
-            &["NAME", "TARGET"],
+            &["name", "enableQueryAcceleration", "target"],
+            &["NAME", "QUERY ACCEL", "TARGET"],
             "name",
             None,
         );
@@ -1121,37 +1238,49 @@ async fn list_shortcuts(cli: &Cli, client: &FabricClient, workspace: &str, id: &
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn create_shortcut(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
     id: &str,
     name: &str,
+    enable_query_acceleration: bool,
+    target_type: Option<&str>,
+    target: Option<&str>,
+    flags: &crate::commands::shortcut_target::ShortcutTargetFlags<'_>,
     file: Option<&str>,
     content: Option<&str>,
 ) -> Result<()> {
-    let config: Value = match (file, content) {
-        (Some(path), _) => {
-            let raw = std::fs::read_to_string(path)
-                .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?;
-            serde_json::from_str(&raw)?
+    let body = if let Some(tt) = target_type {
+        // Typed path: build `{name, enableQueryAcceleration, target: {<disc>: {...}}}`.
+        build_kql_shortcut_body(name, enable_query_acceleration, tt, target, flags)?
+    } else {
+        // Escape hatch: a full shortcut body from --file/--content. fabio injects the
+        // shortcut name and guarantees the required `enableQueryAcceleration` field.
+        let mut config: Value = match (file, content) {
+            (Some(path), _) => {
+                let raw = std::fs::read_to_string(path)
+                    .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?;
+                serde_json::from_str(&raw)?
+            }
+            (_, Some(c)) => serde_json::from_str(c)?,
+            (None, None) => {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    "Provide a target: use --target-type with the typed flags, or --file/--content with a full shortcut body".to_string(),
+                    "Example: fabio kql-database create-shortcut --workspace <WS> --id <ID> --name sales --target-type OneLake --target-workspace <WS> --target-item <LH> --target-path Tables/sales --enable-query-acceleration".to_string(),
+                )
+                .into());
+            }
+        };
+        if let Some(obj) = config.as_object_mut() {
+            obj.insert("name".to_string(), Value::from(name));
+            obj.entry("enableQueryAcceleration")
+                .or_insert_with(|| Value::Bool(enable_query_acceleration));
         }
-        (_, Some(c)) => serde_json::from_str(c)?,
-        (None, None) => {
-            return Err(FabioError::with_hint(
-                ErrorCode::InvalidInput,
-                "Either --file or --content must be provided".to_string(),
-                "Example: fabio kql-database create-shortcut --workspace <WS> --id <ID> --name my-shortcut --content '{...}'"
-                    .to_string(),
-            )
-            .into());
-        }
+        config
     };
-
-    let mut body = config;
-    if let Some(obj) = body.as_object_mut() {
-        obj.insert("name".to_string(), Value::from(name));
-    }
 
     if output::dry_run_guard(cli, "kql-database create-shortcut", &body) {
         return Ok(());
@@ -1269,8 +1398,58 @@ async fn bulk_create_shortcuts(
 
 #[cfg(test)]
 mod tests {
+    use super::{build_kql_shortcut_body, ensure_kql_target_supported};
     use crate::commands::kql_utils::parse_kusto_v2_response;
+    use crate::commands::shortcut_target::ShortcutTargetFlags;
     use serde_json::json;
+
+    #[test]
+    fn kql_shortcut_body_typed_onelake() {
+        let flags = ShortcutTargetFlags {
+            target_workspace: Some("ws1"),
+            target_item: Some("lh1"),
+            target_path: Some("Tables/sales"),
+            ..Default::default()
+        };
+        let body = build_kql_shortcut_body("sales", true, "OneLake", None, &flags).unwrap();
+        assert_eq!(body["name"], "sales");
+        assert_eq!(body["enableQueryAcceleration"], true);
+        assert_eq!(body["target"]["oneLake"]["workspaceId"], "ws1");
+        assert_eq!(body["target"]["oneLake"]["itemId"], "lh1");
+        assert_eq!(body["target"]["oneLake"]["path"], "Tables/sales");
+    }
+
+    #[test]
+    fn kql_shortcut_body_typed_s3() {
+        let flags = ShortcutTargetFlags {
+            location: Some("https://bucket.s3.amazonaws.com/data"),
+            connection_id: Some("conn-1"),
+            ..Default::default()
+        };
+        let body = build_kql_shortcut_body("ext", false, "AmazonS3", None, &flags).unwrap();
+        assert_eq!(body["enableQueryAcceleration"], false);
+        assert_eq!(
+            body["target"]["amazonS3"]["location"],
+            "https://bucket.s3.amazonaws.com/data"
+        );
+        assert_eq!(body["target"]["amazonS3"]["connectionId"], "conn-1");
+    }
+
+    #[test]
+    fn kql_shortcut_rejects_unsupported_targets() {
+        assert!(ensure_kql_target_supported("dataverse").is_err());
+        assert!(ensure_kql_target_supported("externalDataShare").is_err());
+        assert!(ensure_kql_target_supported("oneDriveSharePoint").is_err());
+        assert!(ensure_kql_target_supported("oneLake").is_ok());
+        assert!(ensure_kql_target_supported("amazonS3").is_ok());
+        // A Dataverse target is rejected before the network call.
+        let flags = ShortcutTargetFlags {
+            connection_id: Some("c"),
+            environment_domain: Some("https://org.crm.dynamics.com"),
+            ..Default::default()
+        };
+        assert!(build_kql_shortcut_body("x", false, "dataverse", None, &flags).is_err());
+    }
 
     #[test]
     fn test_parse_kusto_v2_primary_result() {

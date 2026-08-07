@@ -72,7 +72,8 @@
 - `src/commands/eventhouse.rs`: list/show/create/update/delete
 - `src/commands/eventstream/mod.rs`: list/show/create/update/delete/get-definition/update-definition/get-topology/pause/resume/sources/destinations
 - `src/commands/eventstream/builder.rs`: add-source/add-destination/add-sample-source/add-derived-stream/validate/list-components
-- `src/commands/kql_database/mod.rs`: list/show/create/update/delete/get-definition/update-definition/shortcuts
+- `src/commands/kql_database/mod.rs`: list/show/create/update/delete/get-definition/update-definition/table-shortcuts (list/create/get/delete-shortcut; typed target flags via shared `shortcut_target`)
+- `src/commands/shortcut_target.rs`: Shared shortcut target-builder (`ShortcutTargetFlags`, `normalize_target_type`, `build_shortcut_target`) reused by lakehouse OneLake shortcuts and kql-database table shortcuts
 - `src/commands/kql_database/intelligence.rs`: query/list-entities/describe/describe-entity/sample/ingest/show-queryplan/diagnostics/deeplink
 - `src/commands/kql_utils.rs`: Shared KQL utilities (resolve_kql_input, resolve_query_uri, execute_kql, parse v1/v2 responses, render results)
 - `src/commands/query_input.rs`: Shared query-text resolver (resolve_query_input) — inline / `@file` / stdin, used by graph-model and graphql-api; the uniform convention for all query commands

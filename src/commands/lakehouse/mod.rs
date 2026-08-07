@@ -1640,7 +1640,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             transform_include_subfolders,
             conflict_policy,
         } => {
-            let flags = shortcuts::ShortcutTargetFlags {
+            let flags = crate::commands::shortcut_target::ShortcutTargetFlags {
                 connection_id: connection_id.as_deref(),
                 location: location.as_deref(),
                 subpath: subpath.as_deref(),
