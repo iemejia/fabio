@@ -97,6 +97,38 @@ fn warehouse_query_select_one() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
+fn warehouse_query_empty_result_renders_as_empty_list() {
+    // A SELECT that matches zero rows must render as the list envelope
+    // `{"data":[],"count":0}` (NOT a scalar `{"rows_affected":0,"message":…}`),
+    // so agents that iterate/filter `data` behave consistently. Regression guard
+    // for the produced_result_set fix (columns-empty vs rows-empty).
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--sql",
+            "SELECT 1 AS test WHERE 1 = 0",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    assert_eq!(json["count"], 0);
+    let data = extract_data(&json);
+    let rows = data.as_array().expect("expected empty array of rows");
+    assert!(rows.is_empty());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn warehouse_query_from_stdin() {
     let cfg = TestConfig::from_env();
 

@@ -252,19 +252,37 @@ pub async fn execute_and_render_sql(
 ) -> anyhow::Result<()> {
     let (columns, all_rows) = execute_sql_rows(client, server, database, sql_text).await?;
 
-    // Render output
-    if all_rows.is_empty() {
+    // Distinguish "no result set" (DDL/DML like CREATE/INSERT — no columns) from a
+    // result set that simply matched zero rows (a SELECT always returns column
+    // metadata). A 0-row SELECT must render as the list envelope `{"data":[],
+    // "count":0}` so agents that iterate/filter `data` behave consistently —
+    // rendering it as a scalar `{"rows_affected":0,"message":…}` object (the old
+    // behavior) broke `queries-history --label X`, `queries-running`,
+    // `statistics-list`, and every other TDS list/insight command whenever it
+    // legitimately matched nothing.
+    if produced_result_set(&columns) {
+        let col_refs: Vec<&str> = columns.iter().map(String::as_str).collect();
+        output::render_list(cli, &all_rows, &col_refs, &col_refs, &columns[0]);
+    } else {
         let obj = serde_json::json!({
             "rows_affected": 0,
             "message": "Query executed successfully (no result set returned)."
         });
         output::render_object(cli, &obj, "message");
-    } else {
-        let col_refs: Vec<&str> = columns.iter().map(String::as_str).collect();
-        output::render_list(cli, &all_rows, &col_refs, &col_refs, &columns[0]);
     }
 
     Ok(())
+}
+
+/// Whether a TDS execution produced an actual result set. A `SELECT` always
+/// returns column metadata (even when it matches zero rows), whereas DDL/DML
+/// (`CREATE`/`INSERT`/`UPDATE`/…) returns no columns. This is the correct
+/// discriminator for list-vs-scalar rendering — using row-emptiness instead
+/// would misrender a legitimately-empty query result as a "no result set"
+/// scalar object. Pure.
+#[inline]
+pub const fn produced_result_set(columns: &[String]) -> bool {
+    !columns.is_empty()
 }
 
 /// Execute a SQL query over TDS and return `(column_names, rows)`.
@@ -602,6 +620,19 @@ mod tests {
     use mssql_tds::datatypes::sql_json::SqlJson;
     use mssql_tds::datatypes::sql_string::{EncodingType, SqlString};
     use mssql_tds::token::tokens::SqlCollation;
+
+    #[test]
+    fn produced_result_set_distinguishes_select_from_ddl() {
+        // A SELECT (even matching 0 rows) has column metadata → a result set,
+        // must render as a list envelope, not a "no result set" scalar.
+        assert!(produced_result_set(&["label".to_string()]));
+        assert!(produced_result_set(&[
+            "year".to_string(),
+            "avg".to_string()
+        ]));
+        // DDL/DML (CREATE/INSERT/UPDATE) returns no columns → no result set.
+        assert!(!produced_result_set(&[]));
+    }
 
     #[test]
     fn ce_date_converts_days_to_iso() {
