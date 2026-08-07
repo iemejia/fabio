@@ -134,6 +134,10 @@ pub enum MirroredDatabricksCatalogCommand {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
+
+        /// Databricks workspace connection ID (required).
+        #[arg(long)]
+        connection_id: String,
     },
     /// Discover schemas in a Databricks catalog
     #[command(display_order = 12)]
@@ -145,6 +149,10 @@ pub enum MirroredDatabricksCatalogCommand {
         /// Catalog name
         #[arg(long)]
         catalog_name: String,
+
+        /// Databricks workspace connection ID (required).
+        #[arg(long)]
+        connection_id: String,
     },
     /// Discover tables in a Databricks catalog schema
     #[command(display_order = 13)]
@@ -160,6 +168,10 @@ pub enum MirroredDatabricksCatalogCommand {
         /// Schema name
         #[arg(long)]
         schema_name: String,
+
+        /// Databricks workspace connection ID (required).
+        #[arg(long)]
+        connection_id: String,
     },
 }
 
@@ -234,18 +246,31 @@ pub async fn execute(
         MirroredDatabricksCatalogCommand::RefreshMetadata { workspace, id } => {
             refresh_metadata(cli, client, workspace, id).await
         }
-        MirroredDatabricksCatalogCommand::DiscoverCatalogs { workspace } => {
-            discover_catalogs(cli, client, workspace).await
-        }
+        MirroredDatabricksCatalogCommand::DiscoverCatalogs {
+            workspace,
+            connection_id,
+        } => discover_catalogs(cli, client, workspace, connection_id).await,
         MirroredDatabricksCatalogCommand::DiscoverSchemas {
             workspace,
             catalog_name,
-        } => discover_schemas(cli, client, workspace, catalog_name).await,
+            connection_id,
+        } => discover_schemas(cli, client, workspace, catalog_name, connection_id).await,
         MirroredDatabricksCatalogCommand::DiscoverTables {
             workspace,
             catalog_name,
             schema_name,
-        } => discover_tables(cli, client, workspace, catalog_name, schema_name).await,
+            connection_id,
+        } => {
+            discover_tables(
+                cli,
+                client,
+                workspace,
+                catalog_name,
+                schema_name,
+                connection_id,
+            )
+            .await
+        }
     }
 }
 
@@ -574,9 +599,17 @@ async fn refresh_metadata(
     Ok(())
 }
 
-async fn discover_catalogs(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
+async fn discover_catalogs(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    connection_id: &str,
+) -> Result<()> {
+    // `databricksWorkspaceConnectionId` is a REQUIRED query param.
     let data = client
-        .get(&format!("/workspaces/{workspace}/azureDatabricks/catalogs"))
+        .get(&format!(
+            "/workspaces/{workspace}/azureDatabricks/catalogs?databricksWorkspaceConnectionId={connection_id}"
+        ))
         .await?;
     output::render_object(cli, &data, "data");
     Ok(())
@@ -587,10 +620,11 @@ async fn discover_schemas(
     client: &FabricClient,
     workspace: &str,
     catalog_name: &str,
+    connection_id: &str,
 ) -> Result<()> {
     let data = client
         .get(&format!(
-            "/workspaces/{workspace}/azureDatabricks/catalogs/{catalog_name}/schemas"
+            "/workspaces/{workspace}/azureDatabricks/catalogs/{catalog_name}/schemas?databricksWorkspaceConnectionId={connection_id}"
         ))
         .await?;
     output::render_object(cli, &data, "data");
@@ -603,10 +637,11 @@ async fn discover_tables(
     workspace: &str,
     catalog_name: &str,
     schema_name: &str,
+    connection_id: &str,
 ) -> Result<()> {
     let data = client
         .get(&format!(
-            "/workspaces/{workspace}/azureDatabricks/catalogs/{catalog_name}/schemas/{schema_name}/tables"
+            "/workspaces/{workspace}/azureDatabricks/catalogs/{catalog_name}/schemas/{schema_name}/tables?databricksWorkspaceConnectionId={connection_id}"
         ))
         .await?;
     output::render_object(cli, &data, "data");

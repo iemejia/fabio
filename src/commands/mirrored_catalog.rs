@@ -134,6 +134,18 @@ pub enum MirroredCatalogCommand {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
+
+        /// Connection ID of the catalog mirroring source (required).
+        #[arg(long)]
+        connection_id: String,
+
+        /// Parent scope to list under (optional).
+        #[arg(long)]
+        parent: Option<String>,
+
+        /// Recurse into nested scopes (optional).
+        #[arg(long)]
+        recursive: bool,
     },
     /// List catalog mirroring tables (workspace-level)
     #[command(display_order = 12)]
@@ -141,6 +153,14 @@ pub enum MirroredCatalogCommand {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
+
+        /// Connection ID of the catalog mirroring source (required).
+        #[arg(long)]
+        connection_id: String,
+
+        /// Scope to list tables under (optional).
+        #[arg(long)]
+        scope: Option<String>,
     },
     /// Get mirroring status
     #[command(display_order = 13)]
@@ -235,12 +255,27 @@ pub async fn execute(
         MirroredCatalogCommand::RefreshMetadata { workspace, id } => {
             refresh_metadata(cli, client, workspace, id).await
         }
-        MirroredCatalogCommand::ListScopes { workspace } => {
-            list_scopes(cli, client, workspace).await
+        MirroredCatalogCommand::ListScopes {
+            workspace,
+            connection_id,
+            parent,
+            recursive,
+        } => {
+            list_scopes(
+                cli,
+                client,
+                workspace,
+                connection_id,
+                parent.as_deref(),
+                *recursive,
+            )
+            .await
         }
-        MirroredCatalogCommand::ListTables { workspace } => {
-            list_tables(cli, client, workspace).await
-        }
+        MirroredCatalogCommand::ListTables {
+            workspace,
+            connection_id,
+            scope,
+        } => list_tables(cli, client, workspace, connection_id, scope.as_deref()).await,
         MirroredCatalogCommand::MirroringStatus { workspace, id } => {
             mirroring_status(cli, client, workspace, id).await
         }
@@ -556,24 +591,72 @@ async fn refresh_metadata(
     Ok(())
 }
 
-async fn list_scopes(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
+async fn list_scopes(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    connection_id: &str,
+    parent: Option<&str>,
+    recursive: bool,
+) -> Result<()> {
     let data = client
-        .get(&format!(
-            "/workspaces/{workspace}/catalogmirroring/scopes?beta=true"
+        .get(&build_scopes_url(
+            workspace,
+            connection_id,
+            parent,
+            recursive,
         ))
         .await?;
     output::render_object(cli, &data, "data");
     Ok(())
 }
 
-async fn list_tables(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
+/// Build the catalog-mirroring scopes URL. `connectionId` is a REQUIRED query
+/// param (the catalog mirroring source); `parent`/`recursive` are optional.
+fn build_scopes_url(
+    workspace: &str,
+    connection_id: &str,
+    parent: Option<&str>,
+    recursive: bool,
+) -> String {
+    use std::fmt::Write as _;
+    let mut url = format!(
+        "/workspaces/{workspace}/catalogmirroring/scopes?beta=true&connectionId={connection_id}"
+    );
+    if let Some(p) = parent {
+        let _ = write!(url, "&parent={p}");
+    }
+    if recursive {
+        url.push_str("&recursive=true");
+    }
+    url
+}
+
+async fn list_tables(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    connection_id: &str,
+    scope: Option<&str>,
+) -> Result<()> {
     let data = client
-        .get(&format!(
-            "/workspaces/{workspace}/catalogmirroring/tables?beta=true"
-        ))
+        .get(&build_tables_url(workspace, connection_id, scope))
         .await?;
     output::render_object(cli, &data, "data");
     Ok(())
+}
+
+/// Build the catalog-mirroring tables URL. `connectionId` is a REQUIRED query
+/// param; `scope` is optional.
+fn build_tables_url(workspace: &str, connection_id: &str, scope: Option<&str>) -> String {
+    use std::fmt::Write as _;
+    let mut url = format!(
+        "/workspaces/{workspace}/catalogmirroring/tables?beta=true&connectionId={connection_id}"
+    );
+    if let Some(s) = scope {
+        let _ = write!(url, "&scope={s}");
+    }
+    url
 }
 
 async fn mirroring_status(
@@ -604,4 +687,42 @@ async fn tables_mirroring_status(
         .await?;
     output::render_object(cli, &data, "data");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_scopes_url, build_tables_url};
+
+    #[test]
+    fn scopes_url_includes_required_connection_id() {
+        let url = build_scopes_url("ws1", "conn1", None, false);
+        assert!(url.contains("catalogmirroring/scopes"));
+        assert!(url.contains("beta=true"));
+        assert!(url.contains("connectionId=conn1"));
+        assert!(!url.contains("parent="));
+        assert!(!url.contains("recursive="));
+    }
+
+    #[test]
+    fn scopes_url_adds_optional_params() {
+        let url = build_scopes_url("ws1", "conn1", Some("cat.schema"), true);
+        assert!(url.contains("connectionId=conn1"));
+        assert!(url.contains("parent=cat.schema"));
+        assert!(url.contains("recursive=true"));
+    }
+
+    #[test]
+    fn tables_url_includes_required_connection_id() {
+        let url = build_tables_url("ws1", "conn1", None);
+        assert!(url.contains("catalogmirroring/tables"));
+        assert!(url.contains("connectionId=conn1"));
+        assert!(!url.contains("scope="));
+    }
+
+    #[test]
+    fn tables_url_adds_optional_scope() {
+        let url = build_tables_url("ws1", "conn1", Some("mycat"));
+        assert!(url.contains("connectionId=conn1"));
+        assert!(url.contains("scope=mycat"));
+    }
 }

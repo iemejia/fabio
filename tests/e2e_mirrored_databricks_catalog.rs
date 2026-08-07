@@ -51,3 +51,36 @@ fn mirrored_databricks_catalog_dry_run_create() {
         "mirrored-databricks-catalog create"
     );
 }
+
+// discover-catalogs/schemas/tables require --connection-id
+// (databricksWorkspaceConnectionId is a REQUIRED query param). Offline
+// clap-validation regression.
+#[test]
+fn discover_catalogs_requires_connection_id() {
+    fabio()
+        .args([
+            "mirrored-databricks-catalog",
+            "discover-catalogs",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn discover_tables_requires_connection_id() {
+    fabio()
+        .args([
+            "mirrored-databricks-catalog",
+            "discover-tables",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--catalog-name",
+            "cat",
+            "--schema-name",
+            "sch",
+        ])
+        .assert()
+        .failure();
+}

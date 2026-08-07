@@ -1978,3 +1978,18 @@ fn item_apply_tags_uses_tags_field() {
     assert!(data["details"]["tags"].is_array());
     assert!(data["details"].get("tagIds").is_none());
 }
+
+// get-invitation requires --provider-tenant-id (providerTenantId is a REQUIRED
+// query param). Offline clap-validation regression.
+#[test]
+fn get_invitation_requires_provider_tenant_id() {
+    fabio()
+        .args([
+            "item",
+            "get-invitation",
+            "--invitation-id",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .failure();
+}

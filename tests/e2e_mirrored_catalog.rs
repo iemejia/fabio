@@ -119,3 +119,31 @@ fn mirrored_catalog_show_invalid_id_returns_error() {
         "Expected error for invalid ID, got: {stderr}"
     );
 }
+
+// list-scopes / list-tables require --connection-id (the catalog mirroring
+// source is a REQUIRED query param). Offline clap-validation regression.
+#[test]
+fn mirrored_catalog_list_scopes_requires_connection_id() {
+    fabio()
+        .args([
+            "mirrored-catalog",
+            "list-scopes",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn mirrored_catalog_list_tables_requires_connection_id() {
+    fabio()
+        .args([
+            "mirrored-catalog",
+            "list-tables",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .failure();
+}

@@ -549,6 +549,10 @@ pub enum ItemCommand {
         /// Invitation ID
         #[arg(long)]
         invitation_id: String,
+
+        /// Provider tenant ID that issued the invitation (required).
+        #[arg(long)]
+        provider_tenant_id: String,
     },
     /// Accept an external data share invitation
     #[command(display_order = 56)]
@@ -847,9 +851,10 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             id,
             assignment_type,
         } => crud::assign_identity(cli, client, workspace, id, assignment_type).await,
-        ItemCommand::GetInvitation { invitation_id } => {
-            crud::get_invitation(cli, client, invitation_id).await
-        }
+        ItemCommand::GetInvitation {
+            invitation_id,
+            provider_tenant_id,
+        } => crud::get_invitation(cli, client, invitation_id, provider_tenant_id).await,
         ItemCommand::AcceptInvitation {
             invitation_id,
             workspace,

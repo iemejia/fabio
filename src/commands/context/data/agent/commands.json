@@ -2349,6 +2349,11 @@
             "type": "string",
             "required": true,
             "description": "Invitation ID"
+          },
+          "--provider-tenant-id": {
+            "type": "string",
+            "required": true,
+            "description": "Provider tenant ID that issued the invitation (required)"
           }
         },
         "mutates": false,
@@ -19162,6 +19167,19 @@
             "type": "string",
             "required": true,
             "description": "Workspace ID"
+          },
+          "--connection-id": {
+            "type": "string",
+            "required": true,
+            "description": "Connection ID of the catalog mirroring source (required)"
+          },
+          "--parent": {
+            "type": "string",
+            "description": "Parent scope to list under (optional)"
+          },
+          "--recursive": {
+            "type": "bool",
+            "description": "Recurse into nested scopes (optional)"
           }
         },
         "mutates": false,
@@ -19174,6 +19192,15 @@
             "type": "string",
             "required": true,
             "description": "Workspace ID"
+          },
+          "--connection-id": {
+            "type": "string",
+            "required": true,
+            "description": "Connection ID of the catalog mirroring source (required)"
+          },
+          "--scope": {
+            "type": "string",
+            "description": "Scope to list tables under (optional)"
           }
         },
         "mutates": false,
@@ -19392,6 +19419,11 @@
             "type": "string",
             "required": true,
             "description": "Workspace ID"
+          },
+          "--connection-id": {
+            "type": "string",
+            "required": true,
+            "description": "Databricks workspace connection ID (required)"
           }
         },
         "mutates": false,
@@ -19409,6 +19441,11 @@
             "type": "string",
             "required": true,
             "description": "Catalog name"
+          },
+          "--connection-id": {
+            "type": "string",
+            "required": true,
+            "description": "Databricks workspace connection ID (required)"
           }
         },
         "mutates": false,
@@ -19431,6 +19468,11 @@
             "type": "string",
             "required": true,
             "description": "Schema name"
+          },
+          "--connection-id": {
+            "type": "string",
+            "required": true,
+            "description": "Databricks workspace connection ID (required)"
           }
         },
         "mutates": false,

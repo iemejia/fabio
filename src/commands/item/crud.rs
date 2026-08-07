@@ -431,9 +431,14 @@ pub(super) async fn get_invitation(
     cli: &Cli,
     client: &FabricClient,
     invitation_id: &str,
+    provider_tenant_id: &str,
 ) -> Result<()> {
+    // `providerTenantId` (the tenant that issued the invitation) is a REQUIRED
+    // query param — omitting it fails with InvalidInput.
     let data = client
-        .get(&format!("/externalDataShares/invitations/{invitation_id}"))
+        .get(&format!(
+            "/externalDataShares/invitations/{invitation_id}?providerTenantId={provider_tenant_id}"
+        ))
         .await?;
     output::render_object(cli, &data, "id");
     Ok(())
