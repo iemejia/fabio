@@ -75,6 +75,7 @@ pub mod spark_job_definition;
 pub mod sql_database;
 pub mod sql_endpoint;
 pub mod tds_utils;
+pub mod tenant_gate;
 pub mod user_data_function;
 pub mod variable_library;
 pub mod warehouse;
@@ -124,7 +125,8 @@ pub async fn execute(cli: Cli) -> Result<()> {
     // Enforce --enable-commands / --disable-commands before dispatch.
     check_command_policy(&cli)?;
 
-    match &cli.command {
+    let command_path = extract_command_path(&cli);
+    let result = match &cli.command {
         // Admin
         Command::Admin { command } => admin::execute(&cli, &client, command).await,
         // Core
@@ -262,6 +264,15 @@ pub async fn execute(cli: Cli) -> Result<()> {
         } => upgrade::execute(&cli, *check, target_version.as_deref(), cli.force).await,
         Command::Completions { shell } => completions::execute(*shell),
         Command::Mcp { command } => mcp::execute(&cli, command).await,
+    };
+
+    // Generic tenant-feature-gate enrichment: if the command failed because a
+    // TENANT SETTING is disabled, replace the opaque error with a teaching one
+    // that names the setting and gives an admin-aware enable hint. A no-op for
+    // every non-feature-disabled error (checked before any admin probe).
+    match result {
+        Ok(v) => Ok(v),
+        Err(e) => Err(tenant_gate::enrich(&client, &command_path, e).await),
     }
 }
 
