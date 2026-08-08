@@ -535,6 +535,7 @@ link-validation / full build run in the docs CI workflow.
 ## Key Decisions
 - JSON envelope always wraps output: lists get `{"data":[...],"count":N}`, objects get `{"data":{...}}`
 - Errors on stderr as `{"error":{"code":"...","message":"..."}}` with non-zero exit
+- **Bytes-endpoint error surfacing** — the Fabric *bytes* client helpers (`post_fabric_bytes`, `post_fabric_bytes_with_accept`/`handle_bytes_lro_response`) route error bodies through the shared `error_message_from_body(status, text)` free fn, which tries the nested `{"error":{"message"}}` envelope, then the TOP-LEVEL `{"errorCode","message"}` envelope (OneLake/DFS/dataflow-`executeQuery` shape), then a truncated+redacted raw body — NEVER a bare `HTTP <status>`. Any NEW bytes-returning client helper MUST use this fn (or `FabioError::from_status`, which passes the raw body) so the real API message isn't dropped. Found because `dataflow execute-query` surfaced `HTTP 400 Bad Request` instead of `Query name not found`.
 - `--query` supports full JMESPath expressions (see jmespath.org) — filter, project, slice, multiselect, pipe, functions (length, sort_by, etc.)
 - `--quiet` suppresses all stdout; errors still go to stderr
 - OneLake upload uses DFS create+append+flush 3-step pattern with `x-ms-content-md5` on flush (computes MD5 client-side, stores as file property for content-based matching)

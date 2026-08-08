@@ -1691,15 +1691,7 @@ impl FabricClient {
             // Try to parse error response as JSON
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            let msg = serde_json::from_str::<Value>(&text)
-                .ok()
-                .and_then(|v| {
-                    v.get("error")
-                        .and_then(|e| e.get("message"))
-                        .and_then(Value::as_str)
-                        .map(String::from)
-                })
-                .unwrap_or_else(|| format!("HTTP {status}"));
+            let msg = error_message_from_body(status, &text);
             return Err(FabioError::new(ErrorCode::ApiError, msg).into());
         }
 
@@ -1801,15 +1793,7 @@ impl FabricClient {
                     // Error
                     let status = poll_resp.status();
                     let text = poll_resp.text().await.unwrap_or_default();
-                    let msg = serde_json::from_str::<Value>(&text)
-                        .ok()
-                        .and_then(|v| {
-                            v.get("error")
-                                .and_then(|e| e.get("message"))
-                                .and_then(Value::as_str)
-                                .map(String::from)
-                        })
-                        .unwrap_or_else(|| format!("HTTP {status}"));
+                    let msg = error_message_from_body(status, &text);
                     return Err(FabioError::new(ErrorCode::ApiError, msg).into());
                 }
             }
@@ -1820,15 +1804,7 @@ impl FabricClient {
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            let msg = serde_json::from_str::<Value>(&text)
-                .ok()
-                .and_then(|v| {
-                    v.get("error")
-                        .and_then(|e| e.get("message"))
-                        .and_then(Value::as_str)
-                        .map(String::from)
-                })
-                .unwrap_or_else(|| format!("HTTP {status}"));
+            let msg = error_message_from_body(status, &text);
             return Err(FabioError::new(ErrorCode::ApiError, msg).into());
         }
 
@@ -3440,6 +3416,36 @@ async fn try_developer_tools_credential(scope: &str) -> Result<(CachedToken, Cre
     .into())
 }
 
+/// Extract the best available error message from an HTTP error response body.
+///
+/// Handles both Fabric envelope shapes — the nested `{"error":{"message":...}}`
+/// and the top-level `{"errorCode":..., "message":...}` used by OneLake/DFS and
+/// the dataflow `executeQuery` endpoint — and falls back to the truncated,
+/// redacted raw body (never a bare `HTTP <status>`, which drops the real error).
+fn error_message_from_body(status: StatusCode, text: &str) -> String {
+    serde_json::from_str::<Value>(text)
+        .ok()
+        .and_then(|v| {
+            v.get("error")
+                .and_then(|e| e.get("message"))
+                .and_then(Value::as_str)
+                .map(String::from)
+                .or_else(|| v.get("message").and_then(Value::as_str).map(String::from))
+        })
+        .unwrap_or_else(|| {
+            let redacted = crate::verbose::redact_body_if_json(text);
+            let truncated = if redacted.len() > MAX_ERROR_BODY_LEN {
+                format!(
+                    "{}...(truncated)",
+                    &redacted[..redacted.floor_char_boundary(MAX_ERROR_BODY_LEN)]
+                )
+            } else {
+                redacted
+            };
+            format!("HTTP {status}: {truncated}")
+        })
+}
+
 /// Handle an HTTP response, converting errors to `FabioError`.
 #[allow(clippy::too_many_lines)]
 async fn handle_response(resp: Response) -> Result<Value> {
@@ -3824,6 +3830,31 @@ pub fn validate_uuid(value: &str, param_name: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn error_message_from_body_handles_both_envelope_shapes() {
+        // Nested Fabric envelope: {"error":{"message":...}}
+        assert_eq!(
+            error_message_from_body(
+                StatusCode::BAD_REQUEST,
+                r#"{"error":{"code":"X","message":"nested msg"}}"#
+            ),
+            "nested msg"
+        );
+        // Top-level OneLake/DFS/dataflow-executeQuery envelope: {"errorCode":..., "message":...}
+        // Regression for the dataflow executeQuery 400 that was dropped as a bare "HTTP 400".
+        assert_eq!(
+            error_message_from_body(
+                StatusCode::BAD_REQUEST,
+                r#"{"requestId":"r","errorCode":"DataflowExecuteQueryError","message":"Query name not found","isRetriable":false}"#
+            ),
+            "Query name not found"
+        );
+        // Non-JSON / unrecognized body: fall back to the truncated raw body, NOT a bare status.
+        let msg = error_message_from_body(StatusCode::BAD_REQUEST, "plain text boom");
+        assert!(msg.starts_with("HTTP 400 Bad Request: "), "got: {msg}");
+        assert!(msg.contains("plain text boom"), "got: {msg}");
+    }
 
     #[test]
     fn scoped_token_env_var_maps_non_fabric_scopes() {
