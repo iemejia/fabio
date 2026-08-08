@@ -126,13 +126,7 @@ async fn search(
             return Ok(());
         };
         all_items.extend(arr.iter().cloned());
-        last_token = data
-            .get("continuationToken")
-            .and_then(Value::as_str)
-            // The API returns an EMPTY-string token (not null/absent) on the last
-            // page — treat that as "no more pages" so we don't post an empty token.
-            .filter(|s| !s.is_empty())
-            .map(str::to_owned);
+        last_token = next_page_token(&data);
 
         if !cli.all || last_token.is_none() {
             break;
@@ -190,6 +184,17 @@ fn build_search_body(
     }
 
     Value::Object(body)
+}
+
+/// Extract the continuation token for the NEXT page from a `/catalog/search`
+/// response. The API returns an EMPTY-string token (not null/absent) on the last
+/// page, so an empty token is normalized to `None` ("no more pages") — otherwise
+/// a follow-up request with an empty token fails with `InvalidContinuationToken`.
+fn next_page_token(data: &Value) -> Option<String> {
+    data.get("continuationToken")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
 }
 
 /// Build the catalog `filter` string from comma-separated include/exclude item
@@ -251,6 +256,28 @@ mod tests {
             body["filter"],
             "(Type eq 'Notebook' or Type eq 'Lakehouse')"
         );
+    }
+
+    #[test]
+    fn next_page_token_treats_empty_string_as_done() {
+        // The last-page quirk: an empty-string token means "no more pages".
+        assert_eq!(
+            next_page_token(&serde_json::json!({ "continuationToken": "" })),
+            None
+        );
+    }
+
+    #[test]
+    fn next_page_token_returns_present_token() {
+        assert_eq!(
+            next_page_token(&serde_json::json!({ "continuationToken": "abc123" })),
+            Some("abc123".to_string())
+        );
+    }
+
+    #[test]
+    fn next_page_token_none_when_absent() {
+        assert_eq!(next_page_token(&serde_json::json!({ "value": [] })), None);
     }
 
     #[test]

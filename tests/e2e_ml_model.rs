@@ -174,8 +174,9 @@ fn ml_model_registry_versions_lifecycle() {
     let json = parse_json(&assert);
     assert!(extract_data(&json).is_array());
 
-    // get-registry-version --version 1
-    fabio()
+    // get-registry-version --version 1 — assert the `{model_version:{…}}` envelope
+    // is UNWRAPPED so `version` is at the top level of `data` (regression for 0c8a1c4).
+    let out = fabio()
         .args([
             "ml-model",
             "get-registry-version",
@@ -188,5 +189,19 @@ fn ml_model_registry_versions_lifecycle() {
         ])
         .timeout(std::time::Duration::from_mins(1))
         .assert()
-        .success();
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let v: serde_json::Value = serde_json::from_slice(&out).expect("valid JSON");
+    assert!(
+        v["data"].get("model_version").is_none(),
+        "model_version envelope must be unwrapped, got: {}",
+        v["data"]
+    );
+    assert_eq!(
+        v["data"]["version"].as_str(),
+        Some("1"),
+        "version field must be at the top level of data"
+    );
 }

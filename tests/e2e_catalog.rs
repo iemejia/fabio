@@ -135,3 +135,61 @@ fn catalog_search_content_flag_override() {
     let json = parse_json(&assert);
     assert!(json.get("data").is_some());
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn catalog_search_all_paginates_and_flattens() {
+    // Regression for 113fc01: `--all` must auto-paginate the body-token pages
+    // and flatten the `{value:[…]}` envelope to the standard `{data:[…],count}`
+    // list shape (so agents can iterate `data`). The empty-string last-page
+    // token must terminate cleanly (no InvalidContinuationToken).
+    let assert = fabio()
+        .args(["catalog", "search", "--search", "a", "--all"])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(
+        json.get("data").and_then(|d| d.as_array()).is_some(),
+        "--all must return a flattened data array, got: {json}"
+    );
+    // count must be present on the list envelope.
+    assert!(
+        json.get("count").is_some(),
+        "list envelope must carry count"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn catalog_search_exposes_workspace_column_path() {
+    // Regression for 113fc01: the WORKSPACE column is projected from the nested
+    // `hierarchy.workspace.displayName` path. Verify a matched item carries the
+    // hierarchy.workspace object so the column resolves (was empty before).
+    let assert = fabio()
+        .args([
+            "catalog",
+            "search",
+            "--search",
+            "Lakehouse",
+            "--type",
+            "Lakehouse",
+            "--top",
+            "5",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    if let Some(rows) = json.get("data").and_then(|d| d.as_array())
+        && let Some(first) = rows.first()
+    {
+        // The source rows must expose hierarchy.workspace (the WORKSPACE column
+        // source). Not all items have it, but a Lakehouse always lives in a
+        // workspace, so at least the hierarchy key must be present.
+        assert!(
+            first.get("hierarchy").is_some(),
+            "catalog row must carry the hierarchy object, got: {first}"
+        );
+    }
+}

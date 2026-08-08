@@ -258,6 +258,22 @@ pub(super) async fn remove_datasource(
     Ok(())
 }
 
+/// Build the PATCH body for `update-datasource`.
+///
+/// The datasource-metadata PATCH field is `description` (NOT `userDescription`,
+/// which is the DEFINITION-format field — a different layer). Sending
+/// `userDescription` here is silently ignored by the API. See ecd4394.
+fn build_update_datasource_body(instructions: Option<&str>, description: Option<&str>) -> Value {
+    let mut body = serde_json::Map::new();
+    if let Some(instr) = instructions {
+        body.insert("instructions".to_string(), Value::from(instr));
+    }
+    if let Some(desc) = description {
+        body.insert("description".to_string(), Value::from(desc));
+    }
+    Value::Object(body)
+}
+
 /// Update a data source's metadata (instructions, description).
 ///
 /// Uses: `PATCH /workspaces/{ws}/dataAgents/{id}/staging/datasources/{dsId}`
@@ -294,18 +310,12 @@ pub(super) async fn update_datasource(
 
     let ds_id = resolve_datasource_id(client, workspace, id, datasource).await?;
 
-    let mut body = serde_json::Map::new();
-    if let Some(instr) = instructions {
-        body.insert("instructions".to_string(), Value::from(instr));
-    }
-    if let Some(desc) = description {
-        body.insert("description".to_string(), Value::from(desc));
-    }
+    let body = build_update_datasource_body(instructions, description);
 
     let resp = client
         .patch(
             &format!("/workspaces/{workspace}/dataAgents/{id}/staging/datasources/{ds_id}"),
-            &Value::Object(body),
+            &body,
         )
         .await?;
 
@@ -676,6 +686,33 @@ mod tests {
         assert_eq!(lh["instructions"], "only sales");
         let wh = build_add_datasource_body("Warehouse", "wh", "ws", Some("only sales"));
         assert_eq!(wh["instructions"], "only sales");
+    }
+
+    #[test]
+    fn build_update_datasource_body_uses_description_field_not_user_description() {
+        // Regression for ecd4394: the metadata PATCH field is `description`.
+        // `userDescription` is the DEFINITION-format field (a different layer) and
+        // is silently ignored by the staging-datasources PATCH endpoint.
+        let body = build_update_datasource_body(None, Some("sales-only view"));
+        assert_eq!(body["description"], "sales-only view");
+        assert!(
+            body.get("userDescription").is_none(),
+            "must NOT use the userDescription field"
+        );
+    }
+
+    #[test]
+    fn build_update_datasource_body_includes_both_fields() {
+        let body = build_update_datasource_body(Some("filter by region"), Some("desc"));
+        assert_eq!(body["instructions"], "filter by region");
+        assert_eq!(body["description"], "desc");
+    }
+
+    #[test]
+    fn build_update_datasource_body_omits_absent_fields() {
+        let body = build_update_datasource_body(Some("instr only"), None);
+        assert_eq!(body["instructions"], "instr only");
+        assert!(body.get("description").is_none());
     }
 
     #[test]

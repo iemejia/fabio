@@ -778,9 +778,17 @@ async fn get_registry_version(
     // Unwrap the `{ "model_version": {...} }` envelope so the version fields
     // (name, version, status, run_id, source, …) are at the top level — matching
     // the flattened rows from `list-registry-versions` and `ml-experiment get-run`.
-    let mv = data.get("model_version").cloned().unwrap_or(data);
+    let mv = unwrap_model_version(data);
     output::render_object(cli, &mv, "version");
     Ok(())
+}
+
+/// Unwrap the `MLflow` model-version envelope (`{ "model_version": {...} }`) so the
+/// version fields (`name`, `version`, `status`, `run_id`, `source`, …) are at the
+/// top level. If the `model_version` key is absent (already-flat or an unexpected
+/// shape), the input is returned unchanged.
+fn unwrap_model_version(data: Value) -> Value {
+    data.get("model_version").cloned().unwrap_or(data)
 }
 
 async fn get_version(
@@ -969,5 +977,25 @@ mod tests {
     fn model_versions_filter_escapes_single_quotes() {
         // Single quotes are doubled to keep the MLflow filter well-formed.
         assert_eq!(model_versions_filter("O'Brien"), "name='O''Brien'");
+    }
+
+    #[test]
+    fn unwrap_model_version_flattens_envelope() {
+        // The MLflow model-versions/get response nests the fields under
+        // "model_version"; unwrap lifts them to the top level.
+        let wrapped = serde_json::json!({
+            "model_version": { "name": "M", "version": "3", "current_stage": "Production" }
+        });
+        let out = unwrap_model_version(wrapped);
+        assert_eq!(out["version"], "3");
+        assert_eq!(out["current_stage"], "Production");
+        assert!(out.get("model_version").is_none());
+    }
+
+    #[test]
+    fn unwrap_model_version_passes_through_flat_shape() {
+        // Already-flat (or unexpected) shape is returned unchanged.
+        let flat = serde_json::json!({ "version": "1", "status": "READY" });
+        assert_eq!(unwrap_model_version(flat.clone()), flat);
     }
 }

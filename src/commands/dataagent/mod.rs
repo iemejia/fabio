@@ -1137,4 +1137,50 @@ mod tests {
         // Both should go through the same resolution path (tested in E2E)
         assert_ne!(uuid, name);
     }
+
+    /// Regression for f9179b7: the `--answer` few-shot query flag accepts the
+    /// language-specific aliases `--sql`/`--kql`/`--dax`/`--gql`, so an agent can
+    /// use the natural flag for the data source's language.
+    #[test]
+    fn add_fewshot_answer_accepts_query_language_aliases() {
+        use super::DataAgentCommand;
+        use crate::cli::{Cli, Command};
+        use clap::Parser;
+
+        // The derived `Cli` for 77 groups is deep enough to overflow the default
+        // 2 MB test-thread stack when parsing — run on a large-stack thread (same
+        // pattern as `cli::no_subcommand_flag_collides_with_global`).
+        std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                for alias in ["--answer", "--sql", "--kql", "--dax", "--gql"] {
+                    let cli = Cli::try_parse_from([
+                        "fabio",
+                        "data-agent",
+                        "add-fewshot",
+                        "--workspace",
+                        "ws",
+                        "--id",
+                        "agent",
+                        "--datasource",
+                        "ds",
+                        "--question",
+                        "how many sales?",
+                        alias,
+                        "SELECT COUNT(*) FROM Sales",
+                    ])
+                    .unwrap_or_else(|e| panic!("alias {alias} must parse: {e}"));
+                    let Command::DataAgent { command } = cli.command else {
+                        panic!("expected data-agent command");
+                    };
+                    let DataAgentCommand::AddFewshot { answer, .. } = command else {
+                        panic!("expected add-fewshot subcommand");
+                    };
+                    assert_eq!(answer, "SELECT COUNT(*) FROM Sales", "alias {alias}");
+                }
+            })
+            .expect("spawn parse thread")
+            .join()
+            .expect("parse thread panicked");
+    }
 }

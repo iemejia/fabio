@@ -94,6 +94,43 @@ fn warehouse_query_select_one() {
     assert_eq!(rows[0]["test"], 1);
 }
 
+/// Regression for 952ed8a: temporal TDS columns must render as readable ISO-8601
+/// (DATE → `2026-01-15`, DATETIME2 → `2026-01-15T14:30:45.123…`), NOT the raw
+/// internal representation (`"739630 days since 0001-01-01"`) or the old wrong
+/// 1900-epoch approximation. Self-contained (CAST literals, no table needed).
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_query_renders_datetime_as_iso8601() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--sql",
+            "SELECT CAST('2026-01-15' AS DATE) AS d, \
+             CAST('2026-01-15T14:30:45.123' AS DATETIME2) AS dt",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let rows = extract_data(&json);
+    let row = &rows.as_array().expect("rows")[0];
+    assert_eq!(row["d"], "2026-01-15", "DATE must render as ISO-8601");
+    let dt = row["dt"].as_str().expect("dt is a string");
+    assert!(
+        dt.starts_with("2026-01-15T14:30:45.123"),
+        "DATETIME2 must render as ISO-8601, got: {dt}"
+    );
+}
+
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]

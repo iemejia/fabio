@@ -406,6 +406,107 @@ fn dataflow_execute_query_arrow_version_2_dry_run() {
     assert_eq!(data["details"]["queryName"], "TestQuery");
 }
 
+/// Regression for d2f62b6: the Fabric *bytes* client helpers used to drop the
+/// real API error body and surface a useless `HTTP 400 Bad Request`. The
+/// dataflow `executeQuery` endpoint returns a TOP-LEVEL `{errorCode, message}`
+/// envelope; fabio must surface the `message` ("Query name not found") — proving
+/// the bytes-error path no longer collapses to a bare status.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataflow_execute_query_surfaces_real_error_message() {
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD;
+
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("df_err");
+
+    // Create a dataflow with a minimal, valid definition (queryMetadata.json +
+    // a mashup that has NO query named "MissingQuery").
+    let assert = fabio()
+        .args([
+            "dataflow",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let mashup =
+        "section Section1;\nshared RealQuery = let Source = #table({\"a\"},{{1}}) in Source;\n";
+    let qm = r#"{"formatVersion":"202502","computeEngineSettings":{"allowFastCopy":false},"name":null,"allowNativeQueries":false}"#;
+    let body = serde_json::json!({
+        "definition": { "parts": [
+            { "path": "queryMetadata.json", "payload": STANDARD.encode(qm), "payloadType": "InlineBase64" },
+            { "path": "mashup.pq", "payload": STANDARD.encode(mashup), "payloadType": "InlineBase64" },
+        ]}
+    });
+    let body_path = format!("/tmp/opencode/df_err_{}.json", std::process::id());
+    std::fs::write(&body_path, serde_json::to_vec(&body).unwrap()).unwrap();
+    fabio()
+        .args([
+            "dataflow",
+            "update-definition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &id,
+            "--file",
+            &body_path,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    // execute-query against a non-existent query name → 400 with a top-level
+    // {errorCode, message}. The message MUST be surfaced (not a bare HTTP 400).
+    let assert = fabio()
+        .args([
+            "dataflow",
+            "execute-query",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &id,
+            "--query-name",
+            "MissingQuery",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("Query name not found"),
+        "must surface the real API message, got: {stderr}"
+    );
+    assert!(
+        !stderr.contains("HTTP 400 Bad Request\""),
+        "must NOT collapse to a bare HTTP status, got: {stderr}"
+    );
+
+    // Cleanup
+    let _ = std::fs::remove_file(&body_path);
+    fabio()
+        .args([
+            "dataflow",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &id,
+        ])
+        .assert()
+        .success();
+}
+
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
