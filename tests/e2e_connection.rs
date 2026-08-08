@@ -207,6 +207,36 @@ fn connection_update_requires_at_least_one_field() {
         .failure();
 }
 
+/// Regression for 6158aad: `connection update` must include the required
+/// `connectivityType` discriminator (resolved via a GET of the connection),
+/// otherwise the API rejects the PATCH with `InvalidInput`. Gated on
+/// `FABIO_TEST_CONNECTION_ID` (an existing connection to update in place).
+#[test]
+#[ignore = "requires live Fabric tenant + FABIO_TEST_CONNECTION_ID"]
+#[serial]
+fn connection_update_includes_connectivity_type() {
+    let Ok(conn_id) = std::env::var("FABIO_TEST_CONNECTION_ID") else {
+        return; // skip when not configured
+    };
+    // Setting privacy-level to None is an in-place no-op update. It succeeds ONLY
+    // if fabio resolves and includes the connectivityType discriminator; the old
+    // flat body was rejected with InvalidInput.
+    let assert = fabio()
+        .args([
+            "connection",
+            "update",
+            "--id",
+            &conn_id,
+            "--privacy-level",
+            "None",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(json.get("data").is_some());
+}
+
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
