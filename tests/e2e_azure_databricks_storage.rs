@@ -301,3 +301,73 @@ fn azure_databricks_storage_update_definition_requires_input() {
         "Expected error about missing input, got: {stderr}"
     );
 }
+
+/// Live: create an Azure Databricks Storage item, get its `OneLake` external-location
+/// path, assert the ID-based `ABFSS` format Databricks requires (GUIDs +
+/// `/Files/` suffix), then delete. This is the Fabric side of the "store Unity
+/// Catalog managed tables directly in `OneLake`" interop feature.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn azure_databricks_storage_external_location_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = format!("fabio_ads_{}", std::process::id());
+
+    // Create
+    let create = fabio()
+        .args([
+            "azure-databricks-storage",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let cj: serde_json::Value =
+        serde_json::from_slice(&create.get_output().stdout).expect("create JSON");
+    let id = cj["data"]["id"].as_str().expect("item id").to_string();
+
+    // external-location
+    let el = fabio()
+        .args([
+            "azure-databricks-storage",
+            "external-location",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let ej: serde_json::Value =
+        serde_json::from_slice(&el.get_output().stdout).expect("external-location JSON");
+    let url = ej["data"]["externalLocationUrl"].as_str().unwrap();
+    // Databricks requires the ID-based ABFSS form ending in /Files/.
+    let expected = format!(
+        "abfss://{}@onelake.dfs.fabric.microsoft.com/{}/Files/",
+        cfg.source_workspace, id
+    );
+    assert_eq!(
+        url, expected,
+        "external-location URL must be ID-based ABFSS"
+    );
+    assert!(url.ends_with("/Files/"));
+    assert!(ej["data"]["prerequisites"].is_array());
+
+    // Cleanup
+    fabio()
+        .args([
+            "azure-databricks-storage",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &id,
+        ])
+        .assert()
+        .success();
+}

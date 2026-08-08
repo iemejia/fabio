@@ -104,6 +104,17 @@ pub enum AzureDatabricksStorageCommand {
         #[arg(long)]
         content: Option<String>,
     },
+    /// Print the ID-based `OneLake` `ABFSS` path to use as the Azure Databricks
+    /// Unity Catalog external-location URL (`abfss://<ws>@onelake…/<id>/Files/`)
+    #[command(name = "external-location", display_order = 8)]
+    ExternalLocation {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Azure Databricks storage ID
+        #[arg(long)]
+        id: String,
+    },
 }
 
 pub async fn execute(
@@ -173,6 +184,9 @@ pub async fn execute(
                 content.as_deref(),
             )
             .await
+        }
+        AzureDatabricksStorageCommand::ExternalLocation { workspace, id } => {
+            external_location(cli, client, workspace, id).await
         }
     }
 }
@@ -465,6 +479,75 @@ async fn update_definition(
     Ok(())
 }
 
+// ─── OneLake external location ───────────────────────────────────────────────
+
+/// Build the ID-based `OneLake` `ABFSS` path that Azure Databricks Unity Catalog uses
+/// as a `OneLake` external-location URL.
+///
+/// The path MUST be ID-based (GUIDs) and MUST end with `/Files/` — Databricks
+/// rejects name-based paths at creation time and requires the `/Files` folder.
+/// Format: `abfss://<WorkspaceID>@<onelake-host>/<DatabricksStorageID>/Files/`.
+fn build_external_location_url(onelake_host: &str, workspace_id: &str, item_id: &str) -> String {
+    format!("abfss://{workspace_id}@{onelake_host}/{item_id}/Files/")
+}
+
+/// Print the `OneLake` external-location URL for an Azure Databricks Storage item,
+/// so it can be used as the managed-storage URL for a Unity Catalog external
+/// location (the "store UC managed tables directly in `OneLake`" flow). Validates
+/// the item is an `AzureDatabricksStorage` first, then constructs the ID-based
+/// `ABFSS` path and surfaces the setup prerequisites. Read-only.
+async fn external_location(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    // Validate the item exists and is the right type (catch a wrong id / a
+    // lakehouse id before handing an agent a bogus path).
+    let item = client
+        .get(&format!(
+            "/workspaces/{workspace}/azureDatabricksStorages/{id}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "azure-databricks-storage external-location", "Viewer"))?;
+    let item_type = item.get("type").and_then(Value::as_str).unwrap_or_default();
+    if !item_type.is_empty() && item_type != "AzureDatabricksStorage" {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Item {id} is a {item_type}, not an AzureDatabricksStorage"),
+            "Pass the ID of an Azure Databricks Storage item. Create one with: \
+             fabio azure-databricks-storage create --workspace <WS> --name <NAME>"
+                .to_string(),
+        )
+        .into());
+    }
+
+    let url = build_external_location_url(&client.onelake_dfs_host(), workspace, id);
+    let display_name = item
+        .get("displayName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+
+    let obj = serde_json::json!({
+        "externalLocationUrl": url,
+        "workspaceId": workspace,
+        "itemId": id,
+        "displayName": display_name,
+        "note": "Use this ID-based ABFSS path as the URL when creating a Unity Catalog external location in Azure Databricks (Storage type = OneLake). It MUST be ID-based (GUIDs) and end with /Files/ — name-based paths are rejected. Data written to catalogs/tables on this external location lands directly in OneLake (no copy).",
+        "prerequisites": [
+            "Fabric: assign your Managed Identity / Service Principal an Admin, Member, or Contributor role on this workspace (fabio workspace add-role-assignment).",
+            "Fabric tenant: enable 'Users can create Azure Databricks Storage items' (ArtifactDatabricksStoragePreview).",
+            "Fabric workspace: enable 'Authenticate with OneLake user-delegated SAS tokens' in Workspace settings > Delegated settings > OneLake settings (portal-only).",
+            "Databricks: create a UC storage credential (Azure Managed Identity / Access Connector), then an external location with Storage type = OneLake and URL = externalLocationUrl."
+        ],
+        "databricksExample": format!(
+            "CREATE CATALOG my_onelake_catalog MANAGED LOCATION '{url}';"
+        )
+    });
+    output::render_object(cli, &obj, "externalLocationUrl");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -491,6 +574,28 @@ mod tests {
         let ws = "ws-create";
         let url = format!("/workspaces/{ws}/azureDatabricksStorages");
         assert_eq!(url, "/workspaces/ws-create/azureDatabricksStorages");
+    }
+
+    #[test]
+    fn external_location_url_is_id_based_abfss_with_files_suffix() {
+        // Databricks requires the ID-based ABFSS path ending in /Files/.
+        let url = build_external_location_url(
+            "onelake.dfs.fabric.microsoft.com",
+            "cfafbeb1-8037-4d0c-896e-a46fb27ff229",
+            "41ce06d1-d81b-4ea0-bc6d-2ce3dd2f8e87",
+        );
+        assert_eq!(
+            url,
+            "abfss://cfafbeb1-8037-4d0c-896e-a46fb27ff229@onelake.dfs.fabric.microsoft.com/41ce06d1-d81b-4ea0-bc6d-2ce3dd2f8e87/Files/"
+        );
+        assert!(url.starts_with("abfss://"));
+        assert!(url.ends_with("/Files/"));
+    }
+
+    #[test]
+    fn external_location_url_honors_custom_onelake_host() {
+        let url = build_external_location_url("mock.onelake.local", "ws", "item");
+        assert_eq!(url, "abfss://ws@mock.onelake.local/item/Files/");
     }
 
     #[test]

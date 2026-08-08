@@ -435,6 +435,19 @@ impl FabricClient {
         self.onelake_dfs_url(workspace, suffix)
     }
 
+    /// The `OneLake` DFS host with no scheme, e.g. `onelake.dfs.fabric.microsoft.com`
+    /// (honors the `FABIO_ONELAKE_DFS_ENDPOINT` override). Used to build the
+    /// `ABFSS` path for an Azure Databricks `OneLake` external location, which
+    /// always targets the public `OneLake` endpoint (not a private-link host).
+    #[allow(clippy::unused_self)] // method for API consistency with the other onelake_* helpers
+    pub fn onelake_dfs_host(&self) -> String {
+        ONELAKE_DFS_URL
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+            .trim_end_matches('/')
+            .to_string()
+    }
+
     /// Construct a `OneLake` Blob URL, applying private link transform if configured.
     ///
     /// If `FABIO_ONELAKE_BLOB_ENDPOINT` is set, that value is used directly (no private link

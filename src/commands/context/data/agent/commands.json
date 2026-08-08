@@ -20931,6 +20931,23 @@
         "examples": [
           "fabio azure-databricks-storage update-definition --workspace $WS --id $ADS_ID --file definition.json"
         ]
+      },
+      "external-location": {
+        "description": "Print the ID-based OneLake ABFSS path to use as the Azure Databricks Unity Catalog external-location URL (`abfss://<ws>@onelake…/<id>/Files/`)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Azure Databricks storage ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
       }
     }
   },
