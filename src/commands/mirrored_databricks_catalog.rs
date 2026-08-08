@@ -45,6 +45,23 @@ pub enum MirroredDatabricksCatalogCommand {
         #[arg(long)]
         description: Option<String>,
 
+        /// Azure Databricks workspace connection ID (`creationPayload.databricksWorkspaceConnectionId`).
+        /// Required to actually MIRROR a catalog — without it, an empty shell is created.
+        #[arg(long, requires = "catalog_name", requires = "mirroring_mode")]
+        databricks_connection_id: Option<String>,
+
+        /// Unity Catalog name to mirror (`creationPayload.catalogName`).
+        #[arg(long)]
+        catalog_name: Option<String>,
+
+        /// Mirroring mode: `Full` (all tables, auto-sync new ones) or `Partial` (selected tables).
+        #[arg(long, value_parser = ["Full", "Partial"])]
+        mirroring_mode: Option<String>,
+
+        /// Optional storage connection ID (`creationPayload.storageConnectionId`).
+        #[arg(long)]
+        storage_connection_id: Option<String>,
+
         /// Sensitivity label ID to apply on creation
         #[arg(long)]
         sensitivity_label: Option<String>,
@@ -175,6 +192,7 @@ pub enum MirroredDatabricksCatalogCommand {
     },
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn execute(
     cli: &Cli,
     client: &FabricClient,
@@ -189,6 +207,10 @@ pub async fn execute(
             workspace,
             name,
             description,
+            databricks_connection_id,
+            catalog_name,
+            mirroring_mode,
+            storage_connection_id,
             sensitivity_label,
         } => {
             create(
@@ -197,6 +219,12 @@ pub async fn execute(
                 workspace,
                 name,
                 description.as_deref(),
+                CreatePayload {
+                    databricks_connection_id: databricks_connection_id.as_deref(),
+                    catalog_name: catalog_name.as_deref(),
+                    mirroring_mode: mirroring_mode.as_deref(),
+                    storage_connection_id: storage_connection_id.as_deref(),
+                },
                 sensitivity_label.as_deref(),
             )
             .await
@@ -351,17 +379,45 @@ async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Re
     Ok(())
 }
 
+/// Optional `creationPayload` fields for creating an actual mirror (all three of
+/// `databricks_connection_id`/`catalog_name`/`mirroring_mode` required together).
+struct CreatePayload<'a> {
+    databricks_connection_id: Option<&'a str>,
+    catalog_name: Option<&'a str>,
+    mirroring_mode: Option<&'a str>,
+    storage_connection_id: Option<&'a str>,
+}
+
+#[allow(clippy::too_many_lines)]
 async fn create(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
     name: &str,
     description: Option<&str>,
+    payload: CreatePayload<'_>,
     sensitivity_label: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({ "displayName": name });
     if let Some(desc) = description {
         body["description"] = Value::from(desc);
+    }
+    // A creationPayload (catalog + Databricks connection + mirroring mode) makes
+    // this an ACTUAL mirror; without it the API creates an empty shell.
+    if let (Some(conn), Some(cat), Some(mode)) = (
+        payload.databricks_connection_id,
+        payload.catalog_name,
+        payload.mirroring_mode,
+    ) {
+        let mut cp = serde_json::json!({
+            "catalogName": cat,
+            "databricksWorkspaceConnectionId": conn,
+            "mirroringMode": mode,
+        });
+        if let Some(sc) = payload.storage_connection_id {
+            cp["storageConnectionId"] = Value::from(sc);
+        }
+        body["creationPayload"] = cp;
     }
     if let Some(label_id) = sensitivity_label {
         body["sensitivityLabelSettings"] = serde_json::json!({
@@ -376,6 +432,9 @@ async fn create(
             "workspace": workspace,
             "displayName": name,
             "description": description,
+            "catalogName": payload.catalog_name,
+            "databricksWorkspaceConnectionId": payload.databricks_connection_id,
+            "mirroringMode": payload.mirroring_mode,
             "sensitivityLabel": sensitivity_label
         }),
     ) {

@@ -19348,6 +19348,26 @@
             "type": "string",
             "description": "Optional description"
           },
+          "--databricks-connection-id": {
+            "type": "string",
+            "description": "Azure Databricks workspace connection ID (`creationPayload.databricksWorkspaceConnectionId`). Required to actually MIRROR a catalog — without it, an empty shell is created"
+          },
+          "--catalog-name": {
+            "type": "string",
+            "description": "Unity Catalog name to mirror (`creationPayload.catalogName`)"
+          },
+          "--mirroring-mode": {
+            "type": "enum",
+            "values": [
+              "Full",
+              "Partial"
+            ],
+            "description": "Mirroring mode: `Full` (all tables, auto-sync new ones) or `Partial` (selected tables)"
+          },
+          "--storage-connection-id": {
+            "type": "string",
+            "description": "Optional storage connection ID (`creationPayload.storageConnectionId`)"
+          },
           "--sensitivity-label": {
             "type": "string",
             "description": "Sensitivity label ID to apply on creation"

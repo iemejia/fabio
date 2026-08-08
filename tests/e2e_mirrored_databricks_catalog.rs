@@ -52,6 +52,59 @@ fn mirrored_databricks_catalog_dry_run_create() {
     );
 }
 
+#[test]
+fn mirrored_databricks_catalog_create_with_mirror_payload_dry_run() {
+    // Offline: the creationPayload flags (catalog + Databricks connection +
+    // mirroring mode) turn an empty shell into an actual mirror. --dry-run shows
+    // them in the plan; requires-groups enforce they come together.
+    let assert = fabio()
+        .args([
+            "mirrored-databricks-catalog",
+            "create",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--name",
+            "MirrorTest",
+            "--databricks-connection-id",
+            "11111111-1111-1111-1111-111111111111",
+            "--catalog-name",
+            "my_catalog",
+            "--mirroring-mode",
+            "Full",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let details = &json["data"]["details"];
+    assert_eq!(details["catalogName"], "my_catalog");
+    assert_eq!(
+        details["databricksWorkspaceConnectionId"],
+        "11111111-1111-1111-1111-111111111111"
+    );
+    assert_eq!(details["mirroringMode"], "Full");
+}
+
+#[test]
+fn mirrored_databricks_catalog_connection_requires_catalog_and_mode() {
+    // --databricks-connection-id without --catalog-name/--mirroring-mode is a
+    // clap error (they must come together to form a valid creationPayload).
+    fabio()
+        .args([
+            "mirrored-databricks-catalog",
+            "create",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--name",
+            "MirrorTest",
+            "--databricks-connection-id",
+            "11111111-1111-1111-1111-111111111111",
+        ])
+        .assert()
+        .failure();
+}
+
 // discover-catalogs/schemas/tables require --connection-id
 // (databricksWorkspaceConnectionId is a REQUIRED query param). Offline
 // clap-validation regression.
