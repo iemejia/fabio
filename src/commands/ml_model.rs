@@ -775,7 +775,11 @@ async fn get_registry_version(
         ))
         .await
         .map_err(|e| enrich_forbidden(e, "ml-model get-registry-version", "Viewer"))?;
-    output::render_object(cli, &data, "model_version");
+    // Unwrap the `{ "model_version": {...} }` envelope so the version fields
+    // (name, version, status, run_id, source, …) are at the top level — matching
+    // the flattened rows from `list-registry-versions` and `ml-experiment get-run`.
+    let mv = data.get("model_version").cloned().unwrap_or(data);
+    output::render_object(cli, &mv, "version");
     Ok(())
 }
 
