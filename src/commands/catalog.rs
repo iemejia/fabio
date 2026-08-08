@@ -108,7 +108,22 @@ async fn search(
     }
 
     let data = client.post("/catalog/search", &body, false).await?;
-    output::render_object(cli, &data, "value");
+    // Flatten the `{value:[...]}` search envelope to the standard list shape
+    // (`{data:[...],count:N}`) so agents can iterate/filter/project `data`
+    // consistently with every other list command.
+    if let Some(arr) = data.get("value").and_then(Value::as_array) {
+        let token = data.get("continuationToken").and_then(Value::as_str);
+        output::render_list_with_token(
+            cli,
+            arr,
+            &["displayName", "id", "type", "workspaceId", "description"],
+            &["NAME", "ID", "TYPE", "WORKSPACE", "DESCRIPTION"],
+            "id",
+            token,
+        );
+    } else {
+        output::render_object(cli, &data, "value");
+    }
     Ok(())
 }
 
@@ -121,26 +136,63 @@ fn build_search_body(
 ) -> Value {
     let mut body = serde_json::Map::new();
 
+    // The `CatalogQueryRequest` fields are `search` / `pageSize` / `filter`
+    // (NOT `searchString` / `top` / `itemTypes` — those are silently ignored by
+    // the API, which then returns a default unfiltered listing).
     if let Some(q) = query {
-        body.insert("searchString".to_string(), Value::from(q));
+        body.insert("search".to_string(), Value::from(q));
     }
 
     if let Some(t) = top {
-        body.insert("top".to_string(), Value::Number(t.into()));
+        body.insert("pageSize".to_string(), Value::Number(t.into()));
     }
 
-    // itemTypes and excludeItemTypes are top-level arrays (NOT nested under "filter")
-    if let Some(types) = item_type {
-        let type_array: Vec<Value> = types.split(',').map(|s| Value::from(s.trim())).collect();
-        body.insert("itemTypes".to_string(), Value::Array(type_array));
-    }
-
-    if let Some(types) = exclude_type {
-        let type_array: Vec<Value> = types.split(',').map(|s| Value::from(s.trim())).collect();
-        body.insert("excludeItemTypes".to_string(), Value::Array(type_array));
+    // `filter` is an OData-style string over the `Type` property, e.g.
+    // "Type eq 'Report' or Type eq 'Lakehouse'". `--exclude-type` becomes
+    // "Type ne 'X'" clauses ANDed with the include clause.
+    if let Some(filter) = build_type_filter(item_type, exclude_type) {
+        body.insert("filter".to_string(), Value::from(filter));
     }
 
     Value::Object(body)
+}
+
+/// Build the catalog `filter` string from comma-separated include/exclude item
+/// types. Include types are joined with `or` (`Type eq 'A' or Type eq 'B'`),
+/// exclude types with `and` (`Type ne 'C' and Type ne 'D'`); when both are
+/// present they are combined with `and`. Returns `None` when neither is given. Pure.
+fn build_type_filter(item_type: Option<&str>, exclude_type: Option<&str>) -> Option<String> {
+    let include: Vec<String> = item_type
+        .into_iter()
+        .flat_map(|s| s.split(','))
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|t| format!("Type eq '{t}'"))
+        .collect();
+    let exclude: Vec<String> = exclude_type
+        .into_iter()
+        .flat_map(|s| s.split(','))
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|t| format!("Type ne '{t}'"))
+        .collect();
+
+    let mut clauses: Vec<String> = Vec::new();
+    if !include.is_empty() {
+        clauses.push(if include.len() == 1 {
+            include.into_iter().next().unwrap_or_default()
+        } else {
+            format!("({})", include.join(" or "))
+        });
+    }
+    if !exclude.is_empty() {
+        clauses.push(exclude.join(" and "));
+    }
+    if clauses.is_empty() {
+        None
+    } else {
+        Some(clauses.join(" and "))
+    }
 }
 
 #[cfg(test)]
@@ -150,36 +202,45 @@ mod tests {
     #[test]
     fn build_search_body_query_only() {
         let body = build_search_body(Some("lakehouse"), None, None, None);
-        assert_eq!(body["searchString"], "lakehouse");
-        assert!(body.get("itemTypes").is_none());
-        assert!(body.get("top").is_none());
+        assert_eq!(body["search"], "lakehouse");
+        assert!(body.get("filter").is_none());
+        assert!(body.get("pageSize").is_none());
     }
 
     #[test]
     fn build_search_body_with_type_filter() {
         let body = build_search_body(Some("test"), Some("Notebook,Lakehouse"), None, Some(5));
-        assert_eq!(body["searchString"], "test");
-        assert_eq!(body["top"], 5);
-        let types = body["itemTypes"].as_array().unwrap();
-        assert_eq!(types.len(), 2);
-        assert_eq!(types[0], "Notebook");
-        assert_eq!(types[1], "Lakehouse");
+        assert_eq!(body["search"], "test");
+        assert_eq!(body["pageSize"], 5);
+        assert_eq!(
+            body["filter"],
+            "(Type eq 'Notebook' or Type eq 'Lakehouse')"
+        );
+    }
+
+    #[test]
+    fn build_search_body_single_type_no_parens() {
+        let body = build_search_body(None, Some("Lakehouse"), None, None);
+        assert_eq!(body["filter"], "Type eq 'Lakehouse'");
     }
 
     #[test]
     fn build_search_body_with_exclude_type() {
         let body = build_search_body(None, None, Some("Dashboard"), None);
-        let excluded = body["excludeItemTypes"].as_array().unwrap();
-        assert_eq!(excluded.len(), 1);
-        assert_eq!(excluded[0], "Dashboard");
+        assert_eq!(body["filter"], "Type ne 'Dashboard'");
     }
 
     #[test]
     fn build_search_body_both_filters() {
         let body = build_search_body(Some("sales"), Some("Notebook"), Some("Lakehouse"), Some(20));
-        assert_eq!(body["searchString"], "sales");
-        assert_eq!(body["top"], 20);
-        assert_eq!(body["itemTypes"][0], "Notebook");
-        assert_eq!(body["excludeItemTypes"][0], "Lakehouse");
+        assert_eq!(body["search"], "sales");
+        assert_eq!(body["pageSize"], 20);
+        assert_eq!(body["filter"], "Type eq 'Notebook' and Type ne 'Lakehouse'");
+    }
+
+    #[test]
+    fn build_type_filter_none_when_empty() {
+        assert!(build_type_filter(None, None).is_none());
+        assert!(build_type_filter(Some(""), Some("  ")).is_none());
     }
 }

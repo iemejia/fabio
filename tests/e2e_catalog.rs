@@ -110,11 +110,12 @@ fn catalog_search_dry_run() {
     let json = parse_json(&assert);
     let data = json.get("data").expect("missing data");
     assert_eq!(data["dry_run"], true);
-    // Verify the search body was built correctly (flat format)
+    // Verify the search body uses the correct CatalogQueryRequest fields
+    // (search / pageSize / filter — NOT searchString / top / itemTypes).
     let details = &data["details"];
-    assert_eq!(details["searchString"], "test");
-    assert_eq!(details["top"], 3);
-    assert_eq!(details["itemTypes"][0], "Notebook");
+    assert_eq!(details["search"], "test");
+    assert_eq!(details["pageSize"], 3);
+    assert_eq!(details["filter"], "Type eq 'Notebook'");
 }
 
 #[test]
@@ -127,7 +128,7 @@ fn catalog_search_content_flag_override() {
             "catalog",
             "search",
             "--content",
-            r#"{"searchString":"Sales","top":1}"#,
+            r#"{"search":"Sales","pageSize":1}"#,
         ])
         .assert()
         .success();
