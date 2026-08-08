@@ -828,11 +828,32 @@ pub(super) async fn get_connection_string(
         return Ok((conn.to_string(), db_name));
     }
 
+    // Fall back to a warehouse snapshot (read-only, point-in-time). A
+    // WarehouseSnapshot exposes its own read-only SQL endpoint directly in
+    // `properties.connectionString` (same shape as a warehouse), so it is
+    // T-SQL-queryable just like the parent warehouse.
+    if let Ok(data) = client
+        .get(&format!("/workspaces/{workspace}/warehouseSnapshots/{id}"))
+        .await
+        && let Some(conn) = data
+            .get("properties")
+            .and_then(|p| p.get("connectionString"))
+            .and_then(Value::as_str)
+        && !conn.is_empty()
+    {
+        let db_name = data
+            .get("displayName")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        return Ok((conn.to_string(), db_name));
+    }
+
     Err(FabioError {
         code: ErrorCode::NotFound,
-        message: "Could not determine SQL connection string. Verify the item is a warehouse or lakehouse with a SQL endpoint.".into(),
+        message: "Could not determine SQL connection string. Verify the item is a warehouse, lakehouse, or warehouse snapshot with a SQL endpoint.".into(),
         hint: Some(
-            "Only Warehouse and Lakehouse items support SQL queries via this command.\n\
+            "Only Warehouse, Lakehouse, and WarehouseSnapshot items support SQL queries via this command.\n\
              For SQL Databases, use: fabio sql-database query\n\
              For lakehouses, pass the lakehouse ID (not the SQL endpoint ID).\n\
              List items: fabio item list --workspace <WS> --type Warehouse"

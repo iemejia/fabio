@@ -58,3 +58,38 @@ fn warehouse_snapshot_dry_run_create() {
     );
     assert_eq!(details["snapshotDateTime"], "2026-01-01T00:00:00Z");
 }
+
+/// A `WarehouseSnapshot` exposes its own read-only `properties.connectionString`,
+/// so `warehouse query --id <snapshot>` must resolve it as a SQL-queryable item
+/// (the resolver previously only recognized Warehouse and Lakehouse types).
+/// Gated on a snapshot id so it runs only when a snapshot fixture is provided.
+#[test]
+#[ignore = "requires live Fabric tenant with a warehouse snapshot"]
+#[serial]
+fn warehouse_snapshot_is_tsql_queryable() {
+    let cfg = TestConfig::from_env();
+    let Ok(snapshot_id) = std::env::var("FABIO_TEST_WAREHOUSE_SNAPSHOT_ID") else {
+        return; // skip when not configured
+    };
+
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &snapshot_id,
+            "--sql",
+            "SELECT 1 AS test",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    // A result set (list envelope), NOT the "Could not determine SQL connection" error.
+    assert!(json.get("data").is_some());
+    assert_eq!(json["data"][0]["test"], 1);
+}
