@@ -33,7 +33,7 @@ pub enum ItemCommand {
         item_type: Option<String>,
 
         /// Filter by folder ID (server-side)
-        #[arg(long)]
+        #[arg(long, visible_alias = "folder-id")]
         folder: Option<String>,
 
         /// List items in nested subfolders (default: true when folder is specified)
@@ -342,7 +342,7 @@ pub enum ItemCommand {
         id: String,
 
         /// Comma-separated tag IDs
-        #[arg(long, value_delimiter = ',')]
+        #[arg(long, visible_alias = "tags", value_delimiter = ',')]
         tag_ids: Vec<String>,
     },
     /// Remove tags from an item
@@ -357,7 +357,7 @@ pub enum ItemCommand {
         id: String,
 
         /// Comma-separated tag IDs
-        #[arg(long, value_delimiter = ',')]
+        #[arg(long, visible_alias = "tags", value_delimiter = ',')]
         tag_ids: Vec<String>,
     },
 

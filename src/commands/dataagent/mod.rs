@@ -324,7 +324,7 @@ pub enum DataAgentCommand {
         id: String,
 
         /// Artifact name or ID (lakehouse, warehouse, KQL database, semantic model, etc.)
-        #[arg(long)]
+        #[arg(long, visible_alias = "artifact-id")]
         artifact: String,
 
         /// Workspace containing the artifact (defaults to same workspace as agent)

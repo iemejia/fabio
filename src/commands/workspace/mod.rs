@@ -274,7 +274,7 @@ pub enum WorkspaceCommand {
         #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
         /// Comma-separated tag IDs
-        #[arg(long, value_delimiter = ',')]
+        #[arg(long, visible_alias = "tags", value_delimiter = ',')]
         tag_ids: Vec<String>,
     },
     /// Remove tags from a workspace
@@ -284,7 +284,7 @@ pub enum WorkspaceCommand {
         #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
         /// Comma-separated tag IDs
-        #[arg(long, value_delimiter = ',')]
+        #[arg(long, visible_alias = "tags", value_delimiter = ',')]
         tag_ids: Vec<String>,
     },
     /// Assign workspace to a domain

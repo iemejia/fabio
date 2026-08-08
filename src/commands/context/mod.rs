@@ -187,7 +187,7 @@ pub enum ContextCommand {
         merge: Option<PathBuf>,
 
         /// Write output to a file instead of stdout
-        #[arg(long)]
+        #[arg(long, visible_alias = "out")]
         output_file: Option<PathBuf>,
 
         /// Max concurrency for API calls (default: auto-scaled to CPU count)
