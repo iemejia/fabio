@@ -45,19 +45,61 @@ fn is_feature_disabled(err: &anyhow::Error) -> bool {
 
 /// The teaching error to surface when the Power BI MCP feature is disabled: it
 /// names the exact tenant setting, tells the agent NOT to retry these commands,
-/// and enumerates the non-MCP fallbacks that work without the feature.
-fn feature_disabled_error() -> FabioError {
+/// tailors the "how to enable it" guidance to whether the CALLER is a Fabric
+/// admin (probed via the admin tenant-settings API), and enumerates the non-MCP
+/// fallbacks that work without the feature.
+async fn feature_disabled_error(client: &FabricClient) -> FabioError {
     FabioError::with_typed_hint(
         ErrorCode::Forbidden,
         "The remote Power BI MCP server is not enabled for this tenant (the feature is disabled).",
-        "A Fabric administrator must enable the tenant setting \"Users can use the Power BI Model \
-         Context Protocol server endpoint (preview)\" (PowerBIMCP) in the Admin portal. Until it is \
-         enabled, do NOT retry `semantic-model generate-dax`/`copilot-schema` or \
-         `report copilot-metadata` — they will keep failing. Non-MCP fallbacks that need no Copilot: \
-         run DAX with `semantic-model query --dax`; read the model schema with \
-         `semantic-model list-tables`/`list-columns`/`list-measures`/`list-relationships`; read a \
-         report's definition with `report get-definition`.",
+        feature_disabled_hint(is_fabric_admin(client).await),
         HintType::SemanticCorrection,
+    )
+}
+
+/// Probe whether the authenticated caller is a Fabric administrator by reading
+/// the admin tenant-settings API (which only admins can access). `Some(true)` =
+/// admin, `Some(false)` = a definitive 401/403 (not admin), `None` = could not
+/// determine (network/other error) — so the hint stays non-committal.
+async fn is_fabric_admin(client: &FabricClient) -> Option<bool> {
+    match client.get("/admin/tenantsettings").await {
+        Ok(_) => Some(true),
+        Err(e) => match e.downcast_ref::<FabioError>() {
+            Some(fe) if matches!(fe.code, ErrorCode::Forbidden | ErrorCode::AuthRequired) => {
+                Some(false)
+            }
+            _ => None,
+        },
+    }
+}
+
+/// Build the feature-disabled hint, adjusting the "how to enable" guidance to the
+/// caller's admin status. Pure/testable.
+fn feature_disabled_hint(is_admin: Option<bool>) -> String {
+    let enable = match is_admin {
+        Some(true) => {
+            "You HAVE Fabric-admin access — enable it now with: `fabio admin \
+             update-tenant-setting --setting-name PowerBIMCP --content '{\"enabled\": true}'` \
+             (or Admin portal → Tenant settings), then retry."
+        }
+        Some(false) => {
+            "You are NOT a Fabric administrator, so you cannot enable this yourself — \
+             ask your Fabric admin to enable it."
+        }
+        None => {
+            "If you have Fabric-admin rights, enable it with: `fabio admin \
+             update-tenant-setting --setting-name PowerBIMCP --content '{\"enabled\": true}'` \
+             (or Admin portal → Tenant settings); otherwise ask your admin."
+        }
+    };
+    format!(
+        "The tenant setting \"Users can use the Power BI Model Context Protocol server endpoint \
+         (preview)\" (PowerBIMCP) is disabled. {enable} Until it is enabled, do NOT retry \
+         `semantic-model generate-dax`/`copilot-schema` or `report copilot-metadata` — they will \
+         keep failing. Non-MCP fallbacks that need no Copilot: run DAX with \
+         `semantic-model query --dax`; read the model schema with \
+         `semantic-model list-tables`/`list-columns`/`list-measures`/`list-relationships`; read a \
+         report's definition with `report get-definition`."
     )
 }
 
@@ -75,13 +117,16 @@ pub async fn call_powerbi_tool(
     // HTTPS + trusted-Microsoft-host check before sending the Fabric bearer token.
     client::validate_trusted_url(&url, "Power BI MCP endpoint")?;
     let auth = client.require_auth().await?;
-    let mcp = McpClient::connect(&url, Some(auth)).await.map_err(|e| {
-        if is_feature_disabled(&e) {
-            feature_disabled_error().into()
-        } else {
-            e
+    let mcp = match McpClient::connect(&url, Some(auth)).await {
+        Ok(m) => m,
+        // A 403 at the initialize handshake is the feature-disabled gate (a
+        // model/report permission issue surfaces later, at call_tool). Probe the
+        // caller's admin status to tailor the "how to enable it" guidance.
+        Err(e) if is_feature_disabled(&e) => {
+            return Err(feature_disabled_error(client).await.into());
         }
-    })?;
+        Err(e) => return Err(e),
+    };
 
     let tools = mcp.list_tools().await?;
     let known = tools
@@ -225,16 +270,41 @@ mod tests {
     }
 
     #[test]
-    fn feature_disabled_error_names_the_tenant_setting_and_fallbacks() {
-        let err = feature_disabled_error();
-        assert_eq!(err.code, ErrorCode::Forbidden);
-        let hint = err.hint.unwrap();
+    fn feature_disabled_hint_admin_gives_the_enable_command() {
+        let hint = feature_disabled_hint(Some(true));
         assert!(hint.contains("PowerBIMCP"));
+        assert!(hint.contains("HAVE Fabric-admin"));
+        assert!(
+            hint.contains("admin update-tenant-setting --setting-name PowerBIMCP"),
+            "an admin should get the fabio enable command: {hint}"
+        );
         assert!(
             hint.contains("query --dax"),
-            "should suggest a non-MCP fallback"
+            "should list a non-MCP fallback"
         );
-        // hintType tells agents this is a config gate (don't blindly retry).
-        assert_eq!(err.hint_type, Some(HintType::SemanticCorrection));
+    }
+
+    #[test]
+    fn feature_disabled_hint_non_admin_says_ask_your_admin_no_command() {
+        let hint = feature_disabled_hint(Some(false));
+        assert!(hint.contains("NOT a Fabric administrator"));
+        assert!(hint.contains("ask your Fabric admin"));
+        // Don't show a non-admin a command they cannot run.
+        assert!(
+            !hint.contains("update-tenant-setting"),
+            "a non-admin should not be handed the enable command: {hint}"
+        );
+        assert!(
+            hint.contains("query --dax"),
+            "should list a non-MCP fallback"
+        );
+    }
+
+    #[test]
+    fn feature_disabled_hint_unknown_is_non_committal() {
+        let hint = feature_disabled_hint(None);
+        assert!(hint.contains("If you have Fabric-admin rights"));
+        assert!(hint.contains("admin update-tenant-setting --setting-name PowerBIMCP"));
+        assert!(hint.contains("otherwise ask your admin"));
     }
 }
