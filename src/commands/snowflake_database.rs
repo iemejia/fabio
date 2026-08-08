@@ -42,6 +42,15 @@ pub enum SnowflakeDatabaseCommand {
         #[arg(long)]
         description: Option<String>,
 
+        /// Connection ID of the Snowflake source connection (`creationPayload.connectionId`).
+        /// The live API rejects a shell create without a connection — supply this to mirror a Snowflake source.
+        #[arg(long)]
+        connection_id: Option<String>,
+
+        /// Source Snowflake database name to mirror (`creationPayload.snowflakeDatabaseName`).
+        #[arg(long, requires = "connection_id")]
+        snowflake_database_name: Option<String>,
+
         /// Sensitivity label ID to apply on creation
         #[arg(long)]
         sensitivity_label: Option<String>,
@@ -119,6 +128,8 @@ pub async fn execute(
             workspace,
             name,
             description,
+            connection_id,
+            snowflake_database_name,
             sensitivity_label,
         } => {
             create(
@@ -127,6 +138,8 @@ pub async fn execute(
                 workspace,
                 name,
                 description.as_deref(),
+                connection_id.as_deref(),
+                snowflake_database_name.as_deref(),
                 sensitivity_label.as_deref(),
             )
             .await
@@ -250,17 +263,31 @@ async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Re
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn create(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
     name: &str,
     description: Option<&str>,
+    connection_id: Option<&str>,
+    snowflake_database_name: Option<&str>,
     sensitivity_label: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({ "displayName": name });
     if let Some(desc) = description {
         body["description"] = Value::from(desc);
+    }
+    // The live API rejects a shell create (`{displayName}`) with
+    // `InvalidInput: Invalid payload` and requires a creationPayload naming the
+    // Snowflake source connection — despite the swagger marking it optional and
+    // shipping a `CreateSnowflakeDatabaseWithoutPayload` example.
+    if let Some(conn) = connection_id {
+        let mut payload = serde_json::json!({ "connectionId": conn });
+        if let Some(db) = snowflake_database_name {
+            payload["snowflakeDatabaseName"] = Value::from(db);
+        }
+        body["creationPayload"] = payload;
     }
     if let Some(label_id) = sensitivity_label {
         body["sensitivityLabelSettings"] = serde_json::json!({
@@ -271,7 +298,7 @@ async fn create(
     if output::dry_run_guard(
         cli,
         "snowflake-database create",
-        &serde_json::json!({ "workspace": workspace, "displayName": name, "description": description , "sensitivityLabel": sensitivity_label }),
+        &serde_json::json!({ "workspace": workspace, "displayName": name, "description": description, "connectionId": connection_id, "snowflakeDatabaseName": snowflake_database_name, "sensitivityLabel": sensitivity_label }),
     ) {
         return Ok(());
     }
@@ -282,7 +309,19 @@ async fn create(
             true,
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "snowflake-database create", "Contributor"))?;
+        .map_err(|e| {
+            let enriched = enrich_forbidden(e, "snowflake-database create", "Contributor");
+            // Teach the connection requirement when the API rejects a shell create.
+            if enriched.to_string().contains("Invalid payload") && connection_id.is_none() {
+                return FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    "Snowflake database creation was rejected (Invalid payload)".to_string(),
+                    "The live Fabric API requires a Snowflake source connection to create a Snowflake (mirrored) database. Pass --connection-id <id> (and optionally --snowflake-database-name <name>). Create the connection first with: fabio connection create --connection-type Snowflake ...".to_string(),
+                )
+                .into();
+            }
+            enriched
+        })?;
     output::render_object(cli, &data, "id");
     Ok(())
 }

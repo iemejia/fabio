@@ -16923,6 +16923,14 @@
             "type": "string",
             "description": "Optional description"
           },
+          "--connection-id": {
+            "type": "string",
+            "description": "Connection ID of the Snowflake source connection (`creationPayload.connectionId`). The live API rejects a shell create without a connection — supply this to mirror a Snowflake source"
+          },
+          "--snowflake-database-name": {
+            "type": "string",
+            "description": "Source Snowflake database name to mirror (`creationPayload.snowflakeDatabaseName`)"
+          },
           "--sensitivity-label": {
             "type": "string",
             "description": "Sensitivity label ID to apply on creation"
