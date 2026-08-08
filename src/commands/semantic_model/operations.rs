@@ -365,7 +365,7 @@ fn build_evaluate_measure_dax(
 
 /// Execute a DAX query via the Power BI `executeQueries` endpoint and render the
 /// first result table as a list (shared by `query` and `evaluate-measure`).
-async fn execute_dax_and_render(
+pub(super) async fn execute_dax_and_render(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,

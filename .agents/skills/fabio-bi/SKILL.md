@@ -53,6 +53,7 @@ Manage semantic models (Power BI datasets)
 | `fabio semantic-model bind-to-gateway` | yes | Bind a semantic model's data sources to an on-premises/VNet data gateway |
 | `fabio semantic-model cancel-refresh` | yes | Cancel an in-progress enhanced refresh by its request id |
 | `fabio semantic-model clone` | yes | Clone a semantic model to the same or different workspace |
+| `fabio semantic-model copilot-schema` | no | Get the Copilot-oriented schema (tables/columns/measures/relationships + author custom instructions) from the remote Power BI MCP server |
 | `fabio semantic-model create` | yes | Create a new semantic model from a definition file (model.bim) |
 | `fabio semantic-model delete` | yes | Delete a semantic model |
 | `fabio semantic-model delete-calculation-group` | yes | Delete a calculation group (its whole table) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded |
@@ -73,6 +74,7 @@ Manage semantic models (Power BI datasets)
 | `fabio semantic-model evaluate-measure` | no | Evaluate one or more measures (optionally grouped by columns) — the fabio equivalent of semantic-link's `evaluate_measure` |
 | `fabio semantic-model export-pbix` | no | Export a semantic model as a .pbix file |
 | `fabio semantic-model generate` | yes | Generate a Direct Lake semantic model from a lakehouse or warehouse (reads the SQL analytics endpoint schema and picks tables, like the Fabric portal's "New semantic model") |
+| `fabio semantic-model generate-dax` | no | Generate a DAX query from a natural-language prompt using the remote Power BI MCP server (Copilot-powered) |
 | `fabio semantic-model get-bound-gateway-datasources` | no | List the gateway datasources bound to a semantic model |
 | `fabio semantic-model get-definition` | no | Get the definition of a semantic model |
 | `fabio semantic-model get-refresh-schedule` | no | Get the scheduled (automatic) refresh configuration |
@@ -131,6 +133,7 @@ Manage reports (Power BI)
 |---|---|---|
 | `fabio report add-page` | yes | Add a page to a PBIR report by editing its definition. Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio report add-visual` | yes | Add a visual to a page of a PBIR report by editing its definition. Build a data-bound visual with --category/--measure (fields as Table.Column or Sum(Table.Column)) or a textbox with --text. Overwrites the definition (irreversible) — dry-run guarded |
+| `fabio report copilot-metadata` | no | Get the synthesized report schema (pages, visuals, field→role bindings, textboxes) from the remote Power BI MCP server — read-only |
 | `fabio report create` | yes | Create a new report from a definition file |
 | `fabio report delete` | yes | Delete a report |
 | `fabio report delete-page` | yes | Delete a page from a PBIR report by editing its definition (a report must keep at least one page). Overwrites the definition (irreversible) — dry-run guarded |

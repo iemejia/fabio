@@ -97,6 +97,10 @@ pub(super) const fn example_entries() -> &'static [(&'static str, &'static str)]
 
 const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
+        "semantic-model/generate-dax",
+        include_str!("data/examples/semantic_model_generate_dax.json"),
+    ),
+    (
         "azure-databricks-storage/external-location",
         include_str!("data/examples/azure_databricks_storage_external_location.json"),
     ),

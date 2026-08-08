@@ -10,6 +10,7 @@ mod generate;
 mod hierarchies;
 pub mod operations;
 mod partitions;
+mod pbi_mcp;
 mod perspectives;
 mod powerbi;
 mod relationships;
@@ -228,6 +229,36 @@ pub enum SemanticModelCommand {
         /// Return only the top N rows (sorted by the first measure, descending)
         #[arg(long)]
         top: Option<u32>,
+    },
+    /// Generate a DAX query from a natural-language prompt using the remote Power BI MCP server (Copilot-powered)
+    #[command(name = "generate-dax", display_order = 9)]
+    GenerateDax {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+
+        /// Natural-language question/prompt to translate into DAX
+        #[arg(long)]
+        prompt: String,
+
+        /// Also execute the generated DAX and return the rows (via executeQueries)
+        #[arg(long)]
+        execute: bool,
+    },
+    /// Get the Copilot-oriented schema (tables/columns/measures/relationships + author custom instructions) from the remote Power BI MCP server
+    #[command(name = "copilot-schema", display_order = 9)]
+    CopilotSchema {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
     },
     /// Bind a semantic model to a connection
     #[command(name = "bind-connection", display_order = 10)]
@@ -1996,6 +2027,15 @@ pub async fn execute(
             top,
         } => {
             operations::evaluate_measure(cli, client, workspace, id, measures, group_by, *top).await
+        }
+        SemanticModelCommand::GenerateDax {
+            workspace,
+            id,
+            prompt,
+            execute,
+        } => pbi_mcp::generate_dax(cli, client, workspace, id, prompt, *execute).await,
+        SemanticModelCommand::CopilotSchema { workspace, id } => {
+            pbi_mcp::copilot_schema(cli, client, workspace, id).await
         }
         SemanticModelCommand::BindConnection {
             workspace,

@@ -1173,3 +1173,55 @@ fn report_scaffold_lifecycle() {
         .assert()
         .success();
 }
+
+/// Offline: `report copilot-metadata --dry-run` shows the plan (tool) without any
+/// MCP call.
+#[test]
+fn report_copilot_metadata_dry_run() {
+    let assert = fabio()
+        .args([
+            "report",
+            "copilot-metadata",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "report copilot-metadata");
+    assert_eq!(data["details"]["tool"], "GetReportMetadata");
+}
+
+/// Live: `report copilot-metadata` fetches the synthesized report schema from the
+/// remote Power BI MCP server. Gated on `FABIO_TEST_REPORT`.
+#[test]
+#[ignore = "requires live tenant + FABIO_TEST_REPORT + PowerBIMCP tenant setting"]
+fn report_copilot_metadata_live() {
+    let cfg = TestConfig::from_env();
+    let Ok(report) = std::env::var("FABIO_TEST_REPORT") else {
+        return;
+    };
+    let assert = fabio()
+        .args([
+            "report",
+            "copilot-metadata",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &report,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(
+        data.get("ReportMetadata").is_some() || data.get("Pages").is_some(),
+        "copilot-metadata must return report metadata, got: {data}"
+    );
+}

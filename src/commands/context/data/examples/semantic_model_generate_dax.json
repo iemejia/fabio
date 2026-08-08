@@ -1,0 +1,21 @@
+{
+  "command": "fabio semantic-model generate-dax --workspace <WS> --id <MODEL> --prompt \"total revenue by region\" [--execute]",
+  "description": "Translate a natural-language prompt into DAX using the remote Power BI MCP server's Copilot NL2DAX engine (GenerateQuery tool). With --execute, the generated DAX is also run via executeQueries and the rows are returned. Requires the PowerBIMCP tenant setting + a Copilot license. Read-only.",
+  "response": {
+    "data": {
+      "prompt": "total revenue by region",
+      "dax": "// Total revenue by region\nDEFINE\n  MEASURE 'factsales'[Total Revenue] = SUM('factsales'[RevenueUSD])\nEVALUATE\n  SUMMARIZECOLUMNS(\n    'dimstore'[Region],\n    \"Total Revenue\",\n    [Total Revenue]\n  )\n  ORDER BY 'dimstore'[Region] ASC",
+      "model": {
+        "ArtifactId": "5be987b3-833f-4041-98a0-da986e3c18c7",
+        "Name": "RetailSalesModel",
+        "Url": "https://app.powerbi.com/groups/<WS>/modeling/<MODEL>/modelView"
+      },
+      "note": "Copilot-generated DAX. Run it with: fabio semantic-model query --id <ID> --dax '<DAX>' (or re-run with --execute)."
+    }
+  },
+  "notes": "With --execute, the response is instead the executed rows (same shape as `semantic-model query`), e.g. [{\"Sales[Country]\":\"France\",\"[Total Revenue]\":309.83}, ...]. The endpoint is the fixed global URL {fabricBase}/mcp/powerbi; --workspace is kept for group consistency but the tool resolves the model by GUID. GetSemanticModelSchema (copilot-schema) and GetReportMetadata (report copilot-metadata) return multiple content blocks that fabio merges into one object.",
+  "query_examples": [
+    "fabio semantic-model generate-dax --id <MODEL> --prompt \"top 3 products by revenue\" --query dax -o plain",
+    "fabio semantic-model generate-dax --id <MODEL> --prompt \"total revenue by country\" --execute"
+  ]
+}

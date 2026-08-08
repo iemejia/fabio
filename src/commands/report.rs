@@ -159,6 +159,17 @@ pub enum ReportCommand {
         #[arg(long)]
         source: String,
     },
+    /// Get the synthesized report schema (pages, visuals, field→role bindings, textboxes) from the remote Power BI MCP server — read-only.
+    #[command(name = "copilot-metadata", display_order = 8)]
+    CopilotMetadata {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Report ID
+        #[arg(long)]
+        id: String,
+    },
 
     // ── PBIR page authoring (definition read-modify-write) ────────────────
     /// List the pages of a report (name, display name, visual count) — read-only.
@@ -479,6 +490,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) 
             report_json,
         } => update_definition(cli, client, workspace, id, file, report_json.as_deref()).await,
         ReportCommand::Validate { source } => validate(cli, source),
+        ReportCommand::CopilotMetadata { workspace, id } => {
+            copilot_metadata(cli, client, workspace, id).await
+        }
         ReportCommand::ListPages { workspace, id } => {
             authoring::list_pages(cli, client, workspace, id).await
         }
@@ -1132,6 +1146,47 @@ async fn publish_to_web(cli: &Cli, client: &FabricClient, workspace: &str, id: &
         "warning": "This report is now publicly accessible to anyone on the internet without authentication."
     });
     output::render_object(cli, &result, "embedUrl");
+    Ok(())
+}
+
+/// `report copilot-metadata` — fetch the synthesized report schema from the remote
+/// Power BI MCP server's `GetReportMetadata` tool: workspace + semantic-model
+/// details, pages, visuals (with field→role projections/bindings), and textbox
+/// content. Distinct from `get-definition` (raw PBIR parts) — this is a grounded,
+/// Copilot-oriented view of how the model is used in the report. Read-only.
+async fn copilot_metadata(
+    cli: &Cli,
+    client: &FabricClient,
+    _workspace: &str,
+    id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "report copilot-metadata",
+        &serde_json::json!({ "id": id, "tool": "GetReportMetadata" }),
+    ) {
+        return Ok(());
+    }
+
+    let result = crate::commands::powerbi_mcp::call_powerbi_tool(
+        client,
+        "GetReportMetadata",
+        serde_json::json!({ "reportObjectId": id }),
+    )
+    .await?;
+
+    if result.is_error {
+        anyhow::bail!(
+            "Power BI MCP GetReportMetadata returned an error: {}",
+            result.text()
+        );
+    }
+
+    output::render_object(
+        cli,
+        &crate::commands::powerbi_mcp::tool_text_as_json(&result),
+        "ReportMetadata",
+    );
     Ok(())
 }
 

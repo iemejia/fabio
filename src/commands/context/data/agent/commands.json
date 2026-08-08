@@ -9735,6 +9735,23 @@
         "mutates": false,
         "returns": "object"
       },
+      "copilot-metadata": {
+        "description": "Get the synthesized report schema (pages, visuals, field→role bindings, textboxes) from the remote Power BI MCP server — read-only",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Report ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
       "list-pages": {
         "description": "List the pages of a report (name, display name, visual count) — read-only",
         "flags": {
@@ -10338,6 +10355,49 @@
         },
         "mutates": false,
         "returns": "list"
+      },
+      "generate-dax": {
+        "description": "Generate a DAX query from a natural-language prompt using the remote Power BI MCP server (Copilot-powered)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          },
+          "--prompt": {
+            "type": "string",
+            "required": true,
+            "description": "Natural-language question/prompt to translate into DAX"
+          },
+          "--execute": {
+            "type": "bool",
+            "description": "Also execute the generated DAX and return the rows (via executeQueries)"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "copilot-schema": {
+        "description": "Get the Copilot-oriented schema (tables/columns/measures/relationships + author custom instructions) from the remote Power BI MCP server",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Semantic model ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
       },
       "bind-connection": {
         "description": "Bind a semantic model to a connection",
@@ -20933,7 +20993,7 @@
         ]
       },
       "external-location": {
-        "description": "Print the ID-based OneLake ABFSS path to use as the Azure Databricks Unity Catalog external-location URL (`abfss://<ws>@onelake…/<id>/Files/`)",
+        "description": "Print the ID-based `OneLake` `ABFSS` path to use as the Azure Databricks Unity Catalog external-location URL (`abfss://<ws>@onelake…/<id>/Files/`)",
         "flags": {
           "--workspace": {
             "type": "string",

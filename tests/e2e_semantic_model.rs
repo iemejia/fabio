@@ -5369,3 +5369,87 @@ fn semantic_model_analyze_and_measure_dependencies() {
         .assert()
         .success();
 }
+
+// ── Power BI MCP client: generate-dax + copilot-schema ──────────────────────
+
+/// Offline: `generate-dax --dry-run` shows the plan (tool + prompt) without any
+/// MCP call.
+#[test]
+#[serial]
+fn semantic_model_generate_dax_dry_run() {
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "generate-dax",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+            "--prompt",
+            "total revenue by region",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "semantic-model generate-dax");
+    assert_eq!(data["details"]["tool"], "GenerateQuery");
+}
+
+/// Live: `generate-dax` translates NL → DAX via the remote Power BI MCP server
+/// (Copilot). Gated on `FABIO_TEST_SEMANTIC_MODEL` (a model with a Copilot
+/// license + the `PowerBIMCP` tenant setting enabled).
+#[test]
+#[ignore = "requires live tenant + Copilot + FABIO_TEST_SEMANTIC_MODEL + PowerBIMCP tenant setting"]
+#[serial]
+fn semantic_model_generate_dax_and_copilot_schema_live() {
+    let cfg = TestConfig::from_env();
+    let Ok(model) = std::env::var("FABIO_TEST_SEMANTIC_MODEL") else {
+        return;
+    };
+
+    // generate-dax
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "generate-dax",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &model,
+            "--prompt",
+            "total revenue by country",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let dax = data["dax"].as_str().unwrap_or_default();
+    assert!(
+        dax.to_uppercase().contains("EVALUATE"),
+        "generated DAX should contain EVALUATE, got: {dax}"
+    );
+
+    // copilot-schema
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "copilot-schema",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &model,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(
+        data.get("schema").is_some(),
+        "copilot-schema must return a schema object, got: {data}"
+    );
+}

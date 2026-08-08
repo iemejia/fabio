@@ -108,7 +108,7 @@ Manage Azure Databricks storage items (Fabric integration with Azure Databricks)
 |---|---|---|
 | `fabio azure-databricks-storage create` | yes | Create a new Azure Databricks storage item |
 | `fabio azure-databricks-storage delete` | yes | Delete an Azure Databricks storage item |
-| `fabio azure-databricks-storage external-location` | no | Print the ID-based OneLake ABFSS path to use as the Azure Databricks Unity Catalog external-location URL (`abfss://<ws>@onelake…/<id>/Files/`) |
+| `fabio azure-databricks-storage external-location` | no | Print the ID-based `OneLake` `ABFSS` path to use as the Azure Databricks Unity Catalog external-location URL (`abfss://<ws>@onelake…/<id>/Files/`) |
 | `fabio azure-databricks-storage get-definition` | no | Get the definition of an Azure Databricks storage item |
 | `fabio azure-databricks-storage list` | no | List Azure Databricks storage items in a workspace |
 | `fabio azure-databricks-storage show` | no | Show details of an Azure Databricks storage item |

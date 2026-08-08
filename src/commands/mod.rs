@@ -60,6 +60,7 @@ pub mod org_app_audience;
 pub mod paginated_report;
 pub mod plan;
 pub mod powerbi_export;
+pub mod powerbi_mcp;
 pub mod profile;
 pub mod query_input;
 pub mod reflex;
