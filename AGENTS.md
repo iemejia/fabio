@@ -105,6 +105,23 @@ The notice warns the agent: *"do not retry with the safety-bypass flag suggested
 {"data":{"status":"dry_run","summary":{"create":1,"delete":3,"skip":2},"destructive":true,"warnings":["--force-all is active: ALL matched items will be overwritten regardless of content changes. This is irreversible."]}}
 ```
 
+## Tenant-Feature Gates (MANDATORY)
+
+Many Fabric features are gated by a **tenant setting** an admin can toggle; when a setting is disabled the API returns an opaque `403 FeatureNotAvailable`. fabio turns this into an **admin-aware teaching error** generically via `src/commands/tenant_gate.rs`, wired ONCE into `commands::execute`. Two layers:
+
+- **Automatic (no wiring)** — detection (`is_feature_disabled`, marker-based) + the admin probe (`is_fabric_admin`) + a generic admin-aware hint fire for ANY command that returns a feature-disabled error. A brand-new command gated by a brand-new setting is therefore NEVER an opaque failure, even with zero changes.
+- **Opt-in per feature (one registry row)** — naming the EXACT setting + feature-specific fallbacks requires an entry in `setting_for_command`, because the API never reveals WHICH setting is disabled (there are ~169; the command→setting mapping is knowledge only fabio has).
+
+**When you add (or discover) a fabio command/feature gated by a tenant setting, you MUST:**
+
+1. **Find the exact `settingName`** — run `fabio admin list-tenant-settings` and match on the `title`. Do NOT guess the name; a wrong name yields a misleading enable command.
+2. **Verify it actually gates the fabio REST command** — disable it (`fabio admin update-tenant-setting --setting-name <NAME> --content '{"enabled": false}'`), run the command, confirm it returns a `FeatureNotAvailable`-family 403, then RE-ENABLE it. Many settings gate only the portal UI and do NOT affect the REST path (e.g. `ExportToImage` gates the portal's "Export to image", NOT `report export` — verified live). If it doesn't gate the REST command, do NOT add a row.
+3. **Add a registry row** to `setting_for_command` in `src/commands/tenant_gate.rs` — map the command path (`group.subcommand` for a specific command, or `group` for a whole preview-item family) → `{name, title, fallback?}`. Add a `fallback` only when there's a meaningful non-gated alternative (like the PowerBI-MCP `semantic-model query --dax` fallbacks).
+4. **Extend the unit test** `registry_maps_known_commands` in `tenant_gate.rs` to assert the new mapping.
+5. **If the API returns a NOVEL feature-disabled phrasing** (not `FeatureNotAvailable` / `TenantSwitchDisabled` / "not enabled in the tenant" / "tenant setting … disabled"), add the new marker to `is_feature_disabled` AND a detection unit test, so it is caught by Layer 1.
+
+Currently registered (verified live via a tenant-settings dump): `PowerBIMCP` (semantic-model generate-dax/copilot-schema, report copilot-metadata), `ArtifactDatabricksStoragePreview` (azure-databricks-storage), `OntologyPreview` (ontology), `DigitalOperationsPreview` (digital-twin-builder), `ArtifactMirroredCatalogPreview` (mirrored-catalog), `AppBackendTenant` (app-backend), `AllowExternalDataSharingSwitch`/`AllowExternalDataSharingReceiverSwitch` (item external-data-share / accept), `PublishToWeb` (report publish-to-web). Live-validated on `PowerBIMCP` (subcommand-mapped) and `ArtifactDatabricksStoragePreview` (group-mapped). NEVER add an unverified mapping — an unverified row is worse than none (it names the wrong setting); the generic Layer-1 hint already covers the un-registered case actionably.
+
 ## Command File Structure (MANDATORY)
 
 Any command module that exceeds **1500 lines of code** MUST be refactored into a directory module with one file per subcommand group. Follow the pattern established by `context/`, `deploy/`, and `lakehouse/`:

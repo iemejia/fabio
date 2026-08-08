@@ -36,6 +36,14 @@ const POWERBI_MCP_FALLBACK: &str = "Do NOT retry `semantic-model generate-dax`/`
 /// gates it. Exact subcommand matches take precedence over group-level ones.
 /// Returns `None` when fabio does not know a specific setting for the command
 /// (the caller then emits a generic-but-admin-aware hint). Pure/testable.
+///
+/// To add a NEW gated feature, follow the MANDATORY checklist in AGENTS.md
+/// ("Tenant-Feature Gates"): find the exact `settingName` via
+/// `fabio admin list-tenant-settings`, VERIFY it actually gates the REST command
+/// (many settings gate only the portal UI), add the row below, and extend
+/// `registry_maps_known_commands`. NEVER add an unverified mapping — a wrong
+/// setting name yields a misleading enable command; the generic hint already
+/// covers the un-registered case.
 fn setting_for_command(path: &str) -> Option<TenantSetting> {
     let mk = |name, title, fallback| {
         Some(TenantSetting {
@@ -292,6 +300,38 @@ mod tests {
         assert_eq!(
             setting_for_command("mirrored-catalog.create").unwrap().name,
             "ArtifactMirroredCatalogPreview"
+        );
+        // Every currently-registered mapping (coverage guard — keep in sync with
+        // the AGENTS.md "Tenant-Feature Gates" list).
+        assert_eq!(
+            setting_for_command("semantic-model.copilot-schema")
+                .unwrap()
+                .name,
+            "PowerBIMCP"
+        );
+        assert_eq!(
+            setting_for_command("digital-twin-builder.create")
+                .unwrap()
+                .name,
+            "DigitalOperationsPreview"
+        );
+        assert_eq!(
+            setting_for_command("app-backend.create").unwrap().name,
+            "AppBackendTenant"
+        );
+        assert_eq!(
+            setting_for_command("item.create-external-data-share")
+                .unwrap()
+                .name,
+            "AllowExternalDataSharingSwitch"
+        );
+        assert_eq!(
+            setting_for_command("item.get-invitation").unwrap().name,
+            "AllowExternalDataSharingReceiverSwitch"
+        );
+        assert_eq!(
+            setting_for_command("report.publish-to-web").unwrap().name,
+            "PublishToWeb"
         );
         assert!(setting_for_command("workspace.list").is_none());
     }
