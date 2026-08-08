@@ -299,7 +299,7 @@ pub(super) async fn update_datasource(
         body.insert("instructions".to_string(), Value::from(instr));
     }
     if let Some(desc) = description {
-        body.insert("userDescription".to_string(), Value::from(desc));
+        body.insert("description".to_string(), Value::from(desc));
     }
 
     let resp = client
