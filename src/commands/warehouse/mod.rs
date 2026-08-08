@@ -849,11 +849,35 @@ pub(super) async fn get_connection_string(
         return Ok((conn.to_string(), db_name));
     }
 
+    // Fall back to a mirrored Azure Databricks catalog. A mirrored catalog
+    // exposes a read-only SQL analytics endpoint over the replicated Delta
+    // tables at `properties.sqlEndpointProperties.connectionString` (same shape
+    // as a lakehouse), so its mirrored tables are T-SQL-queryable.
+    if let Ok(data) = client
+        .get(&format!(
+            "/workspaces/{workspace}/mirroredAzureDatabricksCatalogs/{id}"
+        ))
+        .await
+        && let Some(conn) = data
+            .get("properties")
+            .and_then(|p| p.get("sqlEndpointProperties"))
+            .and_then(|s| s.get("connectionString"))
+            .and_then(Value::as_str)
+        && !conn.is_empty()
+    {
+        let db_name = data
+            .get("displayName")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        return Ok((conn.to_string(), db_name));
+    }
+
     Err(FabioError {
         code: ErrorCode::NotFound,
         message: "Could not determine SQL connection string. Verify the item is a warehouse, lakehouse, or warehouse snapshot with a SQL endpoint.".into(),
         hint: Some(
-            "Only Warehouse, Lakehouse, and WarehouseSnapshot items support SQL queries via this command.\n\
+            "Only Warehouse, Lakehouse, WarehouseSnapshot, and MirroredAzureDatabricksCatalog items support SQL queries via this command.\n\
              For SQL Databases, use: fabio sql-database query\n\
              For lakehouses, pass the lakehouse ID (not the SQL endpoint ID).\n\
              List items: fabio item list --workspace <WS> --type Warehouse"

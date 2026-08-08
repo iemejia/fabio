@@ -66,7 +66,7 @@ pub enum MirroredDatabricksCatalogCommand {
         #[arg(long)]
         sensitivity_label: Option<String>,
     },
-    /// Update mirrored Databricks catalog properties (name and/or description)
+    /// Update mirrored Databricks catalog properties (name, description, auto-sync, mirroring mode)
     #[command(display_order = 4)]
     Update {
         /// Workspace ID
@@ -84,6 +84,21 @@ pub enum MirroredDatabricksCatalogCommand {
         /// New description
         #[arg(long)]
         description: Option<String>,
+
+        /// Enable/disable auto-sync of newly added Databricks tables. Set to
+        /// `Enabled` to start replication — a freshly created mirror defaults to
+        /// `Disabled` and never syncs until this is enabled.
+        #[arg(long, value_parser = ["Enabled", "Disabled"])]
+        auto_sync: Option<String>,
+
+        /// Change the mirroring mode: `Full` (all tables), `Partial` (selected),
+        /// or `Exclude` (all except selected).
+        #[arg(long, value_parser = ["Full", "Partial", "Exclude"])]
+        mirroring_mode: Option<String>,
+
+        /// Storage connection ID for the mirror
+        #[arg(long)]
+        storage_connection_id: Option<String>,
     },
     /// Delete a mirrored Azure Databricks catalog
     #[command(display_order = 5)]
@@ -234,6 +249,9 @@ pub async fn execute(
             id,
             name,
             description,
+            auto_sync,
+            mirroring_mode,
+            storage_connection_id,
         } => {
             update(
                 cli,
@@ -242,6 +260,9 @@ pub async fn execute(
                 id,
                 name.as_deref(),
                 description.as_deref(),
+                auto_sync.as_deref(),
+                mirroring_mode.as_deref(),
+                storage_connection_id.as_deref(),
             )
             .await
         }
@@ -453,6 +474,42 @@ async fn create(
     Ok(())
 }
 
+/// Build the PATCH body for `update`. Property fields (`autoSync`,
+/// `mirroringMode`, `storageConnectionId`) are nested under `properties`. When
+/// any property is set the API REQUIRES a `displayName` in the body (a body
+/// carrying `properties` without one is rejected with `Invalid Display Name: ''`),
+/// so the caller must pass the resolved current name via `name`.
+fn build_update_body(
+    name: Option<&str>,
+    description: Option<&str>,
+    auto_sync: Option<&str>,
+    mirroring_mode: Option<&str>,
+    storage_connection_id: Option<&str>,
+) -> Value {
+    let mut body = serde_json::Map::new();
+    if let Some(n) = name {
+        body.insert("displayName".to_string(), Value::from(n));
+    }
+    if let Some(d) = description {
+        body.insert("description".to_string(), Value::from(d));
+    }
+    let mut props = serde_json::Map::new();
+    if let Some(a) = auto_sync {
+        props.insert("autoSync".to_string(), Value::from(a));
+    }
+    if let Some(m) = mirroring_mode {
+        props.insert("mirroringMode".to_string(), Value::from(m));
+    }
+    if let Some(s) = storage_connection_id {
+        props.insert("storageConnectionId".to_string(), Value::from(s));
+    }
+    if !props.is_empty() {
+        body.insert("properties".to_string(), Value::Object(props));
+    }
+    Value::Object(body)
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn update(
     cli: &Cli,
     client: &FabricClient,
@@ -460,23 +517,48 @@ async fn update(
     id: &str,
     name: Option<&str>,
     description: Option<&str>,
+    auto_sync: Option<&str>,
+    mirroring_mode: Option<&str>,
+    storage_connection_id: Option<&str>,
 ) -> Result<()> {
-    if name.is_none() && description.is_none() {
+    let has_props =
+        auto_sync.is_some() || mirroring_mode.is_some() || storage_connection_id.is_some();
+    if name.is_none() && description.is_none() && !has_props {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
-            "At least one of --name or --description must be provided".to_string(),
-            "Example: fabio mirrored-databricks-catalog update --workspace <WS> --id <ID> --name \"New Name\"".to_string(),
+            "At least one of --name, --description, --auto-sync, --mirroring-mode, or --storage-connection-id must be provided".to_string(),
+            "Example: fabio mirrored-databricks-catalog update --workspace <WS> --id <ID> --auto-sync Enabled".to_string(),
         )
         .into());
     }
 
-    let mut body = serde_json::json!({});
-    if let Some(n) = name {
-        body["displayName"] = Value::from(n);
-    }
-    if let Some(d) = description {
-        body["description"] = Value::from(d);
-    }
+    // The PATCH endpoint rejects a body carrying `properties` without a
+    // `displayName` ("Invalid Display Name: ''"), so resolve the current display
+    // name when properties are being updated but --name was not supplied.
+    let resolved_name: Option<String> = if has_props && name.is_none() {
+        let current = client
+            .get(&format!(
+                "/workspaces/{workspace}/mirroredAzureDatabricksCatalogs/{id}"
+            ))
+            .await
+            .map_err(|e| {
+                enrich_forbidden(e, "mirrored-databricks-catalog update", "Contributor")
+            })?;
+        current
+            .get("displayName")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    } else {
+        name.map(str::to_string)
+    };
+
+    let body = build_update_body(
+        resolved_name.as_deref(),
+        description,
+        auto_sync,
+        mirroring_mode,
+        storage_connection_id,
+    );
 
     if output::dry_run_guard(cli, "mirrored-databricks-catalog update", &body) {
         return Ok(());
@@ -705,4 +787,44 @@ async fn discover_tables(
         .await?;
     output::render_object(cli, &data, "data");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_update_body;
+
+    #[test]
+    fn update_body_nests_properties_under_properties_key() {
+        // Regression for the auto-sync gap: autoSync/mirroringMode/storageConnectionId
+        // MUST be nested under `properties` (the UpdatePayload shape), not top-level.
+        let body = build_update_body(Some("MyMirror"), None, Some("Enabled"), Some("Full"), None);
+        assert_eq!(body["displayName"], "MyMirror");
+        assert_eq!(body["properties"]["autoSync"], "Enabled");
+        assert_eq!(body["properties"]["mirroringMode"], "Full");
+        // No top-level autoSync leakage.
+        assert!(body.get("autoSync").is_none());
+    }
+
+    #[test]
+    fn update_body_includes_display_name_with_properties() {
+        // The API rejects a body carrying `properties` without a displayName
+        // ("Invalid Display Name: ''"), so the resolved name must be present.
+        let body = build_update_body(Some("Name"), None, Some("Enabled"), None, None);
+        assert_eq!(body["displayName"], "Name");
+        assert_eq!(body["properties"]["autoSync"], "Enabled");
+    }
+
+    #[test]
+    fn update_body_name_and_description_only_omits_properties() {
+        let body = build_update_body(Some("N"), Some("D"), None, None, None);
+        assert_eq!(body["displayName"], "N");
+        assert_eq!(body["description"], "D");
+        assert!(body.get("properties").is_none());
+    }
+
+    #[test]
+    fn update_body_storage_connection_id_nested() {
+        let body = build_update_body(Some("N"), None, None, None, Some("conn-123"));
+        assert_eq!(body["properties"]["storageConnectionId"], "conn-123");
+    }
 }

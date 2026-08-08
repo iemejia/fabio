@@ -78,7 +78,7 @@ Manage mirrored Azure Databricks catalogs
 | `fabio mirrored-databricks-catalog list` | no | List mirrored Azure Databricks catalogs in a workspace |
 | `fabio mirrored-databricks-catalog refresh-metadata` | yes | Refresh catalog metadata |
 | `fabio mirrored-databricks-catalog show` | no | Show details of a mirrored Azure Databricks catalog |
-| `fabio mirrored-databricks-catalog update` | yes | Update mirrored Databricks catalog properties (name and/or description) |
+| `fabio mirrored-databricks-catalog update` | yes | Update mirrored Databricks catalog properties (name, description, auto-sync, mirroring mode) |
 | `fabio mirrored-databricks-catalog update-definition` | yes | Update the definition of a mirrored Databricks catalog |
 
 ### fabio mirrored-warehouse

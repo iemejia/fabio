@@ -19377,7 +19377,7 @@
         "returns": "object"
       },
       "update": {
-        "description": "Update mirrored Databricks catalog properties (name and/or description)",
+        "description": "Update mirrored Databricks catalog properties (name, description, auto-sync, mirroring mode)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -19396,6 +19396,27 @@
           "--description": {
             "type": "string",
             "description": "New description"
+          },
+          "--auto-sync": {
+            "type": "enum",
+            "values": [
+              "Enabled",
+              "Disabled"
+            ],
+            "description": "Enable/disable auto-sync of newly added Databricks tables. Set to `Enabled` to start replication — a freshly created mirror defaults to `Disabled` and never syncs until this is enabled"
+          },
+          "--mirroring-mode": {
+            "type": "enum",
+            "values": [
+              "Full",
+              "Partial",
+              "Exclude"
+            ],
+            "description": "Change the mirroring mode: `Full` (all tables), `Partial` (selected), or `Exclude` (all except selected)"
+          },
+          "--storage-connection-id": {
+            "type": "string",
+            "description": "Storage connection ID for the mirror"
           }
         },
         "mutates": true,
