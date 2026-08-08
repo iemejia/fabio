@@ -77,29 +77,36 @@ async fn search(
     file: Option<&str>,
     content: Option<&str>,
 ) -> Result<()> {
-    // --file and --content take full control of the body (raw passthrough)
-    let body = match (file, content) {
-        (Some(path), _) => {
-            let raw = std::fs::read_to_string(path)
-                .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?;
-            serde_json::from_str::<Value>(&raw).map_err(|e| anyhow::anyhow!("Invalid JSON: {e}"))?
-        }
-        (_, Some(c)) => {
-            serde_json::from_str::<Value>(c).map_err(|e| anyhow::anyhow!("Invalid JSON: {e}"))?
-        }
-        _ => {
-            // Build body from convenience flags
-            if query.is_none() && item_type.is_none() && exclude_type.is_none() {
-                return Err(FabioError::with_hint(
-                    ErrorCode::InvalidInput,
-                    "At least one of --query, --type, --file, or --content must be provided"
-                        .to_string(),
-                    "Example: fabio catalog search --query \"my lakehouse\" --type Notebook --top 10"
-                        .to_string(),
-                )
-                .into());
+    // --file and --content take full control of the body (raw passthrough).
+    // A --continuation-token resumes a specific page: the token ENCODES the
+    // original search/filter, so the request must contain ONLY the token
+    // (repeating search/filter/pageSize → `ConflictingFilterParameters`).
+    let mut body = if let Some(t) = cli.continuation_token.as_deref() {
+        serde_json::json!({ "continuationToken": t })
+    } else {
+        match (file, content) {
+            (Some(path), _) => {
+                let raw = std::fs::read_to_string(path)
+                    .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?;
+                serde_json::from_str::<Value>(&raw)
+                    .map_err(|e| anyhow::anyhow!("Invalid JSON: {e}"))?
             }
-            build_search_body(query, item_type, exclude_type, top)
+            (_, Some(c)) => serde_json::from_str::<Value>(c)
+                .map_err(|e| anyhow::anyhow!("Invalid JSON: {e}"))?,
+            _ => {
+                // Build body from convenience flags
+                if query.is_none() && item_type.is_none() && exclude_type.is_none() {
+                    return Err(FabioError::with_hint(
+                        ErrorCode::InvalidInput,
+                        "At least one of --query, --type, --file, or --content must be provided"
+                            .to_string(),
+                        "Example: fabio catalog search --query \"my lakehouse\" --type Notebook --top 10"
+                            .to_string(),
+                    )
+                    .into());
+                }
+                build_search_body(query, item_type, exclude_type, top)
+            }
         }
     };
 
@@ -107,23 +114,51 @@ async fn search(
         return Ok(());
     }
 
-    let data = client.post("/catalog/search", &body, false).await?;
+    // Auto-paginate when --all: keep posting with the returned continuationToken
+    // until exhausted (accumulating pages). Without --all, fetch a single page
+    // and surface the token so the caller can resume with --continuation-token.
+    let mut all_items: Vec<Value> = Vec::new();
+    let mut last_token: Option<String>;
+    loop {
+        let data = client.post("/catalog/search", &body, false).await?;
+        let Some(arr) = data.get("value").and_then(Value::as_array) else {
+            output::render_object(cli, &data, "value");
+            return Ok(());
+        };
+        all_items.extend(arr.iter().cloned());
+        last_token = data
+            .get("continuationToken")
+            .and_then(Value::as_str)
+            // The API returns an EMPTY-string token (not null/absent) on the last
+            // page — treat that as "no more pages" so we don't post an empty token.
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned);
+
+        if !cli.all || last_token.is_none() {
+            break;
+        }
+        // Next page: the token encodes the search/filter — send ONLY it.
+        body = serde_json::json!({ "continuationToken": last_token.clone().unwrap_or_default() });
+    }
+
     // Flatten the `{value:[...]}` search envelope to the standard list shape
     // (`{data:[...],count:N}`) so agents can iterate/filter/project `data`
     // consistently with every other list command.
-    if let Some(arr) = data.get("value").and_then(Value::as_array) {
-        let token = data.get("continuationToken").and_then(Value::as_str);
-        output::render_list_with_token(
-            cli,
-            arr,
-            &["displayName", "id", "type", "workspaceId", "description"],
-            &["NAME", "ID", "TYPE", "WORKSPACE", "DESCRIPTION"],
+    output::render_list_with_token(
+        cli,
+        &all_items,
+        &[
+            "displayName",
             "id",
-            token,
-        );
-    } else {
-        output::render_object(cli, &data, "value");
-    }
+            "type",
+            "hierarchy.workspace.displayName",
+            "description",
+        ],
+        &["NAME", "ID", "TYPE", "WORKSPACE", "DESCRIPTION"],
+        "id",
+        // When --all exhausted the pages, there's no further token to surface.
+        if cli.all { None } else { last_token.as_deref() },
+    );
     Ok(())
 }
 
