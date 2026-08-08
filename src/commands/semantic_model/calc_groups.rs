@@ -4,7 +4,9 @@
 //!
 //! A calculation group is a special table carrying a `calculationGroup` block of
 //! `calculationItem <name> = <DAX>` entries, a single string column, and a
-//! `partition <name> = calculationGroup`. The model must also set
+//! `partition <name> = calculationGroup` (marked `mode: import` so a Direct Lake
+//! model, whose `defaultMode: directLake` would otherwise reject a non-source-entity
+//! partition, accepts it). The model must also set
 //! `discourageImplicitMeasures`. fabio builds/edits these via the shared
 //! definition read-modify-write (no XMLA/TOM).
 
@@ -88,7 +90,7 @@ pub(super) async fn add_calculation_group(
 fn render_calc_group_table(name: &str, column_name: &str) -> String {
     let q = quote_tmdl_name(name);
     format!(
-        "table {q}\n\n\tcalculationGroup\n\n\tcolumn {}\n\t\tdataType: string\n\t\tsourceColumn: Name\n\n\tpartition {q} = calculationGroup\n",
+        "table {q}\n\n\tcalculationGroup\n\n\tcolumn {}\n\t\tdataType: string\n\t\tsourceColumn: Name\n\n\tpartition {q} = calculationGroup\n\t\tmode: import\n",
         quote_tmdl_name(column_name)
     )
 }
@@ -715,6 +717,10 @@ mod tests {
         assert!(out.contains("\tcalculationGroup"));
         assert!(out.contains("\tcolumn 'Time Col'"));
         assert!(out.contains("\tpartition Time = calculationGroup"));
+        // The partition MUST be import mode so the calc-group table is accepted by a
+        // Direct Lake model (whose defaultMode: directLake would otherwise reject a
+        // non-source-entity partition).
+        assert!(out.contains("\t\tmode: import"));
     }
 
     #[test]
