@@ -151,6 +151,18 @@ Error:  {"error": {"code": "...", "hint": "..."}} ← on stderr, non-zero exit
 
 Extract items: `--query '[].displayName'`. Count with the JMESPath idiom `--query 'length([])'`. (`--query` runs JMESPath on the raw payload — the value under `data` — like Azure CLI; do NOT prefix with `data.`.) Use `-o table` for human-readable output, `-o tsv` for Excel import.
 
+**`--query` is JMESPath, NOT jq** (this is the #1 mistake). fabio's `--query` behaves like Azure CLI's `--query`, and it runs on the value **under `data`** (the payload), not the whole envelope. So:
+
+| Goal | jq (WRONG here) | fabio JMESPath (correct) |
+|------|-----------------|--------------------------|
+| project a field from a list | `.data[].name` | `[].name` |
+| filter a list | `.data[] \| select(.type=="Lakehouse")` | `[?type=='Lakehouse']` |
+| first item's id | `.data[0].id` | `[0].id` |
+| a field from an object | `.data.id` | `id` |
+| count a list | `.data \| length` | `length([])` |
+
+A jq-shaped or malformed `--query` now **fails fast** with `INVALID_INPUT` (`hintType: syntax_fix`) and a corrected expression on stderr — it no longer silently returns `{"data":null}`. The full contract is in `fabio context agent` (the `output_contract` block).
+
 Error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITED`, `CAPACITY_INACTIVE`, `INVALID_INPUT`, `API_ERROR`, `TIMEOUT`, `NETWORK_ERROR`, `READONLY_MODE`
 
 **Error recovery patterns:**

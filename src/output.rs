@@ -545,6 +545,153 @@ pub fn apply_query(value: &Value, query: &str) -> Value {
     serde_json::to_value(result.as_ref()).unwrap_or(Value::Null)
 }
 
+/// A detected problem with a `--query` expression plus a teaching hint.
+struct QueryAdvice {
+    message: String,
+    hint: String,
+}
+
+/// Convert a simple `jq` path (`.a.b`, `.data[].id`, `.[]`) into the equivalent
+/// `JMESPath` suggestion: strip the leading `.`, and strip a leading `data`
+/// segment (fabio's `--query` already runs on the value UNDER `data`).
+fn jq_to_jmespath_suggestion(q: &str) -> String {
+    let s = q.trim_start_matches('.');
+    // Strip a leading `data` segment (the payload IS the value under `data`).
+    let mapped = match s.strip_prefix("data") {
+        Some(rest) if rest.starts_with('[') => rest.to_string(), // `.data[]...` → `[]...`
+        Some(rest) if rest.starts_with('.') => rest[1..].to_string(), // `.data.x` → `x`
+        Some("") => "@".to_string(),                             // `.data` → `@`
+        _ => s.to_string(),
+    };
+    if mapped.is_empty() {
+        "@".to_string()
+    } else {
+        mapped
+    }
+}
+
+/// `jq`-only tokens that never appear in a valid `JMESPath` projection — their
+/// presence signals the caller wrote `jq` instead of `JMESPath`.
+const JQ_TOKENS: &[&str] = &[
+    ".[]",
+    "select(",
+    "| .",
+    "|.",
+    "to_entries",
+    "from_entries",
+    "map_values(",
+    "ascii_downcase",
+    "ascii_upcase",
+];
+
+/// Detect the two most common `--query` mistakes coding agents make:
+/// (1) **`jq` syntax** — fabio's `--query` is `JMESPath` (like Azure CLI's
+/// `--query`), NOT `jq`; and (2) **envelope confusion** — querying `data.*`/`count`
+/// even though `--query` already runs on the value UNDER `data` (the payload).
+/// Returns a teaching message + hint (with a corrected expression when it can be
+/// derived). Pure and data-independent. Returns `None` for a plausibly-valid
+/// `JMESPath` expression (a compile check catches the rest).
+fn analyze_query(query: &str) -> Option<QueryAdvice> {
+    let q = query.trim();
+    if q.is_empty() {
+        return None;
+    }
+
+    // (1) jq path syntax: a JMESPath expression never starts with '.'.
+    if q.starts_with('.') {
+        // Complex jq (pipes / select) → generic guidance; a simple path gets a
+        // concrete corrected expression.
+        if q.contains('|') || q.contains("select(") {
+            return Some(QueryAdvice {
+                message: format!(
+                    "`--query` looks like jq, but fabio's --query is JMESPath: `{query}`"
+                ),
+                hint: JMESPATH_NOT_JQ_HINT.to_string(),
+            });
+        }
+        let corrected = jq_to_jmespath_suggestion(q);
+        return Some(QueryAdvice {
+            message: format!(
+                "`--query` looks like jq (starts with '.'), but fabio's --query is JMESPath: `{query}`"
+            ),
+            hint: format!(
+                "fabio's --query is JMESPath (https://jmespath.org), like Azure CLI's --query — NOT jq. \
+                 JMESPath expressions do not start with '.', and the query runs on the value UNDER `data` \
+                 (so never write `.data`). Try: --query '{corrected}'. Count a list with --query 'length([])'."
+            ),
+        });
+    }
+
+    // jq iterate / pipe-to-dot / jq-only builtins appearing mid-expression.
+    if let Some(tok) = JQ_TOKENS.iter().find(|t| q.contains(**t)) {
+        return Some(QueryAdvice {
+            message: format!(
+                "`--query` uses jq syntax (`{tok}`), but fabio's --query is JMESPath: `{query}`"
+            ),
+            hint: JMESPATH_NOT_JQ_HINT.to_string(),
+        });
+    }
+
+    // (2) Envelope confusion: the payload IS the value under `data`.
+    if q == "data" || q.starts_with("data.") || q.starts_with("data[") {
+        let inner = q.strip_prefix("data").unwrap_or(q).trim_start_matches('.');
+        let corrected = if inner.is_empty() {
+            "@".to_string()
+        } else {
+            inner.to_string()
+        };
+        return Some(QueryAdvice {
+            message: format!(
+                "`--query` targets the envelope key `data`, but --query already runs on the payload under `data`: `{query}`"
+            ),
+            hint: format!(
+                "fabio wraps results as {{\"data\": …}}, but --query operates on the value INSIDE `data` \
+                 (like Azure CLI). Drop the `data` prefix — use --query '{corrected}' \
+                 (e.g. `data[].name` → `[].name`, `data.id` → `id`)."
+            ),
+        });
+    }
+    if q == "count" {
+        return Some(QueryAdvice {
+            message: "`--query count` targets the envelope's `count` field, which is metadata and not part of the queryable payload".to_string(),
+            hint: "The envelope's `count` is not visible to --query (which sees the payload under `data`). \
+                   Count a list with the JMESPath idiom --query 'length([])'.".to_string(),
+        });
+    }
+    None
+}
+
+const JMESPATH_NOT_JQ_HINT: &str = "fabio's --query is JMESPath (https://jmespath.org), like Azure CLI's --query — NOT jq. \
+     Filter a list with `[?field=='value']` (not `select(...)`), project with `[].field`, \
+     index with `[0]`, count with `length([])`. The query runs on the value under `data`, so never \
+     prefix with `data`. Run `fabio context agent --full` for the full output/query contract.";
+
+/// Validate a `--query` expression up front (data-independent) so a malformed or
+/// `jq`-shaped query fails fast with a teaching error BEFORE any API call — instead
+/// of silently returning `{"data":null}` with exit 0 (which misleads agents that
+/// then act on the empty result). Catches `jq` syntax, envelope confusion, and any
+/// expression that does not compile as `JMESPath`. Returns the teaching error to
+/// surface, or `None` when the query is acceptable.
+pub fn validate_query(query: &str) -> Option<FabioError> {
+    if let Some(advice) = analyze_query(query) {
+        return Some(FabioError::with_typed_hint(
+            ErrorCode::InvalidInput,
+            advice.message,
+            advice.hint,
+            HintType::SyntaxFix,
+        ));
+    }
+    if jmespath::compile(query).is_err() {
+        return Some(FabioError::with_typed_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid --query expression (not valid JMESPath): `{query}`"),
+            JMESPATH_NOT_JQ_HINT.to_string(),
+            HintType::SyntaxFix,
+        ));
+    }
+    None
+}
+
 /// Decode base64-encoded definition parts inline.
 /// Adds a `decodedPayload` field alongside the original `payload` for each part.
 /// Handles both JSON payloads (parsed into objects) and plain text (kept as strings).
@@ -672,6 +819,82 @@ mod tests {
         let obj = serde_json::json!({"name": "test"});
         // Invalid JMESPath syntax
         assert_eq!(apply_query(&obj, "[[[invalid"), Value::Null);
+    }
+
+    #[test]
+    fn validate_query_accepts_valid_jmespath() {
+        // Common valid JMESPath forms an agent would use must pass unchanged.
+        for q in [
+            "id",
+            "[].displayName",
+            "[0].id",
+            "[?type=='Lakehouse'].id",
+            "length([])",
+            "{name: displayName, id: id}",
+            "sort_by([], &name)",
+            "[?size > `10`].name",
+            "people | [0]",
+            "@",
+        ] {
+            assert!(
+                validate_query(q).is_none(),
+                "should accept valid JMESPath: {q}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_query_rejects_jq_leading_dot_with_suggestion() {
+        let err = validate_query(".data[].name").unwrap();
+        assert_eq!(err.code, ErrorCode::InvalidInput);
+        let hint = err.hint.unwrap();
+        // Suggests the corrected JMESPath (leading dot + data prefix stripped).
+        assert!(
+            hint.contains("'[].name'"),
+            "hint should suggest '[].name': {hint}"
+        );
+        assert!(hint.contains("JMESPath"));
+    }
+
+    #[test]
+    fn validate_query_rejects_jq_select_pipe() {
+        let err = validate_query("[] | select(.type=='X')").unwrap();
+        assert_eq!(err.code, ErrorCode::InvalidInput);
+        assert!(err.message.contains("jq"));
+    }
+
+    #[test]
+    fn validate_query_rejects_envelope_data_prefix() {
+        let err = validate_query("data[].displayName").unwrap();
+        let hint = err.hint.unwrap();
+        assert!(
+            hint.contains("'[].displayName'"),
+            "should suggest dropping the data prefix: {hint}"
+        );
+    }
+
+    #[test]
+    fn validate_query_rejects_bare_count_suggests_length() {
+        let err = validate_query("count").unwrap();
+        assert!(err.hint.unwrap().contains("length([])"));
+    }
+
+    #[test]
+    fn validate_query_rejects_invalid_jmespath_syntax() {
+        // Not jq, not envelope confusion, just malformed — still a teaching error
+        // (not a silent null).
+        let err = validate_query("[[[invalid").unwrap();
+        assert_eq!(err.code, ErrorCode::InvalidInput);
+        assert!(err.hint.unwrap().contains("JMESPath"));
+    }
+
+    #[test]
+    fn jq_to_jmespath_suggestion_strips_dot_and_data() {
+        assert_eq!(jq_to_jmespath_suggestion(".data[].id"), "[].id");
+        assert_eq!(jq_to_jmespath_suggestion(".data.id"), "id");
+        assert_eq!(jq_to_jmespath_suggestion(".id"), "id");
+        assert_eq!(jq_to_jmespath_suggestion(".[]"), "[]");
+        assert_eq!(jq_to_jmespath_suggestion(".data"), "@");
     }
 
     #[test]

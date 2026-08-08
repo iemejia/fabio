@@ -10,7 +10,7 @@
       "description": "List response with item count"
     },
     "success_list_paginated": {
-      "format": "{\"data\": [...], \"count\": N, \"continuation_token\": \"...\"}",
+      "format": "{\"data\": [...], \"count\": N, \"continuationToken\": \"...\"}",
       "description": "Partial list; pass token via --continuation-token to get next page"
     },
     "error": {

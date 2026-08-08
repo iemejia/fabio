@@ -146,6 +146,80 @@ fn query_nested_field() {
     assert!(!data.as_str().unwrap().is_empty());
 }
 
+// --- --query validation (fail fast on jq syntax / envelope confusion) ---
+// These run OFFLINE: the query is validated before any network call, so no
+// live tenant or auth is needed.
+
+#[test]
+#[serial]
+fn query_jq_leading_dot_fails_fast_with_teaching_error() {
+    // `.data[].name` is jq, not JMESPath. It used to silently return
+    // {"data":null} with exit 0; now it must fail fast with a corrected form.
+    let assert = fabio()
+        .args(["--query", ".data[].name", "workspace", "list"])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let json: serde_json::Value = serde_json::from_str(stderr.trim()).expect("error JSON");
+    assert_eq!(json["error"]["code"], "INVALID_INPUT");
+    assert_eq!(json["error"]["hintType"], "syntax_fix");
+    // Suggests the corrected JMESPath.
+    assert!(
+        json["error"]["hint"]
+            .as_str()
+            .unwrap()
+            .contains("'[].name'"),
+        "hint should suggest '[].name': {}",
+        json["error"]["hint"]
+    );
+}
+
+#[test]
+#[serial]
+fn query_jq_select_pipe_fails_fast() {
+    let assert = fabio()
+        .args(["--query", "[] | select(.type=='X')", "workspace", "list"])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("jq"));
+    assert!(stderr.contains("JMESPath"));
+}
+
+#[test]
+#[serial]
+fn query_envelope_data_prefix_fails_fast() {
+    // `data[].displayName` — the payload IS already the value under `data`.
+    let assert = fabio()
+        .args(["--query", "data[].displayName", "workspace", "list"])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("'[].displayName'"), "got: {stderr}");
+}
+
+#[test]
+#[serial]
+fn query_bare_count_suggests_length_idiom() {
+    let assert = fabio()
+        .args(["--query", "count", "workspace", "list"])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("length([])"), "got: {stderr}");
+}
+
+#[test]
+#[serial]
+fn query_invalid_jmespath_syntax_fails_fast() {
+    let assert = fabio()
+        .args(["--query", "[[[invalid", "workspace", "list"])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("JMESPath"));
+}
+
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]

@@ -549,6 +549,19 @@ fn execute_compact(cli: &Cli, group_filter: Option<&str>) {
     // Include effective safety state so agents know what's restricted.
     result.insert("safety".to_owned(), build_safety_state(cli));
 
+    // The output/query contract, surfaced in the DEFAULT compact output so an
+    // agent learns the envelope shape and the JMESPath-not-jq rule immediately —
+    // without needing `--full`. This is the #1 source of agent confusion.
+    result.insert(
+        "output_contract".to_owned(),
+        serde_json::json!({
+            "envelope": "stdout = data, stderr = diagnostics. Success: a list is {\"data\":[...],\"count\":N}; an object is {\"data\":{...}}. Error: stderr {\"error\":{\"code\",\"message\",\"hint\"}} with non-zero exit.",
+            "query": "--query/-q is JMESPath (like Azure CLI --query), NOT jq. It runs on the value UNDER `data` (the payload), so write `[].name` — never `.data[].name` (jq) or `data[].name` (envelope). Count with `length([])`. A jq-shaped or malformed --query now FAILS FAST with a corrected suggestion instead of a silent null.",
+            "correct": ["--query id", "--query '[].displayName'", "--query \"[?type=='Lakehouse'].id\"", "--query '[0].id'", "--query 'length([])'"],
+            "incorrect": ["--query .data[].id  (jq: leading dot)", "--query 'data[].id'  (envelope: drop the data prefix)", "--query count  (use length([]))", "--query '[] | select(.x)'  (jq: use [?x])"]
+        }),
+    );
+
     result.insert(
         "hint".to_owned(),
         serde_json::json!(

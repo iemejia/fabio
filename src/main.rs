@@ -77,6 +77,15 @@ fn run() -> std::result::Result<(), i32> {
         return Err(fabio_err.code.exit_code());
     }
 
+    // Fail fast on a malformed or jq-shaped `--query` BEFORE any network call, so
+    // an agent gets a teaching error instead of a silent `{"data":null}` success.
+    if let Some(ref q) = cli.query
+        && let Some(fabio_err) = output::validate_query(q)
+    {
+        output::render_error(&fabio_err);
+        return Err(fabio_err.code.exit_code());
+    }
+
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

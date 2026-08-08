@@ -11,7 +11,7 @@ Global flags apply across Fabio's command surface. They can appear before or aft
 | --- | --- |
 | `--output`, `-o` `<format>` | Select the output format: `json\|table\|plain\|csv\|tsv`. Defaults to `json`. Also set with `FABIO_OUTPUT`. |
 | `--json` | Shorthand for `--output json`. |
-| `--query`, `-q` `<expression>` | Project output with a JMESPath expression. |
+| `--query`, `-q` `<expression>` | Project output with a JMESPath expression (like Azure CLI's `--query`, **not jq**). It runs on the value under `data`, so write `[].name` — not `.data[].name` (jq) or `data[].name` (envelope). A jq-shaped or malformed query fails fast with `INVALID_INPUT` and a corrected suggestion. |
 | `--quiet` | Suppress successful stdout while preserving errors on stderr. |
 
 ## Pagination

@@ -48,7 +48,9 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub json: bool,
 
-    /// `JMESPath` query expression (see <https://jmespath.org/>)
+    /// `JMESPath` query expression — like Azure CLI's `--query`, NOT jq. Runs on the
+    /// value under `data` (e.g. `[].displayName`, `[?type=='Lakehouse'].id`, `length([])`).
+    /// See <https://jmespath.org/>.
     #[arg(short, long, global = true)]
     pub query: Option<String>,
 
