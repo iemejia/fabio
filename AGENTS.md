@@ -866,8 +866,8 @@ Published to GHCR on every push to `main` and on version tags:
 
 ```
 ghcr.io/iemejia/fabio:latest       # latest stable release
-ghcr.io/iemejia/fabio:0.61.0       # release version
-ghcr.io/iemejia/fabio:0.61         # major.minor
+ghcr.io/iemejia/fabio:0.62.0       # release version
+ghcr.io/iemejia/fabio:0.62         # major.minor
 ```
 
 Multi-arch manifest: `linux/amd64` + `linux/arm64`.
