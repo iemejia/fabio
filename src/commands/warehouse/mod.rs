@@ -791,93 +791,33 @@ pub(super) async fn get_connection_string(
     workspace: &str,
     id: &str,
 ) -> Result<(String, String)> {
-    // Try warehouse endpoint first
-    if let Ok(data) = client
-        .get(&format!("/workspaces/{workspace}/warehouses/{id}"))
-        .await
-        && let Some(conn) = data
-            .get("properties")
-            .and_then(|p| p.get("connectionString"))
-            .and_then(Value::as_str)
-        && !conn.is_empty()
-    {
-        let db_name = data
-            .get("displayName")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        return Ok((conn.to_string(), db_name));
-    }
-
-    // Fall back to lakehouse SQL endpoint
-    if let Ok(data) = client
-        .get(&format!("/workspaces/{workspace}/lakehouses/{id}"))
-        .await
-        && let Some(conn) = data
-            .get("properties")
-            .and_then(|p| p.get("sqlEndpointProperties"))
-            .and_then(|s| s.get("connectionString"))
-            .and_then(Value::as_str)
-        && !conn.is_empty()
-    {
-        let db_name = data
-            .get("displayName")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        return Ok((conn.to_string(), db_name));
-    }
-
-    // Fall back to a warehouse snapshot (read-only, point-in-time). A
-    // WarehouseSnapshot exposes its own read-only SQL endpoint directly in
-    // `properties.connectionString` (same shape as a warehouse), so it is
-    // T-SQL-queryable just like the parent warehouse.
-    if let Ok(data) = client
-        .get(&format!("/workspaces/{workspace}/warehouseSnapshots/{id}"))
-        .await
-        && let Some(conn) = data
-            .get("properties")
-            .and_then(|p| p.get("connectionString"))
-            .and_then(Value::as_str)
-        && !conn.is_empty()
-    {
-        let db_name = data
-            .get("displayName")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        return Ok((conn.to_string(), db_name));
-    }
-
-    // Fall back to a mirrored Azure Databricks catalog. A mirrored catalog
-    // exposes a read-only SQL analytics endpoint over the replicated Delta
-    // tables at `properties.sqlEndpointProperties.connectionString` (same shape
-    // as a lakehouse), so its mirrored tables are T-SQL-queryable.
-    if let Ok(data) = client
-        .get(&format!(
-            "/workspaces/{workspace}/mirroredAzureDatabricksCatalogs/{id}"
-        ))
-        .await
-        && let Some(conn) = data
-            .get("properties")
-            .and_then(|p| p.get("sqlEndpointProperties"))
-            .and_then(|s| s.get("connectionString"))
-            .and_then(Value::as_str)
-        && !conn.is_empty()
-    {
-        let db_name = data
-            .get("displayName")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        return Ok((conn.to_string(), db_name));
+    // Item types whose SQL endpoint lives directly at `properties.connectionString`
+    // (Warehouse, WarehouseSnapshot), and those that expose it under
+    // `properties.sqlEndpointProperties.connectionString` (Lakehouse,
+    // MirroredAzureDatabricksCatalog, MirroredDatabase). Each is tried in turn;
+    // the first whose GET succeeds with a non-empty connection string wins.
+    let direct = [
+        ("warehouses", false),
+        ("lakehouses", true),
+        ("warehouseSnapshots", false),
+        ("mirroredAzureDatabricksCatalogs", true),
+        ("mirroredDatabases", true),
+    ];
+    for (collection, via_sql_endpoint) in direct {
+        if let Ok(data) = client
+            .get(&format!("/workspaces/{workspace}/{collection}/{id}"))
+            .await
+            && let Some(pair) = extract_connection(&data, via_sql_endpoint)
+        {
+            return Ok(pair);
+        }
     }
 
     Err(FabioError {
         code: ErrorCode::NotFound,
-        message: "Could not determine SQL connection string. Verify the item is a warehouse, lakehouse, or warehouse snapshot with a SQL endpoint.".into(),
+        message: "Could not determine SQL connection string. Verify the item is a warehouse, lakehouse, warehouse snapshot, or mirrored database with a SQL endpoint.".into(),
         hint: Some(
-            "Only Warehouse, Lakehouse, WarehouseSnapshot, and MirroredAzureDatabricksCatalog items support SQL queries via this command.\n\
+            "Only Warehouse, Lakehouse, WarehouseSnapshot, MirroredAzureDatabricksCatalog, and MirroredDatabase items support SQL queries via this command.\n\
              For SQL Databases, use: fabio sql-database query\n\
              For lakehouses, pass the lakehouse ID (not the SQL endpoint ID).\n\
              List items: fabio item list --workspace <WS> --type Warehouse"
@@ -890,6 +830,32 @@ pub(super) async fn get_connection_string(
         more_details: None,
         related_resource: None,
     }.into())
+}
+
+/// Extract `(connectionString, displayName)` from an item's GET response.
+///
+/// When `via_sql_endpoint` is true the connection string is read from
+/// `properties.sqlEndpointProperties.connectionString` (`Lakehouse`,
+/// `MirroredAzureDatabricksCatalog`, `MirroredDatabase`); otherwise from
+/// `properties.connectionString` directly (`Warehouse`, `WarehouseSnapshot`).
+/// Returns `None` when the field is missing or empty.
+fn extract_connection(data: &Value, via_sql_endpoint: bool) -> Option<(String, String)> {
+    let props = data.get("properties")?;
+    let conn = if via_sql_endpoint {
+        props
+            .get("sqlEndpointProperties")
+            .and_then(|s| s.get("connectionString"))
+    } else {
+        props.get("connectionString")
+    }
+    .and_then(Value::as_str)
+    .filter(|c| !c.is_empty())?;
+    let db_name = data
+        .get("displayName")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    Some((conn.to_string(), db_name))
 }
 
 /// Helper: resolve connection and execute a TDS query, rendering results as a list.
@@ -979,5 +945,53 @@ mod tests {
         let (server, db) = parse_connection_string("host.com;DATABASE=TestDb;encrypt=true");
         assert_eq!(server, "host.com");
         assert_eq!(db, "TestDb");
+    }
+
+    #[test]
+    fn extract_connection_direct_shape() {
+        // Warehouse / WarehouseSnapshot: properties.connectionString
+        let data = serde_json::json!({
+            "displayName": "MyWH",
+            "properties": {"connectionString": "wh.datawarehouse.fabric.microsoft.com"}
+        });
+        let (conn, name) = extract_connection(&data, false).unwrap();
+        assert_eq!(conn, "wh.datawarehouse.fabric.microsoft.com");
+        assert_eq!(name, "MyWH");
+        // A sql-endpoint shape is NOT read in direct mode.
+        assert!(extract_connection(&data, true).is_none());
+    }
+
+    #[test]
+    fn extract_connection_sql_endpoint_shape() {
+        // Lakehouse / MirroredAzureDatabricksCatalog / MirroredDatabase:
+        // properties.sqlEndpointProperties.connectionString
+        let data = serde_json::json!({
+            "displayName": "OpenMir",
+            "properties": {"sqlEndpointProperties": {"connectionString": "mir.datawarehouse.fabric.microsoft.com", "id": "abc"}}
+        });
+        let (conn, name) = extract_connection(&data, true).unwrap();
+        assert_eq!(conn, "mir.datawarehouse.fabric.microsoft.com");
+        assert_eq!(name, "OpenMir");
+        // A direct shape is NOT read in sql-endpoint mode.
+        assert!(extract_connection(&data, false).is_none());
+    }
+
+    #[test]
+    fn extract_connection_empty_or_missing_is_none() {
+        assert!(extract_connection(&serde_json::json!({}), false).is_none());
+        assert!(
+            extract_connection(
+                &serde_json::json!({"properties": {"connectionString": ""}}),
+                false
+            )
+            .is_none()
+        );
+        assert!(
+            extract_connection(
+                &serde_json::json!({"properties": {"sqlEndpointProperties": {}}}),
+                true
+            )
+            .is_none()
+        );
     }
 }

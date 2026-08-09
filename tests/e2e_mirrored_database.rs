@@ -280,3 +280,40 @@ fn mirrored_database_status_and_table_status() {
     let json = parse_json(&assert);
     assert!(extract_data(&json).is_array());
 }
+
+// ---------------------------------------------------------------------------
+// warehouse query resolves a MirroredDatabase's SQL analytics endpoint.
+// A MirroredDatabase exposes its read-only SQL endpoint at
+// properties.sqlEndpointProperties.connectionString (same shape as a
+// lakehouse), so `warehouse query --id <mirroredDb>` must resolve it. Gated
+// on FABIO_TEST_MIRRORED_DATABASE_ID + a SQL-scoped token (az / credential
+// chain) for the TDS call.
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires live Fabric tenant with a mirrored database + SQL token"]
+fn warehouse_query_resolves_mirrored_database_sql_endpoint() {
+    let cfg = TestConfig::from_env();
+    let Ok(md_id) = std::env::var("FABIO_TEST_MIRRORED_DATABASE_ID") else {
+        return; // skip when not configured
+    };
+
+    // A trivial constant SELECT proves the resolver found the mirror's SQL
+    // endpoint and completed a TDS round-trip (no dependency on mirrored data).
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &md_id,
+            "--sql",
+            "SELECT 1 AS x;",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert_eq!(extract_data(&json)[0]["x"], 1);
+}
