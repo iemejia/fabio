@@ -26,29 +26,39 @@ const ENTITY_SCHEMA: &str = "https://developer.microsoft.com/json-schemas/fabric
 const REL_SCHEMA: &str = "https://developer.microsoft.com/json-schemas/fabric/item/ontology/relationshipType/1.0.0/schema.json";
 
 /// Canonical `valueType` values accepted by the ontology entity-type schema.
+///
+/// These are the ONLY values the Fabric `entityType/1.0.0` schema's
+/// `EntityTypeProperty.valueType` enum accepts (verified against the published
+/// schema AND live): `String`, `Boolean`, `DateTime`, `Object`, `BigInt`,
+/// `Double`. NOTE `Long`/`Decimal`/`Any` are NOT valid typed-property types —
+/// the API rejects them with a generic `ALMOperationImportFailed`, so common
+/// integer/decimal/any inputs are normalized to `BigInt`/`Double`/`Object`.
+/// (`Any` is valid ONLY inside `untypedProperties`, which this path never
+/// writes.)
 const VALUE_TYPES: &[&str] = &[
-    "String", "Long", "BigInt", "Double", "Decimal", "Boolean", "DateTime", "Any",
+    "String", "BigInt", "Double", "Boolean", "DateTime", "Object",
 ];
 
 // ─── Pure helpers (unit-tested) ──────────────────────────────────────────────
 
 /// Normalize a user-supplied property type to a canonical `valueType`.
 ///
-/// Accepts the canonical `PascalCase` values and common lowercase aliases
-/// (`string`, `int`/`integer`/`long`, `bigint`, `double`/`float`, `decimal`,
-/// `bool`/`boolean`, `date`/`datetime`, `any`). Errors (with the valid set) on
-/// anything else so a typo never silently produces a `String` column.
+/// Accepts the canonical `PascalCase` values and common lowercase aliases,
+/// mapping every reasonable input to a schema-valid `valueType`:
+/// `string`/`text` → `String`; `long`/`int`/`integer`/`bigint` → `BigInt`;
+/// `double`/`float`/`number`/`decimal`/`currency` → `Double`;
+/// `bool`/`boolean` → `Boolean`; `date`/`datetime`/`timestamp` → `DateTime`;
+/// `object`/`any` → `Object`. Errors (with the valid set) on anything else so a
+/// typo never silently produces a `String` column.
 fn normalize_value_type(input: &str) -> Result<String> {
     let v = input.trim();
     let canon = match v.to_ascii_lowercase().as_str() {
         "string" | "text" | "str" => "String",
-        "long" | "int" | "integer" => "Long",
-        "bigint" => "BigInt",
-        "double" | "float" | "number" => "Double",
-        "decimal" | "currency" => "Decimal",
+        "long" | "int" | "integer" | "bigint" => "BigInt",
+        "double" | "float" | "number" | "decimal" | "currency" => "Double",
         "boolean" | "bool" => "Boolean",
         "datetime" | "date" | "timestamp" => "DateTime",
-        "any" => "Any",
+        "object" | "any" => "Object",
         _ => {
             return Err(FabioError::with_hint(
                 ErrorCode::InvalidInput,
@@ -902,11 +912,29 @@ mod tests {
     #[test]
     fn normalize_value_type_maps_aliases_and_rejects_unknown() {
         assert_eq!(normalize_value_type("string").unwrap(), "String");
-        assert_eq!(normalize_value_type("Int").unwrap(), "Long");
+        // Every integer alias -> BigInt (Fabric has no "Long" valueType).
+        assert_eq!(normalize_value_type("Int").unwrap(), "BigInt");
+        assert_eq!(normalize_value_type("integer").unwrap(), "BigInt");
+        assert_eq!(normalize_value_type("Long").unwrap(), "BigInt");
+        assert_eq!(normalize_value_type("bigint").unwrap(), "BigInt");
         assert_eq!(normalize_value_type("float").unwrap(), "Double");
+        // Decimal is NOT a Fabric ontology valueType -> Double.
+        assert_eq!(normalize_value_type("Decimal").unwrap(), "Double");
         assert_eq!(normalize_value_type("BOOL").unwrap(), "Boolean");
         assert_eq!(normalize_value_type("datetime").unwrap(), "DateTime");
-        assert_eq!(normalize_value_type("Decimal").unwrap(), "Decimal");
+        // "any"/"object" -> Object (the only valid catch-all typed value).
+        assert_eq!(normalize_value_type("any").unwrap(), "Object");
+        assert_eq!(normalize_value_type("Object").unwrap(), "Object");
+        // No normalized output may fall outside the schema enum.
+        for t in [
+            "string", "int", "long", "decimal", "float", "bool", "date", "any", "object",
+        ] {
+            let out = normalize_value_type(t).unwrap();
+            assert!(
+                VALUE_TYPES.contains(&out.as_str()),
+                "{t} normalized to {out}, not in the schema enum"
+            );
+        }
         assert!(normalize_value_type("frobnicate").is_err());
     }
 

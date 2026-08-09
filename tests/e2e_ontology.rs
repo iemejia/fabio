@@ -4269,8 +4269,13 @@ fn ontology_granular_elements_lifecycle() {
             "Product",
             "--property",
             "ProductId:String",
+            // Long and Decimal are NOT Fabric ontology valueTypes — they must
+            // normalize to BigInt/Double or the API rejects the whole import
+            // with ALMOperationImportFailed (regression guard).
             "--property",
-            "Price:Double",
+            "Qty:Long",
+            "--property",
+            "Price:Decimal",
             "--key",
             "ProductId",
         ])
