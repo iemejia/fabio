@@ -478,6 +478,19 @@ mod tests {
             !spec.required_parts.contains(&"GraphModel.json".to_string()),
             "the bogus single-part GraphModel.json must be gone"
         );
+        // stylingConfiguration.json is REQUIRED by updateDefinition (live-verified:
+        // omitting it fails with GraphItemDefinitionIncomplete), so it must be a
+        // required part; graphSettings.json is genuinely optional (4-part push OK).
+        assert!(
+            spec.required_parts
+                .contains(&"stylingConfiguration.json".to_string()),
+            "stylingConfiguration.json must be required (API rejects a definition without it)"
+        );
+        assert!(
+            spec.optional_parts
+                .contains(&"graphSettings.json".to_string()),
+            "graphSettings.json is optional"
+        );
         // The note must warn about the portal-init load gate.
         assert!(
             spec.note.as_deref().unwrap_or("").contains("PORTAL-GATED"),
