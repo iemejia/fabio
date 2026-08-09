@@ -69,6 +69,29 @@ fn normalize_summarize_by(v: &str) -> Result<&'static str> {
 
 // ── add-calculated-column ─────────────────────────────────────────────────────
 
+/// Enrich the opaque `Dataset_Import_FailedToImportDataset` error that Fabric
+/// returns when a calculated column is added to a **Direct Lake** table (they
+/// require Import mode; Direct Lake columns come from the lakehouse) with an
+/// actionable hint. Other import failures pass through unchanged.
+fn enrich_calculated_column_error(e: anyhow::Error, table: &str) -> anyhow::Error {
+    if e.to_string()
+        .contains("Dataset_Import_FailedToImportDataset")
+    {
+        return FabioError::with_hint(
+            ErrorCode::ApiError,
+            e.to_string(),
+            format!(
+                "Calculated columns are not supported on a Direct Lake table like '{table}' (its \
+                 columns come from the lakehouse). Options: add the column in the lakehouse/source \
+                 table, add a MEASURE instead (fabio semantic-model add-measure), or use an \
+                 Import-mode table."
+            ),
+        )
+        .into();
+    }
+    e
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn add_calculated_column(
     cli: &Cli,
@@ -113,7 +136,9 @@ pub(super) async fn add_calculated_column(
     ) {
         return Ok(());
     }
-    push_parts(client, workspace, id, &new_parts, op).await?;
+    push_parts(client, workspace, id, &new_parts, op)
+        .await
+        .map_err(|e| enrich_calculated_column_error(e, table))?;
     output::render_object(
         cli,
         &serde_json::json!({ "status": "column_added", "id": id, "table": table, "column": name }),
@@ -637,6 +662,24 @@ fn update_column_bim(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn calc_column_directlake_error_is_enriched() {
+        let e = anyhow::anyhow!(
+            "API_ERROR: Dataset_Import_FailedToImportDataset: Dataset Workload failed to import"
+        );
+        let enriched = enrich_calculated_column_error(e, "Sales");
+        let fe = enriched
+            .downcast_ref::<FabioError>()
+            .expect("should be a FabioError");
+        let hint = fe.hint.as_deref().unwrap_or_default();
+        assert!(hint.contains("Direct Lake"), "hint: {hint}");
+        assert!(hint.contains("add-measure"), "hint: {hint}");
+        // A different failure passes through unchanged (not a FabioError hint).
+        let other = anyhow::anyhow!("some unrelated failure");
+        let passed = enrich_calculated_column_error(other, "Sales");
+        assert!(passed.downcast_ref::<FabioError>().is_none());
+    }
 
     fn table_tmdl() -> String {
         "table Sales\n\tlineageTag: t1\n\n\tcolumn Amount\n\t\tdataType: double\n\t\tsourceColumn: Amount\n\n\tcolumn Region\n\t\tdataType: string\n\t\tsourceColumn: Region\n\n\tpartition p = m\n\t\tsource = let x = 1 in x\n".to_string()
