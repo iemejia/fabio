@@ -564,6 +564,96 @@ struct OwlObjectProperty {
 
 // ─── RDF/XML Parser ──────────────────────────────────────────────────────────
 
+/// Push a parsed class into the model (shared by the `End` and self-closing
+/// `Empty` element handlers). A missing/blank `rdfs:label` falls back to the
+/// IRI local name.
+fn finalize_owl_class(model: &mut OwlModel, uri: &str, super_class: &str, label: &str) {
+    if uri.is_empty() {
+        return;
+    }
+    if !super_class.is_empty() {
+        model
+            .subclass_of
+            .insert(uri.to_string(), super_class.to_string());
+    }
+    let cleaned = clean_label(label);
+    let name = if cleaned.is_empty() {
+        uri_local_name(uri)
+    } else {
+        cleaned
+    };
+    model.classes.push(OwlClass {
+        uri: uri.to_string(),
+        label: name,
+    });
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finalize_owl_datatype_property(
+    model: &mut OwlModel,
+    uri: &str,
+    domain: &str,
+    range: &str,
+    label: &str,
+    prop_type: &str,
+    is_id: bool,
+    is_ts: bool,
+    is_untyped: bool,
+) {
+    if domain.is_empty() {
+        return;
+    }
+    let cleaned = clean_label(label);
+    let label = if cleaned.is_empty() {
+        uri_local_name(uri)
+    } else {
+        cleaned
+    };
+    if is_ts {
+        model
+            .timeseries_properties
+            .insert((domain.to_string(), label.clone()));
+    }
+    if is_untyped {
+        model
+            .untyped_properties
+            .insert((domain.to_string(), label.clone()));
+    }
+    model.datatype_properties.push(OwlDatatypeProperty {
+        label,
+        domain_uri: domain.to_string(),
+        property_type: if prop_type.is_empty() {
+            xsd_to_fabric_type(range)
+        } else {
+            playground_type_to_fabric(prop_type)
+        },
+        is_identifier: is_id,
+    });
+}
+
+fn finalize_owl_object_property(
+    model: &mut OwlModel,
+    uri: &str,
+    domain: &str,
+    range: &str,
+    label: &str,
+) {
+    if domain.is_empty() || range.is_empty() {
+        return;
+    }
+    let cleaned = clean_label(label);
+    let name = if cleaned.is_empty() {
+        uri_local_name(uri)
+    } else {
+        cleaned
+    };
+    model.object_properties.push(OwlObjectProperty {
+        label: name,
+        domain_uri: domain.to_string(),
+        range_uri: range.to_string(),
+    });
+}
+
 #[allow(clippy::too_many_lines)]
 fn parse_rdf_xml(content: &str) -> OwlModel {
     let mut model = OwlModel::default();
@@ -591,7 +681,9 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
     let mut buf = Vec::new();
 
     loop {
-        match reader.read_event_into(&mut buf) {
+        let event = reader.read_event_into(&mut buf);
+        let is_empty = matches!(event, Ok(Event::Empty(_)));
+        match event {
             Ok(Event::Eof) | Err(_) => break,
             Ok(Event::Start(ref e) | Event::Empty(ref e)) => {
                 let local_name = String::from_utf8_lossy(e.local_name().as_ref()).to_string();
@@ -644,6 +736,48 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
                     }
                     _ => {}
                 }
+                // A self-closing element (`<owl:Class rdf:about="X"/>`) fires
+                // `Event::Empty`, not `Start`+`End`, so finalize it here — else a
+                // valid OWL class/property with no inline children is silently
+                // dropped (0 entity types imported).
+                if is_empty {
+                    match local_name.as_str() {
+                        "Class" => {
+                            finalize_owl_class(
+                                &mut model,
+                                &current_uri,
+                                &current_super_class,
+                                &current_label,
+                            );
+                            in_class = false;
+                        }
+                        "DatatypeProperty" => {
+                            finalize_owl_datatype_property(
+                                &mut model,
+                                &current_uri,
+                                &current_domain,
+                                &current_range,
+                                &current_label,
+                                &current_prop_type,
+                                current_is_id,
+                                current_is_ts,
+                                current_is_untyped,
+                            );
+                            in_datatype_prop = false;
+                        }
+                        "ObjectProperty" => {
+                            finalize_owl_object_property(
+                                &mut model,
+                                &current_uri,
+                                &current_domain,
+                                &current_range,
+                                &current_label,
+                            );
+                            in_object_prop = false;
+                        }
+                        _ => {}
+                    }
+                }
             }
             Ok(Event::Text(ref e)) => {
                 let text = String::from_utf8_lossy(e.as_ref()).to_string();
@@ -663,74 +797,41 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
                 let local_name = String::from_utf8_lossy(e.local_name().as_ref()).to_string();
                 match local_name.as_str() {
                     "Class" => {
-                        if in_class && !current_uri.is_empty() {
-                            if !current_super_class.is_empty() {
-                                model
-                                    .subclass_of
-                                    .insert(current_uri.clone(), current_super_class.clone());
-                            }
-                            model.classes.push(OwlClass {
-                                uri: current_uri.clone(),
-                                label: {
-                                    let cleaned = clean_label(&current_label);
-                                    if cleaned.is_empty() {
-                                        uri_local_name(&current_uri)
-                                    } else {
-                                        cleaned
-                                    }
-                                },
-                            });
+                        if in_class {
+                            finalize_owl_class(
+                                &mut model,
+                                &current_uri,
+                                &current_super_class,
+                                &current_label,
+                            );
                         }
                         in_class = false;
                     }
                     "DatatypeProperty" => {
-                        if in_datatype_prop && !current_domain.is_empty() {
-                            let label = {
-                                let cleaned = clean_label(&current_label);
-                                if cleaned.is_empty() {
-                                    uri_local_name(&current_uri)
-                                } else {
-                                    cleaned
-                                }
-                            };
-                            if current_is_ts {
-                                model
-                                    .timeseries_properties
-                                    .insert((current_domain.clone(), label.clone()));
-                            }
-                            if current_is_untyped {
-                                model
-                                    .untyped_properties
-                                    .insert((current_domain.clone(), label.clone()));
-                            }
-                            model.datatype_properties.push(OwlDatatypeProperty {
-                                label,
-                                domain_uri: current_domain.clone(),
-                                property_type: if current_prop_type.is_empty() {
-                                    xsd_to_fabric_type(&current_range)
-                                } else {
-                                    playground_type_to_fabric(&current_prop_type)
-                                },
-                                is_identifier: current_is_id,
-                            });
+                        if in_datatype_prop {
+                            finalize_owl_datatype_property(
+                                &mut model,
+                                &current_uri,
+                                &current_domain,
+                                &current_range,
+                                &current_label,
+                                &current_prop_type,
+                                current_is_id,
+                                current_is_ts,
+                                current_is_untyped,
+                            );
                         }
                         in_datatype_prop = false;
                     }
                     "ObjectProperty" => {
-                        if in_object_prop && !current_domain.is_empty() && !current_range.is_empty()
-                        {
-                            model.object_properties.push(OwlObjectProperty {
-                                label: {
-                                    let cleaned = clean_label(&current_label);
-                                    if cleaned.is_empty() {
-                                        uri_local_name(&current_uri)
-                                    } else {
-                                        cleaned
-                                    }
-                                },
-                                domain_uri: current_domain.clone(),
-                                range_uri: current_range.clone(),
-                            });
+                        if in_object_prop {
+                            finalize_owl_object_property(
+                                &mut model,
+                                &current_uri,
+                                &current_domain,
+                                &current_range,
+                                &current_label,
+                            );
                         }
                         in_object_prop = false;
                     }
@@ -2482,15 +2583,26 @@ async fn push_to_fabric(
     let has_bindings = parts
         .iter()
         .any(|p| p.path.contains("DataBindings") || p.path.contains("Contextualizations"));
-    let hint = (!has_bindings).then(|| {
-        format!(
+    let hint = if entity_count == 0 {
+        // The import extracted NOTHING — surface it instead of a silent success.
+        Some(
+            "No entity types were extracted from the source. Ensure classes are declared as \
+             owl:Class (RDF/XML or JSON-LD) with a resolvable IRI. NOTE Turtle/.ttl is not \
+             supported by 'ontology import' — convert to RDF/XML (.owl/.rdf) or JSON-LD (.jsonld) \
+             first. See: fabio context examples ontology"
+                .to_string(),
+        )
+    } else if !has_bindings {
+        Some(format!(
             "Imported the type schema only (no data bindings), so the graph is not yet \
              queryable. Bind the types to data: fabio ontology bind --workspace {workspace} \
              --id {id} --lakehouse <LAKEHOUSE_ID> [--bindings map.json] (or --eventhouse <ID> \
              --cluster-uri <URI> --database <DB> --timestamp-column <COL>). \
              See: fabio context examples ontology"
-        )
-    });
+        ))
+    } else {
+        None
+    };
 
     if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
         let mut obj = serde_json::json!({
@@ -2540,6 +2652,41 @@ mod tests {
         assert_eq!(model.classes.len(), 2);
         assert_eq!(model.classes[0].label, "Customer");
         assert_eq!(model.classes[1].label, "Order");
+    }
+
+    #[test]
+    fn test_parse_rdf_xml_self_closing_elements() {
+        // Self-closing (`<owl:Class .../>`) classes/properties fire Event::Empty
+        // (not Start+End); they must still be parsed. A label-less class falls
+        // back to the IRI local name. Regression for the silent 0-import bug.
+        let rdf = r#"<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:xsd="http://www.w3.org/2001/XMLSchema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#">
+  <owl:Class rdf:about="http://example.org/retail#Product"/>
+  <owl:Class rdf:about="http://example.org/retail#Store"/>
+  <owl:DatatypeProperty rdf:about="http://example.org/retail#productId">
+    <rdfs:domain rdf:resource="http://example.org/retail#Product"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#integer"/>
+  </owl:DatatypeProperty>
+  <owl:ObjectProperty rdf:about="http://example.org/retail#soldAt">
+    <rdfs:domain rdf:resource="http://example.org/retail#Product"/>
+    <rdfs:range rdf:resource="http://example.org/retail#Store"/>
+  </owl:ObjectProperty>
+</rdf:RDF>"#;
+        let model = parse_rdf_xml(rdf);
+        assert_eq!(
+            model.classes.len(),
+            2,
+            "self-closing classes must be parsed"
+        );
+        // Label-less class -> IRI local name.
+        assert_eq!(model.classes[0].label, "Product");
+        assert_eq!(model.classes[1].label, "Store");
+        assert_eq!(model.datatype_properties.len(), 1);
+        assert_eq!(model.datatype_properties[0].property_type, "BigInt");
+        assert_eq!(model.object_properties.len(), 1);
     }
 
     #[test]
