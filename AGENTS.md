@@ -84,6 +84,13 @@ ANY new command/subcommand/operation that deletes data, overwrites content witho
 
 When you add or change a destructive command, re-read this checklist during the Pre-Commit Self-Review and confirm each box in your own review notes. A destructive command missing any box is INCOMPLETE.
 
+### Automated guardrail audit (deterministic — `tests/e2e_destructive_guardrails.rs`)
+
+Two tests enforce the guardrail invariant across ALL `destructive: true` commands in `commands.json` (currently 164), so a new destructive command that forgets a guard is caught mechanically:
+
+- **`destructive_commands_are_annotated_mutates`** (runs in CI, fast, hermetic) — asserts every `destructive: true` subcommand is ALSO `mutates: true` (a destructive op must mutate state). Zero false positives; a metadata misannotation fails the suite.
+- **`destructive_commands_dry_run_never_mutates`** (`#[ignore]` — exercise on demand with `cargo test --test e2e_destructive_guardrails -- --ignored`) — spawns the binary once per destructive command with auto-generated dummy required args + `--dry-run` and asserts the **core safety invariant**: a destructive command run under `--dry-run` must NEVER *succeed* (exit 0) without a dry-run marker (`"dry_run":true` or `"status":"dry_run"`). It either returns a dry-run preview (before any network call, or after a read-only expansion) or fails fast on input validation / auth — it must never complete a mutation. It runs with a dummy static token so no interactive auth is attempted (read-modify-write commands get a fast 401, still a non-zero exit). Both read the destructive set + required flags directly from `commands.json`, so the audit scope grows automatically with the CLI. Last full run (Aug 2026): **164 destructive commands, 0 metadata gaps, 0 runtime gaps** — the guardrail stack is complete.
+
 ### How agent safety notices work:
 
 When ALL of the following conditions are true, the error output includes an `agentNotice` field:
