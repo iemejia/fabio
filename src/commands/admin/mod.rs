@@ -92,6 +92,11 @@ pub enum AdminCommand {
     /// Bulk-create tags
     #[command(display_order = 11)]
     CreateTags {
+        /// Tag display name (repeatable). Convenience for the common case —
+        /// builds the `{"createTagsRequest":[{"displayName":...}]}` body for you.
+        #[arg(long = "name")]
+        names: Vec<String>,
+
         /// Path to JSON file with tag definitions
         #[arg(long)]
         file: Option<String>,
@@ -541,9 +546,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &AdminCommand) -
         }
         // Tags
         AdminCommand::ListTags => tags::list_tags(cli, client).await,
-        AdminCommand::CreateTags { file, content } => {
-            tags::create_tags(cli, client, file.as_deref(), content.as_deref()).await
-        }
+        AdminCommand::CreateTags {
+            names,
+            file,
+            content,
+        } => tags::create_tags(cli, client, names, file.as_deref(), content.as_deref()).await,
         AdminCommand::UpdateTag {
             tag_id,
             name,

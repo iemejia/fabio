@@ -106,6 +106,10 @@
       "create-tags": {
         "description": "Bulk-create tags",
         "flags": {
+          "--name": {
+            "type": "string",
+            "description": "Tag display name (repeatable). Convenience for the common case — builds the `{\"createTagsRequest\":[{\"displayName\":...}]}` body for you"
+          },
           "--file": {
             "type": "string",
             "description": "Path to JSON file with tag definitions"
