@@ -20,6 +20,8 @@ fn org_app_audience_dry_run_create() {
             FAKE_WS,
             "--name",
             "test-org-app-audience",
+            "--org-app-id",
+            FAKE_ID,
         ])
         .assert()
         .success();
