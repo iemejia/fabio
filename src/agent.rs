@@ -38,11 +38,13 @@ const AGENT_ENV_VARS: &[(&str, &str)] = &[
 /// when suggested in error hints.
 const DANGEROUS_FLAGS: &[&str] = &[
     "--allow-delete-types",
+    "--allow-override",
     "--allow-unresolved",
     "--cancel-on-timeout",
     "--delete-orphans",
     "--force",
     "--force-all",
+    "--hard",
     "--hard-delete",
     "--overwrite",
 ];
@@ -461,5 +463,101 @@ mod tests {
         for flag in DANGEROUS_FLAGS {
             assert!(seen.insert(*flag), "Duplicate dangerous flag: {flag}");
         }
+    }
+
+    /// Every flag registered in `DANGEROUS_FLAGS` must trigger the safety-notice
+    /// classifier when it appears in an error hint. Guards the wiring end-to-end:
+    /// a flag added to the list but not recognized by `hint_suggests_dangerous_flag`
+    /// would silently never fire the notice.
+    #[test]
+    fn every_dangerous_flag_triggers_the_notice() {
+        for flag in DANGEROUS_FLAGS {
+            let hint = format!("Re-run with {flag} to bypass this safety check.");
+            assert!(
+                hint_suggests_dangerous_flag(&hint),
+                "DANGEROUS_FLAGS entry '{flag}' does not trigger the agent safety notice"
+            );
+        }
+    }
+
+    /// Deterministic coverage audit: every "escalation-style" flag in the CLI
+    /// (an `--allow-*`, `--force*`, `--overwrite`, `--hard*`, `--drop*`,
+    /// `--purge*`, `--prune*`, `--truncate*`, `--discard*`, `--delete-orphans`,
+    /// or `--cancel-on*` flag) MUST be triaged: either registered in
+    /// `DANGEROUS_FLAGS` (a genuine safety-bypass that fires the agent notice) or
+    /// listed in `BENIGN_ESCALATION_FLAGS` below (a capability/behavior toggle
+    /// that is NOT a destructive-operation bypass). A newly-added flag matching
+    /// one of these prefixes fails this test until it is consciously classified,
+    /// preventing a dangerous flag from silently escaping the notice mechanism.
+    #[test]
+    fn all_escalation_flags_are_triaged() {
+        // Flags that MATCH an escalation prefix but are NOT safety-bypasses:
+        // capability grants, MCP-server config, or explicit import/CSV modes.
+        const BENIGN_ESCALATION_FLAGS: &[&str] = &[
+            "--allow-cloud-connection-refresh", // gateway feature toggle
+            "--allow-code-first-artifacts",     // connection capability grant (create-time)
+            "--allow-custom-connectors",        // gateway feature toggle
+            "--allow-gateway-usage",            // connection capability grant
+            "--allow-pairing-by-name",          // workspace clone matching (additive)
+            "--allow-tool",                     // mcp serve: expose a tool (config)
+            "--allow-write",                    // mcp serve: enable write mode (server config)
+            "--drop-if-exists",                 // sql-database import mode (explicit)
+        ];
+        const ESCALATION_PREFIXES: &[&str] = &[
+            "--allow",
+            "--force",
+            "--overwrite",
+            "--hard",
+            "--drop",
+            "--purge",
+            "--prune",
+            "--truncate",
+            "--discard",
+            "--delete-orphans",
+            "--cancel-on",
+        ];
+
+        let schema: serde_json::Value =
+            serde_json::from_str(include_str!("commands/context/data/agent/commands.json"))
+                .expect("commands.json parses");
+        let groups = schema.as_object().expect("commands.json is an object");
+
+        let mut untriaged = Vec::new();
+        for group in groups.values() {
+            let Some(subs) = group.get("subcommands").and_then(|s| s.as_object()) else {
+                continue;
+            };
+            for (subname, sub) in subs {
+                let Some(flags) = sub.get("flags").and_then(|f| f.as_array()) else {
+                    continue;
+                };
+                for flag in flags {
+                    let Some(name) = flag.get("name").and_then(|n| n.as_str()) else {
+                        continue;
+                    };
+                    let long = if name.starts_with("--") {
+                        name.to_string()
+                    } else {
+                        format!("--{name}")
+                    };
+                    let is_escalation = ESCALATION_PREFIXES.iter().any(|p| long.starts_with(p));
+                    if !is_escalation {
+                        continue;
+                    }
+                    let triaged = DANGEROUS_FLAGS.contains(&long.as_str())
+                        || BENIGN_ESCALATION_FLAGS.contains(&long.as_str());
+                    if !triaged {
+                        untriaged.push(format!("{long} (on '{subname}')"));
+                    }
+                }
+            }
+        }
+        assert!(
+            untriaged.is_empty(),
+            "Untriaged escalation-style flag(s) found. Each must be added to \
+             DANGEROUS_FLAGS (in src/agent.rs) if it bypasses a safety check, or \
+             to BENIGN_ESCALATION_FLAGS in this test if it is a benign toggle:\n  {}",
+            untriaged.join("\n  ")
+        );
     }
 }

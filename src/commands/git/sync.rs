@@ -182,10 +182,41 @@ pub(super) async fn pull(
             wait,
             timeout,
         )
-        .await?;
+        .await
+        .map_err(|e| enrich_pull_conflict(e, allow_override))?;
 
     output::render_object(cli, &data, "status");
     Ok(())
+}
+
+/// Enrich a `git pull` (updateFromGit) conflict error with a teaching hint.
+///
+/// When the workspace has changes that conflict with incoming remote changes,
+/// the API rejects the pull. If the caller did NOT already pass
+/// `--allow-override`, surface a hint pointing at it. Because `--allow-override`
+/// is a registered safety-bypass flag (it discards conflicting workspace changes
+/// and is irreversible), naming it in the hint makes the agent safety notice
+/// fire for detected AI agents.
+fn enrich_pull_conflict(err: anyhow::Error, allow_override: bool) -> anyhow::Error {
+    if allow_override || !is_git_conflict(&err.to_string()) {
+        return err;
+    }
+    FabioError::with_hint(
+        ErrorCode::ApiError,
+        format!("Git pull failed due to a conflict: {err}"),
+        "The workspace has changes that conflict with the incoming remote changes. \
+         Resolve them (commit or discard workspace changes), or re-run with \
+         --allow-override to overwrite the conflicting workspace items with the \
+         remote version. --allow-override is irreversible: it discards the \
+         conflicting workspace changes.",
+    )
+    .into()
+}
+
+/// Heuristic: does an updateFromGit error indicate a merge conflict?
+fn is_git_conflict(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    lower.contains("conflict") || lower.contains("override")
 }
 
 /// Show items tracked by Git integration in a workspace.
@@ -352,4 +383,44 @@ pub(super) async fn show_tracked(cli: &Cli, client: &FabricClient, workspace: &s
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent;
+
+    #[test]
+    fn detects_conflict_messages() {
+        assert!(is_git_conflict("UpdateFromGitConflict: items conflict"));
+        assert!(is_git_conflict("The pull would OVERRIDE workspace changes"));
+        assert!(!is_git_conflict("Workspace not connected to Git"));
+        assert!(!is_git_conflict("Could not determine workspaceHead"));
+    }
+
+    #[test]
+    fn conflict_error_is_enriched_only_without_override() {
+        let base = || anyhow::anyhow!("updateFromGit failed: Conflict detected");
+
+        // Already passed --allow-override: no enrichment (return as-is).
+        let passthrough = enrich_pull_conflict(base(), true);
+        assert!(!passthrough.to_string().contains("--allow-override"));
+
+        // Conflict without override: hint names --allow-override so the
+        // agent safety notice fires.
+        let enriched = enrich_pull_conflict(base(), false);
+        let fe = enriched
+            .downcast_ref::<FabioError>()
+            .expect("enriched to FabioError");
+        let hint = fe.hint.as_deref().expect("hint present");
+        assert!(hint.contains("--allow-override"));
+        assert!(agent::hint_suggests_dangerous_flag(hint));
+    }
+
+    #[test]
+    fn non_conflict_error_is_not_enriched() {
+        let err = anyhow::anyhow!("Workspace not connected to Git");
+        let out = enrich_pull_conflict(err, false);
+        assert!(out.downcast_ref::<FabioError>().is_none());
+    }
 }
