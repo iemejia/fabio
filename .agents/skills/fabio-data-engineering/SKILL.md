@@ -246,6 +246,8 @@ Manage Mounted Data Factories (ADF integration)
 - Notebook source cells must be a list of strings in ipynb; fabio builds this for you from --file/--content.
 - First Spark run on a small capacity is a 2-5 min cold start; LRO may report 430 TooManyRequestsForCapacity when the capacity is saturated.
 - Environment library changes require a publish (staging/publish) before they take effect.
+- Spark monitoring (spark get-advice / get-resource-usage / get-logs) needs --app-id + --attempt-id from 'spark get-livy-session' (sparkApplicationId / attemptNumber); --item-type maps to notebook|spark-job-definition|lakehouse. 'get-logs --type livy' needs no --app-id, but driver/executor logs do (--meta returns log-file metadata JSON, otherwise raw text). Livy sessions are also listable per-item via 'spark-job-definition list-livy-sessions'/'get-livy-session'.
+- On-demand job triggers (notebook/data-pipeline/copy-job/dataflow/spark-job-definition run) return 202 with the instance id in the Location header (fabio reads it); --wait polls to completion. 'copy-job run' job type is Execute.
 
 ## Troubleshooting
 | Symptom | Fix |

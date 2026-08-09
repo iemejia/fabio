@@ -135,6 +135,9 @@ Manage Azure Databricks storage items (Fabric integration with Azure Databricks)
 - Mirroring is continuous replication into OneLake Delta; the mirror is read-only in Fabric and queried via its SQL analytics endpoint.
 - mirrored-warehouse is list-only in fabio (it is provisioned/managed by Fabric, not independently created).
 - Catalog mirrors expose discovery + refresh-metadata; the source schema must be re-discovered after upstream DDL.
+- A freshly created mirrored-databricks-catalog is autoSync:Disabled / mirrorStatus:NotMirrored — it does NOT replicate until you run 'mirrored-databricks-catalog update --auto-sync Enabled' (the PATCH also requires the current displayName; fabio resolves it). Databricks MANAGED tables in Databricks-managed storage CANNOT be read via the mirror SQL endpoint (storage BadRequest); use EXTERNAL tables in customer ADLS (+ update --storage-connection-id) or the OneLake 'Azure Databricks Storage' external-location flow. Disabling deletion vectors is necessary but NOT sufficient.
+- Open mirroring: 'mirrored-database create --open-mirroring' makes a push-based (GenericMirror) DB; get its OneLake landing zone with 'mirrored-database landing-zone', push a 20-digit <n>.parquet per table + a _metadata.json ({keyColumns:[...]}) via 'lakehouse upload --id <mirroredDbId>', then 'mirrored-database start'. Query it with 'warehouse query --id <mirroredDbId>'.
+- mirrored-database status / table-status are POST actions (fabio handles this); table-status is paginated — filter with --query "[?status!='Replicating']".
 
 ## Troubleshooting
 | Symptom | Fix |

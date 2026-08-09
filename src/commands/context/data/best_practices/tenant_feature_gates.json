@@ -1,0 +1,28 @@
+{
+  "topic": "tenant-feature-gates",
+  "title": "Tenant-Setting Feature Gates (disabled-setting teaching errors)",
+  "summary": "Many Fabric features are gated by a tenant setting an admin can toggle. When a setting is disabled the API returns an opaque 403 FeatureNotAvailable; fabio turns this into an admin-aware teaching error that names the exact setting and (for admins) the command to enable it. Do NOT blindly retry a feature-disabled error.",
+  "how_it_works": {
+    "detection": "fabio detects a feature-disabled error generically (FeatureNotAvailable / TenantSwitchDisabled / 'not enabled in the tenant' / 'tenant setting ... disabled') for ANY command, then probes whether the caller is a Fabric admin.",
+    "admin_aware_hint": "Admin caller -> the error hint gives the exact enable command: fabio admin update-tenant-setting --setting-name <NAME> --content '{\"enabled\": true}'. Non-admin caller -> the hint says to ask an admin (no command they cannot run). Unknown -> a non-committal hint plus 'fabio admin list-tenant-settings' to find it.",
+    "named_setting": "For registered features the hint NAMES the exact tenant setting and lists non-gated fallbacks; for unregistered features a generic admin-aware hint still fires (never an opaque failure).",
+    "hint_type": "The error is a FORBIDDEN with hintType semantic_correction — treat it as a gate to clear, not a transient error to retry."
+  },
+  "agent_guidance": [
+    "On a feature-disabled FORBIDDEN, read the named setting from the hint. If you are (or the user is) a Fabric admin, enabling is a one-liner: fabio admin update-tenant-setting --setting-name <NAME> --content '{\"enabled\": true}'. Otherwise surface the setting name to the user and ask an admin to enable it.",
+    "Do NOT auto-retry the same command without addressing the gate — it will fail identically.",
+    "Prefer any fallback the hint offers (e.g. 'semantic-model query --dax' when the Power BI MCP setting is off).",
+    "Some tenant settings gate only the portal UI and do NOT affect the REST path — if a command works, the setting is not gating it."
+  ],
+  "known_gated_features": {
+    "PowerBIMCP": "semantic-model generate-dax / copilot-schema, report copilot-metadata (fallback: query --dax, list-tables, report get-definition)",
+    "OntologyPreview": "ontology group",
+    "ArtifactDatabricksStoragePreview": "azure-databricks-storage group",
+    "DigitalOperationsPreview": "digital-twin-builder group",
+    "ArtifactMirroredCatalogPreview": "mirrored-catalog group",
+    "AllowExternalDataSharingSwitch": "item external-data-share (+ AllowExternalDataSharingReceiverSwitch for accept)",
+    "PublishToWeb": "report publish-to-web",
+    "AllowSendAOAIDataToOtherRegions": "ontology NL search (Fabric IQ) when the capacity region lacks in-region Azure OpenAI"
+  },
+  "discovering_settings": "fabio admin list-tenant-settings (requires Fabric admin) lists every setting with its title and enabled state; match on the title to find the exact settingName."
+}

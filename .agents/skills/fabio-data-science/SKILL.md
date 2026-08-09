@@ -98,6 +98,7 @@ Manage anomaly detectors
 - Scoring has two forms: score (active version) and score-version (a pinned version); endpoints are managed separately (get-endpoint/update-endpoint).
 - Anomaly detectors carry their logic in a definition part (base64) — edit via update-definition, not plain flags.
 - ml-experiment {list-runs,get-run,get-metric-history} read the per-workspace Fabric-hosted MLflow tracking server (the experiment item GUID is the MLflow experiment_id) — NOT the Fabric item API; --filter/--order-by take MLflow expressions.
+- TWO kinds of model versions: 'ml-model list-registry-versions'/'get-registry-version' read the MLflow model REGISTRY (the TRAINED versions, keyed by the model's DISPLAY NAME) — distinct from 'list-versions'/'get-version' which are the serving-ENDPOINT versions. Use the registry commands to discover trained versions after the register/version-model tutorial step.
 
 ## Troubleshooting
 | Symptom | Fix |

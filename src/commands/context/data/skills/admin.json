@@ -43,7 +43,7 @@
     {"symptom": "label list shows UUIDs instead of names", "fix": "Name resolution needs M365 E5 + InformationProtection.Read via Microsoft Graph."},
     {"symptom": "capacity suspend/resume fails", "fix": "These use the ARM scope (management.azure.com); ensure your identity has rights on the capacity resource."}
   ],
-  "shared_references": ["admin-apis", "throttling", "pagination", "sensitivity-labels", "tags"],
+  "shared_references": ["admin-apis", "throttling", "pagination", "sensitivity-labels", "tags", "tenant-feature-gates"],
   "see_also": [
     "fabio context persona fabric-admin",
     "fabio context best-practices admin-apis",

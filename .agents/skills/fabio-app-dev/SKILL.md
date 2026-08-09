@@ -177,6 +177,7 @@ Manage org app audiences (audience definitions for org apps)
 | Data Agent gives wrong answers | Add few-shots (add-fewshot), tighten instructions (update-config), and validate with 'data-agent evaluate' / 'validate-fewshots' (add --llm-* for a judge model). |
 | user-data-function invoke fails | Ensure the function is published with public access; pass the exact portal-copied --url (HTTPS *.fabric.microsoft.com). fabio rejects non-trusted/non-HTTPS URLs. |
 | SQL Database / Cosmos DB create fails on small capacity | These need F4+ capacity; resume/scale the capacity first. |
+| data-agent add-datasource fails 'Failed to fetch schema' for an OPEN (push/GenericMirror) MirroredDatabase, even though 'warehouse query' reads it fine | This is a Fabric data-agent server limitation, not a fabio bug: an open mirror deterministically fails NL2SQL schema fetch (a Warehouse added to the same agent/session/token succeeds). Use a connection-based mirror (Snowflake/CosmosDB/Azure SQL) or a Warehouse/Lakehouse/SQLDatabase source for the data-agent NL2SQL case. |
 
 ## Safety
 - Publishing a Data Agent makes it available to consumers — confirm datasources/table scope and validate answers first.

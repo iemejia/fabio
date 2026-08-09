@@ -70,6 +70,7 @@ Manage datamarts (Power BI)
 |---|---|
 | Unsure whether to use a dataflow or a pipeline | Transform data -> dataflow; sequence activities -> data-pipeline. Run 'fabio context disambiguate dataflow'. |
 | Definition rejected | Ensure both the mashup and queryMetadata parts are present and valid. |
+| 'dataflow run' fails with 'Invalid QueriesMetadata ... must not be empty' | A REST-authored Gen2 dataflow needs a queriesMetadata map in queryMetadata.json: add "queriesMetadata": {"<QueryName>": {"queryId", "queryName", "loadEnabled"}}. NOTE the Gen2 lakehouse data destination is portal-generated (a hand-authored dataDestinations binding runs but persists no table). |
 
 ## Safety
 - Deleting or overwriting a dataflow definition replaces its transformation logic — confirm with the user.

@@ -140,6 +140,8 @@ Many Fabric features are gated by a **tenant setting** an admin can toggle; when
 
 Currently registered (verified live via a tenant-settings dump): `PowerBIMCP` (semantic-model generate-dax/copilot-schema, report copilot-metadata), `ArtifactDatabricksStoragePreview` (azure-databricks-storage), `OntologyPreview` (ontology), `DigitalOperationsPreview` (digital-twin-builder), `ArtifactMirroredCatalogPreview` (mirrored-catalog), `AppBackendTenant` (app-backend), `AllowExternalDataSharingSwitch`/`AllowExternalDataSharingReceiverSwitch` (item external-data-share / accept), `PublishToWeb` (report publish-to-web). Live-validated on `PowerBIMCP` (subcommand-mapped) and `ArtifactDatabricksStoragePreview` (group-mapped). NEVER add an unverified mapping — an unverified row is worse than none (it names the wrong setting); the generic Layer-1 hint already covers the un-registered case actionably.
 
+Agent discovery of this behavior is served by the `tenant-feature-gates` best-practice (`fabio context best-practices tenant-feature-gates`, also surfaced via `context find` and referenced from the `admin`/`bi` sub-skills' `shared_references`) — it teaches agents to read the named setting from a feature-disabled `FORBIDDEN`, enable it (admin) or ask an admin, and NOT to blindly retry.
+
 ## Command File Structure (MANDATORY)
 
 Any command module that exceeds **1500 lines of code** MUST be refactored into a directory module with one file per subcommand group. Follow the pattern established by `context/`, `deploy/`, and `lakehouse/`:

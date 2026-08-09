@@ -136,6 +136,7 @@ Manage warehouse snapshots
 - 'plan' (SHOWPLAN_XML) to inspect a query's cost before executing it.
 - --sql @file.sql or stdin piping for large/multiline queries over inline strings.
 - queries-history / queries-long-running for diagnostics instead of ad-hoc DMV queries.
+- 'queries-history --label <name>' (with the allocated-CPU + data-scanned-remote/memory/disk columns) to compare labeled executions — e.g. tag queries with OPTION (LABEL='Regular'|'Clustered') to assess clustering effectiveness.
 
 ### AVOID
 - Using a Warehouse for OLTP or a SQL Database for heavy analytics — pick the surface that matches the workload.
@@ -145,6 +146,11 @@ Manage warehouse snapshots
 ## Key gotchas
 - sys.dm_exec_requests has no login_name column on Fabric (it lives in sys.dm_exec_sessions).
 - sys.dm_db_stats_properties is NOT supported on Lakehouse SQL endpoints.
+- 'warehouse query --id <X>' resolves the SQL analytics endpoint of a Warehouse, a WarehouseSnapshot, a MirroredDatabase (open/CDC mirror), a MirroredAzureDatabricksCatalog, AND a Lakehouse — use it to T-SQL query mirrored/snapshot data, not just warehouses.
+- TDS date/time columns (DATE/DATETIME2/DATETIMEOFFSET/TIME) render as ISO-8601 strings across warehouse/sql-database/sql-endpoint/lakehouse queries; parse them as ISO-8601, not raw internals.
+- A zero-row SELECT returns the LIST envelope {"data":[],"count":0} (a result set with 0 rows), NOT a scalar 'no result set' message; DDL/DML with no result set returns the scalar rows_affected message. Iterate/filter 'data' safely.
+- queryinsights.* views populate asynchronously (up to ~15 min after the first queries on a fresh warehouse) — 'Invalid object name queryinsights.*' is initialization lag, not a bug.
+- 'warehouse set-retention' sets the time-travel window (1-120 days); DECREASING it is irreversible (background GC permanently drops older history) — it is destructive and dry-run guarded. 'warehouse create --collation' is create-time only (case-sensitive default vs Latin1_General_100_CI_AS_KS_WS_SC_UTF8).
 
 ## Troubleshooting
 | Symptom | Fix |
@@ -157,6 +163,7 @@ Manage warehouse snapshots
 ## Safety
 - queries-kill terminates a running session (KILL) — confirm the session id and impact with the user.
 - DDL/DML via query (DROP/DELETE/TRUNCATE) is executed for real — use 'plan' to inspect without executing, and confirm destructive statements.
+- 'set-retention' DECREASING the retention window is irreversible (permanently drops time-travel history older than the new window) — it is destructive and dry-run guarded; confirm with the user.
 
 ## Shared references
 Cross-cutting operational guidance (the "common" layer) — consult the relevant topic before non-trivial work:

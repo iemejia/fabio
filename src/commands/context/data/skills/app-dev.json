@@ -69,6 +69,10 @@
     {
       "symptom": "SQL Database / Cosmos DB create fails on small capacity",
       "fix": "These need F4+ capacity; resume/scale the capacity first."
+    },
+    {
+      "symptom": "data-agent add-datasource fails 'Failed to fetch schema' for an OPEN (push/GenericMirror) MirroredDatabase, even though 'warehouse query' reads it fine",
+      "fix": "This is a Fabric data-agent server limitation, not a fabio bug: an open mirror deterministically fails NL2SQL schema fetch (a Warehouse added to the same agent/session/token succeeds). Use a connection-based mirror (Snowflake/CosmosDB/Azure SQL) or a Warehouse/Lakehouse/SQLDatabase source for the data-agent NL2SQL case."
     }
   ],
   "safety": [
