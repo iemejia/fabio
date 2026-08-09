@@ -120,16 +120,18 @@ async fn call_reflex_tool(
     let text = result.text();
     let parsed: Value = serde_json::from_str(&text).unwrap_or_else(|_| Value::from(text.clone()));
     if result.is_error {
-        // The MCP server's "Getting cluster for kql database failed" is cryptic;
-        // it almost always means the wrong item id was passed as the KQL source
-        // (e.g. an eventhouse id instead of the KQL DATABASE item id).
+        // The MCP server's "Getting cluster for kql database failed" is cryptic.
+        // fabio now auto-resolves --eventhouse-id (a KQL database item id) to its
+        // queryServiceUri + name before calling create_rule, so this should only
+        // surface if that resolution failed (e.g. the id is not a KQL database in
+        // the given workspace) or a raw --rule payload used the itemId shape.
         if text.contains("Getting cluster for kql database failed") {
             return Err(FabioError::with_hint(
                 ErrorCode::ApiError,
                 format!("Activator tool '{tool}' returned an error: {text}"),
-                "The KQL source could not be resolved. Pass the KQL DATABASE item id \
-                 to --eventhouse-id (alias --kql-database-id) — NOT the eventhouse id — \
-                 or use --cluster <queryServiceUri> + --database <name>.",
+                "The KQL source could not be resolved. Ensure --eventhouse-id is a KQL DATABASE \
+                 item id in --workspace (fabio resolves its cluster automatically), or pass \
+                 --cluster <queryServiceUri> + --database <name> explicitly.",
             )
             .into());
         }
@@ -257,25 +259,39 @@ fn typed_value(v: &str) -> Value {
 
 /// Build the KQL `source` object from the typed spec (exactly one of
 /// eventhouse-id / cluster+database must be set).
-fn build_source(workspace: &str, s: &TypedRuleSpec) -> Result<Value> {
-    let eventhouse_item = match (s.eventhouse_id, s.cluster, s.database) {
-        (Some(item_id), None, _) => json!({
-            "itemId": item_id,
-            "workspaceId": s.eventhouse_workspace.unwrap_or(workspace),
-            "itemType": "KustoDatabase",
-        }),
-        (None, Some(cluster), Some(db)) => json!({
-            "databaseName": db,
-            "clusterHostName": cluster,
-        }),
-        _ => {
-            return Err(FabioError::with_hint(
-                ErrorCode::InvalidInput,
-                "A KQL data source is required.".to_string(),
-                "Provide either --eventhouse-id (a Fabric eventhouse KQL database) or \
-                 --cluster + --database (an Azure Data Explorer cluster).",
-            )
-            .into());
+///
+/// `resolved` overrides the eventhouse-id path with an already-resolved
+/// `(clusterHostName, databaseName)` — the Activator MCP server cannot resolve a
+/// Fabric eventhouse `KustoDatabase` `itemId` to a cluster ("Getting cluster for
+/// kql database failed"), so `create_rule` resolves the query-service URI up
+/// front and passes it here as the reliable `{databaseName, clusterHostName}`.
+fn build_source(
+    workspace: &str,
+    s: &TypedRuleSpec,
+    resolved: Option<(&str, &str)>,
+) -> Result<Value> {
+    let eventhouse_item = if let Some((cluster, db)) = resolved {
+        json!({ "databaseName": db, "clusterHostName": cluster })
+    } else {
+        match (s.eventhouse_id, s.cluster, s.database) {
+            (Some(item_id), None, _) => json!({
+                "itemId": item_id,
+                "workspaceId": s.eventhouse_workspace.unwrap_or(workspace),
+                "itemType": "KustoDatabase",
+            }),
+            (None, Some(cluster), Some(db)) => json!({
+                "databaseName": db,
+                "clusterHostName": cluster,
+            }),
+            _ => {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    "A KQL data source is required.".to_string(),
+                    "Provide either --eventhouse-id (a Fabric eventhouse KQL database) or \
+                     --cluster + --database (an Azure Data Explorer cluster).",
+                )
+                .into());
+            }
         }
     };
     Ok(json!({
@@ -333,8 +349,13 @@ fn build_action(s: &TypedRuleSpec) -> Result<Value> {
 
 /// Build the full `createRuleParams` from the typed spec (fabio injects
 /// `artifactId`/`workspaceId`).
-fn build_create_rule_params(workspace: &str, id: &str, s: &TypedRuleSpec) -> Result<Value> {
-    let source = build_source(workspace, s)?;
+fn build_create_rule_params(
+    workspace: &str,
+    id: &str,
+    s: &TypedRuleSpec,
+    resolved: Option<(&str, &str)>,
+) -> Result<Value> {
+    let source = build_source(workspace, s, resolved)?;
     let action = build_action(s)?;
     Ok(json!({
         "artifactId": id,
@@ -393,7 +414,32 @@ pub(super) async fn create_rule(
         v["workspaceId"] = Value::from(workspace);
         v
     } else if let Some(s) = spec {
-        build_create_rule_params(workspace, id, &s)?
+        // Resolve a Fabric eventhouse/KQL-database id to its cluster URI +
+        // database name up front. The Activator MCP server CANNOT resolve a
+        // `KustoDatabase` itemId to a cluster ("Getting cluster for kql database
+        // failed"), so we fetch queryServiceUri + displayName and pass the
+        // reliable {clusterHostName, databaseName} shape instead.
+        let resolved: Option<(String, String)> =
+            if let (Some(kdb), None) = (s.eventhouse_id, s.cluster) {
+                let ws = s.eventhouse_workspace.unwrap_or(workspace);
+                client
+                    .get(&format!("/workspaces/{ws}/kqlDatabases/{kdb}"))
+                    .await
+                    .ok()
+                    .and_then(|d| {
+                        let uri = d
+                            .get("properties")?
+                            .get("queryServiceUri")?
+                            .as_str()?
+                            .to_string();
+                        let name = d.get("displayName")?.as_str()?.to_string();
+                        Some((uri, name))
+                    })
+            } else {
+                None
+            };
+        let resolved_ref = resolved.as_ref().map(|(c, d)| (c.as_str(), d.as_str()));
+        build_create_rule_params(workspace, id, &s, resolved_ref)?
     } else {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
@@ -541,7 +587,8 @@ mod tests {
         // {name,isColumnReference,value{type,value}}; email args are
         // messageLocale/to/subject/body/headline.
         let recips = vec!["alice@contoso.com".to_string()];
-        let params = build_create_rule_params("ws", "rx", &base_spec("email", &recips)).unwrap();
+        let params =
+            build_create_rule_params("ws", "rx", &base_spec("email", &recips), None).unwrap();
         assert_eq!(params["artifactId"], "rx");
         assert_eq!(params["workspaceId"], "ws");
         assert_eq!(
@@ -577,9 +624,36 @@ mod tests {
     }
 
     #[test]
+    fn resolved_override_uses_cluster_host_shape_not_kustodatabase_item() {
+        // When create_rule resolves an eventhouse/KQL-db id to its query URI +
+        // name, build_source must emit the reliable {clusterHostName,
+        // databaseName} shape (NOT the {itemId,itemType:KustoDatabase} shape the
+        // Activator MCP server fails to resolve).
+        let recips = vec!["alice@contoso.com".to_string()];
+        let params = build_create_rule_params(
+            "ws",
+            "rx",
+            &base_spec("email", &recips),
+            Some(("https://trd-x.kusto.fabric.microsoft.com", "MyDb")),
+        )
+        .unwrap();
+        let item = &params["source"]["eventhouseItem"];
+        assert_eq!(
+            item["clusterHostName"],
+            "https://trd-x.kusto.fabric.microsoft.com"
+        );
+        assert_eq!(item["databaseName"], "MyDb");
+        assert!(
+            item.get("itemId").is_none(),
+            "must not use the itemId shape"
+        );
+    }
+
+    #[test]
     fn build_params_teams_uses_teamsmessage_and_recipient_email() {
         let recips = vec!["bob@contoso.com".to_string()];
-        let params = build_create_rule_params("ws", "rx", &base_spec("teams", &recips)).unwrap();
+        let params =
+            build_create_rule_params("ws", "rx", &base_spec("teams", &recips), None).unwrap();
         let action = &params["model"]["action"];
         assert_eq!(action["actionType"], "TeamsMessage");
         let names: Vec<&str> = action["arguments"]
@@ -600,12 +674,12 @@ mod tests {
         let recips = vec!["a@b.com".to_string()];
         let mut s = base_spec("email", &recips);
         s.eventhouse_id = None; // no source at all
-        assert!(build_create_rule_params("ws", "rx", &s).is_err());
+        assert!(build_create_rule_params("ws", "rx", &s, None).is_err());
     }
 
     #[test]
     fn build_params_requires_recipients() {
         let empty: Vec<String> = vec![];
-        assert!(build_create_rule_params("ws", "rx", &base_spec("email", &empty)).is_err());
+        assert!(build_create_rule_params("ws", "rx", &base_spec("email", &empty), None).is_err());
     }
 }
