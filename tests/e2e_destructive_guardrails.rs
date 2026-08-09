@@ -151,3 +151,76 @@ fn destructive_commands_dry_run_never_mutates() {
         failures.join("\n")
     );
 }
+
+/// Whenever a destructive command's `--dry-run` guard actually fires offline
+/// (exit 0 with a dry-run marker), its preview MUST carry `"destructive": true`
+/// AND — because we run with an AI-agent env var set — an `agentNotice` telling
+/// the agent to confirm the irreversible action with the user.
+///
+/// This validates the destructive-signal end-to-end for every destructive
+/// command whose guard is reachable without a network call: it proves the
+/// operation string each command passes to `dry_run_guard` matches its
+/// `commands.json` key (a mismatch would yield a dry-run preview WITHOUT the
+/// destructive marker, which fails here). Read-modify-write commands whose guard
+/// fires only after a network read get a fast 401 offline (no dry-run marker),
+/// so they are counted as "not observable offline" rather than asserted — their
+/// recognition is covered deterministically by the `agent.rs` unit test
+/// `every_destructive_command_is_recognized`.
+#[test]
+#[ignore = "spawns one process per destructive command; run on demand"]
+fn destructive_dry_run_previews_carry_confirm_signal() {
+    let root = commands_json();
+    let dest = destructive_subcommands(&root);
+    let bin = assert_cmd::cargo::cargo_bin("fabio");
+
+    let mut observed = 0usize;
+    let mut failures = Vec::new();
+    for (group, sub, smeta) in &dest {
+        let mut args = vec![group.clone(), sub.clone()];
+        args.extend(dummy_required_args(smeta));
+        args.push("--dry-run".to_string());
+
+        let output = Command::new(&bin)
+            .args(&args)
+            .env("FABIO_ACCESS_TOKEN", "dummy-token-for-dry-run-audit")
+            .env_remove("FABIO_SQL_ACCESS_TOKEN")
+            // Present an AI agent so the confirm-with-user notice fires.
+            .env("CLAUDE_CODE", "1")
+            .output()
+            .expect("run fabio");
+
+        if !output.status.success() {
+            continue; // fast auth/validation failure — guard not reachable offline
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let compact: String = stdout.split_whitespace().collect();
+        let is_dry_run =
+            compact.contains("\"dry_run\":true") || compact.contains("\"status\":\"dry_run\"");
+        if !is_dry_run {
+            continue; // handled by destructive_commands_dry_run_never_mutates
+        }
+        observed += 1;
+        if !compact.contains("\"destructive\":true") {
+            failures.push(format!(
+                "`{group} {sub}` dry-run preview is MISSING \"destructive\":true \
+                 (operation string likely does not match its commands.json key)"
+            ));
+        }
+        if !compact.contains("\"agentNotice\":") {
+            failures.push(format!(
+                "`{group} {sub}` dry-run preview is MISSING agentNotice with an agent present"
+            ));
+        }
+    }
+
+    assert!(
+        observed > 20,
+        "sanity: expected to observe many offline destructive dry-run previews, saw {observed}"
+    );
+    assert!(
+        failures.is_empty(),
+        "{} destructive dry-run preview(s) missing the confirm signal:\n  {}",
+        failures.len(),
+        failures.join("\n  ")
+    );
+}

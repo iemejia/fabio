@@ -393,14 +393,31 @@ pub fn dry_run_guard(cli: &Cli, operation: &str, details: &Value) -> bool {
     if !cli.dry_run {
         return false;
     }
-    let obj = serde_json::json!({
+    let obj = build_dry_run_object(operation, details);
+    render_object(cli, &obj, "would_execute");
+    true
+}
+
+/// Build the `--dry-run` preview envelope for an operation.
+///
+/// For a destructive operation (per the agent command schema), the envelope
+/// gains `"destructive": true` and — when an AI agent is detected — an
+/// `agentNotice` telling the agent to confirm the irreversible action with the
+/// user before executing it for real.
+fn build_dry_run_object(operation: &str, details: &Value) -> Value {
+    let mut obj = serde_json::json!({
         "dry_run": true,
         "would_execute": operation,
         "details": details,
         "hint": "Remove --dry-run to execute this operation."
     });
-    render_object(cli, &obj, "would_execute");
-    true
+    if agent::is_destructive_operation(operation) {
+        obj["destructive"] = Value::Bool(true);
+        if let Some(notice) = agent::destructive_notice() {
+            obj["agentNotice"] = Value::String(notice);
+        }
+    }
+    obj
 }
 
 /// Print one item in plain mode: the `plain_key` field if the item is an object
@@ -930,6 +947,25 @@ mod tests {
         let cli = make_test_cli(&["--dry-run"]);
         let details = serde_json::json!({"name": "test"});
         assert!(dry_run_guard(&cli, "workspace.create", &details));
+    }
+
+    #[test]
+    fn dry_run_object_marks_destructive_operations() {
+        let details = serde_json::json!({"id": "x"});
+        // A destructive command (per commands.json) gets the destructive marker.
+        let obj = build_dry_run_object("item delete", &details);
+        assert_eq!(obj["destructive"], Value::Bool(true));
+        assert_eq!(obj["dry_run"], Value::Bool(true));
+        assert_eq!(obj["would_execute"], Value::from("item delete"));
+    }
+
+    #[test]
+    fn dry_run_object_omits_destructive_for_read_only_operations() {
+        let details = serde_json::json!({});
+        let obj = build_dry_run_object("workspace list", &details);
+        assert!(obj.get("destructive").is_none());
+        // A non-destructive op never carries the agent confirm notice.
+        assert!(obj.get("agentNotice").is_none());
     }
 
     #[test]

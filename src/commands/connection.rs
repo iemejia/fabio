@@ -567,12 +567,7 @@ fn build_connection_body(
 }
 
 async fn delete(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
-    if cli.dry_run {
-        let preview = json!({
-            "status": "dry_run",
-            "message": format!("Would delete connection '{id}'"),
-        });
-        output::render_object(cli, &preview, "status");
+    if output::dry_run_guard(cli, "connection delete", &json!({ "id": id })) {
         return Ok(());
     }
 
@@ -811,12 +806,11 @@ async fn delete_role_assignment(
     id: &str,
     assignment_id: &str,
 ) -> Result<()> {
-    if cli.dry_run {
-        let preview = json!({
-            "status": "dry_run",
-            "message": format!("Would delete role assignment '{assignment_id}' from connection '{id}'"),
-        });
-        output::render_object(cli, &preview, "status");
+    if output::dry_run_guard(
+        cli,
+        "connection delete-role-assignment",
+        &json!({ "id": id, "assignmentId": assignment_id }),
+    ) {
         return Ok(());
     }
 

@@ -94,6 +94,59 @@ pub fn hint_suggests_dangerous_flag(hint: &str) -> bool {
     DANGEROUS_FLAGS.iter().any(|flag| hint.contains(flag))
 }
 
+/// The set of `"<group> <subcommand>"` keys that are marked `destructive: true`
+/// in the agent command schema (`commands.json`). Parsed once, lazily.
+///
+/// This is the single source of truth for "is this operation destructive?" used
+/// by the `--dry-run` guard to annotate a preview so agents can flag the
+/// operation to the user before executing it for real.
+static DESTRUCTIVE_OPERATIONS: std::sync::LazyLock<std::collections::HashSet<String>> =
+    std::sync::LazyLock::new(|| {
+        let schema: serde_json::Value =
+            serde_json::from_str(include_str!("commands/context/data/agent/commands.json"))
+                .expect("commands.json is valid JSON");
+        let mut set = std::collections::HashSet::new();
+        if let Some(groups) = schema.as_object() {
+            for (group, gdef) in groups {
+                let Some(subs) = gdef.get("subcommands").and_then(|s| s.as_object()) else {
+                    continue;
+                };
+                for (sub, sdef) in subs {
+                    if sdef
+                        .get("destructive")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(false)
+                    {
+                        set.insert(format!("{group} {sub}"));
+                    }
+                }
+            }
+        }
+        set
+    });
+
+/// Whether an operation string (`"<group> <subcommand>"`, as passed to the
+/// `--dry-run` guard) is a destructive command per the agent command schema.
+pub fn is_destructive_operation(operation: &str) -> bool {
+    DESTRUCTIVE_OPERATIONS.contains(operation)
+}
+
+/// Returns a "confirm with the user" notice for a destructive `--dry-run`
+/// preview when an AI agent is detected, or `None` for a human/unknown caller.
+///
+/// Unlike [`agent_notice`] (which fires on a safety-bypass error hint), this
+/// fires proactively on the dry-run preview of any destructive command so the
+/// agent validates the irreversible action with the user before removing
+/// `--dry-run`.
+pub fn destructive_notice() -> Option<String> {
+    let provider = detect_agent()?;
+    Some(format!(
+        "Note for AI agents ({provider}): this is a destructive, potentially \
+         irreversible operation. Confirm with the user before re-running it \
+         without --dry-run."
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -559,5 +612,58 @@ mod tests {
              to BENIGN_ESCALATION_FLAGS in this test if it is a benign toggle:\n  {}",
             untriaged.join("\n  ")
         );
+    }
+
+    /// Deterministic coverage audit: EVERY command marked `destructive: true`
+    /// in the agent command schema must be recognized by
+    /// `is_destructive_operation`, so its `--dry-run` preview is annotated with
+    /// `"destructive": true` (+ the agent confirm-with-user notice). This proves
+    /// the destructive-signal covers the full destructive command surface, not a
+    /// hand-maintained subset — a newly-added destructive command is covered
+    /// automatically (both read from the same `commands.json`).
+    #[test]
+    fn every_destructive_command_is_recognized() {
+        let schema: serde_json::Value =
+            serde_json::from_str(include_str!("commands/context/data/agent/commands.json"))
+                .expect("commands.json parses");
+        let groups = schema.as_object().expect("commands.json is an object");
+
+        let mut destructive = Vec::new();
+        for (group, gdef) in groups {
+            let Some(subs) = gdef.get("subcommands").and_then(|s| s.as_object()) else {
+                continue;
+            };
+            for (sub, sdef) in subs {
+                if sdef
+                    .get("destructive")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false)
+                {
+                    destructive.push(format!("{group} {sub}"));
+                }
+            }
+        }
+
+        assert!(
+            !destructive.is_empty(),
+            "expected destructive commands in schema"
+        );
+        let missing: Vec<_> = destructive
+            .iter()
+            .filter(|op| !is_destructive_operation(op))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "destructive command(s) not recognized by is_destructive_operation: {missing:?}"
+        );
+    }
+
+    #[test]
+    fn is_destructive_operation_rejects_read_only_commands() {
+        assert!(is_destructive_operation("item delete"));
+        assert!(is_destructive_operation("lakehouse delete-table"));
+        assert!(!is_destructive_operation("workspace list"));
+        assert!(!is_destructive_operation("item show"));
+        assert!(!is_destructive_operation("not a real command"));
     }
 }

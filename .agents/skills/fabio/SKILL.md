@@ -629,6 +629,7 @@ fabio deploy apply --source ./items --workspace $WS --strategy sequential   # on
 
 **SAFETY FOR DESTRUCTIVE OPERATIONS:**
 - **Always suggest `--dry-run`** before any delete or mutation to preview what will happen
+- **Honor the `"destructive": true` + `agentNotice` signal**: a `--dry-run` preview of a destructive command carries `"destructive": true` and (when fabio detects you're an AI agent) an `agentNotice` telling you to confirm the irreversible action with the user before re-running without `--dry-run`. Treat that notice as a hard stop: surface it to the user and get explicit approval before executing.
 - **`--hard-delete`** permanently removes items, bypassing the recycle bin. There is NO recovery. Always warn the user.
 - **`--force-all`** overwrites ALL matched items in deploy regardless of content changes. This is irreversible. Suggest `fabio deploy plan` first.
 - **`--delete-orphans`** removes workspace items not in source. **Protected types** (Lakehouse, Warehouse, SQLDatabase, Eventhouse, KQLDatabase) are blocked by default because they hold data — require explicit `--allow-delete-types` to delete them.

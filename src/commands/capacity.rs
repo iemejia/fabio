@@ -419,11 +419,7 @@ async fn delete(
         arm_capacity_path(subscription, resource_group, name)
     );
 
-    if output::dry_run_guard(
-        cli,
-        &format!("Would delete capacity '{name}'"),
-        &json!({"name": name}),
-    ) {
+    if output::dry_run_guard(cli, "capacity delete", &json!({"name": name})) {
         return Ok(());
     }
 
