@@ -751,16 +751,11 @@ async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Re
 /// schema URL. Fabric normalizes the stored form to 2.0.0 on ingest.
 fn build_dataset_pbir(dataset_id: &str) -> Value {
     serde_json::json!({
-        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definitionProperties/1.0.0/schema.json",
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definitionProperties/2.0.0/schema.json",
         "version": "4.0",
         "datasetReference": {
             "byConnection": {
-                "connectionString": null,
-                "pbiServiceModelId": null,
-                "pbiModelVirtualServerName": "sobe_wowvirtualserver",
-                "pbiModelDatabaseName": dataset_id,
-                "name": "EntityDataSource",
-                "connectionType": "pbiServiceXmlaStyleLive"
+                "connectionString": format!("semanticmodelid={dataset_id}")
             }
         }
     })
@@ -1197,17 +1192,23 @@ mod tests {
     #[test]
     fn dataset_pbir_conforms_to_ms_schema() {
         // MS report/definitionProperties requires $schema + version +
-        // datasetReference; the 6-field byConnection matches the 1.x schema.
+        // datasetReference. The byConnection must be the SIMPLE
+        // `{connectionString: "semanticmodelid=<id>"}` shape — the old 6-field
+        // XMLA shape (pbiServiceModelId/pbiModelVirtualServerName) is rejected by
+        // the 2.0.0 schema (`does not allow additional properties`).
         let pbir = build_dataset_pbir("model-uuid-123");
         let schema = pbir["$schema"].as_str().unwrap();
         assert!(
-            schema.contains("report/definitionProperties/1.") && schema.ends_with("/schema.json"),
+            schema.contains("report/definitionProperties/2.") && schema.ends_with("/schema.json"),
             "unexpected $schema: {schema}"
         );
         assert_eq!(pbir["version"], "4.0");
         let by_conn = &pbir["datasetReference"]["byConnection"];
-        assert_eq!(by_conn["pbiModelDatabaseName"], "model-uuid-123");
-        assert_eq!(by_conn["name"], "EntityDataSource");
-        assert_eq!(by_conn["connectionType"], "pbiServiceXmlaStyleLive");
+        assert_eq!(
+            by_conn["connectionString"],
+            "semanticmodelid=model-uuid-123"
+        );
+        assert!(by_conn.get("pbiServiceModelId").is_none());
+        assert!(by_conn.get("pbiModelVirtualServerName").is_none());
     }
 }

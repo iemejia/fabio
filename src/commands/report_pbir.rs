@@ -775,12 +775,7 @@ pub(super) fn rebind_pbir_part(parts: &mut [Value], dataset_id: &str) -> Result<
                 .map_err(|e| anyhow::anyhow!("definition.pbir is not valid JSON: {e}"))?;
             pbir["datasetReference"] = serde_json::json!({
                 "byConnection": {
-                    "connectionString": null,
-                    "pbiServiceModelId": null,
-                    "pbiModelVirtualServerName": "sobe_wowvirtualserver",
-                    "pbiModelDatabaseName": dataset_id,
-                    "name": "EntityDataSource",
-                    "connectionType": "pbiServiceXmlaStyleLive"
+                    "connectionString": format!("semanticmodelid={dataset_id}")
                 }
             });
             part["payload"] = Value::from(BASE64.encode(pbir.to_string().as_bytes()));
@@ -1039,9 +1034,15 @@ mod tests {
             .unwrap();
         let pbir: Value = serde_json::from_slice(&raw).unwrap();
         assert_eq!(
-            pbir["datasetReference"]["byConnection"]["pbiModelDatabaseName"],
-            "model-123"
+            pbir["datasetReference"]["byConnection"]["connectionString"],
+            "semanticmodelid=model-123"
         );
         assert!(pbir["datasetReference"].get("byPath").is_none());
+        // Must NOT emit the 6-field XMLA shape the 2.0.0 schema rejects.
+        assert!(
+            pbir["datasetReference"]["byConnection"]
+                .get("pbiServiceModelId")
+                .is_none()
+        );
     }
 }
