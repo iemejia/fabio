@@ -328,6 +328,44 @@ fn eventstream_add_destination_dry_run() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
+fn eventstream_add_destination_eventhouse_wrong_mode_teaches() {
+    let cfg = TestConfig::from_env();
+
+    // DirectIngestion mode but supplying the ProcessedIngestion fields
+    // (tableName/inputSerialization) and omitting connectionName/mappingRuleName
+    // — the silent-Warning trap. Validation fires BEFORE the network call, so
+    // this fails fast with a teaching error even with --dry-run.
+    let assert = fabio()
+        .args([
+            "eventstream",
+            "add-destination",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--name",
+            "bad-dest",
+            "--destination-type",
+            "Eventhouse",
+            "--input-node",
+            "my-stream",
+            "--properties",
+            r#"{"dataIngestionMode":"DirectIngestion","workspaceId":"ws","itemId":"kql","tableName":"T1","inputSerialization":{"type":"Json"}}"#,
+            "--dry-run",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("connectionName") && stderr.contains("mappingRuleName"),
+        "expected teaching error naming the missing DirectIngestion fields, got: {stderr}"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn eventstream_add_source_invalid_properties_json() {
     let cfg = TestConfig::from_env();
 

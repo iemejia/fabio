@@ -196,6 +196,14 @@ pub(super) async fn add_destination(
         None => serde_json::json!({}),
     };
 
+    // Validate mode-specific shape for an Eventhouse destination BEFORE any
+    // network call (and before the dry-run guard) — an Eventhouse destination
+    // with the wrong property set fails SILENTLY server-side (the destination
+    // sits in `Warning`, ingests nothing, logs no ingestion failure).
+    if destination_type.eq_ignore_ascii_case("eventhouse") {
+        validate_eventhouse_destination(&props)?;
+    }
+
     if output::dry_run_guard(
         cli,
         "eventstream add-destination",
@@ -233,8 +241,79 @@ pub(super) async fn add_destination(
     push_definition(cli, client, workspace, id, &def).await?;
     Ok(())
 }
-
 // ─── Builder Helpers ─────────────────────────────────────────────────────────
+
+/// Validate an Eventhouse destination's `properties` per its `dataIngestionMode`
+/// and return a teaching error BEFORE any network call.
+///
+/// The two Eventhouse ingestion modes require disjoint field sets, and getting
+/// them wrong fails SILENTLY server-side (the destination sits in `Warning`,
+/// ingests nothing, and logs no ingestion failure):
+/// - `ProcessedIngestion` — the eventstream provisions ingestion itself; needs
+///   `workspaceId`, `itemId`, `databaseName`, `tableName`, `inputSerialization`.
+/// - `DirectIngestion` — references a pre-existing Kusto data connection +
+///   mapping you created on the Eventhouse; needs `workspaceId`, `itemId`,
+///   `connectionName`, `mappingRuleName`.
+pub(super) fn validate_eventhouse_destination(props: &Value) -> Result<()> {
+    let Some(mode) = props.get("dataIngestionMode").and_then(Value::as_str) else {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Eventhouse destination requires 'dataIngestionMode' in --properties".to_string(),
+            "Set \"dataIngestionMode\" to \"ProcessedIngestion\" (eventstream ingests into a KQL table \
+             — needs databaseName, tableName, inputSerialization) or \"DirectIngestion\" (references a \
+             pre-existing Kusto data connection — needs connectionName, mappingRuleName)."
+                .to_string(),
+        )
+        .into());
+    };
+
+    let required: &[&str] = match mode {
+        "ProcessedIngestion" => &[
+            "workspaceId",
+            "itemId",
+            "databaseName",
+            "tableName",
+            "inputSerialization",
+        ],
+        "DirectIngestion" => &["workspaceId", "itemId", "connectionName", "mappingRuleName"],
+        other => {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid Eventhouse dataIngestionMode: '{other}'"),
+                "Valid values (PascalCase): ProcessedIngestion, DirectIngestion.".to_string(),
+            )
+            .into());
+        }
+    };
+
+    let missing: Vec<&str> = required
+        .iter()
+        .copied()
+        .filter(|k| props.get(*k).is_none_or(Value::is_null))
+        .collect();
+    if !missing.is_empty() {
+        let hint = if mode == "ProcessedIngestion" {
+            "ProcessedIngestion example: --properties '{\"dataIngestionMode\":\"ProcessedIngestion\",\
+             \"workspaceId\":\"<ws>\",\"itemId\":\"<kqlDbId>\",\"databaseName\":\"<kqlDbName>\",\
+             \"tableName\":\"<table>\",\"inputSerialization\":{\"type\":\"Json\",\"properties\":{\"encoding\":\"UTF8\"}}}'"
+        } else {
+            "DirectIngestion references a Kusto data connection + ingestion mapping you must create on \
+             the Eventhouse first. Example: --properties '{\"dataIngestionMode\":\"DirectIngestion\",\
+             \"workspaceId\":\"<ws>\",\"itemId\":\"<kqlDbId>\",\"connectionName\":\"<conn>\",\
+             \"mappingRuleName\":\"<mapping>\"}'"
+        };
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!(
+                "Eventhouse {mode} destination is missing required properties: {}",
+                missing.join(", ")
+            ),
+            hint.to_string(),
+        )
+        .into());
+    }
+    Ok(())
+}
 
 /// Normalize a sample-data type to its canonical `properties.type` value.
 /// Accepts common labels/casing ("yellow taxi", "stock-market", "bicycle").
@@ -642,7 +721,8 @@ pub(super) fn list_components(cli: &Cli, category: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{OPERATOR_TYPES, normalize_sample_type};
+    use super::{OPERATOR_TYPES, normalize_sample_type, validate_eventhouse_destination};
+    use serde_json::json;
 
     #[test]
     fn sample_type_normalizes_labels_and_casing() {
@@ -671,5 +751,73 @@ mod tests {
             assert!(OPERATOR_TYPES.contains(&t), "missing operator type {t}");
         }
         assert_eq!(OPERATOR_TYPES.len(), 7);
+    }
+
+    #[test]
+    fn eventhouse_processed_ingestion_valid() {
+        let props = json!({
+            "dataIngestionMode": "ProcessedIngestion",
+            "workspaceId": "ws", "itemId": "kql", "databaseName": "db",
+            "tableName": "bikes",
+            "inputSerialization": {"type": "Json", "properties": {"encoding": "UTF8"}}
+        });
+        assert!(validate_eventhouse_destination(&props).is_ok());
+    }
+
+    #[test]
+    fn eventhouse_direct_ingestion_valid() {
+        let props = json!({
+            "dataIngestionMode": "DirectIngestion",
+            "workspaceId": "ws", "itemId": "kql",
+            "connectionName": "conn", "mappingRuleName": "map"
+        });
+        assert!(validate_eventhouse_destination(&props).is_ok());
+    }
+
+    #[test]
+    fn eventhouse_missing_mode_teaches() {
+        let err = validate_eventhouse_destination(&json!({"workspaceId": "ws"}))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("dataIngestionMode"), "got: {err}");
+    }
+
+    #[test]
+    fn eventhouse_invalid_mode_teaches() {
+        let err = validate_eventhouse_destination(&json!({"dataIngestionMode": "Streaming"}))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("Streaming"), "got: {err}");
+    }
+
+    #[test]
+    fn eventhouse_direct_ingestion_with_processed_fields_flags_missing_connection() {
+        // The exact silent-Warning trap: DirectIngestion mode but supplying the
+        // ProcessedIngestion fields (tableName/inputSerialization) and omitting
+        // connectionName/mappingRuleName.
+        let props = json!({
+            "dataIngestionMode": "DirectIngestion",
+            "workspaceId": "ws", "itemId": "kql",
+            "tableName": "bikes",
+            "inputSerialization": {"type": "Json"}
+        });
+        let err = validate_eventhouse_destination(&props)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("connectionName"), "got: {err}");
+        assert!(err.contains("mappingRuleName"), "got: {err}");
+    }
+
+    #[test]
+    fn eventhouse_processed_missing_table_flags_it() {
+        let props = json!({
+            "dataIngestionMode": "ProcessedIngestion",
+            "workspaceId": "ws", "itemId": "kql", "databaseName": "db"
+        });
+        let err = validate_eventhouse_destination(&props)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("tableName"), "got: {err}");
+        assert!(err.contains("inputSerialization"), "got: {err}");
     }
 }
