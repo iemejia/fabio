@@ -194,57 +194,7 @@ pub(super) fn execute_find(cli: &Cli, query: &str) {
     }
 
     // Search best-practices and workflows for matching topics.
-    search_knowledge_entries(
-        super::best_practices::entries(),
-        "best-practice",
-        "fabio context best-practices",
-        &query_tokens,
-        &query_lower,
-        &mut results,
-    );
-    search_knowledge_entries(
-        super::workflows::entries(),
-        "workflow",
-        "fabio context workflow",
-        &query_tokens,
-        &query_lower,
-        &mut results,
-    );
-    search_knowledge_entries(
-        super::personas::entries(),
-        "persona",
-        "fabio context persona",
-        &query_tokens,
-        &query_lower,
-        &mut results,
-    );
-    search_knowledge_entries(
-        super::disambiguations::entries(),
-        "disambiguation",
-        "fabio context disambiguate",
-        &query_tokens,
-        &query_lower,
-        &mut results,
-    );
-    // Item-definition schemas — so a query like "notebook definition format"
-    // routes an agent to `fabio context schema <Type>`.
-    search_knowledge_entries(
-        super::schemas::entries(),
-        "item-schema",
-        "fabio context schema",
-        &query_tokens,
-        &query_lower,
-        &mut results,
-    );
-    // Output examples — response shapes for a command.
-    search_knowledge_entries(
-        super::examples::example_entries(),
-        "output-example",
-        "fabio context examples",
-        &query_tokens,
-        &query_lower,
-        &mut results,
-    );
+    search_all_knowledge_sources(&query_tokens, &query_lower, &mut results);
 
     // Sort by score descending, take top 10.
     results.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -293,6 +243,57 @@ fn query_matches_term_or_alias(content: &str, query_lower: &str) -> bool {
                 .filter_map(serde_json::Value::as_str)
                 .any(|a| norm(a) == q)
         })
+}
+
+/// A static slice of `(name, json_content)` knowledge entries.
+type KnowledgeEntries = &'static [(&'static str, &'static str)];
+
+/// Search every authored knowledge source (best-practices, workflows, personas,
+/// disambiguations, item schemas, output examples, and sub-skill judgment) and
+/// append scored matches to `results`. Sub-skill judgment is indexed so a
+/// keyword appearing only in a family's `key_gotchas`/`troubleshooting`/`prefer`
+/// routes an agent to `fabio context skill <family>`.
+fn search_all_knowledge_sources(
+    tokens: &[&str],
+    query_lower: &str,
+    results: &mut Vec<(f64, serde_json::Value)>,
+) {
+    let sources: &[(KnowledgeEntries, &str, &str)] = &[
+        (
+            super::best_practices::entries(),
+            "best-practice",
+            "fabio context best-practices",
+        ),
+        (
+            super::workflows::entries(),
+            "workflow",
+            "fabio context workflow",
+        ),
+        (
+            super::personas::entries(),
+            "persona",
+            "fabio context persona",
+        ),
+        (
+            super::disambiguations::entries(),
+            "disambiguation",
+            "fabio context disambiguate",
+        ),
+        (
+            super::schemas::entries(),
+            "item-schema",
+            "fabio context schema",
+        ),
+        (
+            super::examples::example_entries(),
+            "output-example",
+            "fabio context examples",
+        ),
+        (super::skills::entries(), "skill", "fabio context skill"),
+    ];
+    for (entries, entry_type, prefix) in sources {
+        search_knowledge_entries(entries, entry_type, prefix, tokens, query_lower, results);
+    }
 }
 
 /// Search knowledge base entries (best-practices, workflows) and add matches to results.

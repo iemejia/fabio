@@ -72,6 +72,10 @@ fabio context best-practices <topic>
 fabio context persona <name>
 # Available: data-engineer, data-scientist, app-developer, bi-developer, rti-engineer, migration-engineer, fabric-admin
 
+# Intent-scoped sub-skill judgment — when-to-use, gotchas, troubleshooting, safety for a workload family
+fabio context skill <family>
+# Available: lakehouse, warehouse-sql, bi, rti-kql, mirroring, data-engineering, data-science, dataflows, deploy-cicd, admin, app-dev, ontology, geospatial, migration, planning
+
 # Disambiguate an overloaded Fabric term — routes to the right artifact + command group
 fabio context disambiguate <term>
 # Available: materialized-view, dataflow, semantic-model, sql-endpoint, mirroring, model

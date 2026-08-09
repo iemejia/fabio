@@ -79,6 +79,42 @@ Optionally sanity-check the
 site build locally with `npm --prefix docs run check` (needs `npm ci` in
 `docs/` first).
 
+### Audit agent-discovery coverage (context knowledge files)
+
+The drift tests above keep the MECHANICAL surfaces honest (every command is in
+`commands.json` and a generated sub-skill table). They do NOT catch a missing
+*judgment* surface: a change that introduced a new behavior/gotcha an agent must
+know, where the authored `fabio context` knowledge (skill
+`key_gotchas`/`troubleshooting`/`prefer`, best-practices, examples, workflows)
+was not updated. That is a judgment gap with no mechanical signal, so it is a
+release-time human-triage step:
+
+```bash
+# Heuristic reviewer: new commands not referenced in context data, new teaching
+# errors, and new API-BEHAVIORS sections since the last release tag.
+python3 scripts/audit-context-coverage.py            # defaults to --since <latest tag>
+# python3 scripts/audit-context-coverage.py --since v0.60.0   # explicit base
+```
+
+Triage the report:
+- **NON-CRUD new commands not referenced in context** → usually need a
+  `key_gotchas`/`prefer` line in the relevant `fabio-<family>` skill, an output
+  `example`, or a `workflow`. Add it, then regenerate the sub-skills.
+- **New teaching errors (`with_hint`)** → if the hint encodes a non-obvious
+  gotcha (a portal gate, a required nested field, a per-mode shape), add it to
+  the family skill's `key_gotchas`/`troubleshooting` so agents discover it
+  proactively — not only by hitting the error at runtime.
+- **New API-BEHAVIORS section headings** → confirm each agent-relevant behavior
+  is ALSO reflected in a `fabio context` surface (skill gotcha / best-practice /
+  example), since API-BEHAVIORS is a contributor doc and is NOT served by
+  `fabio context`.
+
+Not every item needs an edit, but each should be a conscious decision. After
+adding context knowledge, regenerate and re-run the drift tests:
+`cargo test generate_subskills -- --ignored`. (`skill_family_shared_references_exist`
+validates any new `shared_references`.) See the "Agent Knowledge Architecture"
+section of AGENTS.md for where each kind of knowledge lives.
+
 ## Step 4: Run Full Validation
 
 ```bash

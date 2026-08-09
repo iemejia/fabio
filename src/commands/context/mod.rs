@@ -8,6 +8,7 @@ mod personas;
 mod schemas;
 #[cfg(test)]
 mod skillgen;
+mod skills;
 pub mod tenant;
 mod workflows;
 
@@ -117,6 +118,14 @@ pub enum ContextCommand {
         /// Persona name (`data-engineer`, `migration-engineer`, `fabric-admin`, `rti-engineer`, `bi-developer`)
         #[arg(name = "NAME")]
         name: String,
+    },
+
+    /// Show an intent-scoped sub-skill's judgment (when-to-use, gotchas, troubleshooting, safety) for a workload family
+    #[command(display_order = 8)]
+    Skill {
+        /// Skill family (`lakehouse`, `warehouse-sql`, `bi`, `rti-kql`, `mirroring`, `data-engineering`, `data-science`, `app-dev`, `deploy-cicd`, `admin`, ...)
+        #[arg(name = "FAMILY")]
+        family: String,
     },
 
     /// Resolve an overloaded Fabric term to the concrete artifact + command group that handles it
@@ -247,6 +256,10 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ContextCommand)
             personas::execute(cli, name);
             Ok(())
         }
+        ContextCommand::Skill { family } => {
+            skills::execute(cli, family);
+            Ok(())
+        }
         ContextCommand::Disambiguate { term } => {
             disambiguations::execute(cli, term);
             Ok(())
@@ -308,13 +321,15 @@ fn list_topics(cli: &Cli) {
         "best_practices": best_practices::list_names(),
         "personas": personas::list_names(),
         "disambiguations": disambiguations::list_names(),
+        "skills": skills::list_names(),
         "usage": {
             "schema": "fabio context schema <TYPE>",
             "workflow": "fabio context workflow <NAME>",
             "examples": "fabio context examples <GROUP> <COMMAND>",
             "best_practices": "fabio context best-practices <TOPIC>",
             "persona": "fabio context persona <NAME>",
-            "disambiguate": "fabio context disambiguate <TERM>"
+            "disambiguate": "fabio context disambiguate <TERM>",
+            "skill": "fabio context skill <FAMILY>"
         }
     });
     output::render_object(cli, &topics, "item_schemas");

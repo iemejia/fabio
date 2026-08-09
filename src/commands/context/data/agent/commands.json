@@ -4532,6 +4532,11 @@
         "mutates": false,
         "returns": "object"
       },
+      "skill": {
+        "description": "Show an intent-scoped sub-skill's judgment (when-to-use, gotchas, troubleshooting, safety) for a workload family",
+        "mutates": false,
+        "returns": "object"
+      },
       "disambiguate": {
         "description": "Resolve an overloaded Fabric term to the concrete artifact + command group that handles it",
         "mutates": false,
