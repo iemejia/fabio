@@ -609,6 +609,23 @@ async fn discover_parameters(
 
 // ─── Execution ───────────────────────────────────────────────────────────────
 
+/// Build the hint for a failed `dataflow run`, teaching the common
+/// `QueriesMetadata must not be empty` case (the `queryMetadata.json` part must
+/// list every `shared` query from `mashup.pq`) and otherwise returning the
+/// job id for follow-up.
+fn dataflow_run_failure_hint(message: &str, job_id: &str) -> String {
+    if message.contains("QueriesMetadata") {
+        format!(
+            "The dataflow's queryMetadata.json has an empty 'queriesMetadata'. Each `shared` query \
+             in mashup.pq needs an entry, e.g. \"queriesMetadata\": {{\"<QueryName>\": \
+             {{\"queryId\": \"<uuid>\", \"queryName\": \"<QueryName>\", \"loadEnabled\": true}}}}. \
+             Author it, then: fabio dataflow update-definition --file <envelope.json>. Job ID: {job_id}"
+        )
+    } else {
+        format!("Job ID: {job_id}")
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::too_many_lines)]
 async fn run(
@@ -743,7 +760,7 @@ async fn run(
                 return Err(FabioError::with_hint(
                     ErrorCode::ApiError,
                     format!("Dataflow run failed: {message}"),
-                    format!("Job ID: {job_id}"),
+                    dataflow_run_failure_hint(message, &job_id),
                 )
                 .into());
             }
@@ -876,4 +893,26 @@ async fn execute_query(
         output::render_object(cli, &obj, "status");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dataflow_run_failure_hint;
+
+    #[test]
+    fn queries_metadata_failure_teaches_the_shape() {
+        let hint = dataflow_run_failure_hint(
+            "Invalid QueriesMetadata for dataflow with id X. QueriesMetadata must not be empty",
+            "job-1",
+        );
+        assert!(hint.contains("queriesMetadata"), "got: {hint}");
+        assert!(hint.contains("loadEnabled"), "got: {hint}");
+        assert!(hint.contains("job-1"));
+    }
+
+    #[test]
+    fn other_failure_returns_job_id_only() {
+        let hint = dataflow_run_failure_hint("some other failure", "job-2");
+        assert_eq!(hint, "Job ID: job-2");
+    }
 }
