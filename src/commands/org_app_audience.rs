@@ -42,6 +42,11 @@ pub enum OrgAppAudienceCommand {
         #[arg(long)]
         name: String,
 
+        /// Parent org app ID. REQUIRED — an audience belongs to an org app; the
+        /// API rejects a create without it (`InvalidParentAppId`).
+        #[arg(long, visible_alias = "parent-app-id")]
+        org_app_id: String,
+
         /// Optional description
         #[arg(long)]
         description: Option<String>,
@@ -133,6 +138,7 @@ pub async fn execute(
         OrgAppAudienceCommand::Create {
             workspace,
             name,
+            org_app_id,
             description,
             sensitivity_label,
         } => {
@@ -141,6 +147,7 @@ pub async fn execute(
                 client,
                 workspace,
                 name,
+                org_app_id,
                 description.as_deref(),
                 sensitivity_label.as_deref(),
             )
@@ -209,8 +216,27 @@ fn build_delete_url(workspace: &str, id: &str, hard_delete: bool) -> String {
     }
 }
 
-fn build_create_body(name: &str, description: Option<&str>) -> Value {
-    let mut body = serde_json::json!({ "displayName": name });
+/// Build the create body. An org-app audience REQUIRES its `parentAppId`, which
+/// the API only accepts inside a `definition.json` part (a top-level
+/// `parentAppId` is rejected with `InvalidParentAppId`). The definition shape is
+/// `{$schema, settings: null, parentAppId}` (verified live).
+fn build_create_body(name: &str, org_app_id: &str, description: Option<&str>) -> Value {
+    use base64::Engine;
+    let definition = serde_json::json!({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/orgappaudience/definition/orgAppAudienceDefinition/1.0.0/schema.json",
+        "settings": Value::Null,
+        "parentAppId": org_app_id,
+    });
+    let payload = base64::engine::general_purpose::STANDARD
+        .encode(serde_json::to_string(&definition).unwrap_or_default());
+    let mut body = serde_json::json!({
+        "displayName": name,
+        "definition": {
+            "parts": [
+                { "path": "definition.json", "payload": payload, "payloadType": "InlineBase64" }
+            ]
+        }
+    });
     if let Some(desc) = description {
         body["description"] = Value::from(desc);
     }
@@ -316,10 +342,11 @@ async fn create(
     client: &FabricClient,
     workspace: &str,
     name: &str,
+    org_app_id: &str,
     description: Option<&str>,
     sensitivity_label: Option<&str>,
 ) -> Result<()> {
-    let mut body = build_create_body(name, description);
+    let mut body = build_create_body(name, org_app_id, description);
     if let Some(label_id) = sensitivity_label {
         body["sensitivityLabelSettings"] = serde_json::json!({
             "sensitivityLabelId": label_id
@@ -499,16 +526,30 @@ mod tests {
 
     #[test]
     fn create_body_with_description() {
-        let body = build_create_body("Aud", Some("desc"));
+        let body = build_create_body("Aud", "app-1", Some("desc"));
         assert_eq!(body["displayName"], "Aud");
         assert_eq!(body["description"], "desc");
+        // parentAppId must be inside the definition.json part (not top-level).
+        assert!(body.get("parentAppId").is_none());
+        let part = &body["definition"]["parts"][0];
+        assert_eq!(part["path"], "definition.json");
+        let decoded = {
+            use base64::Engine;
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(part["payload"].as_str().unwrap())
+                .unwrap();
+            serde_json::from_slice::<Value>(&bytes).unwrap()
+        };
+        assert_eq!(decoded["parentAppId"], "app-1");
+        assert!(decoded["settings"].is_null());
     }
 
     #[test]
     fn create_body_without_description() {
-        let body = build_create_body("Aud", None);
+        let body = build_create_body("Aud", "app-1", None);
         assert_eq!(body["displayName"], "Aud");
         assert!(body.get("description").is_none());
+        assert_eq!(body["definition"]["parts"][0]["path"], "definition.json");
     }
 
     #[test]

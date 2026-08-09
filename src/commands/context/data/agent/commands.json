@@ -21396,6 +21396,11 @@
             "required": true,
             "description": "Display name"
           },
+          "--org-app-id": {
+            "type": "string",
+            "required": true,
+            "description": "Parent org app ID. REQUIRED — an audience belongs to an org app; the API rejects a create without it (`InvalidParentAppId`)"
+          },
           "--description": {
             "type": "string",
             "description": "Optional description"
