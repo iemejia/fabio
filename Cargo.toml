@@ -52,7 +52,7 @@ thiserror = "2"
 anyhow = "1"
 
 # Output formatting
-comfy-table = "7"
+comfy-table = "8"
 
 # Date/time (clock = Utc::now(); no timezone DB needed)
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
