@@ -14,7 +14,7 @@
   },
   "type": "module",
   "dependencies": {
-    "@astrojs/starlight": "0.41.6",
+    "@astrojs/starlight": "0.41.7",
     "astro": "7.2.0"
   },
   "devDependencies": {
