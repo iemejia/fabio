@@ -779,7 +779,7 @@ Reference this file when looking up specific source locations or adding new file
 
 ## Documentation Website (MANDATORY)
 
-The user-facing documentation site lives in `docs/` — an [Astro](https://astro.build) + [Starlight](https://starlight.astro.build) static site organized with the [Diátaxis](https://diataxis.fr) framework (Tutorials / How-to guides / Explanation / Reference). It is published to GitHub Pages and served from the custom apex domain at `https://ismaelmejia.com/fabio/`. Full-text search is provided by Pagefind (built in).
+The user-facing documentation site lives in `docs/` — an [Astro](https://astro.build) + [Starlight](https://starlight.astro.build) static site organized with the [Diátaxis](https://diataxis.fr) framework (Tutorials / How-to guides / Explanation / Reference). It is published to GitHub Pages and served from the custom apex domain at `https://ismaelmejia.com/fabio/`. Full-text search is provided by Pagefind (built in). A **blog** is provided by the [`starlight-blog`](https://starlight-blog-docs.vercel.app) plugin (registered in `astro.config.mjs`, posts authored under `src/content/docs/blog/*.md`, served at `/blog/` + `blog/rss.xml`).
 
 ### Structure
 
@@ -799,6 +799,7 @@ docs/
         ├── getting-started.md          — Tutorial
         ├── guides/*.md                 — How-to guides
         ├── explanation/*.md            — Explanation
+        ├── blog/*.md                   — Blog posts (starlight-blog plugin)
         └── reference/
             ├── index.md, global-flags.md  — hand-authored reference
             └── commands/*.md              — GENERATED (gitignored), never edit
@@ -846,6 +847,7 @@ Requires Node 22.12+ (CI uses Node 24). `npm run build`/`dev`/`check` all run `g
 | Add/change a **global flag** | Update `global_flags()` in `agent.rs` AND `docs/.../reference/global-flags.md` (both are hand-maintained). |
 | Change an install method, auth flow, or documented workflow | Update the relevant authored page (`getting-started.md`, a guide, or an explanation page). |
 | Add a new authored page | Add it under the correct Diátaxis directory; sidebar auto-generates for `guides/` and `explanation/`. Run `npm run check` to validate links. |
+| Add a **blog post** | Create `src/content/docs/blog/<slug>.md` with `title`/`date`/`authors`/`excerpt`/`tags` frontmatter (the docs schema is extended with `blogSchema` in `content.config.ts`). Add new authors to the `authors` map in `astro.config.mjs`. The `/blog/` + `/blog/tags/` index routes are plugin-generated — `check-links.mjs` recognizes them automatically when a post exists. |
 
 ### Best practices (MANDATORY)
 

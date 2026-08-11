@@ -83,3 +83,32 @@ test("findBrokenLinks flags missing pages, groups, and assets but passes valid o
   const targets = broken.map((entry) => entry.target).sort();
   assert.deepEqual(targets, ["../guides/missing/", "/missing.svg", "/reference/commands/nope/"]);
 });
+
+test("findBrokenLinks treats the generated blog index as a valid route when posts exist", async () => {
+  const root = await mkdtemp(join(tmpdir(), "fabio-links-blog-"));
+  const docs = join(root, "docs");
+  const blog = join(docs, "blog");
+  const pages = join(root, "pages");
+  const publicDir = join(root, "public");
+  await mkdir(blog, { recursive: true });
+  await mkdir(pages, { recursive: true });
+  await mkdir(publicDir, { recursive: true });
+
+  await writeFile(join(blog, "hello.md"), "# Hello\n");
+  await writeFile(
+    join(docs, "getting-started.md"),
+    "Blog index [a](/blog/) and tags [b](/blog/tags/).\n",
+  );
+  await writeFile(join(pages, "index.astro"), 'href={link("blog/")}');
+  const schemaPath = join(root, "commands.json");
+  await writeFile(schemaPath, JSON.stringify({}));
+
+  const broken = await findBrokenLinks({
+    docsDirectory: docs,
+    schemaPath,
+    publicDirectory: publicDir,
+    landingPage: join(pages, "index.astro"),
+  });
+
+  assert.deepEqual(broken, []);
+});

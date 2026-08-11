@@ -1,5 +1,6 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import starlightBlog from "starlight-blog";
 
 // The production site is served from the custom apex domain https://ismaelmejia.com
 // under the /fabio subpath. CI sets SITE_URL/BASE_PATH explicitly (see docs.yml).
@@ -22,6 +23,18 @@ export default defineConfig({
         alt: "Fabio",
       },
       customCss: ["./src/styles/docs.css"],
+      plugins: [
+        starlightBlog({
+          title: "Blog",
+          authors: {
+            ismael: {
+              name: "Ismael Mejía",
+              title: "Fabio maintainer",
+              url: "https://github.com/iemejia",
+            },
+          },
+        }),
+      ],
       social: [
         {
           icon: "github",

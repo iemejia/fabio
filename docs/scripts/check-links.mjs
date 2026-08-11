@@ -98,6 +98,17 @@ export async function findBrokenLinks({
     routes.add(`/reference/commands/${group}/`);
   }
 
+  // The starlight-blog plugin generates virtual index routes that are not backed
+  // by an authored Markdown file. When any blog post exists (`blog/*.md`), the
+  // plugin serves a blog index at `/blog/` and a tag listing at `/blog/tags/`.
+  const hasBlogPosts = authored.some((file) =>
+    file.replaceAll("\\", "/").includes("/blog/"),
+  );
+  if (hasBlogPosts) {
+    routes.add("/blog/");
+    routes.add("/blog/tags/");
+  }
+
   // Build the set of public assets (`/name`).
   const publicEntries = await readdir(publicDirectory, { withFileTypes: true });
   const assets = new Set(

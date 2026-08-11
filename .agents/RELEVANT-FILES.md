@@ -248,7 +248,8 @@
 - `.github/workflows/dependabot-auto-merge.yml`: Auto-merge Dependabot PRs on CI pass
 - `.github/dependabot.yml`: Cargo + GitHub Actions dependency updates
 - `docs/`: Astro + Starlight marketing and documentation website
-- `docs/README.md`: Contributor quickstart for the docs site (scripts, structure, generated vs authored, deployment)
+- `docs/README.md`: Contributor quickstart for the docs site (scripts, structure, generated vs authored, adding pages/blog posts, deployment)
+- `docs/src/content/docs/blog/`: Blog posts (Markdown) served by the `starlight-blog` plugin at `/blog/` + `blog/rss.xml`; the docs collection schema is extended with `blogSchema` in `docs/src/content.config.ts`
 - `docs/scripts/generate-reference.mjs`: Generates command reference pages from the committed agent command schema
 - `docs/scripts/check-links.mjs`: Dependency-free validator that checks internal doc links resolve to real pages (authored + generated command groups) and public assets
 - `cliff.toml`: git-cliff configuration (commit parsers, grouping, template)
