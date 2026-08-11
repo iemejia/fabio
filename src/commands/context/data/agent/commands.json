@@ -6973,11 +6973,11 @@
           },
           "--enable-preview-runtime": {
             "type": "bool",
-            "description": "Enable preview runtime (agentic NL2SQL reasoning path)"
+            "description": "Enable preview runtime (multi-step reasoning: Advanced NL2SQL for SQL sources AND Advanced DAX generation for semantic models)"
           },
           "--disable-preview-runtime": {
             "type": "bool",
-            "description": "Disable preview runtime"
+            "description": "Disable preview runtime (revert to the single-pass standard runtime: GA NL2SQL / standard DAX generation)"
           }
         },
         "mutates": true,

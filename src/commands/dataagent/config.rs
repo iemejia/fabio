@@ -8,10 +8,15 @@ use crate::output;
 
 /// The staging-settings object that carries preview/experimental toggles.
 ///
-/// The preview-runtime flag (Advanced NL2SQL and other preview built-in tools)
-/// lives as a boolean inside this object. The Fabric data agent Python SDK
-/// exposes it as `update_configuration(enable_preview_runtime=...)` and reads it
-/// back as `config.enable_preview_runtime`; on the wire it is
+/// The preview-runtime flag lives as a boolean inside this object. It selects the
+/// multi-step-reasoning runtime for EVERY built-in query tool the agent uses:
+/// Advanced NL2SQL for SQL sources (Lakehouse/Warehouse/SQLDatabase/MirroredDatabase)
+/// AND Advanced DAX generation (preview) for Power BI semantic-model sources — the
+/// latter inspects model metadata, resolves ambiguity, and does instance-value
+/// indexing across multiple reasoning steps instead of a single pass. Both are the
+/// SAME toggle. The Fabric data agent Python SDK exposes it as
+/// `update_configuration(enable_preview_runtime=...)` and reads it back as
+/// `config.enable_preview_runtime`; on the wire it is
 /// `experimental.enableExperimentalFeatures` (live-confirmed via `staging/settings`).
 const EXPERIMENTAL_FIELD: &str = "experimental";
 /// The boolean flag inside the `experimental` object that selects the runtime.
@@ -212,7 +217,8 @@ pub(super) async fn update_config(
         .await?;
 
     // Report the effective preview-runtime state so agents can confirm which
-    // runtime the agent will use for SQL sources (NL2SQL vs Advanced NL2SQL).
+    // runtime the agent will use: preview = Advanced NL2SQL (SQL sources) +
+    // Advanced DAX generation (semantic models); standard = single-pass GA tools.
     // Prefer the server-echoed value; fall back to what we requested.
     let effective_preview = resp
         .get(EXPERIMENTAL_FIELD)

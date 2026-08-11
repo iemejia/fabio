@@ -10,6 +10,7 @@
     "semantic-model generate": "Generate a clean Direct Lake model from a lakehouse/warehouse (portal-exact TMDL). Start from a well-modeled source; generate does not create relationships/measures (add via update-definition).",
     "semantic-model query": "Validate the DAX the agent (or you) will run — response accuracy depends on the generated DAX being correct.",
     "data-agent evaluate": "Evaluate a data agent's answers against ground-truth question/answer pairs (optionally with an LLM judge) to measure accuracy and iterate.",
+    "data-agent update-config --enable-preview-runtime": "Switch the data agent to the preview runtime to use Advanced DAX generation (multi-step reasoning + instance-value indexing) for its semantic-model sources — see advanced_dax_generation_preview below. Same toggle enables Advanced NL2SQL for SQL sources.",
     "git + deploy": "Manage semantic model + data-agent configuration across dev/test/prod with Git integration and deployment pipelines (source control / ALM)."
   },
   "recommended_workflow": [
@@ -31,7 +32,19 @@
     "Verified answers referencing hidden fields won't work.",
     "Including helper/intermediate measures in the AI data schema adds noise — include only real business metrics (use measure-dependencies to know what's required)."
   ],
-  "portal_only_note": "The three 'Prep for AI' components — AI data schema, verified answers, and AI instructions — are configured in Power BI Desktop or the Power BI service ('Prep data for AI'), NOT via a public Fabric/Power BI REST API, so fabio cannot set them today. IMPORTANT: the DAX-generation tool ONLY uses the semantic model's metadata + Prep for AI config; it IGNORES data-agent-level instructions for semantic-model DAX. Keep model-specific guidance in Prep for AI; use data-agent instructions only for cross-source concerns (formatting, routing, tone). fabio helps with everything else: model health (analyze), dependencies (measure-dependencies), descriptions (flagging), evaluation (data-agent evaluate), and ALM (git/deploy).",
+  "advanced_dax_generation_preview": {
+    "what": "'Advanced DAX generation' is the semantic-model counterpart of Advanced NL2SQL — the multi-step-reasoning DAX tool a data agent uses on its PREVIEW RUNTIME. Unlike standard DAX generation (single pass), it inspects model metadata, interprets the question, resolves ambiguity, and refines the DAX across multiple reasoning steps.",
+    "enable_with_fabio": "It is the SAME toggle as Advanced NL2SQL: `fabio data-agent update-config --workspace <ws> --id <agent> --enable-preview-runtime` (on the wire: experimental.enableExperimentalFeatures). `--disable-preview-runtime` reverts to standard single-pass DAX generation. Verify with `data-agent get-config` (its previewRuntime field). A published agent's runtime is fixed at publish time — republish to change it.",
+    "advantages": [
+      "More accurate answers to complex questions (iterative reasoning + result inspection).",
+      "Instance value indexing — searches actual column values to build reliable filters.",
+      "Consistency across Fabric data agent, Fabric skills, Power BI, M365 Copilot, and Fabric IQ.",
+      "Lower latency in some scenarios (more efficient object/value identification)."
+    ],
+    "instance_value_indexing_requirement": "Instance value indexing currently requires the semantic model's Q&A setting to be enabled (on by default for Import and Direct Lake models). Q&A retires in December 2026; a replacement setting will support it afterward.",
+    "note": "Advanced DAX generation uses the same semantic-model metadata + Prep for AI configuration described below — enabling the preview runtime does NOT replace good modeling and Prep for AI; it amplifies it."
+  },
+  "portal_only_note": "The three 'Prep for AI' components — AI data schema, verified answers, and AI instructions — are configured in Power BI Desktop or the Power BI service ('Prep data for AI'), NOT via a public Fabric/Power BI REST API, so fabio cannot set them today. IMPORTANT: the DAX-generation tool (standard AND the preview Advanced DAX generation) ONLY uses the semantic model's metadata + Prep for AI config; it IGNORES data-agent-level instructions for semantic-model DAX. Keep model-specific guidance in Prep for AI; use data-agent instructions only for cross-source concerns (formatting, routing, tone). fabio helps with everything else: model health (analyze), dependencies (measure-dependencies), descriptions (flagging), preview-runtime toggle (data-agent update-config --enable-preview-runtime), evaluation (data-agent evaluate), and ALM (git/deploy).",
   "references": [
     "https://learn.microsoft.com/en-us/fabric/data-science/semantic-model-best-practices",
     "https://learn.microsoft.com/en-us/power-bi/create-reports/copilot-prepare-data-ai"

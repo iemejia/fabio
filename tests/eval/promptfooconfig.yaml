@@ -1712,6 +1712,17 @@ tests:
           output.includes('add-fewshot')
         metric: agent-add-fewshot
 
+  - description: "Data Agent: enable Advanced DAX generation (preview runtime) for a semantic-model source"
+    vars:
+      user_query: "Turn on Advanced DAX generation for my Fabric data agent so it uses multi-step reasoning when querying my Power BI semantic model"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('update-config') || output.includes('update_config')
+        metric: agent-advanced-dax-update-config
+      - type: icontains
+        value: "--enable-preview-runtime"
+
   - description: "Data Agent: query the agent with natural language"
     vars:
       user_query: "Ask my Data Agent: What is the most sold product?"

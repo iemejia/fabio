@@ -1,6 +1,6 @@
 {
   "command": "fabio data-agent update-config --workspace $WS_ID --id $AGENT_ID --enable-preview-runtime",
-  "description": "Switches a data agent to the preview runtime (Advanced NL2SQL) for its SQL sources. The standard runtime uses GA NL2SQL; the preview runtime adds multi-step reasoning (better example-query following, filter-value substitution, ambiguity handling). Runtime selection uses the SAME per-source config (schema selection, data source instructions, example queries) — no reconfiguration needed. Use --disable-preview-runtime to switch back to the standard runtime.",
+  "description": "Switches a data agent to the preview runtime, which selects the multi-step-reasoning variant of EVERY built-in query tool: Advanced NL2SQL for SQL sources (Lakehouse/Warehouse/SQLDatabase/MirroredDatabase) AND Advanced DAX generation (preview) for Power BI semantic-model sources. The standard runtime generates a query in a single pass; the preview runtime reasons iteratively — inspecting model metadata, resolving ambiguity, doing instance-value indexing (searching column values for accurate filters), and refining across steps — for more accurate answers to complex questions. Runtime selection uses the SAME per-source config (schema/table selection, example queries) — no reconfiguration needed. Use --disable-preview-runtime to switch back to the standard runtime.",
   "response": {
     "data": {
       "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
@@ -9,9 +9,9 @@
       "previewRuntime": true
     }
   },
-  "notes": "The previewRuntime boolean reports the effective runtime after the change (true = preview/Advanced NL2SQL, false = standard/NL2SQL). It maps to the nested settings field experimental.enableExperimentalFeatures. Only staging is modified; publish the agent to promote it — the runtime a published agent uses is fixed at publish time (republish to change it). --enable-preview-runtime and --disable-preview-runtime are mutually exclusive and can be combined with --instructions/--instructions-file. Verify with: fabio data-agent get-config -w $WS_ID --id $AGENT_ID (its previewRuntime field mirrors this).",
+  "notes": "The previewRuntime boolean reports the effective runtime after the change (true = preview: Advanced NL2SQL + Advanced DAX generation; false = standard: single-pass GA tools). It maps to the nested settings field experimental.enableExperimentalFeatures. Advanced DAX generation's instance-value indexing currently requires the semantic model's Q&A setting to be enabled (on by default for Import and Direct Lake models). Only staging is modified; publish the agent to promote it — the runtime a published agent uses is fixed at publish time (republish to change it). --enable-preview-runtime and --disable-preview-runtime are mutually exclusive and can be combined with --instructions/--instructions-file. Verify with: fabio data-agent get-config -w $WS_ID --id $AGENT_ID (its previewRuntime field mirrors this).",
   "query_examples": [
-    {"query": "previewRuntime", "description": "Whether the preview runtime (Advanced NL2SQL) is now enabled."},
+    {"query": "previewRuntime", "description": "Whether the preview runtime (Advanced NL2SQL + Advanced DAX generation) is now enabled."},
     {"query": "status", "description": "Confirms the config was updated."}
   ]
 }

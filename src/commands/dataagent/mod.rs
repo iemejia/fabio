@@ -268,11 +268,11 @@ pub enum DataAgentCommand {
         #[arg(long, conflicts_with = "instructions")]
         instructions_file: Option<String>,
 
-        /// Enable preview runtime (agentic NL2SQL reasoning path)
+        /// Enable preview runtime (multi-step reasoning: Advanced NL2SQL for SQL sources AND Advanced DAX generation for semantic models)
         #[arg(long)]
         enable_preview_runtime: bool,
 
-        /// Disable preview runtime
+        /// Disable preview runtime (revert to the single-pass standard runtime: GA NL2SQL / standard DAX generation)
         #[arg(long, conflicts_with = "enable_preview_runtime")]
         disable_preview_runtime: bool,
     },
