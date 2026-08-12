@@ -6,6 +6,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 use crate::cli::Cli;
+use crate::errors::{ErrorCode, FabioError, HintType};
 use crate::output;
 
 const GITHUB_REPO: &str = "iemejia/fabio";
@@ -165,15 +166,42 @@ async fn fetch_latest_version() -> Result<String> {
         .user_agent(format!("fabio/{CURRENT_VERSION}"))
         .build()?;
 
-    let release: Release = http
+    let mut req = http
         .get(&url)
         .header("Accept", "application/vnd.github+json")
-        .send()
-        .await?
-        .error_for_status()
-        .with_context(|| "Failed to fetch latest release from GitHub")?
-        .json()
-        .await?;
+        .header("X-GitHub-Api-Version", "2022-11-28");
+    // Authenticate when a token is available: GitHub throttles unauthenticated
+    // API calls to 60/hour per IP (the usual cause of a "broken" upgrade check)
+    // but allows 5000/hour with a token.
+    if let Some(token) = github_token() {
+        req = req.header("Authorization", format!("Bearer {token}"));
+    }
+
+    let response = req.send().await.map_err(|e| {
+        FabioError::with_typed_hint(
+            ErrorCode::NetworkError,
+            format!("Could not reach GitHub to check for the latest fabio release: {e}"),
+            "Could not reach api.github.com. Check your network connection — a proxy \
+             or firewall may be blocking it — then retry.",
+            HintType::RetrySafe,
+        )
+        .set_retriable(Some(true))
+    })?;
+
+    let status = response.status();
+    if !status.is_success() {
+        return Err(classify_release_api_error(status.as_u16(), response.headers()).into());
+    }
+
+    let release: Release = response.json().await.map_err(|e| {
+        FabioError::new(
+            ErrorCode::ApiError,
+            format!(
+                "GitHub returned an unexpected response while checking for the latest \
+                 fabio release: {e}"
+            ),
+        )
+    })?;
 
     let version = release
         .tag_name
@@ -181,6 +209,88 @@ async fn fetch_latest_version() -> Result<String> {
         .unwrap_or(&release.tag_name)
         .to_string();
     Ok(version)
+}
+
+/// Read a GitHub API token from the environment, if present.
+///
+/// Honors the same variables the GitHub CLI uses (`GH_TOKEN`, `GITHUB_TOKEN`)
+/// plus a fabio-specific override. A token raises the GitHub API rate limit from
+/// 60/hour (per IP, unauthenticated) to 5000/hour.
+fn github_token() -> Option<String> {
+    github_token_with(|var| std::env::var(var).ok())
+}
+
+/// Testable core of [`github_token`]: resolve the first non-empty token from a
+/// lookup, in precedence order.
+fn github_token_with(lookup: impl Fn(&str) -> Option<String>) -> Option<String> {
+    ["FABIO_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"]
+        .into_iter()
+        .filter_map(lookup)
+        .map(|tok| tok.trim().to_string())
+        .find(|tok| !tok.is_empty())
+}
+
+/// Turn a non-2xx GitHub release-API status into a teaching `FabioError`.
+///
+/// GitHub signals a primary rate limit with `403` + `x-ratelimit-remaining: 0`
+/// (older) or `429` (newer), and a secondary rate limit with `403` +
+/// `retry-after`. These are transient, per-IP, and reset automatically, so they
+/// map to a *retriable* `RATE_LIMITED`; everything else is a generic `API_ERROR`.
+fn classify_release_api_error(status: u16, headers: &reqwest::header::HeaderMap) -> FabioError {
+    let remaining = header_u64(headers, "x-ratelimit-remaining");
+    let has_retry_after = headers.contains_key("retry-after");
+    let is_rate_limited =
+        status == 429 || (status == 403 && (remaining == Some(0) || has_retry_after));
+
+    if is_rate_limited {
+        let reset_hint = rate_limit_reset_hint(headers);
+        return FabioError::with_typed_hint(
+            ErrorCode::RateLimited,
+            format!(
+                "GitHub API rate limit exceeded while checking for the latest fabio \
+                 release (HTTP {status})."
+            ),
+            format!(
+                "This is a temporary, per-IP limit that resets automatically — retry in \
+                 a few minutes. {reset_hint}GitHub allows only 60 unauthenticated API \
+                 requests/hour per IP; in CI or automation, set GITHUB_TOKEN (or \
+                 GH_TOKEN) to raise the limit to 5000/hour."
+            ),
+            HintType::RetrySafe,
+        )
+        .set_retriable(Some(true));
+    }
+
+    FabioError::new(
+        ErrorCode::ApiError,
+        format!("GitHub returned HTTP {status} while checking for the latest fabio release."),
+    )
+}
+
+/// Parse a numeric response header, if present and well-formed.
+fn header_u64(headers: &reqwest::header::HeaderMap, name: &str) -> Option<u64> {
+    headers
+        .get(name)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.trim().parse::<u64>().ok())
+}
+
+/// Build a "resets in N minute(s)" fragment from `x-ratelimit-reset` (a UTC
+/// epoch-seconds timestamp). Returns an empty string when the header is absent
+/// or already in the past.
+fn rate_limit_reset_hint(headers: &reqwest::header::HeaderMap) -> String {
+    let Some(reset) = header_u64(headers, "x-ratelimit-reset") else {
+        return String::new();
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    if reset > now {
+        let minutes = (reset - now).div_ceil(60);
+        format!("The limit resets in about {minutes} minute(s). ")
+    } else {
+        String::new()
+    }
 }
 
 /// Determine the artifact name for the current platform.
@@ -481,6 +591,113 @@ mod tests {
     fn test_is_version_newer_major_trumps_minor() {
         assert!(is_version_newer("2.0.0", "1.99.99"));
         assert!(!is_version_newer("1.99.99", "2.0.0"));
+    }
+
+    #[test]
+    fn test_github_token_precedence_and_trimming() {
+        // FABIO_GITHUB_TOKEN wins over GH_TOKEN wins over GITHUB_TOKEN.
+        let lookup = |v: &str| match v {
+            "FABIO_GITHUB_TOKEN" => Some("  fabio-tok  ".to_string()),
+            "GH_TOKEN" => Some("gh-tok".to_string()),
+            "GITHUB_TOKEN" => Some("github-tok".to_string()),
+            _ => None,
+        };
+        assert_eq!(github_token_with(lookup).as_deref(), Some("fabio-tok"));
+    }
+
+    #[test]
+    fn test_github_token_skips_empty_and_falls_through() {
+        let lookup = |v: &str| match v {
+            "FABIO_GITHUB_TOKEN" => Some("   ".to_string()), // blank → skipped
+            "GH_TOKEN" => Some(String::new()),               // empty → skipped
+            "GITHUB_TOKEN" => Some("real".to_string()),
+            _ => None,
+        };
+        assert_eq!(github_token_with(lookup).as_deref(), Some("real"));
+    }
+
+    #[test]
+    fn test_github_token_none_when_unset() {
+        assert!(github_token_with(|_| None).is_none());
+    }
+
+    #[test]
+    fn test_classify_error_403_with_no_remaining_is_rate_limited() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("x-ratelimit-remaining", "0".parse().unwrap());
+        let err = classify_release_api_error(403, &headers);
+        assert_eq!(err.code, ErrorCode::RateLimited);
+        // Transient: agents should back off and retry, not treat it as fatal.
+        assert_eq!(err.retriable, Some(true));
+        let hint = err.hint.unwrap();
+        assert!(
+            hint.contains("retry"),
+            "hint should tell user to retry: {hint}"
+        );
+        assert!(
+            hint.contains("GITHUB_TOKEN"),
+            "hint should mention the optional token mitigation: {hint}"
+        );
+        // The version-lookup failure is unrelated to pinning a version.
+        assert!(
+            !hint.contains("--target-version"),
+            "rate-limit hint must not suggest --target-version: {hint}"
+        );
+    }
+
+    #[test]
+    fn test_classify_error_429_is_rate_limited() {
+        let headers = reqwest::header::HeaderMap::new();
+        let err = classify_release_api_error(429, &headers);
+        assert_eq!(err.code, ErrorCode::RateLimited);
+    }
+
+    #[test]
+    fn test_classify_error_403_secondary_limit_retry_after() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("retry-after", "60".parse().unwrap());
+        let err = classify_release_api_error(403, &headers);
+        assert_eq!(err.code, ErrorCode::RateLimited);
+    }
+
+    #[test]
+    fn test_classify_error_plain_403_is_api_error() {
+        // 403 without any rate-limit signal is a generic API error, not a limit.
+        let headers = reqwest::header::HeaderMap::new();
+        let err = classify_release_api_error(403, &headers);
+        assert_eq!(err.code, ErrorCode::ApiError);
+    }
+
+    #[test]
+    fn test_classify_error_500_is_api_error() {
+        let headers = reqwest::header::HeaderMap::new();
+        let err = classify_release_api_error(500, &headers);
+        assert_eq!(err.code, ErrorCode::ApiError);
+        assert!(err.hint.is_none());
+    }
+
+    #[test]
+    fn test_rate_limit_reset_hint_future_and_past() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let mut future = reqwest::header::HeaderMap::new();
+        future.insert(
+            "x-ratelimit-reset",
+            (now + 130).to_string().parse().unwrap(),
+        );
+        assert!(rate_limit_reset_hint(&future).contains("resets in about"));
+
+        let mut past = reqwest::header::HeaderMap::new();
+        past.insert("x-ratelimit-reset", (now - 10).to_string().parse().unwrap());
+        assert_eq!(rate_limit_reset_hint(&past), "");
+
+        // Absent header → empty.
+        assert_eq!(
+            rate_limit_reset_hint(&reqwest::header::HeaderMap::new()),
+            ""
+        );
     }
 
     #[cfg(not(windows))]

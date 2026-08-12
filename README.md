@@ -596,7 +596,7 @@ fabio releases frequently. When an AI agent is detected, a successful JSON respo
 }
 ```
 
-The check is passive: it reads a local 24h cache (`~/.fabio/version-check.json`) and refreshes it in a detached background process — never a network call on the command's own path, and never blocking. The field is additive (present only when an update exists). Disable entirely with `FABIO_NO_VERSION_CHECK=1`.
+The check is passive: it reads a local 24h cache (`~/.fabio/version-check.json`) and refreshes it in a detached background process — never a network call on the command's own path, and never blocking. The 24h interval is enforced even when a refresh fails (offline or GitHub rate-limited), so fabio makes at most one release-API request per day rather than one per command. The field is additive (present only when an update exists). Disable entirely with `FABIO_NO_VERSION_CHECK=1`, or keep the cached notice but suppress the background refresher with `FABIO_NO_BACKGROUND_REFRESH=1`.
 
 ### MCP Server Safety
 
@@ -644,6 +644,19 @@ fabio upgrade
 
 # Install a specific version
 fabio upgrade --target-version 0.23.0
+```
+
+`upgrade --check` / `upgrade` query GitHub's release API, which throttles
+unauthenticated requests to **60/hour per IP** (shared CI or NAT egress IPs can
+hit this). This is transient and resets automatically — when it happens fabio
+returns a structured, retriable `RATE_LIMITED` error, and retrying after a few
+minutes usually succeeds. In CI or automation that hits the limit repeatedly,
+set a token to raise it to 5000/hour (honored: `GITHUB_TOKEN`, `GH_TOKEN`, or
+`FABIO_GITHUB_TOKEN`; a fine-grained token needs no scopes for a public repo):
+
+```bash
+export GITHUB_TOKEN=<token>
+fabio upgrade --check
 ```
 
 ## Development

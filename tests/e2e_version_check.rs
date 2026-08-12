@@ -152,3 +152,50 @@ fn no_notice_when_already_current() {
     );
     let _ = fs::remove_dir_all(&home);
 }
+
+/// Regression guard for the GitHub-rate-limit runaway: with NO cache present,
+/// a single invocation must synchronously record an attempt timestamp so that
+/// subsequent invocations do NOT each spawn another `upgrade --check` (one
+/// GitHub request per command). Verifies the negative-cache/backoff throttle.
+#[test]
+fn missing_cache_records_attempt_to_throttle_further_checks() {
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let home = std::env::temp_dir().join(format!("fabio-vc-throttle-{ts}"));
+    // Deliberately do NOT seed a cache: exercise the None branch.
+    let cache_file = home.join(".fabio").join("version-check.json");
+    assert!(!cache_file.exists(), "precondition: no cache yet");
+
+    fabio_with_home(&home)
+        .env("CLAUDECODE", "1")
+        // Keep this test hermetic: record the attempt, but do not spawn the
+        // network refresher child.
+        .env("FABIO_NO_BACKGROUND_REFRESH", "1")
+        .assert()
+        .success();
+
+    // The parent must have written the cache synchronously before exiting,
+    // with a recent timestamp so a follow-up invocation sees a fresh,
+    // non-stale cache and does NOT spawn another check.
+    assert!(
+        cache_file.exists(),
+        "prime() must record an attempt timestamp when no cache exists"
+    );
+    let contents = fs::read_to_string(&cache_file).unwrap();
+    let cache: serde_json::Value = serde_json::from_str(&contents).unwrap();
+    let last_checked = cache["last_checked"]
+        .as_str()
+        .expect("last_checked present");
+    let then = chrono::DateTime::parse_from_rfc3339(last_checked).expect("valid rfc3339");
+    let age_secs = chrono::Utc::now()
+        .signed_duration_since(then.with_timezone(&chrono::Utc))
+        .num_seconds();
+    assert!(
+        (0..3600).contains(&age_secs),
+        "attempt timestamp should be recent (age={age_secs}s)"
+    );
+
+    let _ = fs::remove_dir_all(&home);
+}

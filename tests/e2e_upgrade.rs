@@ -4,6 +4,23 @@ fn fabio() -> Command {
     Command::cargo_bin("fabio").unwrap()
 }
 
+/// Returns true when a failed `upgrade --check` was caused by GitHub being
+/// unreachable or rate-limited (network-restricted / shared-IP CI runners),
+/// as opposed to a real bug. Detected from the structured error code on stderr,
+/// with a legacy substring fallback.
+fn github_check_unavailable(stderr: &str) -> bool {
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(stderr)
+        && let Some(code) = json["error"]["code"].as_str()
+    {
+        return matches!(
+            code,
+            "RATE_LIMITED" | "NETWORK_ERROR" | "API_ERROR" | "TIMEOUT"
+        );
+    }
+    stderr.contains("Failed to fetch latest release from GitHub")
+        || stderr.contains("latest fabio release")
+}
+
 #[test]
 fn upgrade_help_shows_usage() {
     fabio()
@@ -55,8 +72,8 @@ fn upgrade_check_reports_version() {
     // Skip if GitHub API is unreachable (network-restricted CI runners)
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("Failed to fetch latest release from GitHub") {
-            eprintln!("SKIP: GitHub API unreachable on this runner");
+        if github_check_unavailable(&stderr) {
+            eprintln!("SKIP: GitHub API unreachable/rate-limited on this runner");
             return;
         }
         panic!(
@@ -123,8 +140,8 @@ fn upgrade_json_output() {
     // Skip if GitHub API is unreachable (network-restricted CI runners)
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("Failed to fetch latest release from GitHub") {
-            eprintln!("SKIP: GitHub API unreachable on this runner");
+        if github_check_unavailable(&stderr) {
+            eprintln!("SKIP: GitHub API unreachable/rate-limited on this runner");
             return;
         }
         panic!(
@@ -164,8 +181,8 @@ fn upgrade_check_reports_not_available_for_older() {
     // Skip if GitHub API is unreachable (network-restricted CI runners)
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("Failed to fetch latest release from GitHub") {
-            eprintln!("SKIP: GitHub API unreachable on this runner");
+        if github_check_unavailable(&stderr) {
+            eprintln!("SKIP: GitHub API unreachable/rate-limited on this runner");
             return;
         }
         panic!(
@@ -189,8 +206,8 @@ fn upgrade_dev_build_refuses_without_force() {
     // Skip if GitHub API is unreachable (network-restricted CI runners)
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("Failed to fetch latest release from GitHub") {
-            eprintln!("SKIP: GitHub API unreachable on this runner");
+        if github_check_unavailable(&stderr) {
+            eprintln!("SKIP: GitHub API unreachable/rate-limited on this runner");
             return;
         }
         panic!(
@@ -218,8 +235,8 @@ fn upgrade_dev_build_check_still_works() {
     // Skip if GitHub API is unreachable (network-restricted CI runners)
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("Failed to fetch latest release from GitHub") {
-            eprintln!("SKIP: GitHub API unreachable on this runner");
+        if github_check_unavailable(&stderr) {
+            eprintln!("SKIP: GitHub API unreachable/rate-limited on this runner");
             return;
         }
         panic!(

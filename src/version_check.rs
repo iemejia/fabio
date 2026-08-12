@@ -27,7 +27,9 @@
 //! Cache file: `~/.fabio/version-check.json` (same directory as the token cache
 //! and job ledger; resolved via `home::home_dir()` for Windows compatibility).
 //!
-//! Opt-out: set `FABIO_NO_VERSION_CHECK` to any value.
+//! Opt-out: set `FABIO_NO_VERSION_CHECK` to any value to disable the feature
+//! entirely. Set `FABIO_NO_BACKGROUND_REFRESH` to keep the passive cached
+//! notice but never spawn the network refresher (air-gapped / hermetic runs).
 
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -73,25 +75,39 @@ fn cache_path() -> Option<PathBuf> {
 
 /// Prime the version-check for this invocation.
 ///
-/// Cheap: reads one small local file and (at most once per
-/// [`REFRESH_INTERVAL_HOURS`]) spawns a detached refresher. No network I/O.
+/// Cheap: reads one small local file (and, at most once per
+/// [`REFRESH_INTERVAL_HOURS`], writes back a small timestamp and spawns a
+/// detached refresher). No network I/O on this path.
 pub fn prime(cli: &Cli) {
     if !should_check(cli) {
         return;
     }
-    match read_cache() {
-        Some(cache) => {
-            if crate::commands::upgrade::is_version_newer(&cache.latest_version, CURRENT_VERSION) {
-                let notice = build_notice(CURRENT_VERSION, &cache.latest_version);
-                if let Ok(mut guard) = PENDING_NOTICE.lock() {
-                    *guard = Some(notice);
-                }
-            }
-            if is_stale(&cache) {
-                spawn_background_refresh();
+    if let Some(cache) = read_cache() {
+        if crate::commands::upgrade::is_version_newer(&cache.latest_version, CURRENT_VERSION) {
+            let notice = build_notice(CURRENT_VERSION, &cache.latest_version);
+            if let Ok(mut guard) = PENDING_NOTICE.lock() {
+                *guard = Some(notice);
             }
         }
-        None => spawn_background_refresh(),
+        if is_stale(&cache) {
+            // Bump the attempt timestamp BEFORE spawning (preserving the
+            // known version). This is the throttle/backoff: if the refresh
+            // is slow or fails (offline, rate-limited), subsequent
+            // invocations see a fresh timestamp and do NOT re-spawn a check
+            // for another full interval. Without this, a persistently
+            // failing check would spawn a GitHub request on *every* command.
+            write_cache(&cache.latest_version);
+            spawn_background_refresh();
+        }
+    } else {
+        // No cache yet. Record the attempt time immediately (empty version
+        // is a placeholder until a successful check writes the real one) so
+        // that (a) a burst of near-simultaneous invocations — an agent or a
+        // parallel `cargo test` run — does not each spawn a check, and
+        // (b) a check that keeps failing does not re-spawn on every future
+        // invocation. At most one refresh per interval, success or failure.
+        write_cache("");
+        spawn_background_refresh();
     }
 }
 
@@ -173,7 +189,14 @@ fn is_stale_at(last_checked: &str, now: chrono::DateTime<chrono::Utc>) -> bool {
 /// any failure (offline, sandbox that blocks spawning, read-only home) is
 /// silently ignored. `FABIO_NO_VERSION_CHECK=1` on the child prevents it from
 /// recursively spawning another refresher.
+///
+/// Skipped entirely when `FABIO_NO_BACKGROUND_REFRESH` is set — an escape hatch
+/// for air-gapped environments (and hermetic tests) that keeps the local cache
+/// bookkeeping and the passive notice, but never launches a network child.
 fn spawn_background_refresh() {
+    if std::env::var_os("FABIO_NO_BACKGROUND_REFRESH").is_some() {
+        return;
+    }
     let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("fabio"));
     let _ = std::process::Command::new(exe)
         .args(["upgrade", "--check"])

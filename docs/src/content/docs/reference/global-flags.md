@@ -58,10 +58,11 @@ When an AI agent is detected as the caller, a successful JSON response may carry
 }
 ```
 
-The check is passive and cheap: it reads a locally cached result (`~/.fabio/version-check.json`) and, at most once every 24 hours, refreshes that cache in a detached background process — it never performs a network request on the command's own path, and never blocks or fails the command. The field is additive (present only when an update exists), so it does not affect scripts or `--query` projections.
+The check is passive and cheap: it reads a locally cached result (`~/.fabio/version-check.json`) and, at most once every 24 hours, refreshes that cache in a detached background process — it never performs a network request on the command's own path, and never blocks or fails the command. The refresh interval is enforced even when a refresh fails (offline or GitHub rate-limited), so fabio makes at most one release-API request per day, not one per command. The field is additive (present only when an update exists), so it does not affect scripts or `--query` projections.
 
 | Environment variable | Purpose |
 | --- | --- |
 | `FABIO_NO_VERSION_CHECK` | Set to any value to disable the update check entirely (no cache read, no background refresh, no `updateAvailable` field). |
+| `FABIO_NO_BACKGROUND_REFRESH` | Set to any value to keep the passive cached notice but never spawn the background refresher (air-gapped environments). |
 
 Run `fabio --help` for the flags supported by your installed version.

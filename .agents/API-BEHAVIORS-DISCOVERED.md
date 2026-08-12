@@ -2971,3 +2971,38 @@ implemented or confirmed to require no code change.
   `preview` query parameter" requirement text (that sentence was not touched by this diff — it
   predates this sync and is out of scope here since no diff hunk modified it), so it was not
   altered by this sync.
+
+## Upgrade / Self-Update (GitHub Release API) Behaviors Discovered
+
+- **GitHub release-API rate limit is the usual cause of a "broken" `fabio upgrade`/`upgrade --check`**:
+  `fetch_latest_version` calls `GET https://api.github.com/repos/iemejia/fabio/releases/latest`,
+  which GitHub throttles to **60 requests/hour per IP for unauthenticated calls** (5000/hour with a
+  token). Shared-egress environments (CI, NAT, corporate proxy) exhaust the anonymous budget and
+  GitHub replies `403` with `x-ratelimit-remaining: 0` (primary limit; newer responses use `429`,
+  secondary limits use `403` + `retry-after`). fabio now (a) sends `Authorization: Bearer <token>`
+  when `FABIO_GITHUB_TOKEN`/`GH_TOKEN`/`GITHUB_TOKEN` is set, and (b) classifies the failure into a
+  *retriable* `RATE_LIMITED` error (the limit is transient/per-IP and resets automatically — retry
+  after a few minutes; set a token only for CI/automation that hits it repeatedly) instead of the
+  previous opaque `UNKNOWN` "Failed to fetch latest release from GitHub". Network
+  send failures map to `NETWORK_ERROR`, other non-2xx to `API_ERROR`. A fine-grained token needs
+  **no scopes** for a public repo. `releases/latest` returns the newest non-draft, non-prerelease
+  release (drafts/prereleases are skipped by GitHub), so it correctly ignores in-progress release
+  builds. Detection is header-based (`classify_release_api_error` in `src/commands/upgrade.rs`), not
+  body-string-based, so it is robust to GitHub error-message wording changes.
+- **Version-check runaway was the ROOT cause of exhausting the rate limit (fixed)**: the passive
+  update notice (`src/version_check.rs`) spawns a detached `fabio upgrade --check` to refresh
+  `~/.fabio/version-check.json`. The original `prime()` only throttled via the 24h staleness of an
+  *existing* cache, and `upgrade --check` only wrote the cache **on success**. So whenever the cache
+  file was absent (first use) or every refresh kept failing (offline / already rate-limited), EVERY
+  agent-detected invocation spawned another `upgrade --check` → one GitHub API request per fabio
+  command. A parallel `cargo test` run (hundreds of binary invocations before any cache write lands)
+  or an agent firing many commands in a burst therefore blew through the 60/hour anonymous budget
+  almost instantly, and once limited it self-perpetuated (checks fail → cache never written → spawn
+  again). Fix: `prime()` now writes the attempt timestamp **synchronously before spawning** in BOTH
+  the missing-cache branch (empty placeholder version) and the stale-cache branch (preserving the
+  known version). This is negative caching / backoff — a failed or in-flight refresh still advances
+  the 24h throttle, so fabio makes at most ~1 release-API request per day regardless of success, and
+  the synchronous write shrinks the parallel-burst race window from a full network round-trip to a
+  local file write. `FABIO_NO_BACKGROUND_REFRESH` skips the spawn entirely while keeping the cache
+  bookkeeping (air-gapped envs / hermetic tests). Net: the rate-limit handling above is the safety
+  net; this throttle fix is why the limit should no longer be hit in normal use.
