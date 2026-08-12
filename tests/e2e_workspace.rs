@@ -5,6 +5,8 @@ mod common;
 use common::{TestConfig, extract_count, extract_data, fabio, parse_json, unique_name};
 use predicates::prelude::*;
 use serial_test::serial;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[test]
 #[ignore = "requires live Fabric tenant"]
@@ -3191,6 +3193,107 @@ fn workspace_recover_item_dry_run() {
 }
 
 #[test]
+fn workspace_recover_item_mocked_synchronous_list_response() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let workspace = "00000000-0000-0000-0000-000000000001";
+    let item_id = "00000000-0000-0000-0000-000000000002";
+    let route = format!("/workspaces/{workspace}/recoverableItems/{item_id}/recover");
+
+    let (server_uri, _server) = rt.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(route))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [
+                    {
+                        "displayName": "Recovered Lakehouse",
+                        "id": item_id,
+                        "type": "Lakehouse",
+                        "workspaceId": workspace
+                    }
+                ]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "workspace",
+            "recover-item",
+            "--workspace",
+            workspace,
+            "--item-id",
+            item_id,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(json["count"], 1);
+    assert_eq!(data[0]["id"], item_id);
+    assert_eq!(data[0]["workspaceId"], workspace);
+}
+
+#[test]
+fn workspace_recover_item_mocked_accepted_without_lro_headers_renders_body() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let workspace = "00000000-0000-0000-0000-000000000001";
+    let item_id = "00000000-0000-0000-0000-000000000002";
+    let route = format!("/workspaces/{workspace}/recoverableItems/{item_id}/recover");
+
+    let (server_uri, _server) = rt.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(route))
+            .respond_with(ResponseTemplate::new(202).set_body_json(serde_json::json!({
+                "value": [
+                    {
+                        "displayName": "Recovered Lakehouse",
+                        "id": item_id,
+                        "type": "Lakehouse",
+                        "workspaceId": workspace
+                    }
+                ]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "workspace",
+            "recover-item",
+            "--workspace",
+            workspace,
+            "--item-id",
+            item_id,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(json["count"], 1);
+    assert_eq!(data[0]["id"], item_id);
+}
+
+#[test]
 fn workspace_delete_recoverable_item_dry_run_is_destructive() {
     let assert = fabio()
         .env("GITHUB_COPILOT_AGENT", "1")
@@ -3213,6 +3316,49 @@ fn workspace_delete_recoverable_item_dry_run_is_destructive() {
     assert_eq!(data["details"]["permanent"], true);
     assert_eq!(data["destructive"], true);
     assert!(data["agentNotice"].is_string());
+}
+
+#[test]
+fn workspace_delete_recoverable_item_mocked_delete_request() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let workspace = "00000000-0000-0000-0000-000000000001";
+    let item_id = "00000000-0000-0000-0000-000000000002";
+    let route = format!("/workspaces/{workspace}/recoverableItems/{item_id}");
+
+    let (server_uri, _server) = rt.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("DELETE"))
+            .and(path(route))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "workspace",
+            "delete-recoverable-item",
+            "--workspace",
+            workspace,
+            "--item-id",
+            item_id,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["workspaceId"], workspace);
+    assert_eq!(data["id"], item_id);
+    assert_eq!(data["status"], "deleted");
+    assert_eq!(data["permanent"], true);
 }
 
 #[test]
@@ -3262,4 +3408,122 @@ fn workspace_list_recoverable_items_live() {
     let data = extract_data(&json);
     assert!(data.is_array());
     assert!(json["count"].is_number());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_recover_item_live_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let item_id = create_soft_deleted_lakehouse(&cfg, "recover_lifecycle");
+
+    let list_json = wait_for_recoverable_item(&cfg.dest_workspace, &item_id);
+    assert!(extract_data(&list_json).is_array());
+    assert!(list_json["count"].is_number());
+
+    let assert = fabio()
+        .args([
+            "workspace",
+            "recover-item",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--item-id",
+            &item_id,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(data.is_array());
+
+    soft_delete_item(&cfg.dest_workspace, &item_id);
+    purge_recoverable_item(&cfg.dest_workspace, &item_id);
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_delete_recoverable_item_live_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let item_id = create_soft_deleted_lakehouse(&cfg, "purge_lifecycle");
+    let list_json = wait_for_recoverable_item(&cfg.dest_workspace, &item_id);
+    assert!(extract_data(&list_json).is_array());
+
+    let assert = purge_recoverable_item(&cfg.dest_workspace, &item_id);
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["id"], item_id);
+    assert_eq!(data["status"], "deleted");
+    assert_eq!(data["permanent"], true);
+}
+
+fn create_soft_deleted_lakehouse(cfg: &TestConfig, prefix: &str) -> String {
+    let name = unique_name(prefix);
+    let assert = fabio()
+        .args([
+            "item",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--type",
+            "Lakehouse",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let item_id = extract_data(&json)["id"].as_str().unwrap().to_string();
+    soft_delete_item(&cfg.dest_workspace, &item_id);
+    item_id
+}
+
+fn soft_delete_item(workspace: &str, item_id: &str) {
+    // `item delete` without `--hard-delete` is the API's soft-delete path; these
+    // lifecycle tests then exercise recovery/permanent deletion from the recycle bin.
+    fabio()
+        .args(["item", "delete", "--workspace", workspace, "--id", item_id])
+        .assert()
+        .success();
+}
+
+fn purge_recoverable_item(workspace: &str, item_id: &str) -> assert_cmd::assert::Assert {
+    fabio()
+        .args([
+            "workspace",
+            "delete-recoverable-item",
+            "--workspace",
+            workspace,
+            "--item-id",
+            item_id,
+        ])
+        .assert()
+        .success()
+}
+
+fn wait_for_recoverable_item(workspace: &str, item_id: &str) -> serde_json::Value {
+    for _ in 0..6 {
+        let assert = fabio()
+            .args([
+                "workspace",
+                "list-recoverable-items",
+                "--workspace",
+                workspace,
+                "--type",
+                "Lakehouse",
+            ])
+            .assert()
+            .success();
+        let json = parse_json(&assert);
+        let found = extract_data(&json)
+            .as_array()
+            .is_some_and(|items| items.iter().any(|item| item["id"] == item_id));
+        if found {
+            return json;
+        }
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
+    panic!("recoverable item {item_id} did not appear in workspace {workspace}");
 }
