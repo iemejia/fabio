@@ -110,6 +110,7 @@ jobs:
           export SPEC_COMMITS="$(cat /tmp/spec-commits.txt)"
           PROMPT=$(envsubst '${SPEC_CHANGES_SUMMARY} ${SPEC_COMMITS}' < .github/prompts/sync-fabric-api-specs.md)
           copilot -p "$PROMPT" \
+            --model gpt-5.6-sol \
             --allow-tool='shell(git:status,diff,log,show,rev-parse,ls-files,blame,branch)' \
             --allow-tool='shell(cargo:*)' \
             --allow-tool='shell(cat:*)' \
@@ -158,6 +159,7 @@ jobs:
           $BUILD_ERRORS
 
           Run 'cargo check' and 'cargo clippy -- -D warnings' after fixing to confirm the build passes." \
+            --model gpt-5.6-sol \
             --allow-tool='shell(git:status,diff,log,show,rev-parse,ls-files,blame,branch)' \
             --allow-tool='shell(cargo:*)' \
             --allow-tool='shell(cat:*)' \
