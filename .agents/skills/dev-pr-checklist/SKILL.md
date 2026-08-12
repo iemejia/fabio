@@ -74,7 +74,7 @@ Run `git diff --staged` (or `git diff` if not yet staged) and review every hunk:
 
 If you added new features or commands, verify:
 
-- [ ] AGENTS.md updated (Progress > Done, Key Decisions, Relevant Files, API Behaviors)
+- [ ] `.agents/*.md` reference files updated — decisions → `.agents/KEY-DECISIONS.md`, new files → `.agents/RELEVANT-FILES.md`, API behaviors → `.agents/API-BEHAVIORS-DISCOVERED.md` (NOT inline in AGENTS.md — see "Agent Context Hygiene")
 - [ ] `commands.json` regenerated (Step 4)
 - [ ] Best-practice or workflow added if applicable (just drop a `.json` file in `src/commands/context/data/best_practices/` or `workflows/`)
 - [ ] Output examples added for non-obvious response shapes (`src/commands/context/data/examples/`)
