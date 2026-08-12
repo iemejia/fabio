@@ -131,7 +131,7 @@ docker run --rm ghcr.io/iemejia/fabio --help
 Use a specific version:
 
 ```bash
-docker run --rm ghcr.io/iemejia/fabio:0.63.0 workspace list
+docker run --rm ghcr.io/iemejia/fabio:0.64.0 workspace list
 ```
 
 Pass credentials via environment variables for non-interactive use:
@@ -589,7 +589,7 @@ fabio releases frequently. When an AI agent is detected, a successful JSON respo
   "data": { "...": "..." },
   "updateAvailable": {
     "current": "0.60.0",
-    "latest": "0.63.0",
+    "latest": "0.64.0",
     "installMethod": "cargo",
     "upgradeCommand": "cargo install --git https://github.com/iemejia/fabio.git --force"
   }
