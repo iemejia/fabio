@@ -4,7 +4,7 @@
   "description": "Intent-scoped fabio skill for Fabric administration and workspace management: workspace lifecycle/roles/folders/networking/encryption, capacity lifecycle, tenant-wide inventory and settings, domains, gateways, connections, managed private endpoints, and sensitivity labels. Use for governance, connectivity, capacity, and workspace-level administration. Triggers: \"workspace\", \"assign capacity\", \"workspace roles\", \"network policy\", \"capacity\", \"resume capacity\", \"suspend capacity\", \"tenant settings\", \"domain\", \"gateway\", \"connection\", \"private endpoint\", \"sensitivity label\".",
   "command_groups": ["workspace", "admin", "capacity", "domain", "gateway", "connection", "managed-private-endpoint", "label"],
   "when_to_use": [
-    "Workspace lifecycle and governance: create/assign-capacity, role assignments, folders, domains, networking/firewall/encryption policies, git outbound policy, OneLake settings.",
+    "Workspace lifecycle and governance: create/assign-capacity, recover or permanently delete soft-deleted items, role assignments, folders, domains, networking/firewall/encryption policies, git outbound policy, OneLake settings.",
     "Capacity lifecycle: list, resume, suspend, create, delete (ARM-scoped).",
     "Tenant-wide inventory and settings (requires Fabric admin role).",
     "Governance: domains (group workspaces), sensitivity labels.",
@@ -16,12 +16,14 @@
   ],
   "key_gotchas": [
     "capacity suspend/resume/create/delete use the ARM scope (management.azure.com), not the Fabric scope.",
-    "label list resolves UUIDs to names via Microsoft Graph (needs M365 E5 + InformationProtection.Read)."
+    "label list resolves UUIDs to names via Microsoft Graph (needs M365 E5 + InformationProtection.Read).",
+    "workspace recover-item can partially succeed: a failed child and its descendants remain soft-deleted while independent branches may recover."
   ],
   "safety": [
     "capacity suspend interrupts ALL running workloads (notebooks, pipelines, Spark jobs) on that capacity — warn about in-flight jobs.",
     "Tenant setting changes are broad — confirm scope before applying.",
-    "Deleting a workspace is permanent and removes ALL items inside — warn and suggest --dry-run."
+    "Deleting a workspace is permanent and removes ALL items inside — warn and suggest --dry-run.",
+    "workspace delete-recoverable-item permanently removes a soft-deleted item; always inspect list-recoverable-items and use --dry-run first."
   ],
   "must": [
     "Call tenant-scoped commands WITHOUT --workspace (capacity, connection, gateway, domain, deployment-pipeline, admin).",

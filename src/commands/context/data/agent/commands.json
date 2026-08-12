@@ -43,7 +43,11 @@
           }
         },
         "mutates": false,
-        "returns": "list"
+        "returns": "list",
+        "examples": [
+          "fabio workspace list-recoverable-items --workspace $WS --type Lakehouse --recoverable-by-me true",
+          "fabio workspace list-recoverable-items --workspace $WS --all"
+        ]
       },
       "delete-capacity-tenant-override": {
         "description": "Delete a capacity delegated tenant setting override",
@@ -86,7 +90,12 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "list",
+        "async": true,
+        "examples": [
+          "fabio workspace recover-item --workspace $WS --item-id $ITEM --dry-run",
+          "fabio workspace recover-item --workspace $WS --item-id $ITEM"
+        ]
       },
       "list-domains-tenant-overrides": {
         "description": "List all domains' delegated tenant setting overrides",
@@ -153,7 +162,11 @@
         },
         "mutates": true,
         "returns": "void",
-        "destructive": true
+        "destructive": true,
+        "examples": [
+          "fabio workspace delete-recoverable-item --workspace $WS --item-id $ITEM --dry-run",
+          "fabio workspace delete-recoverable-item --workspace $WS --item-id $ITEM"
+        ]
       },
       "list-workloads": {
         "description": "List workloads",
@@ -812,6 +825,65 @@
         "examples": [
           "fabio workspace delete --id $WS --dry-run"
         ]
+      },
+      "list-recoverable-items": {
+        "description": "List soft-deleted items that are still within their retention period",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--type": {
+            "type": "string",
+            "description": "Filter by recoverable item type (for example, Lakehouse)"
+          },
+          "--recoverable-by-me": {
+            "type": "enum",
+            "values": [
+              "true",
+              "false"
+            ],
+            "description": "Only return items that the caller can recover immediately"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "recover-item": {
+        "description": "Recover a soft-deleted item and its recoverable descendants",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--item-id": {
+            "type": "string",
+            "required": true,
+            "description": "Recoverable item ID"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "delete-recoverable-item": {
+        "description": "Permanently delete a recoverable item",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--item-id": {
+            "type": "string",
+            "required": true,
+            "description": "Recoverable item ID"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
       },
       "clone": {
         "description": "Clone workspace items from one workspace to another using bulk APIs",

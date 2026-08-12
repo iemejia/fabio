@@ -12,7 +12,7 @@ license: MIT
 > **Prefer runtime introspection.** This index is a snapshot; the installed binary is always authoritative. Use `fabio context agent --group <group>` and `fabio context describe <group> <command>` for exact flags and output shapes.
 
 ## When to use
-- Workspace lifecycle and governance: create/assign-capacity, role assignments, folders, domains, networking/firewall/encryption policies, git outbound policy, OneLake settings.
+- Workspace lifecycle and governance: create/assign-capacity, recover or permanently delete soft-deleted items, role assignments, folders, domains, networking/firewall/encryption policies, git outbound policy, OneLake settings.
 - Capacity lifecycle: list, resume, suspend, create, delete (ARM-scoped).
 - Tenant-wide inventory and settings (requires Fabric admin role).
 - Governance: domains (group workspaces), sensitivity labels.
@@ -41,6 +41,7 @@ Manage workspaces
 | `fabio workspace create-folder` | yes | Create a folder in a workspace |
 | `fabio workspace delete` | yes | Delete a workspace |
 | `fabio workspace delete-folder` | yes | Delete a workspace folder |
+| `fabio workspace delete-recoverable-item` | yes | Permanently delete a recoverable item |
 | `fabio workspace delete-role-assignment` | yes | Delete a workspace role assignment |
 | `fabio workspace deprovision-identity` | yes | Deprovision a workspace identity |
 | `fabio workspace export-lifecycle-policy` | no | Export `OneLake` lifecycle policy |
@@ -58,12 +59,14 @@ Manage workspaces
 | `fabio workspace import-lifecycle-policy` | yes | Import `OneLake` lifecycle policy |
 | `fabio workspace list` | no | List all workspaces |
 | `fabio workspace list-folders` | no | List workspace folders |
+| `fabio workspace list-recoverable-items` | no | List soft-deleted items that are still within their retention period |
 | `fabio workspace list-role-assignments` | no | List workspace role assignments |
 | `fabio workspace modify-default-tier` | yes | Modify `OneLake` default tier (Hot, Cool, or Cold) |
 | `fabio workspace modify-diagnostics` | yes | Modify `OneLake` diagnostics configuration |
 | `fabio workspace modify-immutability-policy` | yes | Modify `OneLake` immutability policy |
 | `fabio workspace move-folder` | yes | Move a folder to another parent (or root) |
 | `fabio workspace provision-identity` | yes | Provision a workspace identity (managed identity) |
+| `fabio workspace recover-item` | yes | Recover a soft-deleted item and its recoverable descendants |
 | `fabio workspace reset-encryption` | yes | Reset workspace encryption by removing the CMK configuration (reverts to Microsoft-managed keys) (Preview) |
 | `fabio workspace reset-shortcut-cache` | yes | Reset `OneLake` shortcut cache for a workspace |
 | `fabio workspace set-dataset-storage-format` | yes | Set default dataset storage format (Small or Large) via Power BI API |
@@ -249,6 +252,7 @@ List and resolve sensitivity labels (from Microsoft Purview via Graph API)
 ## Key gotchas
 - capacity suspend/resume/create/delete use the ARM scope (management.azure.com), not the Fabric scope.
 - label list resolves UUIDs to names via Microsoft Graph (needs M365 E5 + InformationProtection.Read).
+- workspace recover-item can partially succeed: a failed child and its descendants remain soft-deleted while independent branches may recover.
 
 ## Troubleshooting
 | Symptom | Fix |
@@ -262,6 +266,7 @@ List and resolve sensitivity labels (from Microsoft Purview via Graph API)
 - capacity suspend interrupts ALL running workloads (notebooks, pipelines, Spark jobs) on that capacity — warn about in-flight jobs.
 - Tenant setting changes are broad — confirm scope before applying.
 - Deleting a workspace is permanent and removes ALL items inside — warn and suggest --dry-run.
+- workspace delete-recoverable-item permanently removes a soft-deleted item; always inspect list-recoverable-items and use --dry-run first.
 
 ## Shared references
 Cross-cutting operational guidance (the "common" layer) — consult the relevant topic before non-trivial work:

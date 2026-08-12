@@ -3157,3 +3157,109 @@ fn workspace_clone_with_item_types_dry_run() {
     let data = extract_data(&json);
     assert_eq!(data["would_execute"], "workspace clone");
 }
+
+// ─── Recoverable items ──────────────────────────────────────────────────────
+
+#[test]
+fn workspace_recover_item_dry_run() {
+    let assert = fabio()
+        .args([
+            "workspace",
+            "recover-item",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--item-id",
+            "00000000-0000-0000-0000-000000000002",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "workspace recover-item");
+    assert_eq!(
+        data["details"]["workspaceId"],
+        "00000000-0000-0000-0000-000000000001"
+    );
+    assert_eq!(
+        data["details"]["itemId"],
+        "00000000-0000-0000-0000-000000000002"
+    );
+    assert_eq!(data["details"]["recoversDescendants"], true);
+}
+
+#[test]
+fn workspace_delete_recoverable_item_dry_run_is_destructive() {
+    let assert = fabio()
+        .env("GITHUB_COPILOT_AGENT", "1")
+        .args([
+            "workspace",
+            "delete-recoverable-item",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--item-id",
+            "00000000-0000-0000-0000-000000000002",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "workspace delete-recoverable-item");
+    assert_eq!(data["details"]["permanent"], true);
+    assert_eq!(data["destructive"], true);
+    assert!(data["agentNotice"].is_string());
+}
+
+#[test]
+fn workspace_delete_recoverable_item_rejects_invalid_item_id() {
+    fabio()
+        .args([
+            "workspace",
+            "delete-recoverable-item",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--item-id",
+            "",
+            "--dry-run",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--item-id must be a valid UUID"));
+}
+
+#[test]
+fn workspace_list_recoverable_items_requires_workspace() {
+    fabio()
+        .args(["workspace", "list-recoverable-items"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--workspace"));
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_list_recoverable_items_live() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "workspace",
+            "list-recoverable-items",
+            "--workspace",
+            &cfg.source_workspace,
+            "--recoverable-by-me",
+            "true",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert!(data.is_array());
+    assert!(json["count"].is_number());
+}
