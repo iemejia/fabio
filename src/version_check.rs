@@ -236,6 +236,9 @@ fn classify_install_method(exe_path_lower: &str, in_docker: bool) -> InstallMeth
 }
 
 /// Best-effort container detection (Linux only; other platforms return false).
+// On non-Linux targets the body reduces to `false`, which is const-eligible;
+// the Linux body does filesystem I/O and is not, so keep it a plain fn everywhere.
+#[cfg_attr(not(target_os = "linux"), allow(clippy::missing_const_for_fn))]
 fn running_in_docker() -> bool {
     #[cfg(target_os = "linux")]
     {
