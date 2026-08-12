@@ -201,21 +201,59 @@ jobs:
           # Include cursor advance in the PR (not pushed directly to main)
           echo "$HEAD_SHA" > .github/fabric-api-specs-cursor
 
+          # --- Commit subject / PR title (authored by Copilot, with fallback) ---
+          # Must be a single line matching Conventional Commits (enforced by the
+          # Semantic PR check). Fall back to a generic title if Copilot did not
+          # produce one or produced an invalid one.
+          CONVENTIONAL_RE='^(feat|fix|docs|style|refactor|perf|test|chore|build|ci|revert)(\([^)]+\))?(!?): .+'
+          DEFAULT_TITLE="feat: sync with Fabric REST API spec $(date +%Y-%m-%d)"
+          TITLE=""
+          if [ -f /tmp/commit-title.txt ]; then
+            TITLE=$(head -n 1 /tmp/commit-title.txt | sed 's/[[:space:]]*$//')
+          fi
+          if [ -z "$TITLE" ] || ! printf '%s' "$TITLE" | grep -Eq "$CONVENTIONAL_RE"; then
+            echo "::warning::No valid /tmp/commit-title.txt from Copilot — using default title"
+            TITLE="$DEFAULT_TITLE"
+          fi
+          echo "Commit/PR title: $TITLE"
+
+          # --- Commit body (authored by Copilot, with fallback) ---
+          COMMIT_BODY="/tmp/commit-body.txt"
+          if [ ! -s "$COMMIT_BODY" ]; then
+            COMMIT_BODY="/tmp/commit-body-fallback.txt"
+            {
+              echo "Automated sync with microsoft/fabric-rest-api-specs changes."
+              echo ""
+              echo "Spec commits processed:"
+              cat /tmp/spec-commits.txt
+            } > "$COMMIT_BODY"
+          fi
+
           git add -A
           git reset -- fabric-rest-api-specs
-          git commit -m "feat: sync with latest Fabric REST API spec changes"
+
+          # Assemble the full commit message: subject + blank line + body.
+          COMMIT_MSG="/tmp/commit-message.txt"
+          {
+            printf '%s\n\n' "$TITLE"
+            cat "$COMMIT_BODY"
+          } > "$COMMIT_MSG"
+          git commit -F "$COMMIT_MSG"
           git push --force origin "$BRANCH"
 
+          # --- PR body (authored by Copilot, with fallback) ---
           PR_BODY="/tmp/pr-body.md"
-          if [ ! -f "$PR_BODY" ]; then
+          if [ ! -s "$PR_BODY" ]; then
             echo "Automated sync with microsoft/fabric-rest-api-specs changes." > "$PR_BODY"
             echo "" >> "$PR_BODY"
             echo "**Spec commits processed:**" >> "$PR_BODY"
+            echo '```' >> "$PR_BODY"
             cat /tmp/spec-commits.txt >> "$PR_BODY"
+            echo '```' >> "$PR_BODY"
           fi
 
           gh pr create \
-            --title "feat: sync with Fabric REST API spec $(date +%Y-%m-%d)" \
+            --title "$TITLE" \
             --body-file "$PR_BODY" \
             --label "automated,api-sync"
 

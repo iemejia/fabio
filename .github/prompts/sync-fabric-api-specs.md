@@ -188,11 +188,11 @@ Before finishing, verify completeness:
    ```bash
    cargo test --bin fabio generate_agent_schema -- --include-ignored
    ```
-3. Write /tmp/pr-body.md describing:
-   - Complete list of spec changes processed (grouped by category)
-   - What was added/modified in fabio for each
-   - Count summary (endpoints, fields, enums, deprecations)
-   - Any spec changes that could NOT be implemented and why
+3. **Write three files** that describe the actual work you did. The CI workflow reads these to build the commit and PR — if you omit them (or make them generic), the PR falls back to an unhelpful title and message. Base each on the changes you actually implemented, NOT on a template.
+
+   - **`/tmp/commit-title.txt`** — one line, used verbatim as BOTH the commit subject and the PR title. Write a **Conventional Commit subject** (repo convention — see AGENTS.md; the exact format is validated by CI, which falls back to a generic title if yours is missing or invalid). The one thing that matters here: summarize WHAT actually changed with concrete nouns/counts — e.g. `feat(eventhouse): add scale-compute endpoint and minReplicas field` — NOT a generic `feat: sync with latest Fabric REST API spec changes`.
+   - **`/tmp/pr-body.md`** — the PR description (Markdown), readable without opening the diff: a one-paragraph summary; **spec changes processed** grouped by category (endpoints, fields, enums, deprecations, semantic changes) each mapped to the **fabio file/command** touched; a **count summary** ("X new endpoints, Y new fields, Z enum changes, W deprecations"); the upstream **spec commits** (`${SPEC_COMMITS}`); and anything that could NOT be implemented and why.
+   - **`/tmp/commit-body.txt`** — the commit body below the subject (plain text, `- ` bullets, ~72-col wrap). Same substance as the PR body, condensed. Optional: if omitted, the commit uses the subject plus the spec-commit list.
 
 ## Tool Usage Rules
 
