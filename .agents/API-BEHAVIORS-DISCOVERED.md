@@ -3004,5 +3004,8 @@ implemented or confirmed to require no code change.
   the 24h throttle, so fabio makes at most ~1 release-API request per day regardless of success, and
   the synchronous write shrinks the parallel-burst race window from a full network round-trip to a
   local file write. `FABIO_NO_BACKGROUND_REFRESH` skips the spawn entirely while keeping the cache
-  bookkeeping (air-gapped envs / hermetic tests). Net: the rate-limit handling above is the safety
-  net; this throttle fix is why the limit should no longer be hit in normal use.
+  bookkeeping (air-gapped envs / hermetic tests). `write_cache` returns a bool and `prime` only
+  spawns the refresh when the attempt timestamp was actually persisted — if the cache cannot be
+  written (no home dir, read-only home, sandbox), the check is skipped rather than re-spawned on
+  every command (an un-throttleable check is the runaway itself). Net: the rate-limit handling above
+  is the safety net; this throttle fix is why the limit should no longer be hit in normal use.

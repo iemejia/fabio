@@ -96,8 +96,11 @@ pub fn prime(cli: &Cli) {
             // invocations see a fresh timestamp and do NOT re-spawn a check
             // for another full interval. Without this, a persistently
             // failing check would spawn a GitHub request on *every* command.
-            write_cache(&cache.latest_version);
-            spawn_background_refresh();
+            // Only spawn if we could persist the attempt — an un-throttleable
+            // check (read-only home) must not run, or the runaway returns.
+            if write_cache(&cache.latest_version) {
+                spawn_background_refresh();
+            }
         }
     } else {
         // No cache yet. Record the attempt time immediately (empty version
@@ -106,8 +109,11 @@ pub fn prime(cli: &Cli) {
         // parallel `cargo test` run — does not each spawn a check, and
         // (b) a check that keeps failing does not re-spawn on every future
         // invocation. At most one refresh per interval, success or failure.
-        write_cache("");
-        spawn_background_refresh();
+        // If the attempt cannot be persisted (no/read-only home), skip the
+        // spawn: an un-throttleable check would hammer GitHub on every command.
+        if write_cache("") {
+            spawn_background_refresh();
+        }
     }
 }
 
@@ -144,13 +150,16 @@ fn read_cache() -> Option<VersionCache> {
     serde_json::from_str(&data).ok()
 }
 
-/// Persist the latest known version to the cache (best-effort, never errors out).
+/// Persist the latest known version to the cache. Returns `true` if the cache
+/// was written to disk, `false` if it could not be (no home dir, read-only
+/// home, sandbox). Best-effort — never errors out.
 ///
 /// Called from `upgrade --check` (which has just fetched the latest release),
 /// so a manual check and the background refresher both warm the same cache.
-pub fn write_cache(latest_version: &str) {
+/// The boolean lets [`prime`] avoid spawning a refresh it cannot throttle.
+pub fn write_cache(latest_version: &str) -> bool {
     let Some(path) = cache_path() else {
-        return;
+        return false;
     };
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -160,13 +169,14 @@ pub fn write_cache(latest_version: &str) {
         latest_version: latest_version.to_string(),
     };
     let Ok(serialized) = serde_json::to_string(&cache) else {
-        return;
+        return false;
     };
     // Write to a temp file then rename for an atomic-ish replace.
     let tmp = path.with_extension("tmp");
     if std::fs::write(&tmp, &serialized).is_ok() {
-        let _ = std::fs::rename(&tmp, &path);
+        return std::fs::rename(&tmp, &path).is_ok();
     }
+    false
 }
 
 /// Whether the cache is old enough to warrant a background refresh.

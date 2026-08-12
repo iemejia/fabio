@@ -35,7 +35,7 @@ pub async fn execute(cli: &Cli, check: bool, version: Option<&str>, force: bool)
         // the background refresher populate the same cache consumed by the
         // passive "newer fabio available" notice.
         if version.is_none() {
-            crate::version_check::write_cache(&target_version);
+            let _ = crate::version_check::write_cache(&target_version);
         }
         let obj = serde_json::json!({
             "current_version": CURRENT_VERSION,
