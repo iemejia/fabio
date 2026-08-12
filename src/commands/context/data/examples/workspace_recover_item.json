@@ -1,0 +1,34 @@
+{
+  "command": "fabio workspace recover-item --workspace $WS --item-id $ITEM",
+  "description": "Recovers a soft-deleted item and shows every item recovered by the operation.",
+  "response": {
+    "data": [
+      {
+        "id": "3546052c-ae64-4526-b1a8-52af7761426f",
+        "displayName": "Lakehouse",
+        "description": "A lakehouse used by the analytics team.",
+        "type": "Lakehouse",
+        "workspaceId": "52984ceb-fd5b-4da9-a0c5-2fe9887b509f"
+      },
+      {
+        "id": "58fa1eac-9694-4a6b-ba25-3520288e8fea",
+        "displayName": "SQLEndpoint",
+        "description": "A SQL endpoint recovered with its parent lakehouse.",
+        "type": "SQLEndpoint",
+        "workspaceId": "52984ceb-fd5b-4da9-a0c5-2fe9887b509f"
+      }
+    ],
+    "count": 2
+  },
+  "notes": "Recovery may partially succeed. A child that fails recovery and all its descendants remain soft-deleted, while independent branches may still recover.",
+  "query_examples": [
+    {
+      "query": "[].id",
+      "description": "Extract all recovered item IDs."
+    },
+    {
+      "query": "[?type=='SQLEndpoint'].id",
+      "description": "Extract recovered SQL endpoint IDs."
+    }
+  ]
+}

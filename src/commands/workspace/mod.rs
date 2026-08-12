@@ -3,6 +3,7 @@ mod crud;
 mod folders;
 mod identity;
 mod networking;
+mod recoverable_items;
 mod roles;
 mod settings;
 
@@ -86,6 +87,39 @@ pub enum WorkspaceCommand {
         /// Workspace ID
         #[arg(long)]
         id: String,
+    },
+    /// List soft-deleted items that are still within their retention period
+    #[command(display_order = 14)]
+    ListRecoverableItems {
+        /// Workspace ID
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Filter by recoverable item type (for example, Lakehouse)
+        #[arg(long = "type")]
+        item_type: Option<String>,
+        /// Only return items that the caller can recover immediately
+        #[arg(long)]
+        recoverable_by_me: Option<bool>,
+    },
+    /// Recover a soft-deleted item and its recoverable descendants
+    #[command(display_order = 15)]
+    RecoverItem {
+        /// Workspace ID
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Recoverable item ID
+        #[arg(long)]
+        item_id: String,
+    },
+    /// Permanently delete a recoverable item
+    #[command(display_order = 16)]
+    DeleteRecoverableItem {
+        /// Workspace ID
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Recoverable item ID
+        #[arg(long)]
+        item_id: String,
     },
     /// Clone workspace items from one workspace to another using bulk APIs
     ///
@@ -566,6 +600,26 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceComman
             description,
         } => crud::update(cli, client, id, name.as_deref(), description.as_deref()).await,
         WorkspaceCommand::Delete { id } => crud::delete(cli, client, id).await,
+        WorkspaceCommand::ListRecoverableItems {
+            workspace,
+            item_type,
+            recoverable_by_me,
+        } => {
+            recoverable_items::list(
+                cli,
+                client,
+                workspace,
+                item_type.as_deref(),
+                *recoverable_by_me,
+            )
+            .await
+        }
+        WorkspaceCommand::RecoverItem { workspace, item_id } => {
+            recoverable_items::recover(cli, client, workspace, item_id).await
+        }
+        WorkspaceCommand::DeleteRecoverableItem { workspace, item_id } => {
+            recoverable_items::delete(cli, client, workspace, item_id).await
+        }
         WorkspaceCommand::Clone {
             source,
             dest,

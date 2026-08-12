@@ -66,6 +66,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 - **Terraform-like convergence** — re-running `deploy apply` on a synced workspace produces zero API calls
 - **Saved deployment plans** — `--out plan.json` then `apply --plan plan.json` (with staleness detection)
 - **Workspace folder management** — infers folder hierarchy, creates/moves/deletes automatically
+- **Workspace recycle-bin lifecycle** — list retained soft-deleted items, recover item trees, or permanently delete recoverable items with destructive dry-run signals
 - **Protected type deletion guards** — Lakehouse/Warehouse/Eventhouse safe from accidental deletion
 - **Post-deploy automation** — Semantic Model refresh, Environment publish, SQL endpoint polling, Variable Library value set activation, job schedule creation
 - **Workspace clone** — replicate workspace items via Bulk Export/Import APIs (`--allow-pairing-by-name` for initial clones)

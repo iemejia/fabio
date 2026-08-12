@@ -136,6 +136,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         "workspace/list",
         include_str!("data/examples/workspace_list.json"),
     ),
+    (
+        "workspace/recover-item",
+        include_str!("data/examples/workspace_recover_item.json"),
+    ),
     ("item/list", include_str!("data/examples/item_list.json")),
     (
         "deploy/plan",
