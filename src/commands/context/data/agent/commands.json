@@ -43,11 +43,7 @@
           }
         },
         "mutates": false,
-        "returns": "list",
-        "examples": [
-          "fabio workspace list-recoverable-items --workspace $WS --type Lakehouse --recoverable-by-me true",
-          "fabio workspace list-recoverable-items --workspace $WS --all"
-        ]
+        "returns": "list"
       },
       "delete-capacity-tenant-override": {
         "description": "Delete a capacity delegated tenant setting override",
@@ -90,12 +86,7 @@
           }
         },
         "mutates": true,
-        "returns": "list",
-        "async": true,
-        "examples": [
-          "fabio workspace recover-item --workspace $WS --item-id $ITEM --dry-run",
-          "fabio workspace recover-item --workspace $WS --item-id $ITEM"
-        ]
+        "returns": "object"
       },
       "list-domains-tenant-overrides": {
         "description": "List all domains' delegated tenant setting overrides",
@@ -162,11 +153,7 @@
         },
         "mutates": true,
         "returns": "void",
-        "destructive": true,
-        "examples": [
-          "fabio workspace delete-recoverable-item --workspace $WS --item-id $ITEM --dry-run",
-          "fabio workspace delete-recoverable-item --workspace $WS --item-id $ITEM"
-        ]
+        "destructive": true
       },
       "list-workloads": {
         "description": "List workloads",
@@ -848,7 +835,11 @@
           }
         },
         "mutates": false,
-        "returns": "list"
+        "returns": "list",
+        "examples": [
+          "fabio workspace list-recoverable-items --workspace $WS --type Lakehouse --recoverable-by-me true",
+          "fabio workspace list-recoverable-items --workspace $WS --all"
+        ]
       },
       "recover-item": {
         "description": "Recover a soft-deleted item and its recoverable descendants",
@@ -865,7 +856,12 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "list",
+        "async": true,
+        "examples": [
+          "fabio workspace recover-item --workspace $WS --item-id $ITEM --dry-run",
+          "fabio workspace recover-item --workspace $WS --item-id $ITEM"
+        ]
       },
       "delete-recoverable-item": {
         "description": "Permanently delete a recoverable item",
@@ -883,7 +879,11 @@
         },
         "mutates": true,
         "returns": "void",
-        "destructive": true
+        "destructive": true,
+        "examples": [
+          "fabio workspace delete-recoverable-item --workspace $WS --item-id $ITEM --dry-run",
+          "fabio workspace delete-recoverable-item --workspace $WS --item-id $ITEM"
+        ]
       },
       "clone": {
         "description": "Clone workspace items from one workspace to another using bulk APIs",
