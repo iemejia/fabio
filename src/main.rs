@@ -13,6 +13,7 @@ mod output;
 mod parallel;
 mod token_cache;
 mod verbose;
+mod version_check;
 
 use std::io::Write;
 
@@ -85,6 +86,12 @@ fn run() -> std::result::Result<(), i32> {
         output::render_error(&fabio_err);
         return Err(fabio_err.code.exit_code());
     }
+
+    // Prime the (cached, agent-gated) "newer fabio available" notice. Cheap:
+    // reads one local file and, at most once per 24h, spawns a detached
+    // refresher. No network I/O on this path; suppressed for non-agents,
+    // --quiet, the `upgrade` command, and when FABIO_NO_VERSION_CHECK is set.
+    version_check::prime(&cli);
 
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()

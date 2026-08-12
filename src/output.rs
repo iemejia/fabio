@@ -37,12 +37,6 @@ fn wrap_untrusted_fields(value: &mut Value) {
     }
 }
 
-/// JSON envelope for single-object responses.
-#[derive(Serialize)]
-pub struct ObjectEnvelope {
-    pub data: Value,
-}
-
 /// JSON envelope for errors.
 #[derive(Serialize)]
 struct ErrorEnvelope {
@@ -69,6 +63,18 @@ struct ErrorBody {
     related_resource: Option<RelatedResource>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "agentNotice")]
     agent_notice: Option<String>,
+}
+
+/// Attach the passive `updateAvailable` notice to a JSON success envelope when
+/// one is pending (a newer fabio is known and an AI agent is detected). Consumed
+/// once per process, so only the first JSON envelope carries it. No-op for
+/// non-object envelopes.
+fn attach_version_notice(envelope: &mut Value) {
+    if let Value::Object(map) = envelope
+        && let Some(notice) = crate::version_check::take_notice()
+    {
+        map.insert("updateAvailable".to_string(), notice);
+    }
 }
 
 /// Render a list of items respecting --quiet, --query, and --limit flags.
@@ -161,6 +167,7 @@ pub fn render_list_with_token(
             if cli.wrap_untrusted {
                 wrap_untrusted_fields(&mut envelope);
             }
+            attach_version_notice(&mut envelope);
             println!(
                 "{}",
                 serde_json::to_string(&envelope).unwrap_or_else(|_| r#"{"error":{"code":"SERIALIZATION_ERROR","message":"Failed to serialize output"}}"#.to_string())
@@ -247,9 +254,8 @@ pub fn render_object(cli: &Cli, obj: &Value, plain_key: &str) {
             if cli.wrap_untrusted {
                 wrap_untrusted_fields(&mut envelope_data);
             }
-            let envelope = ObjectEnvelope {
-                data: envelope_data,
-            };
+            let mut envelope = serde_json::json!({ "data": envelope_data });
+            attach_version_notice(&mut envelope);
             println!(
                 "{}",
                 serde_json::to_string(&envelope).unwrap_or_else(|_| r#"{"error":{"code":"SERIALIZATION_ERROR","message":"Failed to serialize output"}}"#.to_string())

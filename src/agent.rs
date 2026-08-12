@@ -147,6 +147,22 @@ pub fn destructive_notice() -> Option<String> {
     ))
 }
 
+/// Returns a "newer fabio available" notice for the passive version-check when
+/// an AI agent is detected, or `None` for a human/unknown caller.
+///
+/// Beyond announcing the new version, it tells the agent to refresh its cached
+/// command schema (`fabio context agent`) after upgrading — an outdated agent
+/// is usually operating on stale command knowledge, so a version mismatch is a
+/// signal to re-discover the CLI surface, not just to update the binary.
+pub fn version_update_notice(latest: &str) -> Option<String> {
+    let provider = detect_agent()?;
+    Some(format!(
+        "Note for AI agents ({provider}): a newer fabio ({latest}) is available. \
+         Your cached command knowledge may be stale — after upgrading, re-run \
+         `fabio context agent` to refresh the command schema before relying on it."
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

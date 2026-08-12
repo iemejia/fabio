@@ -41,4 +41,27 @@ Global flags apply across Fabio's command surface. They can appear before or aft
 | `--verbose`, `-v` | Enable verbose HTTP diagnostics on stderr (request/response tracing). |
 | `--lro-timeout <seconds>` | Maximum seconds to wait for long-running operations (default: 120). |
 
+## Update notifications
+
+When an AI agent is detected as the caller, a successful JSON response may carry an additive `updateAvailable` object announcing a newer released version of Fabio, the detected install method, and the matching upgrade command:
+
+```json
+{
+  "data": { "...": "..." },
+  "updateAvailable": {
+    "current": "0.60.0",
+    "latest": "0.63.0",
+    "installMethod": "cargo",
+    "upgradeCommand": "cargo install --git https://github.com/iemejia/fabio.git --force",
+    "agentNotice": "Note for AI agents (...): a newer fabio (0.63.0) is available. ... re-run `fabio context agent` to refresh the command schema ..."
+  }
+}
+```
+
+The check is passive and cheap: it reads a locally cached result (`~/.fabio/version-check.json`) and, at most once every 24 hours, refreshes that cache in a detached background process — it never performs a network request on the command's own path, and never blocks or fails the command. The field is additive (present only when an update exists), so it does not affect scripts or `--query` projections.
+
+| Environment variable | Purpose |
+| --- | --- |
+| `FABIO_NO_VERSION_CHECK` | Set to any value to disable the update check entirely (no cache read, no background refresh, no `updateAvailable` field). |
+
 Run `fabio --help` for the flags supported by your installed version.

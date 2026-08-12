@@ -29,6 +29,13 @@ pub async fn execute(cli: &Cli, check: bool, version: Option<&str>, force: bool)
     let is_newer = is_version_newer(&target_version, CURRENT_VERSION);
 
     if check {
+        // Warm the version-check cache when we fetched the real latest release
+        // (not an explicit --target-version). This makes both a manual check and
+        // the background refresher populate the same cache consumed by the
+        // passive "newer fabio available" notice.
+        if version.is_none() {
+            crate::version_check::write_cache(&target_version);
+        }
         let obj = serde_json::json!({
             "current_version": CURRENT_VERSION,
             "latest_version": target_version,
@@ -230,7 +237,7 @@ const fn is_dev_build() -> bool {
 }
 
 /// Compare two version strings (major.minor.patch) and return true if `target` is newer than `current`.
-fn is_version_newer(target: &str, current: &str) -> bool {
+pub fn is_version_newer(target: &str, current: &str) -> bool {
     let parse = |v: &str| -> (u32, u32, u32) {
         let mut parts = v.split('.').map(|p| p.parse::<u32>().unwrap_or(0));
         let major = parts.next().unwrap_or(0);

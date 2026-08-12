@@ -15,6 +15,7 @@
 - `src/output.rs`: render_list_with_token, render_object, render_error (respects --quiet/--query/--wrap-untrusted), apply_query, dry_run_guard, unit tests
 - `src/parallel.rs`: Parallel execution framework for concurrent file/table operations with rate-limit retry
 - `src/verbose.rs`: Lightweight `--verbose` diagnostics module (global AtomicBool flag, HTTP/LRO/auth tracing to stderr)
+- `src/version_check.rs`: Passive, agent-gated "newer fabio available" notice. Cached at `~/.fabio/version-check.json` (24h throttle); `prime()` (called from `main.rs`) reads the cache + stashes a `PENDING_NOTICE`, `take_notice()` injects `updateAvailable` into the first JSON success envelope (via `output::attach_version_notice`), stale cache spawns a detached `upgrade --check` refresher; install-method detection (cargo/docker/standalone) → matching `upgradeCommand`; opt-out `FABIO_NO_VERSION_CHECK`; unit tests. Cache warmed by `upgrade --check` (`write_cache`). E2E: `tests/e2e_version_check.rs`
 - `src/client.rs`: FabricClient with async HTTP (get/post/put/patch/delete), LRO polling, OneLake DFS/Blob ops, ARM API methods (arm_get/post/put/patch/delete with ARM LRO polling), Power BI API methods (get/post/put/patch/delete/bytes/multipart_powerbi), run_notebook, trigger_item_job
 - `src/commands/mod.rs`: Command dispatch
 - `src/commands/auth.rs`: login (device code + browser PKCE + service principal: secret/certificate/federated token), logout, status

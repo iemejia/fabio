@@ -580,6 +580,24 @@ FABIO_WRAP_UNTRUSTED=1 fabio item list --workspace $WS
 # Output: {"displayName": "<<<UNTRUSTED>>>My Item<<<END_UNTRUSTED>>>", ...}
 ```
 
+### Update notifications
+
+fabio releases frequently. When an AI agent is detected, a successful JSON response may carry an additive `updateAvailable` object announcing a newer release, the detected install method, and the matching upgrade command — plus an `agentNotice` reminding the agent to re-run `fabio context agent` after upgrading (its cached command schema may be stale):
+
+```json
+{
+  "data": { "...": "..." },
+  "updateAvailable": {
+    "current": "0.60.0",
+    "latest": "0.63.0",
+    "installMethod": "cargo",
+    "upgradeCommand": "cargo install --git https://github.com/iemejia/fabio.git --force"
+  }
+}
+```
+
+The check is passive: it reads a local 24h cache (`~/.fabio/version-check.json`) and refreshes it in a detached background process — never a network call on the command's own path, and never blocking. The field is additive (present only when an update exists). Disable entirely with `FABIO_NO_VERSION_CHECK=1`.
+
 ### MCP Server Safety
 
 The MCP server is **read-only by default** — mutation tools are hidden unless opted in:
