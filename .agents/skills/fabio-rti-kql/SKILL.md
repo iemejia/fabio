@@ -247,3 +247,4 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 - fabio context blueprint event-analytics
 - fabio context blueprint lambda
 - fabio context persona data-solution-architect
+- fabio context blueprint event-medallion

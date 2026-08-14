@@ -74,7 +74,8 @@ fabio context persona <name>
 
 # Architecture-shape blueprints — item set + deployment phase + key decisions for a whole solution shape
 fabio context blueprint <name>
-# Available: medallion, lambda, event-analytics, basic-data-analytics, conversational-analytics, app-backend, semantic-governance
+# Available: medallion, lambda, event-analytics, event-medallion, basic-data-analytics, data-analytics-sql-endpoint,
+#            basic-machine-learning-models, sensitive-data-insights, conversational-analytics, app-backend, translytical, semantic-governance
 
 # Intent-scoped sub-skill judgment — when-to-use, gotchas, troubleshooting, safety for a workload family
 fabio context skill <family>

@@ -1,0 +1,38 @@
+{
+  "name": "data-analytics-sql-endpoint",
+  "title": "Data Analytics on the SQL Analytics Endpoint",
+  "description": "Architecture blueprint for T-SQL analytics directly over Lakehouse files/tables: land unstructured/semi-structured/structured data in a Lakehouse, transform it into Delta tables, and query it read-only through the auto-provisioned SQL analytics endpoint — then report on it. Best when you want SQL/BI over lakehouse data without a separate Warehouse.",
+  "best_for": "SQL analysts and BI over Delta lake data — read-only T-SQL on the Lakehouse's SQL analytics endpoint, no separate Warehouse needed.",
+  "problem_signals": ["sql on lakehouse", "sql analytics endpoint", "T-SQL over delta", "query lakehouse tables", "BI over lakehouse", "read-only sql", "reports from lakehouse files", "unstructured to sql"],
+  "primary_storage": "Lakehouse (Delta tables) queried via its SQL analytics endpoint (read-only T-SQL)",
+  "key_ingestion": "Copy Job or Data Pipeline into the Lakehouse",
+  "item_set": [
+    {"type": "Lakehouse", "phase": "Foundation", "purpose": "Delta storage + auto-provisioned SQL analytics endpoint", "command_group": "lakehouse"},
+    {"type": "SQLEndpoint", "phase": "Foundation", "purpose": "Read-only T-SQL surface over the lakehouse (auto-created)", "command_group": "sql-endpoint"},
+    {"type": "CopyJob", "phase": "Ingestion", "purpose": "Land source files into the lakehouse", "command_group": "copy-job"},
+    {"type": "DataPipeline", "phase": "Ingestion", "purpose": "Orchestrate ingestion + transform notebooks", "command_group": "data-pipeline"},
+    {"type": "Notebook", "phase": "Transformation", "purpose": "Convert raw files -> queryable Delta tables", "command_group": "notebook"},
+    {"type": "SparkJobDefinition", "phase": "Transformation", "purpose": "Packaged batch transforms (alternative to Notebook)", "command_group": "spark-job-definition"},
+    {"type": "SemanticModel", "phase": "Transformation", "purpose": "Direct Lake / import model over the SQL endpoint", "command_group": "semantic-model"},
+    {"type": "Report", "phase": "Visualization", "purpose": "Report over the semantic model", "command_group": "report"},
+    {"type": "PaginatedReport", "phase": "Visualization", "purpose": "Pixel-perfect/operational reporting (alternative)", "command_group": "paginated-report"}
+  ],
+  "decisions": [
+    {"decision": "Warehouse vs SQL endpoint", "options": ["Lakehouse SQL endpoint (read-only)", "Warehouse (read-write)"], "guidance": "SQL analytics endpoint is READ-ONLY over lakehouse Delta — great for BI/analytics. Choose a Warehouse when you need write transactions, stored procedures, or multi-table DML. See 'fabio context disambiguate sql-endpoint'.", "disambiguate": "sql-endpoint"},
+    {"decision": "Processing method", "options": ["Notebook", "SparkJobDefinition"], "guidance": "Notebook for interactive/scheduled transforms; Spark Job Definition for packaged, parameterized batch jobs."},
+    {"decision": "Visualization", "options": ["Report", "PaginatedReport", "Scorecard"], "guidance": "Report for interactive; Paginated for pixel-perfect/print; Scorecard for KPI tracking."}
+  ],
+  "build_with": {
+    "workflows": ["lakehouse-etl", "direct-lake-report"],
+    "deploy_ordering": "Lakehouse (Foundation) before Notebook -> SemanticModel -> Report; the SQL endpoint is auto-provisioned with the lakehouse. fabio deploy handles ordering.",
+    "outline": [
+      "Create a lakehouse (its SQL analytics endpoint is auto-created).",
+      "Ingest source files (fabio copy-job / data-pipeline).",
+      "Transform raw files into Delta tables (see workflow lakehouse-etl).",
+      "Query via T-SQL: 'fabio sql-endpoint query --id <lh> --sql ...' (read-only).",
+      "Build a Direct Lake semantic model + report (see workflow direct-lake-report)."
+    ]
+  },
+  "personas": ["data-engineer", "bi-developer"],
+  "see_also": ["fabio context disambiguate sql-endpoint", "fabio context workflow lakehouse-etl", "fabio context blueprint medallion", "fabio context persona data-solution-architect"]
+}

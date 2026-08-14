@@ -1,0 +1,35 @@
+{
+  "name": "translytical",
+  "title": "Translytical (Operational Writeback from Power BI)",
+  "description": "Architecture blueprint for Translytical task flows: a transactional SQL Database holds operational data, User Data Functions expose write logic, and a Power BI report triggers those functions to write back (update records, send notifications, trigger workflows) directly from the report. Best for decision-and-action apps where analytics and operational writeback live together.",
+  "best_for": "Operational decision-making with writeback INSIDE a Power BI report — approve/adjust/annotate records, trigger notifications or workflows, without leaving the report.",
+  "problem_signals": ["writeback", "translytical", "power bi write back", "update records from report", "action button in report", "operational writeback", "trigger workflow from power bi", "user data function writeback", "write from report"],
+  "primary_storage": "SQL Database (OLTP — read/write transactions)",
+  "key_ingestion": "Application/report writeback via User Data Functions (not batch ingestion)",
+  "item_set": [
+    {"type": "SQLDatabase", "phase": "Foundation", "purpose": "Transactional store for the operational records being written back (F4+ capacity)", "command_group": "sql-database"},
+    {"type": "UserDataFunction", "phase": "Transformation", "purpose": "Write logic invoked from the report (update/insert, notify, trigger)", "command_group": "user-data-function"},
+    {"type": "VariableLibrary", "phase": "Environment", "purpose": "Per-stage config (connection targets, thresholds) for promotion", "command_group": "variable-library"},
+    {"type": "SemanticModel", "phase": "Transformation", "purpose": "Model over the operational + analytical data", "command_group": "semantic-model"},
+    {"type": "Report", "phase": "Visualization", "purpose": "Power BI report with translytical buttons that call the UDFs", "command_group": "report"},
+    {"type": "Reflex", "phase": "Monitoring", "purpose": "Optional Activator to trigger downstream actions on writeback events", "command_group": "reflex"}
+  ],
+  "decisions": [
+    {"decision": "Writeback logic layer", "options": ["UserDataFunction (recommended)", "Direct SQL connection"], "guidance": "User Data Functions encapsulate validated write logic callable from the report (the translytical pattern); direct SQL only for trusted server-side callers."},
+    {"decision": "Store", "options": ["SQLDatabase"], "guidance": "Translytical requires an OLTP store with read/write transactions — SQL Database (needs F4+ capacity). Lakehouse/Warehouse are read-mostly and NOT suitable for record-level writeback.", "disambiguate": "sql-endpoint"},
+    {"decision": "Post-writeback actions", "options": ["None", "Reflex/Activator", "Notification in the UDF"], "guidance": "Send notifications inside the UDF for synchronous feedback; use an Activator for async downstream workflows."}
+  ],
+  "build_with": {
+    "workflows": ["cicd-deploy"],
+    "deploy_ordering": "VariableLibrary + SQLDatabase (Environment/Foundation) before UserDataFunction, then SemanticModel -> Report; fabio deploy handles ordering.",
+    "outline": [
+      "Create the SQL Database (requires F4+ capacity).",
+      "Author User Data Functions for the write operations (update/insert, notify, trigger).",
+      "Build a semantic model + Power BI report; wire report buttons to invoke the UDFs (translytical).",
+      "Add a Variable Library for per-environment config; promote via fabio deploy (see workflow cicd-deploy).",
+      "Optionally add an Activator for downstream workflows on writeback events."
+    ]
+  },
+  "personas": ["app-developer", "bi-developer"],
+  "see_also": ["fabio context blueprint app-backend", "fabio context persona app-developer", "fabio context persona bi-developer", "fabio context persona data-solution-architect"]
+}

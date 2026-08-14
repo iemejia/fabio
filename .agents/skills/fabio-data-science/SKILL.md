@@ -125,3 +125,5 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 - fabio context persona data-scientist
 - fabio context disambiguate model
 - fabio context workflow lakehouse-etl
+- fabio context blueprint basic-machine-learning-models
+- fabio context persona data-solution-architect

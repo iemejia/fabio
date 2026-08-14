@@ -1,0 +1,41 @@
+{
+  "name": "sensitive-data-insights",
+  "title": "Sensitive Data Insights (Security-Focused Analytics)",
+  "description": "Architecture blueprint for analytics on sensitive/regulated data: land data in a Lakehouse, apply access controls (OneLake data-access roles, sensitivity labels, workspace RBAC), mask/aggregate in transforms, and serve only governed outputs to BI. Best when strict access control and data protection are first-class requirements.",
+  "best_for": "Regulated or sensitive data (PII, financial, health) where access control, masking, and sensitivity labeling matter as much as the analytics itself.",
+  "problem_signals": ["sensitive data", "PII", "regulated", "access control", "data masking", "sensitivity labels", "row-level security", "secure analytics", "least privilege", "governed data", "compliance"],
+  "primary_storage": "Lakehouse (raw/masked layers) + optional Warehouse (aggregated, broadly shareable)",
+  "key_ingestion": "Copy Job / Dataflow / Pipeline (ideally over private/managed connectivity)",
+  "item_set": [
+    {"type": "Lakehouse", "phase": "Foundation", "purpose": "Raw + masked Delta layers", "command_group": "lakehouse"},
+    {"type": "Warehouse", "phase": "Foundation", "purpose": "Aggregated, de-identified data safe to share more broadly", "command_group": "warehouse"},
+    {"type": "DataPipeline", "phase": "Ingestion", "purpose": "Ingest sensitive source data (prefer private connectivity)", "command_group": "data-pipeline"},
+    {"type": "Notebook", "phase": "Transformation", "purpose": "Masking, tokenization, and aggregation transforms", "command_group": "notebook"},
+    {"type": "SemanticModel", "phase": "Transformation", "purpose": "Model over de-identified/aggregated data (RLS-capable)", "command_group": "semantic-model"},
+    {"type": "Report", "phase": "Visualization", "purpose": "Governed report on approved outputs", "command_group": "report"}
+  ],
+  "governance_controls": [
+    {"control": "OneLake data-access roles", "command_group": "onelake-security", "purpose": "Restrict which principals can read which lakehouse folders/tables (fine-grained data access)."},
+    {"control": "Sensitivity labels", "command_group": "label", "purpose": "Classify/label items (and enforce downstream protection) — apply/list via the label group."},
+    {"control": "Workspace RBAC", "command_group": "workspace", "purpose": "Least-privilege workspace roles; separate raw vs curated workspaces for isolation."},
+    {"control": "Private connectivity", "command_group": "managed-private-endpoint", "purpose": "Reach sensitive sources over managed private endpoints instead of public network."}
+  ],
+  "decisions": [
+    {"decision": "Storage split", "options": ["Lakehouse raw/masked only", "Lakehouse (raw) + Warehouse (aggregated)"], "guidance": "Keep raw sensitive data isolated in the lakehouse with tight OneLake roles; publish only aggregated/de-identified data to a Warehouse for broader consumption."},
+    {"decision": "Protection mechanism", "options": ["OneLake data-access roles", "Sensitivity labels", "RLS in the semantic model", "All layered"], "guidance": "Defense in depth: OneLake roles at the data layer, labels for classification/DLP, RLS at the BI layer. Layer them; do not rely on one."},
+    {"decision": "Connectivity", "options": ["Public", "Managed private endpoint", "VNet data gateway"], "guidance": "For sensitive sources prefer managed private endpoints / private connectivity over public network paths."}
+  ],
+  "build_with": {
+    "workflows": ["lakehouse-etl", "direct-lake-report"],
+    "deploy_ordering": "Lakehouse/Warehouse (Foundation) before transforms and reports; apply OneLake roles + labels + workspace RBAC after items exist. fabio deploy handles item ordering; governance controls are applied as a follow-up.",
+    "outline": [
+      "Create an isolated lakehouse (and optional aggregated warehouse); consider a dedicated workspace.",
+      "Restrict access: OneLake data-access roles (onelake-security), sensitivity labels (label), least-privilege workspace roles.",
+      "Ingest over private connectivity (managed-private-endpoint) where possible.",
+      "Mask/tokenize/aggregate in notebooks; write only de-identified outputs to the shareable layer.",
+      "Model with RLS + report only on approved, governed data."
+    ]
+  },
+  "personas": ["data-engineer", "fabric-admin"],
+  "see_also": ["fabio context persona fabric-admin", "fabio context blueprint medallion", "fabio context skill admin", "fabio context persona data-solution-architect"]
+}

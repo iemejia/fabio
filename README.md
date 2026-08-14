@@ -60,7 +60,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 ### What fabio adds beyond both
 
 - **AI-native interactions** — create, configure, and query Data Agents (public staging management API: datasource CRUD, few-shot management, table selection, element descriptions, `--stage` for draft vs published, reset/publish lifecycle; multi-turn `query`, `evaluate` batch runs, and LLM-judged `validate-fewshots`/`evaluate --llm-*` with a bring-your-own judge model); execute KQL for real-time intelligence, NL-to-KQL translation
-- **Layered agent knowledge** — 8 orchestrator personas, 7 architecture blueprints, 6 term disambiguations, and 14 generated intent-scoped sub-skills (see [Agent knowledge architecture](#agent-knowledge-architecture)) route agents to the right workload; every mechanical command index is generated from the CLI schema and CI-drift-checked
+- **Layered agent knowledge** — 8 orchestrator personas, 12 architecture blueprints, 6 term disambiguations, and 14 generated intent-scoped sub-skills (see [Agent knowledge architecture](#agent-knowledge-architecture)) route agents to the right workload; every mechanical command index is generated from the CLI schema and CI-drift-checked
 - **Self-correcting error hints** — every error includes a `hint` field with the exact corrected command, valid enum values, or the logical next step so agents can retry without consulting docs
 - **Self-improving** — when new Fabric REST APIs are detected, fabio auto-implements support for new commands and item types
 - **Terraform-like convergence** — re-running `deploy apply` on a synced workspace produces zero API calls
@@ -280,7 +280,7 @@ fabio context persona data-solution-architect  # problem-first: routes an outcom
 fabio context persona data-engineer     # also: data-scientist, app-developer, bi-developer, rti-engineer, migration-engineer, fabric-admin
 
 # Architecture blueprints — item set + deployment phase + key decisions for a whole solution shape
-fabio context blueprint medallion       # also: lambda, event-analytics, basic-data-analytics, conversational-analytics, app-backend, semantic-governance
+fabio context blueprint medallion       # also: lambda, event-analytics, event-medallion, basic-data-analytics, data-analytics-sql-endpoint, basic-machine-learning-models, sensitive-data-insights, conversational-analytics, app-backend, translytical, semantic-governance
 
 # Resolve an overloaded Fabric term to the right artifact + command group
 fabio context disambiguate "materialized view"   # also: dataflow, semantic-model, sql-endpoint, mirroring, model
@@ -308,7 +308,7 @@ fabio workspace set-inbound-external-data-shares-policy --workspace <WS> --defau
 fabio ships a layered, **generated** knowledge base for AI agents — inspired by [microsoft/skills-for-fabric](https://github.com/microsoft/skills-for-fabric)'s Agents→Skills→Common model, but implemented so that every mechanical index is generated from the CLI's own schema and CI-drift-checked (nothing can fall out of sync with the commands):
 
 - **Personas** (`fabio context persona <name>`) — 8 orchestrators (`data-solution-architect`, `data-engineer`, `data-scientist`, `app-developer`, `bi-developer`, `rti-engineer`, `migration-engineer`, `fabric-admin`) that route a role/broad task to the right command groups, workflows, and best-practices, with decision gates and safety guardrails. `data-solution-architect` is problem-first: it maps a described business outcome to an architecture blueprint.
-- **Blueprints** (`fabio context blueprint <name>`) — 7 architecture-shape solutions (`medallion`, `lambda`, `event-analytics`, `basic-data-analytics`, `conversational-analytics`, `app-backend`, `semantic-governance`) — the item set (each tagged with its deployment phase + command group), the key decisions, and the workflows that build it. The fabio-native equivalent of Fabric task flows.
+- **Blueprints** (`fabio context blueprint <name>`) — 12 architecture-shape solutions (`medallion`, `lambda`, `event-analytics`, `event-medallion`, `basic-data-analytics`, `data-analytics-sql-endpoint`, `basic-machine-learning-models`, `sensitive-data-insights`, `conversational-analytics`, `app-backend`, `translytical`, `semantic-governance`) — the item set (each tagged with its deployment phase + command group), the key decisions, and the workflows that build it. The fabio-native equivalent of Fabric task flows.
 - **Disambiguations** (`fabio context disambiguate <term>`) — resolve overloaded Fabric terms (`materialized-view`, `dataflow`, `semantic-model`, `sql-endpoint`, `mirroring`, `model`) to the concrete artifact + command group.
 - **Intent-scoped sub-skills** — 14 focused `fabio-<workload>` skills (see [Via agent skill](#installation)) each pairing authored judgment (when-to-use, MUST/PREFER/AVOID, troubleshooting, safety) with a generated command index.
 - **Workflows & best-practices** (`fabio context workflow`, `fabio context best-practices`) — multi-step recipes and cross-cutting operational guidance (throttling, LRO, pagination, deploy parameters, migration API shims, …).
@@ -719,7 +719,7 @@ Configuration: [`prek.toml`](prek.toml)
 ### Project Stats
 
 - **78 command groups** with **850+ subcommands**
-- **8 orchestrator personas**, **7 architecture blueprints**, **6 term disambiguations**, **14 generated intent-scoped sub-skills**, **11 workflow recipes**, **13 best-practice topics** — the layered agent knowledge base
+- **8 orchestrator personas**, **12 architecture blueprints**, **6 term disambiguations**, **14 generated intent-scoped sub-skills**, **11 workflow recipes**, **13 best-practice topics** — the layered agent knowledge base
 - **1562 tests** (841 unit + 721 offline/E2E integration)
 - Zero clippy warnings, zero unsafe code
 

@@ -124,7 +124,7 @@ pub enum ContextCommand {
     /// Show an architecture-shape blueprint: item set, deployment phase, and key decisions for a solution shape
     #[command(display_order = 8)]
     Blueprint {
-        /// Blueprint name (`medallion`, `lambda`, `event-analytics`, `basic-data-analytics`, `conversational-analytics`, `app-backend`, `semantic-governance`)
+        /// Blueprint name (`medallion`, `lambda`, `event-analytics`, `event-medallion`, `basic-data-analytics`, `data-analytics-sql-endpoint`, `basic-machine-learning-models`, `sensitive-data-insights`, `conversational-analytics`, `app-backend`, `translytical`, `semantic-governance`)
         #[arg(name = "NAME")]
         name: String,
     },

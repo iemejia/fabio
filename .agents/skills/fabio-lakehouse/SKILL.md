@@ -163,3 +163,4 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 - fabio context disambiguate sql-endpoint
 - fabio context blueprint medallion
 - fabio context persona data-solution-architect
+- fabio context blueprint data-analytics-sql-endpoint

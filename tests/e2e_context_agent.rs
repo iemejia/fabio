@@ -1070,6 +1070,58 @@ fn solution_architect_persona_routes_problem_to_blueprint() {
 }
 
 #[test]
+fn context_blueprint_specialized_ml_has_experiment_and_model_items() {
+    let assert = fabio()
+        .args(["context", "blueprint", "basic-machine-learning-models"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let types: Vec<&str> = json["data"]["item_set"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|i| i["type"].as_str())
+        .collect();
+    assert!(
+        types.contains(&"MLExperiment") && types.contains(&"MLModel"),
+        "ML blueprint must include MLExperiment + MLModel; got {types:?}"
+    );
+}
+
+#[test]
+fn context_blueprints_cover_all_twelve_shapes() {
+    let assert = fabio().args(["context", "list"]).assert().success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let names: Vec<&str> = json["data"]["blueprints"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
+    for expected in [
+        "medallion",
+        "lambda",
+        "event-analytics",
+        "event-medallion",
+        "basic-data-analytics",
+        "data-analytics-sql-endpoint",
+        "basic-machine-learning-models",
+        "sensitive-data-insights",
+        "conversational-analytics",
+        "app-backend",
+        "translytical",
+        "semantic-governance",
+    ] {
+        assert!(
+            names.contains(&expected),
+            "blueprint '{expected}' should be registered; got {names:?}"
+        );
+    }
+}
+
+#[test]
 fn find_routes_streaming_problem_to_event_blueprint() {
     let assert = fabio()
         .args(["context", "find", "streaming telemetry real-time events"])

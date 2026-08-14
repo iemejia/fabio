@@ -2646,3 +2646,27 @@ tests:
       - type: llm-rubric
         value: "The response recognizes a combined batch + real-time (lambda) architecture — Lakehouse (cold) + Eventhouse (hot) + a serving layer — and/or points the user at 'fabio context persona data-solution-architect' or 'fabio context blueprint lambda' as the starting point. It does not force the user to already know which Fabric items to create."
         metric: architect-entrypoint-routing
+
+  - description: "Blueprint routing: ML training problem -> basic-machine-learning-models"
+    vars:
+      user_query: "I want to train a churn prediction model on my customer data in Fabric, track experiments, and score new data weekly."
+    assert:
+      - type: llm-rubric
+        value: "The response routes to a Lakehouse-based ML workflow: features in a Lakehouse, an ML Experiment (MLflow tracking), a registered ML Model, and batch scoring. It may discover this via 'fabio context blueprint basic-machine-learning-models' or the data-scientist / data-solution-architect persona. It distinguishes an experiment (runs) from a registered model."
+        metric: blueprint-ml-routing
+
+  - description: "Blueprint routing: Power BI writeback -> translytical"
+    vars:
+      user_query: "I need users to approve and update records directly from a Power BI report, writing changes back to a database."
+    assert:
+      - type: llm-rubric
+        value: "The response routes to the translytical pattern: a SQL Database (OLTP, read/write) plus User Data Functions invoked from the report to write back — NOT a read-only Lakehouse/Warehouse. It may discover this via 'fabio context blueprint translytical'."
+        metric: blueprint-translytical-routing
+
+  - description: "Blueprint routing: sensitive data -> sensitive-data-insights with access controls"
+    vars:
+      user_query: "We need to analyze PII-heavy customer data but enforce strict access controls and masking. How should we set this up in Fabric?"
+    assert:
+      - type: llm-rubric
+        value: "The response emphasizes access control and masking: a Lakehouse with OneLake data-access roles, sensitivity labels, least-privilege workspace RBAC, and masked/aggregated outputs (defense in depth). It may discover this via 'fabio context blueprint sensitive-data-insights'. It does not treat this as ordinary unsecured analytics."
+        metric: blueprint-sensitive-routing

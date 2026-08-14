@@ -201,3 +201,4 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 - fabio context blueprint app-backend
 - fabio context blueprint conversational-analytics
 - fabio context persona data-solution-architect
+- fabio context blueprint translytical

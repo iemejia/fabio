@@ -180,3 +180,4 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 - fabio context disambiguate semantic-model
 - fabio context blueprint basic-data-analytics
 - fabio context persona data-solution-architect
+- fabio context blueprint data-analytics-sql-endpoint

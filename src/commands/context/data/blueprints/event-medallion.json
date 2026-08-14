@@ -1,0 +1,39 @@
+{
+  "name": "event-medallion",
+  "title": "Event Medallion (Streaming Bronze / Silver / Gold)",
+  "description": "Architecture blueprint that applies medallion layering to streaming data: live events land in an Eventhouse (raw/Bronze), get progressively refined into cleansed and aggregated layers across the Eventhouse and a Lakehouse, and serve both real-time and historical views. Best when you need medallion-style quality gates AND up-to-the-second data.",
+  "best_for": "Streaming workloads that also need layered, reproducible refinement (Bronze/Silver/Gold) and both live + historical serving — the medallion pattern applied to an event pipeline.",
+  "problem_signals": ["streaming medallion", "event bronze silver gold", "layered real-time", "refined streaming data", "hot path with quality gates", "real-time and historical layers"],
+  "primary_storage": "Eventhouse / KQL Database (hot, raw+refined) + Lakehouse (cold, curated Gold)",
+  "key_ingestion": "Eventstream (streaming) into Bronze; Copy Job / Pipeline for batch backfill",
+  "item_set": [
+    {"type": "Eventhouse", "phase": "Foundation", "purpose": "Hot store for raw (Bronze) + refined (Silver) event data", "command_group": "eventhouse"},
+    {"type": "KQLDatabase", "phase": "Foundation", "purpose": "KQL tables + update policies driving Bronze->Silver refinement", "command_group": "kql-database"},
+    {"type": "Lakehouse", "phase": "Foundation", "purpose": "Cold store for curated Gold (Delta) + historical retention", "command_group": "lakehouse"},
+    {"type": "Eventstream", "phase": "Ingestion", "purpose": "Ingest + route live events into the Bronze KQL table", "command_group": "eventstream"},
+    {"type": "DataPipeline", "phase": "Ingestion", "purpose": "Batch backfill + orchestrate Silver->Gold export to the lakehouse", "command_group": "data-pipeline"},
+    {"type": "KQLQueryset", "phase": "Transformation", "purpose": "Silver-layer KQL refinement + real-time analytics", "command_group": "kql-queryset"},
+    {"type": "Notebook", "phase": "Transformation", "purpose": "Gold aggregation into the lakehouse (Direct Lake ready)", "command_group": "notebook"},
+    {"type": "KQLDashboard", "phase": "Visualization", "purpose": "Real-time (live) dashboard over Bronze/Silver", "command_group": "kql-dashboard"},
+    {"type": "Report", "phase": "Visualization", "purpose": "Historical report over Gold", "command_group": "report"},
+    {"type": "Reflex", "phase": "Monitoring", "purpose": "Activator alerts on streaming conditions", "command_group": "reflex"}
+  ],
+  "decisions": [
+    {"decision": "Where Silver/Gold live", "options": ["All in Eventhouse (KQL update policies)", "Silver in KQL, Gold in Lakehouse"], "guidance": "Keep refinement in KQL for pure low-latency serving; export Gold to a Lakehouse when you need Direct Lake BI or long-term Delta history."},
+    {"decision": "Bronze->Silver mechanism", "options": ["KQL update policy", "materialized view", "KQLQueryset"], "guidance": "Update policies transform on ingestion (lowest latency); materialized views for incremental aggregates; querysets for ad-hoc.", "disambiguate": "materialized-view"},
+    {"decision": "Real-time visualization", "options": ["KQLDashboard", "Report"], "guidance": "KQL Dashboard for sub-minute live views; Report for modeled historical Gold."}
+  ],
+  "build_with": {
+    "workflows": ["rti-pipeline", "lakehouse-etl", "direct-lake-report"],
+    "deploy_ordering": "Eventhouse + KQLDatabase + Lakehouse (Foundation) before Eventstream (Ingestion) before transforms and dashboards; fabio deploy handles ordering.",
+    "outline": [
+      "Create the hot store (eventhouse + kql-database) and the cold store (lakehouse).",
+      "Create the Bronze KQL table + an eventstream that lands events into it (see workflow rti-pipeline).",
+      "Add Bronze->Silver KQL update policies / materialized views for refinement.",
+      "Export/aggregate Silver->Gold into the lakehouse via a notebook + pipeline.",
+      "Build a Real-Time Dashboard (hot) and a Report over Gold (cold); add an Activator for alerts."
+    ]
+  },
+  "personas": ["rti-engineer", "data-engineer"],
+  "see_also": ["fabio context workflow rti-pipeline", "fabio context blueprint medallion", "fabio context blueprint event-analytics", "fabio context persona data-solution-architect"]
+}

@@ -16,7 +16,12 @@
     {"request_type": "Simple batch reporting, no layering needed", "blueprint": "basic-data-analytics", "personas": ["bi-developer", "data-engineer"], "notes": "Warehouse/Lakehouse -> semantic model -> report."},
     {"request_type": "Let users ask questions in natural language / AI Q&A over data", "blueprint": "conversational-analytics", "personas": ["bi-developer", "app-developer"], "notes": "Overlay: semantic model + Data Agent on existing data."},
     {"request_type": "Application backend / API / transactional / writeback", "blueprint": "app-backend", "personas": ["app-developer"], "notes": "SQL Database/Cosmos DB + GraphQL/UDF; optional analytics on top."},
-    {"request_type": "Enterprise governance / business vocabulary / knowledge graph", "blueprint": "semantic-governance", "personas": ["bi-developer", "data-engineer"], "notes": "Overlay: Ontology + Graph Model bound to physical data."}
+    {"request_type": "Enterprise governance / business vocabulary / knowledge graph", "blueprint": "semantic-governance", "personas": ["bi-developer", "data-engineer"], "notes": "Overlay: Ontology + Graph Model bound to physical data."},
+    {"request_type": "Streaming data that also needs layered (bronze/silver/gold) refinement", "blueprint": "event-medallion", "personas": ["rti-engineer", "data-engineer"], "notes": "Medallion applied to an event pipeline: Eventhouse (hot raw/refined) + Lakehouse (cold Gold)."},
+    {"request_type": "Train / register / serve a machine-learning model / predictions", "blueprint": "basic-machine-learning-models", "personas": ["data-scientist", "data-engineer"], "notes": "Lakehouse features -> MLExperiment (tracking) -> MLModel (registry/serving) -> batch or endpoint scoring."},
+    {"request_type": "T-SQL / BI over lakehouse data without a separate Warehouse", "blueprint": "data-analytics-sql-endpoint", "personas": ["data-engineer", "bi-developer"], "notes": "Read-only T-SQL over the Lakehouse SQL analytics endpoint."},
+    {"request_type": "Sensitive / regulated data needing access control + masking", "blueprint": "sensitive-data-insights", "personas": ["data-engineer", "fabric-admin"], "notes": "Lakehouse + OneLake data-access roles + sensitivity labels + RLS; publish only de-identified outputs."},
+    {"request_type": "Operational writeback from a Power BI report (approve/adjust/trigger)", "blueprint": "translytical", "personas": ["app-developer", "bi-developer"], "notes": "SQL Database + User Data Functions invoked from report buttons; the translytical pattern."}
   ],
   "decision_gates": [
     "Confirm batch vs streaming vs both BEFORE choosing a blueprint — it is the primary discriminator (medallion=batch, event-analytics=streaming, lambda=both).",

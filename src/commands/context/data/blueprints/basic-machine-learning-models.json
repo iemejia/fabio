@@ -1,0 +1,37 @@
+{
+  "name": "basic-machine-learning-models",
+  "title": "Basic Machine Learning Models",
+  "description": "Architecture blueprint for training, tracking, and serving ML models on Fabric: prepare features in a Lakehouse, run experiments with MLflow tracking, register the best model, and score data in batch or via an endpoint. Best for predictive analytics and data science workflows.",
+  "best_for": "Data science teams training models on prepared data — experiment tracking, model registry/versioning, and batch or real-time scoring.",
+  "problem_signals": ["machine learning", "train a model", "predict", "ml experiment", "mlflow", "model registry", "batch scoring", "feature engineering", "data science", "regression", "classification", "forecasting"],
+  "primary_storage": "Lakehouse (features, training data, scored outputs as Delta)",
+  "key_ingestion": "Copy Job / Pipeline (batch) into the Lakehouse; upstream medallion/basic-data-analytics often feeds this",
+  "item_set": [
+    {"type": "Lakehouse", "phase": "Foundation", "purpose": "Feature/training data + scored-output Delta tables", "command_group": "lakehouse"},
+    {"type": "Environment", "phase": "Environment", "purpose": "Pinned ML libraries (scikit-learn, xgboost, …) for reproducible runs", "command_group": "environment"},
+    {"type": "DataPipeline", "phase": "Ingestion", "purpose": "Land + refresh training data on a schedule", "command_group": "data-pipeline"},
+    {"type": "Notebook", "phase": "Transformation", "purpose": "Feature engineering, training loop, and scoring code", "command_group": "notebook"},
+    {"type": "MLExperiment", "phase": "ML", "purpose": "MLflow experiment: track runs, params, metrics, artifacts", "command_group": "ml-experiment"},
+    {"type": "MLModel", "phase": "ML", "purpose": "Registered model with versions + serving endpoint", "command_group": "ml-model"},
+    {"type": "SemanticModel", "phase": "Transformation", "purpose": "Optional model over scored outputs for BI", "command_group": "semantic-model"},
+    {"type": "Report", "phase": "Visualization", "purpose": "Optional report on predictions/metrics", "command_group": "report"}
+  ],
+  "decisions": [
+    {"decision": "Training compute", "options": ["Notebook", "SparkJobDefinition"], "guidance": "Notebooks for interactive/iterative training; Spark Job Definitions for packaged, scheduled retraining promoted through CI/CD."},
+    {"decision": "Scoring mode", "options": ["Batch scoring (Notebook writes Delta)", "Model endpoint (real-time)"], "guidance": "Batch when predictions feed reports/pipelines on a schedule; endpoint when an app needs low-latency inference.", "disambiguate": "model"},
+    {"decision": "Experiment vs Model", "options": ["MLExperiment", "MLModel"], "guidance": "Experiment tracks training RUNS (params/metrics); Model is the registered, versioned artifact you promote and serve. See 'fabio context disambiguate model'."}
+  ],
+  "build_with": {
+    "workflows": ["lakehouse-etl"],
+    "deploy_ordering": "Lakehouse + Environment (Foundation) before Notebook, then MLExperiment before MLModel; fabio deploy handles ordering.",
+    "outline": [
+      "Create a lakehouse for features/training data (often fed by a medallion/basic-data-analytics upstream).",
+      "Create an Environment pinning ML libraries; bind the notebook to it.",
+      "Author a training notebook logging to an MLExperiment (MLflow).",
+      "Register the best run as an MLModel (version it); score in batch (notebook -> Delta) or expose an endpoint.",
+      "Optionally add a semantic model + report over the scored outputs."
+    ]
+  },
+  "personas": ["data-scientist", "data-engineer"],
+  "see_also": ["fabio context persona data-scientist", "fabio context disambiguate model", "fabio context blueprint medallion", "fabio context persona data-solution-architect"]
+}

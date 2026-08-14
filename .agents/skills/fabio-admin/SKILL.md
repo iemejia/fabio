@@ -284,3 +284,5 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 - fabio context persona fabric-admin
 - fabio context best-practices admin-apis
 - fabio context best-practices throttling
+- fabio context blueprint sensitive-data-insights
+- fabio context persona data-solution-architect
