@@ -1,0 +1,34 @@
+{
+  "command": "fabio context item-capabilities Lakehouse",
+  "description": "Per-item-type capability matrix: what fabio can do to a Fabric item type (creatable, definition API support, CI/CD deploy strategy, deploy order). Omit the type for the full matrix. Derived at runtime from the CLI's own sources — no hand-maintained registry, so it never drifts.",
+  "response": {
+    "data": {
+      "type": "Lakehouse",
+      "creatable": true,
+      "supports_definition": true,
+      "deploy_strategy": "platform_only",
+      "deployable_from_definition": false,
+      "definition_format": null,
+      "deploy_order": 6,
+      "legend": {
+        "deploy_strategy": {
+          "content": "fabio deploy exports and pushes a versionable definition; fully round-trippable.",
+          "platform_only": "fabio deploy creates a shell (.platform + creationPayload) only — no versionable definition content.",
+          "unsupported": "Not in fabio's deploy order; cannot be created/updated by fabio deploy (portal-only or auto-provisioned)."
+        },
+        "creatable": "fabio exposes a create/create-* command for this type.",
+        "supports_definition": "fabio exposes get-definition/update-definition (the API definition axis). A type may support the definition API yet still deploy as a shell (platform_only) when the definition carries no versionable content, e.g. Lakehouse.",
+        "deployable_from_definition": "fabio deploy can recreate this item from an exported definition (== content strategy). The CI/CD 'verified' axis.",
+        "deploy_order": "0-based position in fabio's dependency-ordered deploy sequence (null when unsupported).",
+        "derivation": "Derived at runtime from known item types + definition specs + schema definition_format + DEPLOY_ORDER + commands.json. No hand-maintained registry — change the source and the matrix follows."
+      }
+    }
+  },
+  "notes": "Two INDEPENDENT axes. `supports_definition` (get/update-definition API) is distinct from `deploy_strategy`: e.g. Lakehouse supports the definition API but deploys as a shell (platform_only, supports_definition=true, deployable_from_definition=false), while Warehouse has no definition API at all (supports_definition=false). Use this BEFORE deploy/export/update-definition so an agent doesn't attempt an unsupported operation. The full matrix (no TYPE arg) returns {item_capabilities:[...], count, legend}. Scorecard is NOT here — it's a Power BI Goals artifact, not a Fabric item (fabio scorecard ...).",
+  "query_examples": [
+    {"query": "deploy_strategy", "description": "content | platform_only | unsupported for one type."},
+    {"query": "item_capabilities[?deploy_strategy=='content'].type", "description": "(full matrix) types fabio can deploy from a definition."},
+    {"query": "item_capabilities[?creatable==`false`].type", "description": "(full matrix) types fabio cannot create (auto-provisioned/portal-only)."},
+    {"query": "item_capabilities[?supports_definition==`true` && deploy_strategy=='platform_only'].type", "description": "(full matrix) types with the definition API but shell-only deploy (Lakehouse, KQLDatabase, …)."}
+  ]
+}
