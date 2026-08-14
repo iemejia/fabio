@@ -87,3 +87,5 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 ## See also
 - fabio context persona data-engineer
 - fabio context disambiguate dataflow
+- fabio context blueprint basic-data-analytics
+- fabio context persona data-solution-architect

@@ -178,3 +178,5 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 - fabio ontology mcp-url --workspace <WS> --id <ID> (consume the ontology as an MCP server)
 - fabio data-agent add-datasource --artifact-type Ontology (ground an agent on the ontology; scope with select-tables --elements)
 - fabio reflex create-rule (the ontology portal's "Rules"/alerts map to Reflex/Data Activator monitoring rules, NOT to any ontology command)
+- fabio context blueprint semantic-governance
+- fabio context persona data-solution-architect

@@ -244,3 +244,6 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 - fabio context persona rti-engineer
 - fabio context workflow rti-pipeline
 - fabio context disambiguate materialized-view
+- fabio context blueprint event-analytics
+- fabio context blueprint lambda
+- fabio context persona data-solution-architect

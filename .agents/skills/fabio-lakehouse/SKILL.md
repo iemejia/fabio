@@ -161,3 +161,5 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 - fabio context workflow lakehouse-mlv
 - fabio context disambiguate materialized-view
 - fabio context disambiguate sql-endpoint
+- fabio context blueprint medallion
+- fabio context persona data-solution-architect

@@ -235,3 +235,6 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 - fabio context workflow direct-lake-report
 - fabio context workflow semantic-model-ai-readiness
 - fabio context disambiguate semantic-model
+- fabio context blueprint conversational-analytics
+- fabio context blueprint basic-data-analytics
+- fabio context persona data-solution-architect

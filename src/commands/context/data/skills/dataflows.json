@@ -40,6 +40,8 @@
   "shared_references": ["throttling", "pagination", "lro"],
   "see_also": [
     "fabio context persona data-engineer",
-    "fabio context disambiguate dataflow"
+    "fabio context disambiguate dataflow",
+    "fabio context blueprint basic-data-analytics",
+    "fabio context persona data-solution-architect"
   ]
 }

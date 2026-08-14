@@ -198,3 +198,6 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 - fabio context workflow data-agent-setup
 - fabio context examples data_agent query
 - fabio context disambiguate sql-endpoint
+- fabio context blueprint app-backend
+- fabio context blueprint conversational-analytics
+- fabio context persona data-solution-architect
