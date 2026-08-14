@@ -200,6 +200,101 @@ fn deploy_plan_exported_workspace_shows_skip_or_update() {
     );
 }
 
+/// `deploy apply --verify` adds a well-formed `verification` block: after
+/// applying, it re-fetches the applied items and reports convergence
+/// (content items hash-compared to source, platform-only existence-checked).
+/// Report-only — the block is emitted regardless of exit status. Self-contained:
+/// deploys one empty `DataPipeline` into a temp folder-scoped source and cleans up.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn deploy_apply_verify_reports_convergence() {
+    use std::fs;
+    let cfg = TestConfig::from_env();
+    let src = tempfile::TempDir::new().unwrap();
+    let name = unique_name("VerifyPipe");
+    let item_dir = src.path().join(format!("{name}.DataPipeline"));
+    fs::create_dir_all(&item_dir).unwrap();
+    fs::write(
+        item_dir.join(".platform"),
+        format!(
+            r#"{{"$schema":"https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json","metadata":{{"type":"DataPipeline","displayName":"{name}"}},"config":{{"version":"2.0","logicalId":"b2222222-2222-2222-2222-222222222222"}}}}"#
+        ),
+    )
+    .unwrap();
+    fs::write(
+        item_dir.join("pipeline-content.json"),
+        r#"{"properties":{"activities":[]}}"#,
+    )
+    .unwrap();
+
+    // Apply with --verify. Do NOT assert success — verification is report-only
+    // and is emitted on stdout regardless of the deploy's exit code.
+    let output = fabio()
+        .args([
+            "deploy",
+            "apply",
+            "--source",
+            src.path().to_str().unwrap(),
+            "--workspace",
+            &cfg.source_workspace,
+            "--verify",
+        ])
+        .timeout(Duration::from_mins(5))
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let data = &json["data"];
+
+    let verification = &data["verification"];
+    assert!(
+        verification.is_object(),
+        "--verify must add a verification block; got: {data}"
+    );
+    assert!(verification["converged"].is_boolean());
+    assert!(verification["checked"].is_number());
+    let discrepancies = verification["discrepancies"].as_array().unwrap();
+    // If converged, no discrepancies; otherwise each is well-formed.
+    if verification["converged"] == true {
+        assert!(discrepancies.is_empty());
+    } else {
+        for d in discrepancies {
+            assert!(d["name"].is_string() && d["type"].is_string() && d["issue"].is_string());
+        }
+    }
+
+    // Clean up: resolve the pipeline id and delete it (best-effort).
+    let list = fabio()
+        .args([
+            "data-pipeline",
+            "list",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+    let list_json = parse_json(&list);
+    if let Some(items) = extract_data(&list_json).as_array() {
+        for it in items {
+            if it["displayName"] == name
+                && let Some(id) = it["id"].as_str()
+            {
+                let _ = fabio()
+                    .args([
+                        "data-pipeline",
+                        "delete",
+                        "--workspace",
+                        &cfg.source_workspace,
+                        "--id",
+                        id,
+                    ])
+                    .assert();
+            }
+        }
+    }
+}
+
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]

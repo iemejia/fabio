@@ -250,6 +250,12 @@ pub enum DeployCommand {
         /// - sequential: fully sequential execution (for debugging API issues)
         #[arg(long, value_parser = ["default", "bulk", "sequential"], default_value = "default")]
         strategy: String,
+
+        /// After applying, re-fetch the applied items and confirm they converged to the
+        /// source (content-hash for definition items, existence for platform-only items).
+        /// Adds a `verification` block to the output. Report-only: never changes the exit code.
+        #[arg(long)]
+        verify: bool,
     },
 
     /// Export workspace item definitions to a local directory
@@ -414,6 +420,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
             shortcut_exclude_regex,
             post_run_item,
             strategy,
+            verify,
         } => {
             let resolved = resolve_config_and_cli(
                 config.as_deref(),
@@ -450,6 +457,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
                 shortcut_exclude_regex.as_deref(),
                 post_run_item.as_deref(),
                 strategy,
+                *verify,
             )
             .await
         }
@@ -693,6 +701,7 @@ async fn execute_apply(
     _shortcut_exclude_regex: Option<&str>,
     post_run_item: Option<&str>,
     strategy: &str,
+    verify: bool,
 ) -> Result<()> {
     // Validate parameter flags
     if parameters.is_some() && env.is_none() {
@@ -850,11 +859,25 @@ async fn execute_apply(
 
     // Check if there's anything to do
     if !changeset.has_changes() {
-        let output_data = json!({
+        let mut output_data = json!({
             "status": "no_changes",
             "message": "Workspace is already in sync with source.",
             "summary": changeset.summary(),
         });
+        // --verify: no changes means the workspace already matches the source
+        // (the plan showed all Skip), so convergence is trivially satisfied.
+        if verify {
+            output_data.as_object_mut().unwrap().insert(
+                "verification".to_owned(),
+                json!({
+                    "converged": true,
+                    "checked": 0,
+                    "discrepancies": [],
+                    "existence_only": [],
+                    "note": "No changes to apply — the workspace already matches the source (all items Skip)."
+                }),
+            );
+        }
         output::render_object(cli, &output_data, "status");
         return Ok(());
     }
@@ -1037,6 +1060,29 @@ async fn execute_apply(
             .as_object_mut()
             .unwrap()
             .insert("post_hooks".to_owned(), json!(hook_results));
+    }
+
+    // Post-apply convergence audit (opt-in --verify). Runs AFTER post-hooks so
+    // LRO creates have settled. Report-only: adds a `verification` block, never
+    // changes the exit code.
+    if verify && !cli.dry_run {
+        apply::emit_progress(cli.quiet, "verifying convergence of applied items...");
+        let v = Box::pin(apply::verify_convergence(
+            client,
+            &workspace_id,
+            &result.succeeded,
+        ))
+        .await;
+        output_data.as_object_mut().unwrap().insert(
+            "verification".to_owned(),
+            json!({
+                "converged": v.converged,
+                "checked": v.checked,
+                "discrepancies": v.discrepancies,
+                "existence_only": v.existence_only,
+                "note": "Re-fetched created/updated items after post-hooks. Content items hash-compared to source (.platform excluded from the hash); platform-only items existence-checked. Deletes are confirmed by apply itself. Report-only — exit code unchanged."
+            }),
+        );
     }
 
     output::render_object(cli, &output_data, "status");

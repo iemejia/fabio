@@ -2819,6 +2819,119 @@ fn extract_error_code(err: &anyhow::Error) -> String {
     )
 }
 
+/// Outcome of a post-apply convergence verification.
+pub struct VerificationResult {
+    /// True when every checked item matched the source (no discrepancies).
+    pub converged: bool,
+    /// Number of items whose definition was hash-compared or existence-checked.
+    pub checked: usize,
+    /// Items that did NOT converge (missing, unreadable, or content differs).
+    pub discrepancies: Vec<Value>,
+    /// Items verified by existence only (platform-only types with no versionable
+    /// definition content to hash, e.g. Lakehouse/Warehouse).
+    pub existence_only: Vec<String>,
+}
+
+/// How a single change should be verified after apply.
+#[derive(Debug, PartialEq, Eq)]
+enum VerifyMode {
+    /// Nothing to converge (Skip/Delete/Rename — no created/updated content).
+    None,
+    /// Content item: hash-compare the deployed definition to the source hash.
+    Hash,
+    /// Platform-only item (no versionable content): existence check only.
+    Existence,
+}
+
+/// Decide how (if at all) a change is verified. Pure — unit-tested. Only
+/// created/updated items have content to converge; those with a `source_hash`
+/// are hash-compared, the rest (platform-only) are existence-checked.
+const fn verify_mode(change: &Change) -> VerifyMode {
+    if !matches!(change.action, ChangeAction::Create | ChangeAction::Update) {
+        return VerifyMode::None;
+    }
+    if change.source_hash.is_some() {
+        VerifyMode::Hash
+    } else {
+        VerifyMode::Existence
+    }
+}
+
+/// Re-fetch the items that `apply` just created/updated and confirm they
+/// converged to the source. Report-only — never mutates and never changes the
+/// caller's exit code. Content items are hash-compared (deployed getDefinition
+/// vs the source hash the plan already computed); platform-only items are
+/// existence-checked. Deletes are already confirmed by `apply` itself and are
+/// not re-checked here. Runs AFTER post-hooks so LRO creates have settled.
+pub async fn verify_convergence(
+    client: &FabricClient,
+    workspace_id: &str,
+    succeeded: &[Change],
+) -> VerificationResult {
+    let mut discrepancies: Vec<Value> = Vec::new();
+    let mut existence_only: Vec<String> = Vec::new();
+    let mut checked = 0usize;
+
+    for change in succeeded {
+        // Only created/updated items have content to converge to the source.
+        if verify_mode(change) == VerifyMode::None {
+            continue;
+        }
+        let Some(id) = change.deployed_id.as_deref() else {
+            discrepancies.push(json!({
+                "name": change.name,
+                "type": change.item_type,
+                "issue": "no deployed id captured; cannot verify"
+            }));
+            continue;
+        };
+        checked += 1;
+
+        if let Some(source_hash) = change.source_hash.as_deref() {
+            // Content item: compare the deployed definition hash to the source.
+            match super::plan::fetch_definition_hash(client, workspace_id, id).await {
+                Ok(Some(deployed_hash)) => {
+                    if deployed_hash != source_hash {
+                        discrepancies.push(json!({
+                            "name": change.name,
+                            "type": change.item_type,
+                            "issue": "definition content differs from source after apply",
+                            "expected_hash": source_hash,
+                            "actual_hash": deployed_hash
+                        }));
+                    }
+                }
+                Ok(None) => existence_only.push(change.name.clone()),
+                Err(e) => discrepancies.push(json!({
+                    "name": change.name,
+                    "type": change.item_type,
+                    "issue": format!("could not fetch definition to verify: {}", e.root_cause())
+                })),
+            }
+        } else {
+            // Platform-only / no versionable content: existence check.
+            match client
+                .get(&format!("/workspaces/{workspace_id}/items/{id}"))
+                .await
+            {
+                Ok(_) => existence_only.push(change.name.clone()),
+                Err(_) => discrepancies.push(json!({
+                    "name": change.name,
+                    "type": change.item_type,
+                    "issue": "item not found after apply"
+                })),
+            }
+        }
+    }
+
+    VerificationResult {
+        converged: discrepancies.is_empty(),
+        checked,
+        discrepancies,
+        existence_only,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2827,6 +2940,53 @@ mod tests {
 
     use super::super::changeset::ChangeAction;
     use super::super::platform::{DefinitionPart, SourceItem};
+
+    fn change(action: ChangeAction, source_hash: Option<&str>) -> Change {
+        Change {
+            name: "X".to_owned(),
+            item_type: "Notebook".to_owned(),
+            action,
+            reason: String::new(),
+            logical_id: None,
+            deployed_id: Some("id".to_owned()),
+            source_hash: source_hash.map(str::to_owned),
+            previous_name: None,
+        }
+    }
+
+    #[test]
+    fn verify_mode_only_checks_created_and_updated() {
+        assert_eq!(
+            verify_mode(&change(ChangeAction::Skip, Some("h"))),
+            VerifyMode::None
+        );
+        assert_eq!(
+            verify_mode(&change(ChangeAction::Delete, None)),
+            VerifyMode::None
+        );
+        assert_eq!(
+            verify_mode(&change(ChangeAction::Rename, Some("h"))),
+            VerifyMode::None
+        );
+    }
+
+    #[test]
+    fn verify_mode_hash_when_source_hash_present_else_existence() {
+        // Content item (has a source hash) → hash-compare.
+        assert_eq!(
+            verify_mode(&change(ChangeAction::Create, Some("h"))),
+            VerifyMode::Hash
+        );
+        assert_eq!(
+            verify_mode(&change(ChangeAction::Update, Some("h"))),
+            VerifyMode::Hash
+        );
+        // Platform-only item (no source hash) → existence check.
+        assert_eq!(
+            verify_mode(&change(ChangeAction::Create, None)),
+            VerifyMode::Existence
+        );
+    }
 
     #[test]
     fn test_extract_pipeline_references_empty() {

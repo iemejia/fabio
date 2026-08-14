@@ -23448,6 +23448,10 @@
               "sequential"
             ],
             "description": "Deployment execution strategy"
+          },
+          "--verify": {
+            "type": "bool",
+            "description": "After applying, re-fetch the applied items and confirm they converged to the source (content-hash for definition items, existence for platform-only items). Adds a `verification` block to the output. Report-only: never changes the exit code"
           }
         },
         "mutates": true,

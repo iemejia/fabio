@@ -97,7 +97,7 @@ Manage variable libraries (shared variables)
 ## Must / Prefer / Avoid
 ### MUST
 - Run 'deploy plan' (dry-run) and review the changeset before 'deploy apply'.
-- After 'deploy apply', re-run 'deploy plan' to audit that the deployment matches the plan — a converged deployment shows every item as Skip (summary.create/update/delete == 0). Any non-Skip item is a discrepancy between the plan and the live workspace (missing item, drift, or a failed change).
+- After 'deploy apply', audit convergence: pass 'deploy apply --verify' (adds a `verification` block: converged + per-item discrepancies), or re-run 'deploy plan' (a converged deployment shows every item as Skip / summary.create/update/delete == 0). --verify is report-only (exit code unchanged) and reuses the plan's content-hash engine. Any discrepancy / non-Skip item means the deployment did NOT match the plan: a missing/failed item, drift, or API normalization of hand-authored content.
 - Use the fabric Git Integration '.platform' directory format as the source.
 - Name variable-library value sets to match --env values so they auto-activate on apply.
 
@@ -122,7 +122,7 @@ Manage variable libraries (shared variables)
 | Symptom | Fix |
 |---|---|
 | Plan shows a rename as delete+create | Ensure the item has a stable logicalId in its .platform file so rename detection matches it. |
-| Re-running apply keeps changing the same items | The .platform part is excluded from the content hash; a real convergent deploy should show 0 changes — check for portal edits. |
+| Re-running apply keeps changing the same items (or --verify reports 'definition content differs') | The .platform part is excluded from the content hash; a real convergent deploy should show 0 changes. Causes: (1) portal edits since deploy, or (2) the API NORMALIZES hand-authored content on first ingest (notebooks especially) so the source hash != deployed hash. Fix (2) by re-exporting after the first deploy ('deploy export') and deploying the canonical form — it then converges. Verify with 'deploy apply --verify'. |
 | bulk strategy fails on a Git-connected workspace | Bulk import requires no Git integration; use --strategy default. |
 | Connections resolve to TODO in params | Run deploy init-params --resolve-connections and fill in the correct connection IDs before apply. |
 
