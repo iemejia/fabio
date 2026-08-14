@@ -4609,6 +4609,11 @@
         "mutates": false,
         "returns": "object"
       },
+      "item-capabilities": {
+        "description": "Per-item-type capability matrix: creatable, deploy strategy, definition round-trip, deploy order (derived from the CLI's own sources)",
+        "mutates": false,
+        "returns": "list"
+      },
       "skill": {
         "description": "Show an intent-scoped sub-skill's judgment (when-to-use, gotchas, troubleshooting, safety) for a workload family",
         "mutates": false,

@@ -88,6 +88,12 @@ fabio context disambiguate <term>
 # Item definition format (for create/update-definition)
 fabio context schema <type>
 
+# Per-item-type capability matrix — creatable? deploy strategy? definition round-trip? deploy order
+fabio context item-capabilities            # full matrix (all types)
+fabio context item-capabilities Lakehouse  # one type
+# deploy_strategy: content (round-trippable definition) | platform_only (shell only) | unsupported
+# check before deploy/export/update-definition so you don't attempt an unsupported operation
+
 # Output shape example for a specific command
 fabio context examples <group> <command>
 

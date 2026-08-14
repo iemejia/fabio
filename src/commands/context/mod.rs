@@ -3,6 +3,7 @@
 mod agent;
 mod best_practices;
 mod blueprints;
+mod capabilities;
 mod disambiguations;
 mod examples;
 mod personas;
@@ -127,6 +128,14 @@ pub enum ContextCommand {
         /// Blueprint name (`medallion`, `lambda`, `event-analytics`, `event-medallion`, `basic-data-analytics`, `data-analytics-sql-endpoint`, `basic-machine-learning-models`, `sensitive-data-insights`, `conversational-analytics`, `app-backend`, `translytical`, `semantic-governance`)
         #[arg(name = "NAME")]
         name: String,
+    },
+
+    /// Per-item-type capability matrix: creatable, deploy strategy, definition round-trip, deploy order (derived from the CLI's own sources)
+    #[command(display_order = 8)]
+    ItemCapabilities {
+        /// Optional item type to filter to (e.g. `Notebook`, `Lakehouse`). Omit for the full matrix.
+        #[arg(name = "TYPE")]
+        item_type: Option<String>,
     },
 
     /// Show an intent-scoped sub-skill's judgment (when-to-use, gotchas, troubleshooting, safety) for a workload family
@@ -269,6 +278,10 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ContextCommand)
             blueprints::execute(cli, name);
             Ok(())
         }
+        ContextCommand::ItemCapabilities { item_type } => {
+            capabilities::execute(cli, item_type.as_deref());
+            Ok(())
+        }
         ContextCommand::Skill { family } => {
             skills::execute(cli, family);
             Ok(())
@@ -344,7 +357,8 @@ fn list_topics(cli: &Cli) {
             "persona": "fabio context persona <NAME>",
             "disambiguate": "fabio context disambiguate <TERM>",
             "skill": "fabio context skill <FAMILY>",
-            "blueprint": "fabio context blueprint <NAME>"
+            "blueprint": "fabio context blueprint <NAME>",
+            "item_capabilities": "fabio context item-capabilities [<TYPE>]"
         }
     });
     output::render_object(cli, &topics, "item_schemas");

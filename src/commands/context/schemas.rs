@@ -98,6 +98,19 @@ pub(super) const fn entries() -> &'static [(&'static str, &'static str)] {
     ITEM_SCHEMAS
 }
 
+/// The `definition_format` declared in an item type's hand-authored schema, if
+/// any (case/-/_-insensitive lookup). `null`/absent yields `None`. Used by the
+/// item-capability matrix as one of the two authoritative "content" signals
+/// (unioned with `definition_spec`).
+pub(super) fn definition_format_for(item_type: &str) -> Option<String> {
+    let normalized = item_type.to_lowercase().replace(['-', '_'], "");
+    let content = find_entry(ITEM_SCHEMAS, &normalized)?;
+    let val: Value = serde_json::from_str(content).ok()?;
+    val.get("definition_format")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
 const ITEM_SCHEMAS: &[(&str, &str)] = &[
     ("Notebook", include_str!("data/schemas/notebook.json")),
     (

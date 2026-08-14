@@ -944,6 +944,15 @@ const KNOWN_ITEM_TYPES: &[&str] = &[
     "Warehouse",
 ];
 
+/// The canonical list of known Fabric item types (`PascalCase`, sorted).
+///
+/// Exposed for the item-capability matrix (`context item-capabilities`), which
+/// derives per-type capabilities from this universe. Kept private-by-default
+/// otherwise — callers should prefer this accessor over the raw const.
+pub const fn known_item_types() -> &'static [&'static str] {
+    KNOWN_ITEM_TYPES
+}
+
 /// Enrich item create errors with valid type hints.
 fn enrich_item_create_error(err: anyhow::Error, item_type: &str) -> anyhow::Error {
     let Some(fabio_err) = err.downcast_ref::<FabioError>() else {

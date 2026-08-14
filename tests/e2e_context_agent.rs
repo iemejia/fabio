@@ -1122,6 +1122,75 @@ fn context_blueprints_cover_all_twelve_shapes() {
 }
 
 #[test]
+fn item_capabilities_full_matrix_has_rows_and_legend() {
+    let assert = fabio()
+        .args(["context", "item-capabilities"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let data = &json["data"];
+    let rows = data["item_capabilities"].as_array().unwrap();
+    assert!(rows.len() >= 30, "expected the full item-type universe");
+    assert!(data["legend"].is_object(), "matrix must carry a legend");
+    for r in rows {
+        assert!(r["type"].is_string());
+        assert!(r["creatable"].is_boolean());
+        assert!(r["supports_definition"].is_boolean());
+        assert!(matches!(
+            r["deploy_strategy"].as_str(),
+            Some("content" | "platform_only" | "unsupported")
+        ));
+        assert!(r["deployable_from_definition"].is_boolean());
+    }
+}
+
+#[test]
+fn item_capabilities_single_type_two_axes() {
+    let nb = fabio()
+        .args(["context", "item-capabilities", "Notebook"])
+        .assert()
+        .success();
+    let nbj: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&nb.get_output().stdout)).unwrap();
+    assert_eq!(nbj["data"]["deploy_strategy"], "content");
+    assert_eq!(nbj["data"]["deployable_from_definition"], true);
+
+    // Lakehouse: supports the definition API but deploys as a shell (platform_only).
+    let lh = fabio()
+        .args(["context", "item-capabilities", "lakehouse"])
+        .assert()
+        .success();
+    let lhj: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&lh.get_output().stdout)).unwrap();
+    assert_eq!(lhj["data"]["deploy_strategy"], "platform_only");
+    assert_eq!(lhj["data"]["supports_definition"], true);
+    assert_eq!(lhj["data"]["deployable_from_definition"], false);
+
+    // Warehouse: no definition API at all.
+    let wh = fabio()
+        .args(["context", "item-capabilities", "Warehouse"])
+        .assert()
+        .success();
+    let whj: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&wh.get_output().stdout)).unwrap();
+    assert_eq!(whj["data"]["supports_definition"], false);
+}
+
+#[test]
+fn item_capabilities_unknown_type_lists_available() {
+    let assert = fabio()
+        .args(["context", "item-capabilities", "NotAType"])
+        .assert()
+        .success();
+    let json: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&assert.get_output().stdout)).unwrap();
+    let available = json["data"]["available_types"].as_array().unwrap();
+    let names: Vec<&str> = available.iter().filter_map(|v| v.as_str()).collect();
+    assert!(names.contains(&"Notebook") && names.contains(&"Lakehouse"));
+}
+
+#[test]
 fn find_routes_streaming_problem_to_event_blueprint() {
     let assert = fabio()
         .args(["context", "find", "streaming telemetry real-time events"])
