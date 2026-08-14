@@ -1,6 +1,6 @@
 ---
 name: fabio
-description: "Manage Microsoft Fabric artifacts and data using the fabio CLI - an agent-native command-line tool with 856+ subcommands across 77 groups, structured JSON output, composable piping, and machine-readable errors. Use when working with Fabric workspaces, lakehouses, warehouses, notebooks, eventhouses, semantic models, reports, data pipelines, KQL databases, eventstreams, deploy CI/CD, REST passthrough, Power BI API, capacity lifecycle, app-backend (Power Apps), data-build-tool-job (dbt), org-app (Organizational App), azure-databricks-storage (Azure Databricks integration), or any Fabric REST API resource. Covers CRUD operations, file upload/download, SQL/DAX/KQL queries, execution plans, query monitoring and insights, Git integration, deployment pipelines, CI/CD deploy (plan/apply/export/validate/config-file/git-diff), natural language to KQL, KQL schema discovery and diagnostics, and administration."
+description: "Manage Microsoft Fabric artifacts and data using the fabio CLI - an agent-native command-line tool with 856+ subcommands across 79 groups, structured JSON output, composable piping, and machine-readable errors. Use when working with Fabric workspaces, lakehouses, warehouses, notebooks, eventhouses, semantic models, reports, data pipelines, KQL databases, eventstreams, deploy CI/CD, REST passthrough, Power BI API, capacity lifecycle, app-backend (Power Apps), data-build-tool-job (dbt), org-app (Organizational App), azure-databricks-storage (Azure Databricks integration), or any Fabric REST API resource. Covers CRUD operations, file upload/download, SQL/DAX/KQL queries, execution plans, query monitoring and insights, Git integration, deployment pipelines, CI/CD deploy (plan/apply/export/validate/config-file/git-diff), natural language to KQL, KQL schema discovery and diagnostics, and administration."
 license: MIT
 compatibility: "Requires fabio binary (Linux/macOS/Windows x64/arm64). Authentication via `fabio auth login`, `FABIO_ACCESS_TOKEN` env var, or Azure CLI fallback (uses same Microsoft Identity platform as Azure CLI). Network access to api.fabric.microsoft.com, api.powerbi.com, and onelake.dfs.fabric.microsoft.com required."
 metadata:
@@ -44,7 +44,7 @@ fabio auth status
 fabio has built-in introspection. Use these commands instead of reading reference files:
 
 ```bash
-# Find commands — compact index of all 78 groups + subcommands
+# Find commands — compact index of all 79 groups + subcommands
 fabio context agent
 
 # Full details for one group (all flags, types, examples)

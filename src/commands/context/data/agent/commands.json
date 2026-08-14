@@ -18795,6 +18795,154 @@
       }
     }
   },
+  "scorecard": {
+    "auth_scope": "fabric",
+    "description": "Manage Power BI Goals scorecards (Power BI Metrics, not a Fabric item)",
+    "subcommands": {
+      "list": {
+        "description": "List scorecards in a workspace",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "show": {
+        "description": "Show a scorecard (add --goals to expand its goals)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Scorecard ID"
+          },
+          "--goals": {
+            "type": "bool",
+            "description": "Expand the scorecard's goals in the response"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "create": {
+        "description": "Create a scorecard",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Scorecard name"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Optional description"
+          },
+          "--contact": {
+            "type": "string",
+            "description": "Optional contact (user email or group)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "delete": {
+        "description": "Delete a scorecard (permanent — Power BI has no soft delete)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Scorecard ID"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "list-goals": {
+        "description": "List a scorecard's goals",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Scorecard ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "create-goal": {
+        "description": "Create a goal in a scorecard",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Scorecard ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Goal name"
+          },
+          "--rank": {
+            "type": "string",
+            "description": "Optional display rank (ordering)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "delete-goal": {
+        "description": "Delete a goal from a scorecard (permanent)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Scorecard ID"
+          },
+          "--goal-id": {
+            "type": "string",
+            "required": true,
+            "description": "Goal ID"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      }
+    }
+  },
   "graph-query-set": {
     "auth_scope": "fabric",
     "description": "Manage graph query sets",

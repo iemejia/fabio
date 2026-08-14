@@ -67,6 +67,7 @@ pub mod reflex;
 pub mod report;
 pub mod rest;
 pub mod rti;
+pub mod scorecard;
 pub mod semantic_model;
 pub mod shortcut_target;
 pub mod snowflake_database;
@@ -258,6 +259,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Lro { command } => lro::execute(&cli, &client, command).await,
         Command::Rest { command } => rest::execute(&cli, &client, command).await,
         Command::Rti { command } => rti::execute(&cli, &client, command).await,
+        Command::Scorecard { command } => scorecard::execute(&cli, &client, command).await,
         Command::Upgrade {
             check,
             target_version,
@@ -466,6 +468,7 @@ fn extract_command_path(cli: &Cli) -> String {
         Command::Lro { .. } => "operation",
         Command::Rest { .. } => "rest",
         Command::Rti { .. } => "rti",
+        Command::Scorecard { .. } => "scorecard",
         Command::Upgrade { .. } => return "upgrade".to_owned(),
         Command::Completions { .. } => return "completions".to_owned(),
         Command::Mcp { .. } => "mcp",

@@ -173,6 +173,19 @@ Manage dashboards (Power BI)
 |---|---|---|
 | `fabio dashboard list` | no | List dashboards in a workspace |
 
+### fabio scorecard
+Manage Power BI Goals scorecards (Power BI Metrics, not a Fabric item)
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio scorecard create` | yes | Create a scorecard |
+| `fabio scorecard create-goal` | yes | Create a goal in a scorecard |
+| `fabio scorecard delete` | yes | Delete a scorecard (permanent — Power BI has no soft delete) |
+| `fabio scorecard delete-goal` | yes | Delete a goal from a scorecard (permanent) |
+| `fabio scorecard list` | no | List scorecards in a workspace |
+| `fabio scorecard list-goals` | no | List a scorecard's goals |
+| `fabio scorecard show` | no | Show a scorecard (add --goals to expand its goals) |
+
 ## Must / Prefer / Avoid
 ### MUST
 - Treat 'dataset' as a semantic model (use the semantic-model group, NOT report); see 'fabio context disambiguate semantic-model'.

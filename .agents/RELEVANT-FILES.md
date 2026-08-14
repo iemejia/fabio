@@ -260,3 +260,5 @@
 - `src/commands/context/data/personas/data_solution_architect.json`: Problem-first orchestrator persona that routes a business outcome to a blueprint, then to the role persona that builds it
 - `src/commands/context/data/blueprints/{event-medallion,basic-machine-learning-models,data-analytics-sql-endpoint,sensitive-data-insights,translytical}.json`: The 5 specialized architecture blueprints (bringing the layer to 12)
 - `src/commands/context/capabilities.rs`: Runtime-derived per-item-type capability matrix (`context item-capabilities`) — creatable / supports_definition / deploy_strategy / deployable_from_definition / deploy_order, computed from known types + definition specs + schema formats + DEPLOY_ORDER + commands.json (no hand-maintained registry)
+- `src/commands/scorecard.rs`: `fabio scorecard` command group — Power BI Goals (Metrics) scorecards + goals via the Power BI REST API (`/groups/{ws}/scorecards`); not a Fabric item
+- `tests/e2e_scorecard.rs`: E2E tests for the scorecard group (hermetic dry-run/validation + gated live lifecycle)

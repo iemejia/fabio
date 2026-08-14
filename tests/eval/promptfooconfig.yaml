@@ -2670,3 +2670,23 @@ tests:
       - type: llm-rubric
         value: "The response emphasizes access control and masking: a Lakehouse with OneLake data-access roles, sensitivity labels, least-privilege workspace RBAC, and masked/aggregated outputs (defense in depth). It may discover this via 'fabio context blueprint sensitive-data-insights'. It does not treat this as ordinary unsecured analytics."
         metric: blueprint-sensitive-routing
+
+  - description: "Scorecard: create a Power BI Goals scorecard"
+    vars:
+      user_query: "Create a Power BI Goals scorecard called 'Q3 KPIs' in my workspace"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('scorecard create')
+        metric: scorecard-create-command
+      - type: icontains
+        value: "--name"
+
+  - description: "Scorecard: add a goal to a scorecard"
+    vars:
+      user_query: "Add a goal named Revenue to scorecard 1111-2222 in my workspace"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('scorecard create-goal')
+        metric: scorecard-create-goal-command

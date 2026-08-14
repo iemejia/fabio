@@ -10,9 +10,9 @@ use crate::commands::{
     managed_private_endpoint, map, mirrored_catalog, mirrored_database,
     mirrored_databricks_catalog, mirrored_warehouse, ml_experiment, ml_model, mounted_data_factory,
     notebook, onelake_security, ontology, operations_agent, org_app, org_app_audience,
-    paginated_report, plan, profile, reflex, report, rest, rti, semantic_model, snowflake_database,
-    spark, spark_job_definition, sql_database, sql_endpoint, user_data_function, variable_library,
-    warehouse, warehouse_snapshot, workspace,
+    paginated_report, plan, profile, reflex, report, rest, rti, scorecard, semantic_model,
+    snowflake_database, spark, spark_job_definition, sql_database, sql_endpoint,
+    user_data_function, variable_library, warehouse, warehouse_snapshot, workspace,
 };
 
 /// Agent-native CLI for managing Microsoft Fabric artifacts and data.
@@ -508,6 +508,12 @@ pub enum Command {
     Plan {
         #[command(subcommand)]
         command: plan::PlanCommand,
+    },
+    /// Manage Power BI Goals scorecards (Power BI Metrics, not a Fabric item)
+    #[command(display_order = 70)]
+    Scorecard {
+        #[command(subcommand)]
+        command: scorecard::ScorecardCommand,
     },
     /// Manage graph query sets
     #[command(display_order = 48)]

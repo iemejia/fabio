@@ -6,7 +6,8 @@
     "semantic-model",
     "report",
     "paginated-report",
-    "dashboard"
+    "dashboard",
+    "scorecard"
   ],
   "when_to_use": [
     "Optimizing a semantic model / checking it against best practices (semantic-model analyze — Best Practice Analyzer over INFO.VIEW; measure-dependencies for AI data schema scoping).",
