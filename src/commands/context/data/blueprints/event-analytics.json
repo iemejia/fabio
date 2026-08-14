@@ -1,0 +1,34 @@
+{
+  "name": "event-analytics",
+  "title": "Event Analytics (Real-Time Intelligence)",
+  "description": "Architecture blueprint for streaming-first analytics on Fabric Real-Time Intelligence: ingest live events through an Eventstream into an Eventhouse/KQL Database, analyze with KQL, visualize on a Real-Time Dashboard, and trigger actions with an Activator. Best for telemetry, IoT, logs, and any up-to-the-second monitoring.",
+  "best_for": "Real-time/streaming workloads: IoT telemetry, application logs, clickstream, monitoring — where freshness matters more than long historical batch.",
+  "problem_signals": ["real-time", "streaming", "events", "telemetry", "IoT", "logs", "clickstream", "sub-minute freshness", "KQL", "monitoring", "alerting"],
+  "primary_storage": "Eventhouse / KQL Database (KQL, hot analytics store)",
+  "key_ingestion": "Eventstream (streaming); Copy Job / Pipeline for batch backfill",
+  "item_set": [
+    {"type": "Eventhouse", "phase": "Foundation", "purpose": "Real-time KQL storage engine", "command_group": "eventhouse"},
+    {"type": "KQLDatabase", "phase": "Foundation", "purpose": "KQL database (tables, policies) inside the Eventhouse", "command_group": "kql-database"},
+    {"type": "Eventstream", "phase": "Ingestion", "purpose": "Ingest + route + lightly transform live event sources", "command_group": "eventstream"},
+    {"type": "KQLQueryset", "phase": "Transformation", "purpose": "Saved KQL analytics/exploration", "command_group": "kql-queryset"},
+    {"type": "KQLDashboard", "phase": "Visualization", "purpose": "Real-time dashboard over live data", "command_group": "kql-dashboard"},
+    {"type": "Reflex", "phase": "Monitoring", "purpose": "Activator: trigger alerts/actions on conditions", "command_group": "reflex"}
+  ],
+  "decisions": [
+    {"decision": "Ingestion topology", "options": ["Eventstream", "direct KQL ingest"], "guidance": "Eventstream when routing/joining/transforming multiple sources or fan-out; direct ingest for a single simple stream.", "disambiguate": "activator"},
+    {"decision": "Batch backfill", "options": ["CopyJob", "DataPipeline", "none"], "guidance": "Add a Copy Job/Pipeline only if you must seed history into the KQL DB; pure real-time flows skip it."},
+    {"decision": "Action layer", "options": ["Reflex/Activator", "OperationsAgent"], "guidance": "Activator for rule-based triggers; Operations Agent (preview) for AI-driven monitoring."}
+  ],
+  "build_with": {
+    "workflows": ["rti-pipeline"],
+    "deploy_ordering": "Eventhouse + KQLDatabase (Foundation) before Eventstream (Ingestion) before KQLDashboard and Reflex; fabio deploy handles it.",
+    "outline": [
+      "Create an eventhouse and a KQL database (fabio eventhouse create; kql-database create).",
+      "Create the KQL table(s) and an eventstream that lands events into them (see workflow rti-pipeline).",
+      "Explore with KQL (fabio kql-database query / rti nl2kql for natural-language KQL).",
+      "Build a Real-Time Dashboard; add an Activator (reflex) for alerts."
+    ]
+  },
+  "personas": ["rti-engineer"],
+  "see_also": ["fabio context workflow rti-pipeline", "fabio context persona rti-engineer", "fabio context disambiguate activator", "fabio context blueprint lambda"]
+}

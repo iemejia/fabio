@@ -1,0 +1,33 @@
+{
+  "name": "semantic-governance",
+  "title": "Semantic Governance (Ontology + Knowledge Graph)",
+  "description": "Overlay blueprint that adds an enterprise governance layer: define a business vocabulary as an Ontology, build a knowledge Graph Model of entity relationships, query it with a Graph Queryset, and connect it to physical data via semantic models — optionally consumed by a Data Agent. Best added on top of existing data pipelines.",
+  "best_for": "Enterprise-wide governance: a unified business vocabulary and knowledge graph on top of existing analytics, improving agent grounding and cross-domain consistency.",
+  "problem_signals": ["governance", "business vocabulary", "ontology", "knowledge graph", "entity relationships", "semantic layer", "data catalog terms", "cross-domain consistency", "graph model"],
+  "primary_storage": "Existing Lakehouse or Warehouse (usually pre-existing from an upstream blueprint)",
+  "key_ingestion": "None new — overlay reuses existing ingestion",
+  "item_set": [
+    {"type": "Ontology", "phase": "IQ", "purpose": "Business vocabulary: entity + relationship types (preview)", "command_group": "ontology"},
+    {"type": "GraphModel", "phase": "Transformation", "purpose": "Knowledge graph of entities and edges", "command_group": "graph-model"},
+    {"type": "GraphQuerySet", "phase": "Transformation", "purpose": "Traversal/queries over the graph", "command_group": "graph-query-set"},
+    {"type": "SemanticModel", "phase": "Transformation", "purpose": "Bind vocabulary to physical data", "command_group": "semantic-model"},
+    {"type": "DataAgent", "phase": "IQ", "purpose": "Optional NL consumption grounded on the vocabulary", "command_group": "data-agent"}
+  ],
+  "decisions": [
+    {"decision": "Ontology scope", "options": ["Single-domain", "Cross-domain", "Enterprise-wide"], "guidance": "Start single-domain and expand; enterprise-wide needs cross-team term stewardship."},
+    {"decision": "Consumption layer", "options": ["DataAgent", "Report", "Both"], "guidance": "Data Agent for conversational grounding; Report for governed dashboards; both for full coverage."},
+    {"decision": "Vocabulary source", "options": ["Author in fabio", "Import OWL"], "guidance": "fabio context tenant --format owl can export a tenant scan as OWL; fabio ontology import ingests OWL/RDF."}
+  ],
+  "build_with": {
+    "workflows": ["ontology-tutorial", "data-agent-setup"],
+    "deploy_ordering": "Ontology + GraphModel deploy before the Data Agent that grounds on them; fabio deploy orders DataAgent after its data sources (including GraphModel).",
+    "outline": [
+      "Define the ontology (entity + relationship types) — see workflow ontology-tutorial, or import OWL.",
+      "Build a Graph Model of entities/edges and a Graph Queryset for traversal.",
+      "Bind the vocabulary to physical data via a semantic model.",
+      "Optionally publish a Data Agent grounded on the ontology (see workflow data-agent-setup)."
+    ]
+  },
+  "personas": ["bi-developer", "data-engineer"],
+  "see_also": ["fabio context workflow ontology-tutorial", "fabio context skill ontology", "fabio context blueprint conversational-analytics"]
+}

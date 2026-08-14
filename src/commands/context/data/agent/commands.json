@@ -4604,6 +4604,11 @@
         "mutates": false,
         "returns": "object"
       },
+      "blueprint": {
+        "description": "Show an architecture-shape blueprint: item set, deployment phase, and key decisions for a solution shape",
+        "mutates": false,
+        "returns": "object"
+      },
       "skill": {
         "description": "Show an intent-scoped sub-skill's judgment (when-to-use, gotchas, troubleshooting, safety) for a workload family",
         "mutates": false,

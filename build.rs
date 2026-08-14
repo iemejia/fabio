@@ -33,12 +33,18 @@ fn main() {
         &format!("{out_dir}/skills.rs"),
         "SKILLS",
     );
+    generate_entries(
+        "src/commands/context/data/blueprints",
+        &format!("{out_dir}/blueprints.rs"),
+        "BLUEPRINTS",
+    );
 
     println!("cargo::rerun-if-changed=src/commands/context/data/best_practices");
     println!("cargo::rerun-if-changed=src/commands/context/data/workflows");
     println!("cargo::rerun-if-changed=src/commands/context/data/personas");
     println!("cargo::rerun-if-changed=src/commands/context/data/disambiguations");
     println!("cargo::rerun-if-changed=src/commands/context/data/skills");
+    println!("cargo::rerun-if-changed=src/commands/context/data/blueprints");
 }
 
 fn generate_entries(data_dir: &str, output_file: &str, const_name: &str) {

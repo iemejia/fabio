@@ -1,0 +1,31 @@
+{
+  "name": "conversational-analytics",
+  "title": "Conversational Analytics (AI Data Agent)",
+  "description": "Overlay blueprint that adds natural-language self-service on top of existing data: build a semantic model over a Lakehouse/Warehouse and publish a Fabric Data Agent so non-technical users ask questions in plain language. Best added on top of an existing analytics blueprint (medallion, basic-data-analytics).",
+  "best_for": "Letting business users query governed data in natural language — no report building or query writing. An overlay on an existing storage/pipeline.",
+  "problem_signals": ["natural language questions", "ask my data", "self-service analytics", "data agent", "AI Q&A", "chat with data", "copilot over data", "non-technical users"],
+  "primary_storage": "Existing Lakehouse or Warehouse (usually pre-existing from an upstream blueprint)",
+  "key_ingestion": "None new — overlay reuses existing ingestion",
+  "item_set": [
+    {"type": "SemanticModel", "phase": "Transformation", "purpose": "Governed model the agent grounds on", "command_group": "semantic-model"},
+    {"type": "DataAgent", "phase": "IQ", "purpose": "Natural-language Q&A agent over the modeled data", "command_group": "data-agent"},
+    {"type": "Ontology", "phase": "IQ", "purpose": "Optional business vocabulary to improve grounding", "command_group": "ontology"}
+  ],
+  "decisions": [
+    {"decision": "Semantic model mode", "options": ["Direct Lake", "Import", "DirectQuery"], "guidance": "Direct Lake for Delta in OneLake (no refresh, low latency); Import for small/cached; DirectQuery for live external SQL.", "disambiguate": "semantic-model"},
+    {"decision": "Grounding scope", "options": ["Semantic model only", "Semantic model + Ontology"], "guidance": "Add an Ontology when business terms differ from physical column names or you need cross-source vocabulary."},
+    {"decision": "Data source binding", "options": ["Lakehouse", "Warehouse", "KQL"], "guidance": "Point the Data Agent at the store your users' questions target; multiple sources can be attached."}
+  ],
+  "build_with": {
+    "workflows": ["data-agent-setup", "semantic-model-ai-readiness", "direct-lake-report"],
+    "deploy_ordering": "SemanticModel + Ontology (data sources) deploy before DataAgent; fabio deploy orders DataAgent after its sources.",
+    "outline": [
+      "Ensure a semantic model exists over the target store (see workflow direct-lake-report).",
+      "Make it AI-ready (see workflow semantic-model-ai-readiness): clear names, descriptions, measures.",
+      "Create and publish a Data Agent bound to the model (see workflow data-agent-setup).",
+      "Optionally attach an Ontology for business vocabulary."
+    ]
+  },
+  "personas": ["bi-developer", "app-developer"],
+  "see_also": ["fabio context workflow data-agent-setup", "fabio context workflow semantic-model-ai-readiness", "fabio context blueprint semantic-governance"]
+}

@@ -1,0 +1,36 @@
+{
+  "name": "app-backend",
+  "title": "App Backend (Transactional + API)",
+  "description": "Architecture blueprint for building application backends on Fabric: a transactional SQL Database (or Cosmos DB) for OLTP, a GraphQL API and/or User Data Functions to expose it, and optional analytics/Data Agent on top. Best for powering apps, not just dashboards.",
+  "best_for": "Operational applications needing a read-write transactional store plus API/serverless business logic — with optional analytics layered on.",
+  "problem_signals": ["app backend", "API", "transactional", "OLTP", "graphql", "serverless functions", "power app", "writeback", "REST endpoint", "operational database", "CRUD app"],
+  "primary_storage": "SQL Database (OLTP) or Cosmos DB (NoSQL)",
+  "key_ingestion": "Application writes via GraphQL API / User Data Functions (not batch ingestion)",
+  "item_set": [
+    {"type": "SQLDatabase", "phase": "Foundation", "purpose": "Transactional read-write store (F4+ capacity)", "command_group": "sql-database"},
+    {"type": "CosmosDBDatabase", "phase": "Foundation", "purpose": "Alternative/companion NoSQL OLTP store", "command_group": "cosmos-db-database"},
+    {"type": "UserDataFunction", "phase": "Transformation", "purpose": "Serverless business logic / REST-callable functions", "command_group": "user-data-function"},
+    {"type": "GraphQLApi", "phase": "Transformation", "purpose": "GraphQL data API over the database", "command_group": "graphql-api"},
+    {"type": "VariableLibrary", "phase": "Environment", "purpose": "Environment-specific config for promotion across stages", "command_group": "variable-library"},
+    {"type": "SemanticModel", "phase": "Transformation", "purpose": "Optional analytics model over operational data", "command_group": "semantic-model"},
+    {"type": "DataAgent", "phase": "IQ", "purpose": "Optional natural-language Q&A over the app data", "command_group": "data-agent"}
+  ],
+  "decisions": [
+    {"decision": "Storage type", "options": ["SQLDatabase", "SQLDatabase + Cosmos DB"], "guidance": "SQL Database for relational OLTP; add Cosmos DB (mirrored) for NoSQL/high-throughput document workloads."},
+    {"decision": "API layer", "options": ["GraphQLApi", "UserDataFunction", "direct connection"], "guidance": "GraphQL for flexible client-driven queries; User Data Functions for custom REST/business logic; direct TDS for trusted server-side callers."},
+    {"decision": "Parameterization", "options": ["VariableLibrary", "parameter.yml", "environment variables"], "guidance": "Variable Library is the Fabric-native, CI/CD-friendly choice for per-stage config.", "disambiguate": null}
+  ],
+  "build_with": {
+    "workflows": ["cicd-deploy"],
+    "deploy_ordering": "VariableLibrary + SQLDatabase (Foundation/Environment) deploy before UserDataFunction and GraphQLApi; fabio deploy handles ordering.",
+    "outline": [
+      "Create the SQL Database (requires F4+ capacity); optionally a Cosmos DB.",
+      "Add User Data Functions for business logic and/or a GraphQL API for data access.",
+      "Add a Variable Library for per-environment config.",
+      "Promote across environments with fabio deploy (see workflow cicd-deploy).",
+      "Optionally add a semantic model + Data Agent for analytics/Q&A."
+    ]
+  },
+  "personas": ["app-developer"],
+  "see_also": ["fabio context persona app-developer", "fabio context workflow cicd-deploy", "fabio context blueprint conversational-analytics"]
+}

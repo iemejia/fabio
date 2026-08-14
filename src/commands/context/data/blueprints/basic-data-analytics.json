@@ -1,0 +1,33 @@
+{
+  "name": "basic-data-analytics",
+  "title": "Basic Data Analytics (Simple Batch)",
+  "description": "Architecture blueprint for straightforward batch analytics: land data into a Warehouse (or Lakehouse), model it, and report on it — no medallion layering. Best for smaller/simpler analytics where a single storage tier and a report are enough.",
+  "best_for": "Simple batch reporting scenarios that do not need layered refinement — get data in, model it, visualize it.",
+  "problem_signals": ["simple analytics", "basic reporting", "single warehouse", "just a report", "small batch", "get data and visualize", "starter analytics"],
+  "primary_storage": "Warehouse (T-SQL) or Lakehouse",
+  "key_ingestion": "Copy Job or Dataflow Gen2",
+  "item_set": [
+    {"type": "Warehouse", "phase": "Foundation", "purpose": "T-SQL analytics store", "command_group": "warehouse"},
+    {"type": "CopyJob", "phase": "Ingestion", "purpose": "Load source data into the warehouse", "command_group": "copy-job"},
+    {"type": "Dataflow", "phase": "Ingestion", "purpose": "Low-code Power Query ingestion/prep (alternative to Copy Job)", "command_group": "dataflow"},
+    {"type": "SemanticModel", "phase": "Transformation", "purpose": "Model over the warehouse", "command_group": "semantic-model"},
+    {"type": "Report", "phase": "Visualization", "purpose": "Power BI report", "command_group": "report"}
+  ],
+  "decisions": [
+    {"decision": "Storage type", "options": ["Warehouse", "Lakehouse"], "guidance": "Warehouse for pure T-SQL/BI with write transactions; Lakehouse if you also need files/Spark or Direct Lake.", "disambiguate": "sql-endpoint"},
+    {"decision": "Ingestion method", "options": ["CopyJob", "Dataflow", "DataPipeline"], "guidance": "Copy Job for simple copies; Dataflow Gen2 for low-code transforms during load; Data Pipeline if you need orchestration."},
+    {"decision": "Visualization", "options": ["Report", "PaginatedReport", "Scorecard"], "guidance": "Report for interactive dashboards; Paginated for pixel-perfect/print; Scorecard for KPI tracking."}
+  ],
+  "build_with": {
+    "workflows": ["direct-lake-report"],
+    "deploy_ordering": "Warehouse (Foundation) -> SemanticModel -> Report -> CopyJob/Dataflow; fabio deploy handles ordering.",
+    "outline": [
+      "Create a warehouse (or lakehouse).",
+      "Ingest source data (fabio copy-job create, or dataflow).",
+      "Build a semantic model and a report.",
+      "Optionally schedule the ingestion for recurring refresh."
+    ]
+  },
+  "personas": ["data-engineer", "bi-developer"],
+  "see_also": ["fabio context workflow direct-lake-report", "fabio context persona bi-developer", "fabio context blueprint medallion"]
+}

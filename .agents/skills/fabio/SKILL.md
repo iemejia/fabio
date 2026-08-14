@@ -70,7 +70,11 @@ fabio context best-practices <topic>
 
 # Orchestrator personas — which command groups + workflows to use for a role (start here for a broad task)
 fabio context persona <name>
-# Available: data-engineer, data-scientist, app-developer, bi-developer, rti-engineer, migration-engineer, fabric-admin
+# Available: data-solution-architect, data-engineer, data-scientist, app-developer, bi-developer, rti-engineer, migration-engineer, fabric-admin
+
+# Architecture-shape blueprints — item set + deployment phase + key decisions for a whole solution shape
+fabio context blueprint <name>
+# Available: medallion, lambda, event-analytics, basic-data-analytics, conversational-analytics, app-backend, semantic-governance
 
 # Intent-scoped sub-skill judgment — when-to-use, gotchas, troubleshooting, safety for a workload family
 fabio context skill <family>
@@ -98,6 +102,7 @@ fabio context tenant --workspace $NEW_WS --deep --merge context.json --output-fi
 ```
 
 **Where to start (routing):**
+- **Describes a business problem / outcome, not a Fabric item** (e.g. "analyze streaming sensor data", "let users ask questions of our sales data", "build a batch pipeline from raw to reports") → begin with `fabio context persona data-solution-architect`. It maps the problem to an architecture blueprint (`fabio context blueprint <name>`), which enumerates the item set (with deployment phase) and the key decisions to confirm — then hands off to the role persona that builds it.
 - **Broad / multi-step task** (e.g. "build a medallion lakehouse", "migrate from Databricks", "administer the tenant") → begin with `fabio context persona <name>`. Personas are thin routers that tell you which command groups, workflows, and best-practices to use, plus decision gates and guardrails.
 - **Ambiguous Fabric term** (e.g. "materialized view", "dataflow", "dataset", "SQL endpoint") → run `fabio context disambiguate <term>` to resolve it to the concrete artifact + command group before acting.
 - **Specific command** → use `fabio context agent --group <g>` / `fabio context describe <g> <cmd>` for flags and output shape.

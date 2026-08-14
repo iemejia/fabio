@@ -1,0 +1,36 @@
+{
+  "name": "medallion",
+  "title": "Medallion (Bronze / Silver / Gold)",
+  "description": "Architecture blueprint for layered batch analytics on a Fabric Lakehouse: refine data progressively through Bronze (raw), Silver (cleansed), and Gold (business-ready) layers, then serve BI. Best for batch ETL that needs quality gates and reproducibility.",
+  "best_for": "Batch data that must be progressively cleansed and modeled before analytics; teams that want reproducible, layered transformations.",
+  "problem_signals": ["batch", "layered", "bronze silver gold", "raw to curated", "data quality gates", "ETL", "reproducible transformations", "lakehouse"],
+  "primary_storage": "Lakehouse (Delta) — one lakehouse per layer, or one lakehouse with Bronze/Silver/Gold schemas",
+  "key_ingestion": "Data Pipeline or Copy Job (batch) into Bronze; Notebooks transform Bronze -> Silver -> Gold",
+  "item_set": [
+    {"type": "Lakehouse", "phase": "Foundation", "purpose": "Delta storage for each medallion layer", "command_group": "lakehouse"},
+    {"type": "Environment", "phase": "Environment", "purpose": "Shared Spark libraries/config for the notebooks (optional)", "command_group": "environment"},
+    {"type": "CopyJob", "phase": "Ingestion", "purpose": "Land raw source data into Bronze", "command_group": "copy-job"},
+    {"type": "DataPipeline", "phase": "Ingestion", "purpose": "Orchestrate ingestion + the transform notebooks in order", "command_group": "data-pipeline"},
+    {"type": "Notebook", "phase": "Transformation", "purpose": "Bronze->Silver->Gold PySpark transforms with quality gates", "command_group": "notebook"},
+    {"type": "SemanticModel", "phase": "Transformation", "purpose": "Direct Lake model over the Gold layer", "command_group": "semantic-model"},
+    {"type": "Report", "phase": "Visualization", "purpose": "Power BI report over the semantic model", "command_group": "report"}
+  ],
+  "decisions": [
+    {"decision": "Gold layer storage", "options": ["Lakehouse", "Warehouse"], "guidance": "Lakehouse Gold keeps everything in Delta and enables Direct Lake. Choose Warehouse Gold when consumers need read-write T-SQL, multi-table transactions, or strict SQL semantics.", "disambiguate": "sql-endpoint"},
+    {"decision": "Transformation engine", "options": ["Notebook", "SparkJobDefinition"], "guidance": "Notebooks for interactive/scheduled PySpark. Spark Job Definitions for packaged, parameterized batch jobs promoted through CI/CD."},
+    {"decision": "Ingestion method", "options": ["CopyJob", "DataPipeline", "Dataflow"], "guidance": "Copy Job for straight source->Bronze copies. Data Pipeline when you also need to orchestrate the transform notebooks. Dataflow Gen2 for low-code Power Query prep."}
+  ],
+  "build_with": {
+    "workflows": ["lakehouse-etl", "direct-lake-report"],
+    "deploy_ordering": "fabio deploy plan/apply already orders items correctly (Lakehouse -> Environment -> Notebook -> SemanticModel -> Report -> DataPipeline). No manual sequencing needed.",
+    "outline": [
+      "Create the lakehouse(s) (one per layer, or --enable-schemas for Bronze/Silver/Gold schemas).",
+      "Land raw data into Bronze via copy-job or data-pipeline.",
+      "Author + run Bronze->Silver->Gold notebooks (fabio notebook create --file ... --lakehouse; notebook run --wait).",
+      "Build a Direct Lake semantic model over Gold (see workflow direct-lake-report).",
+      "Create a report; schedule the pipeline for recurring refresh."
+    ]
+  },
+  "personas": ["data-engineer", "bi-developer"],
+  "see_also": ["fabio context workflow lakehouse-etl", "fabio context workflow direct-lake-report", "fabio context persona data-solution-architect", "fabio context disambiguate sql-endpoint"]
+}

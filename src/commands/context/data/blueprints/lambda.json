@@ -1,0 +1,40 @@
+{
+  "name": "lambda",
+  "title": "Lambda (Batch + Real-Time)",
+  "description": "Architecture blueprint that combines a batch path and a streaming path in one solution: historical data lands in a Lakehouse, live events flow through an Eventstream into an Eventhouse, and a Warehouse (or Gold layer) serves the unified view. Best when you need both up-to-the-second signals and reproducible historical analytics.",
+  "best_for": "Workloads needing BOTH real-time event analytics and batch historical analytics, with a clear separation between the two processing modes.",
+  "problem_signals": ["batch and real-time", "streaming plus historical", "lambda architecture", "hot and cold path", "live events with history", "unified serving layer"],
+  "primary_storage": "Lakehouse (batch/cold) + Eventhouse (real-time/hot) + Warehouse (serving)",
+  "key_ingestion": "Copy Job / Data Pipeline (batch) + Eventstream (streaming)",
+  "item_set": [
+    {"type": "Lakehouse", "phase": "Foundation", "purpose": "Cold path: historical/batch Delta storage", "command_group": "lakehouse"},
+    {"type": "Eventhouse", "phase": "Foundation", "purpose": "Hot path: real-time KQL storage", "command_group": "eventhouse"},
+    {"type": "KQLDatabase", "phase": "Foundation", "purpose": "KQL database inside the Eventhouse", "command_group": "kql-database"},
+    {"type": "Warehouse", "phase": "Foundation", "purpose": "Serving layer unifying batch + real-time", "command_group": "warehouse"},
+    {"type": "Eventstream", "phase": "Ingestion", "purpose": "Ingest live events into the Eventhouse", "command_group": "eventstream"},
+    {"type": "DataPipeline", "phase": "Ingestion", "purpose": "Batch ingest + orchestrate transforms", "command_group": "data-pipeline"},
+    {"type": "Notebook", "phase": "Transformation", "purpose": "Batch transforms; reconcile hot/cold into serving layer", "command_group": "notebook"},
+    {"type": "KQLQueryset", "phase": "Transformation", "purpose": "Real-time KQL analytics over the Eventhouse", "command_group": "kql-queryset"},
+    {"type": "SemanticModel", "phase": "Transformation", "purpose": "Model over the serving warehouse", "command_group": "semantic-model"},
+    {"type": "Report", "phase": "Visualization", "purpose": "Historical dashboards", "command_group": "report"},
+    {"type": "KQLDashboard", "phase": "Visualization", "purpose": "Real-time dashboard over live data", "command_group": "kql-dashboard"}
+  ],
+  "decisions": [
+    {"decision": "Serving storage", "options": ["Warehouse", "Lakehouse Gold"], "guidance": "Warehouse for T-SQL serving with multi-table transactions; Lakehouse Gold to stay all-Delta with Direct Lake."},
+    {"decision": "Real-time ingestion source", "options": ["Eventstream", "direct Eventhouse ingest"], "guidance": "Eventstream for routing/transforming multiple sources; direct KQL ingest for simple single-source streams."},
+    {"decision": "Real-time visualization", "options": ["KQLDashboard", "Report"], "guidance": "KQL Dashboard for sub-minute live views; Report for modeled historical analysis."}
+  ],
+  "build_with": {
+    "workflows": ["rti-pipeline", "lakehouse-etl", "direct-lake-report"],
+    "deploy_ordering": "Foundation storage (Lakehouse, Eventhouse, KQLDatabase, Warehouse) deploys before Eventstream and transforms; fabio deploy handles ordering.",
+    "outline": [
+      "Create the cold path (lakehouse) and hot path (eventhouse + kql-database).",
+      "Create an eventstream and route live events into the KQL database (see workflow rti-pipeline).",
+      "Batch-ingest history into the lakehouse and transform via notebooks.",
+      "Create a serving warehouse; reconcile hot+cold; build a semantic model.",
+      "Add a Real-Time Dashboard (hot) and a Report (cold)."
+    ]
+  },
+  "personas": ["data-engineer", "rti-engineer", "bi-developer"],
+  "see_also": ["fabio context workflow rti-pipeline", "fabio context persona rti-engineer", "fabio context blueprint event-analytics"]
+}

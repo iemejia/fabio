@@ -255,3 +255,6 @@
 - `docs/scripts/check-links.mjs`: Dependency-free validator that checks internal doc links resolve to real pages (authored + generated command groups) and public assets
 - `cliff.toml`: git-cliff configuration (commit parsers, grouping, template)
 - `.github/RELEASE_TEMPLATE.md`: Release notes narrative structure template
+- `src/commands/context/blueprints.rs`: Runtime module serving architecture-shape blueprints (`fabio context blueprint <name>`); auto-registered from `data/blueprints/*.json` by `build.rs`
+- `src/commands/context/data/blueprints/`: Architecture-shape blueprint JSON files (medallion, lambda, event-analytics, basic-data-analytics, conversational-analytics, app-backend, semantic-governance) — item set + deployment phase + key decisions per solution shape
+- `src/commands/context/data/personas/data_solution_architect.json`: Problem-first orchestrator persona that routes a business outcome to a blueprint, then to the role persona that builds it

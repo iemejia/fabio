@@ -990,3 +990,102 @@ fn geospatial_family_covers_map_group() {
     );
     let _ = stdout;
 }
+
+#[test]
+fn context_blueprint_returns_item_set_and_decisions() {
+    let assert = fabio()
+        .args(["context", "blueprint", "medallion"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let data = &json["data"];
+    assert_eq!(data["name"], "medallion");
+    assert!(
+        data["item_set"].as_array().is_some_and(|a| !a.is_empty()),
+        "blueprint must enumerate an item_set"
+    );
+    assert!(
+        data["decisions"].as_array().is_some_and(|a| !a.is_empty()),
+        "blueprint must surface key decisions"
+    );
+    // Every item in the set names a real fabio command group and a deployment phase.
+    for item in data["item_set"].as_array().unwrap() {
+        assert!(
+            item["command_group"].is_string(),
+            "item needs command_group"
+        );
+        assert!(item["phase"].is_string(), "item needs deployment phase");
+    }
+}
+
+#[test]
+fn context_blueprint_invalid_lists_available() {
+    let assert = fabio()
+        .args(["context", "blueprint", "does-not-exist"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let available = json["data"]["available_blueprints"].as_array().unwrap();
+    let names: Vec<&str> = available.iter().filter_map(|v| v.as_str()).collect();
+    assert!(
+        names.contains(&"medallion") && names.contains(&"event-analytics"),
+        "invalid blueprint should enumerate available blueprints"
+    );
+}
+
+#[test]
+fn context_list_includes_blueprints() {
+    let assert = fabio().args(["context", "list"]).assert().success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let blueprints = json["data"]["blueprints"].as_array().unwrap();
+    let names: Vec<&str> = blueprints.iter().filter_map(|v| v.as_str()).collect();
+    assert!(
+        names.contains(&"app-backend") && names.contains(&"lambda"),
+        "context list should expose the blueprints layer"
+    );
+}
+
+#[test]
+fn solution_architect_persona_routes_problem_to_blueprint() {
+    let assert = fabio()
+        .args(["context", "persona", "data-solution-architect"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let routes = json["data"]["delegates_to"].as_array().unwrap();
+    let blueprints: Vec<&str> = routes
+        .iter()
+        .filter_map(|r| r["blueprint"].as_str())
+        .collect();
+    assert!(
+        blueprints.contains(&"medallion")
+            && blueprints.contains(&"event-analytics")
+            && blueprints.contains(&"app-backend"),
+        "architect persona must route problems to the blueprints"
+    );
+}
+
+#[test]
+fn find_routes_streaming_problem_to_event_blueprint() {
+    let assert = fabio()
+        .args(["context", "find", "streaming telemetry real-time events"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let results = json["data"]["results"].as_array().unwrap();
+    let commands: Vec<&str> = results
+        .iter()
+        .filter_map(|r| r["command"].as_str())
+        .collect();
+    assert!(
+        commands
+            .iter()
+            .any(|c| c.contains("blueprint event-analytics")),
+        "find should surface the event-analytics blueprint for a streaming problem; got {commands:?}"
+    );
+}

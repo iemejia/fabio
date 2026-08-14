@@ -2,6 +2,7 @@
 
 mod agent;
 mod best_practices;
+mod blueprints;
 mod disambiguations;
 mod examples;
 mod personas;
@@ -116,6 +117,14 @@ pub enum ContextCommand {
     #[command(display_order = 8)]
     Persona {
         /// Persona name (`data-engineer`, `migration-engineer`, `fabric-admin`, `rti-engineer`, `bi-developer`)
+        #[arg(name = "NAME")]
+        name: String,
+    },
+
+    /// Show an architecture-shape blueprint: item set, deployment phase, and key decisions for a solution shape
+    #[command(display_order = 8)]
+    Blueprint {
+        /// Blueprint name (`medallion`, `lambda`, `event-analytics`, `basic-data-analytics`, `conversational-analytics`, `app-backend`, `semantic-governance`)
         #[arg(name = "NAME")]
         name: String,
     },
@@ -256,6 +265,10 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ContextCommand)
             personas::execute(cli, name);
             Ok(())
         }
+        ContextCommand::Blueprint { name } => {
+            blueprints::execute(cli, name);
+            Ok(())
+        }
         ContextCommand::Skill { family } => {
             skills::execute(cli, family);
             Ok(())
@@ -322,6 +335,7 @@ fn list_topics(cli: &Cli) {
         "personas": personas::list_names(),
         "disambiguations": disambiguations::list_names(),
         "skills": skills::list_names(),
+        "blueprints": blueprints::list_names(),
         "usage": {
             "schema": "fabio context schema <TYPE>",
             "workflow": "fabio context workflow <NAME>",
@@ -329,7 +343,8 @@ fn list_topics(cli: &Cli) {
             "best_practices": "fabio context best-practices <TOPIC>",
             "persona": "fabio context persona <NAME>",
             "disambiguate": "fabio context disambiguate <TERM>",
-            "skill": "fabio context skill <FAMILY>"
+            "skill": "fabio context skill <FAMILY>",
+            "blueprint": "fabio context blueprint <NAME>"
         }
     });
     output::render_object(cli, &topics, "item_schemas");

@@ -290,6 +290,11 @@ fn search_all_knowledge_sources(
             "fabio context examples",
         ),
         (super::skills::entries(), "skill", "fabio context skill"),
+        (
+            super::blueprints::entries(),
+            "blueprint",
+            "fabio context blueprint",
+        ),
     ];
     for (entries, entry_type, prefix) in sources {
         search_knowledge_entries(entries, entry_type, prefix, tokens, query_lower, results);
