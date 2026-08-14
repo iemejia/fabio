@@ -97,6 +97,7 @@ Manage variable libraries (shared variables)
 ## Must / Prefer / Avoid
 ### MUST
 - Run 'deploy plan' (dry-run) and review the changeset before 'deploy apply'.
+- After 'deploy apply', re-run 'deploy plan' to audit that the deployment matches the plan — a converged deployment shows every item as Skip (summary.create/update/delete == 0). Any non-Skip item is a discrepancy between the plan and the live workspace (missing item, drift, or a failed change).
 - Use the fabric Git Integration '.platform' directory format as the source.
 - Name variable-library value sets to match --env values so they auto-activate on apply.
 

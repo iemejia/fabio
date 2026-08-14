@@ -14,7 +14,7 @@
       ]
     }
   },
-  "notes": "Status values: 'succeeded' (all OK), 'partial_failure' (some items failed), 'no_changes' (everything already in sync). The 'failures' array contains per-item error details with 'change', 'error', and 'code' fields. Post-hooks fire after successful creates/updates (SemanticModel refresh, Environment publish).",
+  "notes": "Status values: 'succeeded' (all OK), 'partial_failure' (some items failed), 'no_changes' (everything already in sync). The 'failures' array contains per-item error details with 'change', 'error', and 'code' fields. Post-hooks fire after successful creates/updates (SemanticModel refresh, Environment publish). AUDIT: to confirm the created items correspond to the plan, re-run 'fabio deploy plan' after apply — because deploy is stateless content-hash diffing, a converged deployment reports summary.create/update/delete == 0 (every item Skip). Any non-Skip item is a discrepancy (missing/drifted/failed). Note .platform is excluded from the hash, so pure metadata-only changes won't surface as drift.",
   "query_examples": [
     {"query": "status", "description": "Get overall deployment status."},
     {"query": "succeeded", "description": "Count of successfully deployed items."},

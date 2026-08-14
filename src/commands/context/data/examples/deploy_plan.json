@@ -19,7 +19,7 @@
   "query_examples": [
     {"query": "summary", "description": "Get action counts."},
     {"query": "changes[?action=='Create'].name", "description": "Items to be created."},
-    {"query": "changes[?action!='Skip']", "description": "Only actionable changes."},
+    {"query": "changes[?action!='Skip']", "description": "Only actionable changes. POST-DEPLOY AUDIT: re-run plan after apply and expect this to be empty ([]) — a converged deployment shows every item as Skip. Any element here is a discrepancy between the plan and the live workspace."},
     {"query": "changes[?item_type=='Notebook']", "description": "Filter to notebooks."}
   ]
 }
