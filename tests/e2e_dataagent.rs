@@ -128,6 +128,71 @@ fn dataagent_create_show_update_delete() {
         .failure();
 }
 
+/// Validates the `DataAgent` definition spec added to
+/// `definition_requirements.json`: `getDefinition` returns the two canonical
+/// config parts, confirming `deploy_strategy=content` in the capability matrix.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn dataagent_get_definition_returns_config_parts() {
+    let cfg = TestConfig::from_env();
+    let name = unique_name("da_def");
+
+    let created = fabio()
+        .args([
+            "data-agent",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+    let agent_id = extract_data(&parse_json(&created))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let def_assert = fabio()
+        .args([
+            "data-agent",
+            "get-definition",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let def_json = parse_json(&def_assert);
+    let parts: Vec<&str> = extract_data(&def_json)["definition"]["parts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|p| p["path"].as_str())
+        .collect();
+    assert!(
+        parts.contains(&"Files/Config/data_agent.json")
+            && parts.contains(&"Files/Config/draft/stage_config.json"),
+        "getDefinition must return both canonical DataAgent config parts; got {parts:?}"
+    );
+
+    fabio()
+        .args([
+            "data-agent",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &agent_id,
+        ])
+        .assert()
+        .success();
+}
+
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]

@@ -158,6 +158,24 @@
       "requiredParts": ["definition.json"],
       "optionalParts": [".platform"],
       "note": "definition.json holds the Digital Twin Builder flow."
+    },
+    "Eventhouse": {
+      "requiredParts": ["EventhouseProperties.json"],
+      "optionalParts": [".platform"],
+      "note": "EventhouseProperties.json holds the eventhouse config (e.g. minimumConsumptionUnits). getDefinition returns it + .platform; deploy round-trips via updateDefinition. Verified live (get+update-definition round-trip)."
+    },
+    "ApacheAirflowJob": {
+      "requiredParts": ["apacheairflowjob-content.json"],
+      "optionalParts": [".platform"],
+      "note": "apacheairflowjob-content.json holds the Airflow job content (the platform type is ApacheAirflowProject). getDefinition returns it + .platform. Verified live."
+    },
+    "DataAgent": {
+      "requiredParts": [
+        "Files/Config/data_agent.json",
+        "Files/Config/draft/stage_config.json"
+      ],
+      "optionalParts": [".platform"],
+      "note": "Two config parts under Files/Config/: data_agent.json (published) and draft/stage_config.json (draft). getDefinition returns both + .platform; deploy round-trips via updateDefinition. Verified live."
     }
   }
 }

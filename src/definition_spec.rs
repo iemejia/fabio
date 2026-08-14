@@ -721,4 +721,32 @@ mod tests {
         let body = build_update_definition_body(raw, "fallback.json");
         assert!(body["definition"].get("format").is_none());
     }
+
+    /// Specs added after live `getDefinition` verification against the tenant.
+    /// The canonical required parts here are exactly what `getDefinition`
+    /// returns for each type (verified live), which flips them to
+    /// `deploy_strategy=content` in the item-capability matrix.
+    #[test]
+    fn live_verified_definition_specs_have_canonical_parts() {
+        let eh = spec_for("Eventhouse").expect("Eventhouse spec");
+        assert!(
+            eh.required_parts
+                .contains(&"EventhouseProperties.json".to_string())
+        );
+
+        let aaj = spec_for("ApacheAirflowJob").expect("ApacheAirflowJob spec");
+        assert!(
+            aaj.required_parts
+                .contains(&"apacheairflowjob-content.json".to_string())
+        );
+
+        let da = spec_for("DataAgent").expect("DataAgent spec");
+        assert!(
+            da.required_parts
+                .contains(&"Files/Config/data_agent.json".to_string())
+                && da
+                    .required_parts
+                    .contains(&"Files/Config/draft/stage_config.json".to_string())
+        );
+    }
 }

@@ -306,6 +306,11 @@ mod tests {
         assert_eq!(strat("Notebook"), Some("content"));
         assert_eq!(strat("SemanticModel"), Some("content"));
         assert_eq!(strat("SQLDatabase"), Some("content")); // via schema dacpac/sqlproj
+        // Types whose definition specs were added after live getDefinition
+        // verification (were previously mis-reported as platform_only).
+        assert_eq!(strat("Eventhouse"), Some("content"));
+        assert_eq!(strat("DataAgent"), Some("content"));
+        assert_eq!(strat("ApacheAirflowJob"), Some("content"));
         // Platform-only: data stores deployed as shells.
         assert_eq!(strat("Lakehouse"), Some("platform_only"));
         assert_eq!(strat("Warehouse"), Some("platform_only"));
