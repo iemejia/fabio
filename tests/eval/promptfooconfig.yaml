@@ -2690,3 +2690,25 @@ tests:
         value: |
           output.includes('scorecard create-goal')
         metric: scorecard-create-goal-command
+
+  - description: "Item capabilities: check what an operation supports before attempting it"
+    vars:
+      user_query: "Before I deploy, which Fabric item types can fabio actually recreate from an exported definition, and which are shells?"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('context item-capabilities')
+        metric: item-capabilities-command
+      - type: llm-rubric
+        value: "The response uses 'fabio context item-capabilities' to inspect per-type capabilities (deploy_strategy content vs platform_only / deployable_from_definition), rather than guessing. It understands content types round-trip from a definition while platform-only types (Lakehouse/Warehouse) deploy as shells."
+        metric: item-capabilities-understanding
+
+  - description: "Deploy: apply and audit that created items match the plan"
+    vars:
+      user_query: "Deploy my ./fabric-items to the Production workspace and confirm the created items actually match the plan"
+    assert:
+      - type: icontains
+        value: "deploy apply"
+      - type: llm-rubric
+        value: "The response audits convergence after applying — either by passing '--verify' to 'deploy apply' (which adds a verification block), or by re-running 'deploy plan' and expecting all Skip / zero create-update-delete. It does not assume success without a check."
+        metric: deploy-verify-audit

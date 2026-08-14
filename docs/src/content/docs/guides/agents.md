@@ -33,6 +33,22 @@ Find relevant authored guidance:
 fabio context find "deploy a notebook between environments"
 ```
 
+## Route a problem to a solution
+
+When the task is a business *outcome* rather than a specific item, start from the problem-first architect persona, which maps it to an architecture blueprint (the item set, deployment order, and key decisions):
+
+```bash
+fabio context persona data-solution-architect   # routes an outcome to a blueprint
+fabio context blueprint medallion                # item set + phases + decisions for a solution shape
+```
+
+Check what an operation supports on an item type before attempting it (creatable, definition round-trip, deploy strategy) — derived at runtime, never a stale registry:
+
+```bash
+fabio context item-capabilities            # full per-item-type matrix
+fabio context item-capabilities Lakehouse  # one type
+```
+
 ## Give agents tenant context
 
 Start with a bounded inventory:

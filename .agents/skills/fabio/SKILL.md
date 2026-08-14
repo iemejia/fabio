@@ -611,6 +611,7 @@ fabio deploy export --workspace $WS --dir ./fabric-items/ --overwrite      # exp
 fabio deploy validate --source ./fabric-items/                              # offline pre-flight checks
 fabio deploy plan --source ./fabric-items/ --workspace "Production"         # diff source vs live (DRY-RUN)
 fabio deploy apply --source ./fabric-items/ --workspace "Production"        # apply changes
+fabio deploy apply --source ./fabric-items/ --workspace "Production" --verify  # apply, then audit convergence (adds a verification{converged,discrepancies} block; report-only)
 fabio deploy apply --source ./items/ --workspace $WS --parameters params.json --env prod  # with env params
 fabio deploy apply --config deploy.yaml --env staging                       # config file: per-env workspace mapping
 fabio deploy apply --source ./items/ --workspace $WS --env prod --post-run-item "ETL Pipeline"  # trigger data orchestration after deploy

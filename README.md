@@ -51,6 +51,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 | Schedule export/apply | No | `deploy export` includes `.schedules`; `apply` creates them |
 | Workspace clone (bulk) | No | `workspace clone --source → --dest` (bulk APIs) |
 | Post-deploy orchestration | No | `--post-run-item` triggers pipeline/notebook after deploy |
+| Post-deploy convergence audit | No | `apply --verify` re-checks applied items converged to source (report-only) |
 | Deployment strategy | Single (always deploys all) | `--strategy default\|bulk\|sequential` (per-item, bulk API, or serial) |
 | Output format | Python logs | JSON envelope (stdout/stderr separation) |
 | Item types supported | 27 (deploy only) | 47 (deploy) + 79 command groups (full CRUD, query, run) |
