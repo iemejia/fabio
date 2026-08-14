@@ -2610,3 +2610,39 @@ tests:
         value: |
           output.includes('--from-table') && output.includes('--to-table')
         metric: add-relationship-flags
+
+  # ============================================================
+  # INTRA-FABRIC ROUTING — architecture blueprints (problem -> shape)
+  # ============================================================
+
+  - description: "Blueprint routing: layered batch problem -> medallion shape"
+    vars:
+      user_query: "I have raw sales files landing daily and need progressively cleansed, business-ready tables I can report on. How should I structure this in Fabric?"
+    assert:
+      - type: llm-rubric
+        value: "The response routes to a layered Lakehouse (medallion / Bronze-Silver-Gold) architecture: a Lakehouse for storage, Notebooks (or Spark) for the Bronze->Silver->Gold transforms, then a semantic model + report. It may discover this via 'fabio context blueprint medallion' or 'fabio context persona data-solution-architect'. It does NOT propose a real-time/Eventhouse/KQL design for this batch problem."
+        metric: blueprint-medallion-routing
+
+  - description: "Blueprint routing: streaming problem -> event-analytics shape"
+    vars:
+      user_query: "We get a continuous stream of IoT sensor telemetry and need sub-minute dashboards and alerts. What should I build in Fabric?"
+    assert:
+      - type: llm-rubric
+        value: "The response routes to Real-Time Intelligence: an Eventhouse/KQL Database for storage, an Eventstream for ingestion, a Real-Time (KQL) Dashboard, and an Activator/Reflex for alerts. It may discover this via 'fabio context blueprint event-analytics' or the rti-engineer / data-solution-architect persona. It does NOT propose a batch Warehouse+CopyJob design as the primary path."
+        metric: blueprint-event-analytics-routing
+
+  - description: "Blueprint routing: NL Q&A over data -> conversational-analytics overlay"
+    vars:
+      user_query: "I already have a lakehouse of sales data. I want non-technical users to ask questions about it in plain English."
+    assert:
+      - type: llm-rubric
+        value: "The response routes to an AI Data Agent overlay: a semantic model over the existing lakehouse plus a Fabric Data Agent (fabio data-agent ...), not a new ingestion pipeline. It may discover this via 'fabio context blueprint conversational-analytics'. It recognizes this is an overlay on existing storage."
+        metric: blueprint-conversational-routing
+
+  - description: "Problem-first entry point uses the solution-architect persona or blueprints"
+    vars:
+      user_query: "I don't know Fabric well. I need to combine real-time event data with historical batch data in one solution. Where do I start?"
+    assert:
+      - type: llm-rubric
+        value: "The response recognizes a combined batch + real-time (lambda) architecture — Lakehouse (cold) + Eventhouse (hot) + a serving layer — and/or points the user at 'fabio context persona data-solution-architect' or 'fabio context blueprint lambda' as the starting point. It does not force the user to already know which Fabric items to create."
+        metric: architect-entrypoint-routing
