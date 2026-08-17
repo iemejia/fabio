@@ -242,9 +242,11 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 | `fabio context best-practices lro` | Many Fabric operations are async (return 202). fabio polls them automatically. Use --wait for job operations. |
 | `fabio context best-practices semantic-model-optimization` | How to optimize a Power BI semantic model for performance, correctness, and use as an AI/data-agent source: run the Best Practice Analyzer, fix descriptions/naming/aggregation/relationships, understand measure dependencies, and know which AI-prep steps are portal-only. Based on Microsoft's 'Semantic model best practices for data agent' guidance. |
 | `fabio context best-practices tenant-feature-gates` | Many Fabric features are gated by a tenant setting an admin can toggle. When a setting is disabled the API returns an opaque 403 FeatureNotAvailable; fabio turns this into an admin-aware teaching error that names the exact setting and (for admins) the command to enable it. Do NOT blindly retry a feature-disabled error. |
+| `fabio context best-practices agentic-reporting` | How fabio delivers agent-native Power BI reporting: authoring reports from natural language through a Plan→Design→Author→Validate→Publish pipeline (the same shape as Microsoft's first-party Skills-for-Fabric Report Authoring skill, but headless/REST/CI — no Power BI Desktop or Desktop Bridge), and consuming data conversationally via data agents + ontologies (fabio's Fabric IQ analog). Explains the stage→command mapping, when to use fabio vs the Desktop-Bridge skill, PBIR schema conformance, and how to expose governed data for agents. |
 
 ## See also
 - fabio context persona bi-developer
+- fabio context workflow report-authoring
 - fabio context workflow direct-lake-report
 - fabio context workflow semantic-model-ai-readiness
 - fabio context disambiguate semantic-model

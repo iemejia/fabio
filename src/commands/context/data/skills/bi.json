@@ -85,10 +85,12 @@
     "pagination",
     "lro",
     "semantic-model-optimization",
-    "tenant-feature-gates"
+    "tenant-feature-gates",
+    "agentic-reporting"
   ],
   "see_also": [
     "fabio context persona bi-developer",
+    "fabio context workflow report-authoring",
     "fabio context workflow direct-lake-report",
     "fabio context workflow semantic-model-ai-readiness",
     "fabio context disambiguate semantic-model",
