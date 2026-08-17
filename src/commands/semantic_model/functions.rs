@@ -36,6 +36,7 @@ pub(super) async fn add_function(
     id: &str,
     name: &str,
     expression: &str,
+    description: Option<&str>,
 ) -> Result<()> {
     let op = "semantic-model add-function";
     let parts = fetch_parts(client, workspace, id, op).await?;
@@ -50,11 +51,11 @@ pub(super) async fn add_function(
     }
 
     let new_parts = if let Some(bim) = part_content(&parts, "model.bim") {
-        let new_bim = add_function_bim(bim, name, expression)?;
+        let new_bim = add_function_bim(bim, name, expression, description)?;
         replace_part(&parts, "model.bim", &new_bim)
     } else {
         let existing = part_content(&parts, FUNCTIONS_PATH).unwrap_or("");
-        let block = render_function_block(name, expression);
+        let block = render_function_block(name, expression, description);
         let updated = append_block(existing, &block);
         let with_fn = upsert_part(&parts, FUNCTIONS_PATH, &updated);
         // UDFs require compatibility level >= 1702; bump if lower.
@@ -102,18 +103,26 @@ fn ensure_compat_level(parts: &[(String, String)]) -> Vec<(String, String)> {
     replace_part(parts, DATABASE_PATH, &new_db)
 }
 
-fn render_function_block(name: &str, expr: &str) -> String {
+fn render_function_block(name: &str, expr: &str, description: Option<&str>) -> String {
+    use std::fmt::Write as _;
+    let mut s = String::new();
+    // TMDL descriptions are `///` comment lines IMMEDIATELY above the declaration
+    // (no blank line between). Multi-line descriptions emit one `///` per line.
+    if let Some(d) = description.filter(|x| !x.is_empty()) {
+        for dl in d.split('\n') {
+            let _ = writeln!(s, "/// {}", dl.trim_end());
+        }
+    }
     let expr = expr.trim();
     if expr.contains('\n') {
-        use std::fmt::Write as _;
-        let mut s = format!("function {} =\n", quote_tmdl_name(name));
+        let _ = writeln!(s, "function {} =", quote_tmdl_name(name));
         for l in expr.lines() {
             let _ = writeln!(s, "\t{}", l.trim_end());
         }
-        s
     } else {
-        format!("function {} = {expr}\n", quote_tmdl_name(name))
+        let _ = writeln!(s, "function {} = {expr}", quote_tmdl_name(name));
     }
+    s
 }
 
 fn append_block(existing: &str, block: &str) -> String {
@@ -134,16 +143,17 @@ pub(super) async fn update_function(
     id: &str,
     name: &str,
     expression: &str,
+    description: Option<&str>,
 ) -> Result<()> {
     let op = "semantic-model update-function";
     let parts = fetch_parts(client, workspace, id, op).await?;
 
     let new_parts = if let Some(bim) = part_content(&parts, "model.bim") {
-        let new_bim = update_function_bim(bim, name, expression)?;
+        let new_bim = update_function_bim(bim, name, expression, description)?;
         replace_part(&parts, "model.bim", &new_bim)
     } else {
         let existing = part_content(&parts, FUNCTIONS_PATH).unwrap_or("");
-        let (updated, found) = replace_function_block(existing, name, expression);
+        let (updated, found) = replace_function_block(existing, name, expression, description);
         if !found {
             return Err(function_not_found(name));
         }
@@ -213,7 +223,13 @@ pub(super) async fn list_functions(
     let op = "semantic-model list-functions";
     let parts = fetch_parts(client, workspace, id, op).await?;
     let functions = collect_functions(&parts);
-    output::render_list(cli, &functions, &["name"], &["NAME"], "name");
+    output::render_list(
+        cli,
+        &functions,
+        &["name", "description"],
+        &["NAME", "DESCRIPTION"],
+        "name",
+    );
     Ok(())
 }
 
@@ -225,6 +241,16 @@ fn function_span(lines: &[&str], name: &str) -> Option<(usize, usize)> {
             && l.starts_with("function ")
             && decl_name(l, "function").as_deref() == Some(name)
     })?;
+    // Extend the start UPWARD over contiguous `///` description lines (a TMDL
+    // description belongs to the declaration immediately below it), so update /
+    // remove also replace/drop the old description.
+    let mut start = decl;
+    while start > 0
+        && tab_indent(lines[start - 1]) == 0
+        && lines[start - 1].trim_start().starts_with("///")
+    {
+        start -= 1;
+    }
     let mut end = decl + 1;
     while end < lines.len() && (lines[end].trim().is_empty() || tab_indent(lines[end]) >= 1) {
         end += 1;
@@ -232,7 +258,7 @@ fn function_span(lines: &[&str], name: &str) -> Option<(usize, usize)> {
     while end > decl + 1 && lines[end - 1].trim().is_empty() {
         end -= 1;
     }
-    Some((decl, end))
+    Some((start, end))
 }
 
 fn remove_function_block(content: &str, name: &str) -> (String, bool) {
@@ -258,12 +284,17 @@ fn remove_function_block(content: &str, name: &str) -> (String, bool) {
     (result, true)
 }
 
-fn replace_function_block(content: &str, name: &str, expr: &str) -> (String, bool) {
+fn replace_function_block(
+    content: &str,
+    name: &str,
+    expr: &str,
+    description: Option<&str>,
+) -> (String, bool) {
     let lines: Vec<&str> = content.lines().collect();
     let Some((start, end)) = function_span(&lines, name) else {
         return (content.to_string(), false);
     };
-    let block = render_function_block(name, expr);
+    let block = render_function_block(name, expr, description);
     let mut out: Vec<String> = Vec::new();
     out.extend(lines[..start].iter().map(|s| (*s).to_string()));
     out.extend(block.trim_end().lines().map(String::from));
@@ -275,12 +306,36 @@ fn replace_function_block(content: &str, name: &str, expr: &str) -> (String, boo
     (result, true)
 }
 
-fn parse_functions(content: &str) -> Vec<String> {
-    content
-        .lines()
-        .filter(|l| tab_indent(l) == 0 && l.starts_with("function "))
-        .filter_map(|l| decl_name(l, "function"))
-        .collect()
+/// Parse each top-level function with its `///` description (the contiguous
+/// comment lines immediately above the declaration), for `list-functions`.
+fn parse_functions_with_desc(content: &str) -> Vec<(String, Option<String>)> {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut out = Vec::new();
+    for (i, l) in lines.iter().enumerate() {
+        if tab_indent(l) != 0 || !l.starts_with("function ") {
+            continue;
+        }
+        let Some(name) = decl_name(l, "function") else {
+            continue;
+        };
+        // Walk upward over contiguous `///` lines to reconstruct the description.
+        let mut desc_lines: Vec<String> = Vec::new();
+        let mut k = i;
+        while k > 0 && tab_indent(lines[k - 1]) == 0 && lines[k - 1].trim_start().starts_with("///")
+        {
+            let text = lines[k - 1].trim_start().trim_start_matches("///").trim();
+            desc_lines.push(text.to_string());
+            k -= 1;
+        }
+        desc_lines.reverse();
+        let desc = if desc_lines.is_empty() {
+            None
+        } else {
+            Some(desc_lines.join("\n"))
+        };
+        out.push((name, desc));
+    }
+    out
 }
 
 fn collect_functions(parts: &[(String, String)]) -> Vec<Value> {
@@ -289,9 +344,14 @@ fn collect_functions(parts: &[(String, String)]) -> Vec<Value> {
     }
     part_content(parts, FUNCTIONS_PATH)
         .map(|c| {
-            parse_functions(c)
+            parse_functions_with_desc(c)
                 .into_iter()
-                .map(|name| serde_json::json!({ "name": name }))
+                .map(|(name, desc)| {
+                    desc.map_or_else(
+                        || serde_json::json!({ "name": name }),
+                        |d| serde_json::json!({ "name": name, "description": d }),
+                    )
+                })
                 .collect()
         })
         .unwrap_or_default()
@@ -325,7 +385,12 @@ fn bim_functions_mut(j: &mut Value) -> Result<&mut Vec<Value>> {
         .ok_or_else(|| FabioError::invalid_input("functions is not an array").into())
 }
 
-fn add_function_bim(bim: &str, name: &str, expr: &str) -> Result<String> {
+fn add_function_bim(
+    bim: &str,
+    name: &str,
+    expr: &str,
+    description: Option<&str>,
+) -> Result<String> {
     let mut j: Value =
         serde_json::from_str(bim).map_err(|e| FabioError::invalid_input(e.to_string()))?;
     // Ensure compatibility level.
@@ -340,11 +405,20 @@ fn add_function_bim(bim: &str, name: &str, expr: &str) -> Result<String> {
             Value::from(MIN_COMPAT_LEVEL),
         );
     }
-    bim_functions_mut(&mut j)?.push(serde_json::json!({ "name": name, "expression": expr }));
+    let mut fun = serde_json::json!({ "name": name, "expression": expr });
+    if let Some(d) = description.filter(|x| !x.is_empty()) {
+        fun["description"] = Value::from(d);
+    }
+    bim_functions_mut(&mut j)?.push(fun);
     Ok(serde_json::to_string(&j).unwrap_or_else(|_| bim.to_string()))
 }
 
-fn update_function_bim(bim: &str, name: &str, expr: &str) -> Result<String> {
+fn update_function_bim(
+    bim: &str,
+    name: &str,
+    expr: &str,
+    description: Option<&str>,
+) -> Result<String> {
     let mut j: Value =
         serde_json::from_str(bim).map_err(|e| FabioError::invalid_input(e.to_string()))?;
     let f = bim_functions_mut(&mut j)?
@@ -352,6 +426,17 @@ fn update_function_bim(bim: &str, name: &str, expr: &str) -> Result<String> {
         .find(|f| f.get("name").and_then(Value::as_str) == Some(name))
         .ok_or_else(|| function_not_found(name))?;
     f["expression"] = Value::from(expr);
+    // Only touch the description when one is provided (keep the existing one on a
+    // pure expression update).
+    if let Some(d) = description {
+        if d.is_empty() {
+            if let Some(obj) = f.as_object_mut() {
+                obj.remove("description");
+            }
+        } else {
+            f["description"] = Value::from(d);
+        }
+    }
     Ok(serde_json::to_string(&j).unwrap_or_else(|_| bim.to_string()))
 }
 
@@ -376,7 +461,15 @@ fn collect_functions_bim(bim: &str) -> Vec<Value> {
         .and_then(Value::as_array)
         .map(|fs| {
             fs.iter()
-                .map(|f| serde_json::json!({ "name": f.get("name").and_then(Value::as_str).unwrap_or("") }))
+                .map(|f| {
+                    let name = f.get("name").and_then(Value::as_str).unwrap_or("");
+                    match f.get("description").and_then(Value::as_str) {
+                        Some(d) if !d.is_empty() => {
+                            serde_json::json!({ "name": name, "description": d })
+                        }
+                        _ => serde_json::json!({ "name": name }),
+                    }
+                })
                 .collect()
         })
         .unwrap_or_default()
@@ -389,21 +482,66 @@ mod tests {
     #[test]
     fn render_and_parse() {
         assert_eq!(
-            render_function_block("AddOne", "(x: INT64) => RETURN x + 1"),
+            render_function_block("AddOne", "(x: INT64) => RETURN x + 1", None),
             "function AddOne = (x: INT64) => RETURN x + 1\n"
         );
         let content = "function AddOne = (x: INT64) => RETURN x + 1\n\nfunction Sq = (x: INT64) => RETURN x * x\n";
+        let names: Vec<String> = parse_functions_with_desc(content)
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect();
+        assert_eq!(names, vec!["AddOne".to_string(), "Sq".to_string()]);
+    }
+
+    #[test]
+    fn render_with_description_emits_triple_slash() {
+        let block = render_function_block(
+            "AddNum",
+            "(x: NUMERIC = 1, y: NUMERIC = 2) => x + y",
+            Some("Adds two numbers.\nDefaults to 1 + 2."),
+        );
+        // `///` lines come immediately above the declaration (no blank line).
         assert_eq!(
-            parse_functions(content),
-            vec!["AddOne".to_string(), "Sq".to_string()]
+            block,
+            "/// Adds two numbers.\n/// Defaults to 1 + 2.\nfunction AddNum = (x: NUMERIC = 1, y: NUMERIC = 2) => x + y\n"
         );
     }
 
     #[test]
+    fn description_round_trips_through_span_editors() {
+        // Add two functions, the first with a description.
+        let a = append_block(
+            "",
+            &render_function_block("F", "(x)=>RETURN x", Some("first fn")),
+        );
+        let b = append_block(&a, &render_function_block("G", "(y)=>RETURN y", None));
+        assert!(b.contains("/// first fn\nfunction F"));
+        // list surfaces the description for F but not G.
+        let parsed = parse_functions_with_desc(&b);
+        assert_eq!(parsed[0], ("F".to_string(), Some("first fn".to_string())));
+        assert_eq!(parsed[1], ("G".to_string(), None));
+        // Updating F's description replaces the old `///` (no duplication) and
+        // leaves G untouched.
+        let (updated, found) =
+            replace_function_block(&b, "F", "(x)=>RETURN x+1", Some("updated fn"));
+        assert!(found);
+        assert!(updated.contains("/// updated fn\nfunction F = (x)=>RETURN x+1"));
+        assert!(!updated.contains("/// first fn"));
+        assert_eq!(updated.matches("/// ").count(), 1);
+        assert!(updated.contains("function G = (y)=>RETURN y"));
+        // Removing F drops its description lines too.
+        let (rm, found2) = remove_function_block(&updated, "F");
+        assert!(found2);
+        assert!(!rm.contains("updated fn"));
+        assert!(!rm.contains("function F"));
+        assert!(rm.contains("function G"));
+    }
+
+    #[test]
     fn append_replace_remove() {
-        let a = append_block("", &render_function_block("F", "(x)=>RETURN x"));
-        let b = append_block(&a, &render_function_block("G", "(y)=>RETURN y"));
-        let (r, found) = replace_function_block(&b, "F", "(x)=>RETURN x+1");
+        let a = append_block("", &render_function_block("F", "(x)=>RETURN x", None));
+        let b = append_block(&a, &render_function_block("G", "(y)=>RETURN y", None));
+        let (r, found) = replace_function_block(&b, "F", "(x)=>RETURN x+1", None);
         assert!(found);
         assert!(r.contains("function F = (x)=>RETURN x+1"));
         let (rm, found2) = remove_function_block(&b, "G");
@@ -432,12 +570,26 @@ mod tests {
     #[test]
     fn bim_function_lifecycle() {
         let bim = r#"{"compatibilityLevel":1604,"model":{"tables":[]}}"#;
-        let a = add_function_bim(bim, "AddOne", "(x: INT64) => RETURN x + 1").unwrap();
+        let a = add_function_bim(
+            bim,
+            "AddOne",
+            "(x: INT64) => RETURN x + 1",
+            Some("adds one"),
+        )
+        .unwrap();
         let j: Value = serde_json::from_str(&a).unwrap();
         assert_eq!(j["compatibilityLevel"], 1702);
         assert_eq!(j["model"]["functions"][0]["name"], "AddOne");
-        let u = update_function_bim(&a, "AddOne", "(x) => RETURN x").unwrap();
+        assert_eq!(j["model"]["functions"][0]["description"], "adds one");
+        // Pure expression update keeps the existing description.
+        let u = update_function_bim(&a, "AddOne", "(x) => RETURN x", None).unwrap();
+        let ju: Value = serde_json::from_str(&u).unwrap();
         assert!(u.contains("(x) => RETURN x"));
+        assert_eq!(ju["model"]["functions"][0]["description"], "adds one");
+        // Empty description clears it.
+        let cleared = update_function_bim(&a, "AddOne", "(x) => RETURN x", Some("")).unwrap();
+        let jc: Value = serde_json::from_str(&cleared).unwrap();
+        assert!(jc["model"]["functions"][0].get("description").is_none());
         let d = delete_function_bim(&a, "AddOne").unwrap();
         let jd: Value = serde_json::from_str(&d).unwrap();
         assert_eq!(jd["model"]["functions"].as_array().unwrap().len(), 0);

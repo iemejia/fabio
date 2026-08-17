@@ -1508,6 +1508,11 @@ pub enum SemanticModelCommand {
         /// DAX UDF expression, e.g. `(x: INT64) => RETURN x + 1`
         #[arg(long)]
         expression: String,
+
+        /// Optional description (emitted as `///` comment lines above the
+        /// function, and carried in getDefinition/Git deployments)
+        #[arg(long)]
+        description: Option<String>,
     },
     /// Update a DAX user-defined function by editing the model definition.
     /// Overwrites the definition (irreversible) — dry-run guarded.
@@ -1528,6 +1533,11 @@ pub enum SemanticModelCommand {
         /// New DAX UDF expression
         #[arg(long)]
         expression: String,
+
+        /// New description (`///` comment lines above the function). Omit to keep
+        /// the existing description; pass an empty string to clear it
+        #[arg(long)]
+        description: Option<String>,
     },
     /// Delete a DAX user-defined function by editing the model definition.
     /// Overwrites the definition (irreversible) — dry-run guarded.
@@ -2783,13 +2793,37 @@ async fn execute_authoring(
             id,
             name,
             expression,
-        } => functions::add_function(cli, client, workspace, id, name, expression).await,
+            description,
+        } => {
+            functions::add_function(
+                cli,
+                client,
+                workspace,
+                id,
+                name,
+                expression,
+                description.as_deref(),
+            )
+            .await
+        }
         SemanticModelCommand::UpdateFunction {
             workspace,
             id,
             name,
             expression,
-        } => functions::update_function(cli, client, workspace, id, name, expression).await,
+            description,
+        } => {
+            functions::update_function(
+                cli,
+                client,
+                workspace,
+                id,
+                name,
+                expression,
+                description.as_deref(),
+            )
+            .await
+        }
         SemanticModelCommand::DeleteFunction {
             workspace,
             id,

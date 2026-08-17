@@ -2881,12 +2881,14 @@ fn semantic_model_function_lifecycle() {
             "AddOne",
             "--expression",
             "(x: INT64) => RETURN x + 1",
+            "--description",
+            "Adds one to x.",
         ])
         .timeout(std::time::Duration::from_mins(3))
         .assert()
         .success();
 
-    // list-functions → AddOne
+    // list-functions → AddOne, with its description surfaced
     let assert = fabio()
         .args([
             "semantic-model",
@@ -2902,12 +2904,17 @@ fn semantic_model_function_lifecycle() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     let fns = data.as_array().unwrap();
-    assert!(
-        fns.iter().any(|f| f["name"] == "AddOne"),
-        "functions: {fns:?}"
+    let add_one = fns
+        .iter()
+        .find(|f| f["name"] == "AddOne")
+        .unwrap_or_else(|| panic!("functions: {fns:?}"));
+    assert_eq!(
+        add_one["description"], "Adds one to x.",
+        "list-functions should surface the UDF description"
     );
 
-    // Verify in the definition
+    // Verify in the definition — the description is emitted as a `///` comment
+    // line immediately above the `function` declaration.
     let assert = fabio()
         .args([
             "semantic-model",
@@ -2931,7 +2938,61 @@ fn semantic_model_function_lifecycle() {
             String::from_utf8(base64::engine::general_purpose::STANDARD.decode(b).unwrap()).unwrap()
         })
         .expect("functions.tmdl");
-    assert!(fn_tmdl.contains("function AddOne ="), "fn:\n{fn_tmdl}");
+    assert!(
+        fn_tmdl.contains("/// Adds one to x.\nfunction AddOne ="),
+        "fn:\n{fn_tmdl}"
+    );
+
+    // update-function replaces the description in place (no duplicate `///`).
+    fabio()
+        .args([
+            "semantic-model",
+            "update-function",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+            "--name",
+            "AddOne",
+            "--expression",
+            "(x: INT64) => RETURN x + 1",
+            "--description",
+            "Increments x by one.",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "get-definition",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &sm_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let fn_tmdl2 = extract_data(&parse_json(&assert))["definition"]["parts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["path"].as_str() == Some("definition/functions.tmdl"))
+        .and_then(|p| p["payload"].as_str())
+        .map(|b| {
+            String::from_utf8(base64::engine::general_purpose::STANDARD.decode(b).unwrap()).unwrap()
+        })
+        .expect("functions.tmdl");
+    assert!(
+        fn_tmdl2.contains("/// Increments x by one.") && !fn_tmdl2.contains("Adds one to x."),
+        "description should be replaced, not duplicated: {fn_tmdl2}"
+    );
+    assert_eq!(
+        fn_tmdl2.matches("/// ").count(),
+        1,
+        "exactly one description line expected: {fn_tmdl2}"
+    );
 
     // delete-function
     fabio()
