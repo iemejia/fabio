@@ -10281,6 +10281,14 @@
             "type": "string",
             "description": "SQL schema to read tables from (default: dbo)"
           },
+          "--storage-mode": {
+            "type": "enum",
+            "values": [
+              "sql",
+              "onelake"
+            ],
+            "description": "Direct Lake storage mode: `sql` binds via the SQL analytics endpoint (single source, `DirectQuery` fallback); `onelake` binds directly to `OneLake` Delta (recommended — `OneLake` security, more modeling features, faster queries, multiple sources)"
+          },
           "--no-refresh": {
             "type": "bool",
             "description": "Skip the framing refresh (you must run `semantic-model refresh` before querying)"

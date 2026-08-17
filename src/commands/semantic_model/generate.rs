@@ -33,6 +33,28 @@ use crate::commands::tds_utils::{execute_sql_rows, parse_connection_string};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
+/// The Direct Lake storage mode of the generated model.
+///
+/// Both modes read the source schema over the SQL analytics endpoint (like the
+/// Fabric portal / Power BI Desktop). They differ ONLY in the M expression that
+/// binds the `directLake` partitions to storage:
+///
+/// * [`StorageMode::Sql`] — binds through the SQL analytics endpoint with
+///   `Sql.Database(server, sqlEndpointId)`. Supports SQL-endpoint security and
+///   `DirectQuery` fallback, but a single source only.
+/// * [`StorageMode::Onelake`] — binds directly to `OneLake` Delta with
+///   `AzureStorage.DataLake("https://onelake.dfs.fabric.microsoft.com/{ws}/{item}")`.
+///   The recommended mode (GA March 2026): `OneLake` security, more modeling
+///   features, faster queries, and tables from multiple sources.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
+pub enum StorageMode {
+    /// Direct Lake on SQL — bind via the SQL analytics endpoint (`Sql.Database`).
+    #[default]
+    Sql,
+    /// Direct Lake on `OneLake` — bind directly to `OneLake` Delta (`AzureStorage.DataLake`).
+    Onelake,
+}
+
 /// A table planned for the generated model: its name + the columns that survived
 /// type mapping (each carrying its resolved Power BI `dataType`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +69,28 @@ pub(super) struct GenTable {
     pub columns: Vec<GenColumn>,
 }
 
+/// The resolved source of a `generate` — everything needed to BOTH read the
+/// schema (over SQL) AND bind the partitions (SQL endpoint or `OneLake` path).
+#[derive(Debug, Clone)]
+struct ResolvedSource {
+    /// SQL analytics endpoint host (used to read `INFORMATION_SCHEMA`).
+    server: String,
+    /// SQL catalog used to read the schema over TDS (the item display name).
+    database: String,
+    /// SQL analytics endpoint item id — the `Sql.Database(...)` catalog for
+    /// Direct Lake on SQL.
+    catalog: String,
+    /// The lakehouse/warehouse item id — the `{item}` in the `OneLake` `DFS` path
+    /// for Direct Lake on `OneLake`.
+    item_id: String,
+    /// Whether the source exposes SQL schemas. Warehouses always do; a lakehouse
+    /// does only when schema-enabled (`properties.defaultSchema` is present).
+    /// Direct Lake on `OneLake` drops `schemaName` for schema-less lakehouses.
+    schema_enabled: bool,
+    /// `{ "lakehouse": id }` or `{ "warehouse": id }` for output.
+    source: Value,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn generate(
     cli: &Cli,
@@ -57,6 +101,7 @@ pub(super) async fn generate(
     name: &str,
     tables: Option<&str>,
     schema: &str,
+    storage_mode: StorageMode,
     no_refresh: bool,
     description: Option<&str>,
     sensitivity_label: Option<&str>,
@@ -64,9 +109,9 @@ pub(super) async fn generate(
     // Resolve the schema source (exactly one of --lakehouse / --warehouse).
     // `database` is the SQL catalog used to READ the schema over TDS (the display
     // name works); `catalog` is the SQL analytics endpoint item id that the
-    // portal embeds in the Direct Lake `Sql.Database(...)` expression.
-    let (server, database, catalog, source) =
-        resolve_source_sql(client, workspace, lakehouse, warehouse).await?;
+    // portal embeds in the Direct Lake `Sql.Database(...)` expression; `item_id`
+    // is the lakehouse/warehouse item id used in the OneLake DFS path.
+    let src = resolve_source_sql(client, workspace, lakehouse, warehouse).await?;
 
     // Optional table allow-list (case-insensitive, comma-separated).
     let filter: Option<HashSet<String>> = tables.map(|t| {
@@ -79,7 +124,7 @@ pub(super) async fn generate(
 
     // Read the source schema over the SQL analytics endpoint.
     let sql = build_schema_query(schema);
-    let (_cols, rows) = execute_sql_rows(client, &server, &database, &sql).await?;
+    let (_cols, rows) = execute_sql_rows(client, &src.server, &src.database, &sql).await?;
     let (gen_tables, dropped) = plan_tables(&rows, filter.as_ref());
 
     if gen_tables.is_empty() {
@@ -93,10 +138,25 @@ pub(super) async fn generate(
         .into());
     }
 
+    // Direct Lake on OneLake drops `schemaName` from partitions for a schema-less
+    // lakehouse (per the Fabric migration guidance); SQL mode always keeps it.
+    let emit_schema = match storage_mode {
+        StorageMode::Sql => true,
+        StorageMode::Onelake => src.schema_enabled,
+    };
+
     // Byte-for-byte the shape the Fabric portal's "New semantic model" produces:
     // a TMDL definition folder (model/database/expressions + one file per table).
-    let parts = build_tmdl_parts(&server, &catalog, schema, &gen_tables);
+    let parts = build_tmdl_parts(
+        &src,
+        workspace,
+        storage_mode,
+        schema,
+        emit_schema,
+        &gen_tables,
+    );
     let summary = summarize(&gen_tables, &dropped, schema);
+    let storage_label = storage_mode_label(storage_mode);
 
     if output::dry_run_guard(
         cli,
@@ -104,8 +164,8 @@ pub(super) async fn generate(
         &serde_json::json!({
             "workspace": workspace,
             "name": name,
-            "source": source,
-            "storageMode": "directLake",
+            "source": src.source,
+            "storageMode": storage_label,
             "summary": summary,
         }),
     ) {
@@ -129,8 +189,8 @@ pub(super) async fn generate(
             "status": "generated",
             "id": id,
             "name": name,
-            "source": source,
-            "storageMode": "directLake",
+            "source": src.source,
+            "storageMode": storage_label,
             "framed": framed,
             "summary": summary,
             "note": note,
@@ -138,6 +198,14 @@ pub(super) async fn generate(
         "status",
     );
     Ok(())
+}
+
+/// The human/JSON label for a storage mode (matches the Fabric UI terminology).
+const fn storage_mode_label(mode: StorageMode) -> &'static str {
+    match mode {
+        StorageMode::Sql => "directLakeOnSql",
+        StorageMode::Onelake => "directLakeOnOneLake",
+    }
 }
 
 /// Create the semantic model from the synthesized TMDL definition parts and
@@ -215,7 +283,7 @@ async fn create_and_frame(
     Ok((id, framed, note))
 }
 
-/// Resolve the source item to `(sql_server_host, database, catalog, source_json)`.
+/// Resolve the source item to a [`ResolvedSource`].
 ///
 /// Exactly one of `--lakehouse` / `--warehouse` must be set.
 /// * `server` — the SQL analytics endpoint host.
@@ -223,15 +291,19 @@ async fn create_and_frame(
 ///   display name works reliably for this).
 /// * `catalog` — the **SQL analytics endpoint item id**, which is what the
 ///   Fabric portal embeds as the second argument of `Sql.Database(...)` in the
-///   Direct Lake expression (a GUID is rename-stable; the display name is not).
-///   For a lakehouse it is `properties.sqlEndpointProperties.id`; for a
+///   Direct Lake on SQL expression (a GUID is rename-stable; the display name is
+///   not). For a lakehouse it is `properties.sqlEndpointProperties.id`; for a
 ///   warehouse the warehouse item is itself the SQL endpoint, so it is `wh`.
+/// * `item_id` — the lakehouse/warehouse item id (the `{item}` in the `OneLake`
+///   `DFS` path for Direct Lake on `OneLake`).
+/// * `schema_enabled` — warehouses always expose schemas; a lakehouse does only
+///   when schema-enabled (`properties.defaultSchema` is present).
 async fn resolve_source_sql(
     client: &FabricClient,
     workspace: &str,
     lakehouse: Option<&str>,
     warehouse: Option<&str>,
-) -> Result<(String, String, String, Value)> {
+) -> Result<ResolvedSource> {
     match (lakehouse, warehouse) {
         (Some(_), Some(_)) => Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
@@ -244,9 +316,8 @@ async fn resolve_source_sql(
                 .get(&format!("/workspaces/{workspace}/lakehouses/{lh}"))
                 .await
                 .map_err(|e| enrich_forbidden(e, "lakehouse", "Viewer"))?;
-            let sep = data
-                .get("properties")
-                .and_then(|p| p.get("sqlEndpointProperties"));
+            let props = data.get("properties");
+            let sep = props.and_then(|p| p.get("sqlEndpointProperties"));
             let conn = sep
                 .and_then(|s| s.get("connectionString"))
                 .and_then(Value::as_str)
@@ -270,12 +341,19 @@ async fn resolve_source_sql(
                 .and_then(Value::as_str)
                 .unwrap_or(lh)
                 .to_string();
-            Ok((
+            // A schema-enabled lakehouse exposes `properties.defaultSchema`.
+            let schema_enabled = props
+                .and_then(|p| p.get("defaultSchema"))
+                .and_then(Value::as_str)
+                .is_some_and(|s| !s.is_empty());
+            Ok(ResolvedSource {
                 server,
                 database,
                 catalog,
-                serde_json::json!({ "lakehouse": lh }),
-            ))
+                item_id: lh.to_string(),
+                schema_enabled,
+                source: serde_json::json!({ "lakehouse": lh }),
+            })
         }
         (None, Some(wh)) => {
             let data = client
@@ -300,13 +378,16 @@ async fn resolve_source_sql(
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string();
-            // A warehouse is itself the SQL endpoint, so its item id is the catalog.
-            Ok((
+            // A warehouse is itself the SQL endpoint, so its item id is the catalog;
+            // warehouses always expose SQL schemas (dbo, etc.).
+            Ok(ResolvedSource {
                 server,
                 database,
-                wh.to_string(),
-                serde_json::json!({ "warehouse": wh }),
-            ))
+                catalog: wh.to_string(),
+                item_id: wh.to_string(),
+                schema_enabled: true,
+                source: serde_json::json!({ "warehouse": wh }),
+            })
         }
         (None, None) => Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
@@ -421,15 +502,18 @@ fn pbism() -> Value {
 /// * `definition.pbism` — version 4.2
 /// * `definition/model.tmdl` — model settings + `ref table` lines
 /// * `definition/database.tmdl` — `compatibilityLevel: 1604`
-/// * `definition/expressions.tmdl` — the `DatabaseQuery = Sql.Database(...)` expr
+/// * `definition/expressions.tmdl` — the `DatabaseQuery` M expression (either
+///   `Sql.Database(...)` for SQL mode or `AzureStorage.DataLake(...)` for `OneLake`)
 /// * `definition/tables/<name>.tmdl` — one per table (columns + directLake entity partition)
 ///
 /// Returns `(path, content)` pairs; the caller base64-encodes them into
 /// `definition.parts`.
 fn build_tmdl_parts(
-    server: &str,
-    catalog: &str,
+    src: &ResolvedSource,
+    workspace: &str,
+    mode: StorageMode,
     schema: &str,
+    emit_schema: bool,
     tables: &[GenTable],
 ) -> Vec<(String, String)> {
     let mut parts = vec![
@@ -438,13 +522,13 @@ fn build_tmdl_parts(
         ("definition/database.tmdl".to_string(), tmdl_database()),
         (
             "definition/expressions.tmdl".to_string(),
-            tmdl_expression(server, catalog),
+            tmdl_expression(src, workspace, mode),
         ),
     ];
     for t in tables {
         parts.push((
             format!("definition/tables/{}.tmdl", t.name),
-            tmdl_table(t, schema),
+            tmdl_table(t, schema, emit_schema),
         ));
     }
     parts
@@ -467,18 +551,37 @@ fn tmdl_database() -> String {
 }
 
 /// `definition/expressions.tmdl` — the shared `DatabaseQuery` M expression that
-/// binds Direct Lake to the SQL analytics endpoint. `catalog` is the SQL endpoint
-/// item id (the portal's exact convention), NOT the display name.
-fn tmdl_expression(server: &str, catalog: &str) -> String {
-    format!(
-        "expression DatabaseQuery =\n\t\tlet\n\t\t    database = Sql.Database(\"{server}\", \"{catalog}\")\n\t\tin\n\t\t    database\n"
-    )
+/// binds the Direct Lake partitions to storage.
+///
+/// * [`StorageMode::Sql`] → `Sql.Database(server, sqlEndpointId)`. `catalog` is
+///   the SQL endpoint item id (the portal's exact convention), NOT the display name.
+/// * [`StorageMode::Onelake`] → `AzureStorage.DataLake(onelakeDfsPath)`, where the
+///   path is `https://onelake.dfs.fabric.microsoft.com/{workspace}/{item}` — the
+///   lakehouse/warehouse item root (Fabric's Direct Lake on `OneLake` convention).
+fn tmdl_expression(src: &ResolvedSource, workspace: &str, mode: StorageMode) -> String {
+    match mode {
+        StorageMode::Sql => format!(
+            "expression DatabaseQuery =\n\t\tlet\n\t\t    database = Sql.Database(\"{server}\", \"{catalog}\")\n\t\tin\n\t\t    database\n",
+            server = src.server,
+            catalog = src.catalog,
+        ),
+        StorageMode::Onelake => {
+            let path = format!(
+                "https://onelake.dfs.fabric.microsoft.com/{workspace}/{item}",
+                item = src.item_id,
+            );
+            format!(
+                "expression DatabaseQuery =\n\t\tlet\n\t\t    Source = AzureStorage.DataLake(\"{path}\")\n\t\tin\n\t\t    Source\n"
+            )
+        }
+    }
 }
 
 /// `definition/tables/<name>.tmdl` — columns (`dataType` + `sourceColumn`, exactly
 /// like the portal — no `summarizeBy`) and a `directLake` entity partition. The
-/// `entityName` is the physical (SQL/Delta) table name.
-fn tmdl_table(t: &GenTable, schema: &str) -> String {
+/// `entityName` is the physical (SQL/Delta) table name. `schemaName` is emitted
+/// unless `emit_schema` is false (a schema-less lakehouse in `OneLake` mode).
+fn tmdl_table(t: &GenTable, schema: &str, emit_schema: bool) -> String {
     let mut s = format!("table {}\n", t.name);
     for c in &t.columns {
         let _ = write!(
@@ -488,9 +591,14 @@ fn tmdl_table(t: &GenTable, schema: &str) -> String {
             dt = c.data_type
         );
     }
+    let schema_line = if emit_schema {
+        format!("\n\t\t\tschemaName: {schema}")
+    } else {
+        String::new()
+    };
     let _ = write!(
         s,
-        "\n\tpartition {name} = entity\n\t\tmode: directLake\n\t\tsource\n\t\t\tentityName: {name}\n\t\t\tschemaName: {schema}\n\t\t\texpressionSource: DatabaseQuery\n",
+        "\n\tpartition {name} = entity\n\t\tmode: directLake\n\t\tsource\n\t\t\tentityName: {name}{schema_line}\n\t\t\texpressionSource: DatabaseQuery\n",
         name = t.name
     );
     s
@@ -513,6 +621,18 @@ fn summarize(tables: &[GenTable], dropped: &[String], schema: &str) -> Value {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// A minimal SQL-mode [`ResolvedSource`] for TMDL-shape tests.
+    fn sql_source(server: &str, catalog: &str) -> ResolvedSource {
+        ResolvedSource {
+            server: server.to_string(),
+            database: "SourceDb".to_string(),
+            catalog: catalog.to_string(),
+            item_id: catalog.to_string(),
+            schema_enabled: true,
+            source: json!({ "lakehouse": "lh" }),
+        }
+    }
 
     fn info_schema_rows() -> Vec<Value> {
         vec![
@@ -580,9 +700,11 @@ mod tests {
     fn tmdl_parts_match_portal_shape() {
         let (tables, _) = plan_tables(&info_schema_rows(), None);
         let parts: std::collections::HashMap<String, String> = build_tmdl_parts(
-            "srv.datawarehouse.fabric.microsoft.com",
-            "ea657d3e-74c6-4f2f-a416-7cafcf68437d",
+            &sql_source("srv.datawarehouse.fabric.microsoft.com", "sqlendpointid"),
+            "wsid",
+            StorageMode::Sql,
             "dbo",
+            true,
             &tables,
         )
         .into_iter()
@@ -607,10 +729,10 @@ mod tests {
             "database\n\tcompatibilityLevel: 1604\n"
         );
 
-        // expressions.tmdl — Sql.Database with the SQL endpoint GUID (not a name).
+        // expressions.tmdl — Sql.Database with the SQL endpoint id (not a name).
         let expr = &parts["definition/expressions.tmdl"];
         assert!(expr.contains(
-            "Sql.Database(\"srv.datawarehouse.fabric.microsoft.com\", \"ea657d3e-74c6-4f2f-a416-7cafcf68437d\")"
+            "Sql.Database(\"srv.datawarehouse.fabric.microsoft.com\", \"sqlendpointid\")"
         ));
 
         // A per-table file with lean columns (dataType + sourceColumn, NO summarizeBy)
@@ -625,16 +747,86 @@ mod tests {
     #[test]
     fn tmdl_parts_one_table_file_per_table() {
         let (tables, _) = plan_tables(&info_schema_rows(), None);
-        let paths: Vec<String> = build_tmdl_parts("s", "c", "dbo", &tables)
-            .into_iter()
-            .map(|(p, _)| p)
-            .collect();
+        let paths: Vec<String> = build_tmdl_parts(
+            &sql_source("s", "c"),
+            "ws",
+            StorageMode::Sql,
+            "dbo",
+            true,
+            &tables,
+        )
+        .into_iter()
+        .map(|(p, _)| p)
+        .collect();
         assert!(paths.contains(&"definition/tables/dimstore.tmdl".to_string()));
         assert!(paths.contains(&"definition/tables/factsales.tmdl".to_string()));
         assert!(paths.contains(&"definition/model.tmdl".to_string()));
         assert!(paths.contains(&"definition/database.tmdl".to_string()));
         assert!(paths.contains(&"definition/expressions.tmdl".to_string()));
         assert!(paths.contains(&"definition.pbism".to_string()));
+    }
+
+    /// Direct Lake on `OneLake` emits an `AzureStorage.DataLake` expression pointing
+    /// at the `OneLake` `DFS` item path, and — for a schema-less lakehouse — drops
+    /// `schemaName` from every partition (while keeping `entityName` +
+    /// `expressionSource`). This matches Fabric's DL-on-SQL → DL-on-`OneLake`
+    /// migration guidance.
+    #[test]
+    fn onelake_schemaless_uses_azurestorage_and_drops_schema() {
+        let (tables, _) = plan_tables(&info_schema_rows(), None);
+        let mut src = sql_source("srv.fabric.com", "sqlendpointid");
+        src.item_id = "lakehouseid".to_string();
+        src.schema_enabled = false;
+        let parts: std::collections::HashMap<String, String> =
+            build_tmdl_parts(&src, "wsid", StorageMode::Onelake, "dbo", false, &tables)
+                .into_iter()
+                .collect();
+
+        // expressions.tmdl — AzureStorage.DataLake at the OneLake item root, NOT Sql.Database.
+        let expr = &parts["definition/expressions.tmdl"];
+        assert!(
+            expr.contains(
+                "AzureStorage.DataLake(\"https://onelake.dfs.fabric.microsoft.com/wsid/lakehouseid\")"
+            ),
+            "expr: {expr}"
+        );
+        assert!(!expr.contains("Sql.Database"));
+
+        // Per-table partition keeps entityName + expressionSource but drops schemaName.
+        let ds = &parts["definition/tables/dimstore.tmdl"];
+        assert!(ds.contains("\t\t\tentityName: dimstore\n"));
+        assert!(ds.contains("\t\t\texpressionSource: DatabaseQuery\n"));
+        assert!(!ds.contains("schemaName"), "schema-less lakehouse: {ds}");
+    }
+
+    /// Direct Lake on `OneLake` against a schema-enabled source (warehouse or
+    /// schema-enabled lakehouse) keeps `schemaName` in every partition.
+    #[test]
+    fn onelake_schema_enabled_keeps_schema() {
+        let (tables, _) = plan_tables(&info_schema_rows(), None);
+        let mut src = sql_source("srv.fabric.com", "sqlendpointid");
+        src.item_id = "whid".to_string();
+        src.schema_enabled = true;
+        let parts: std::collections::HashMap<String, String> =
+            build_tmdl_parts(&src, "wsid", StorageMode::Onelake, "sales", true, &tables)
+                .into_iter()
+                .collect();
+        let expr = &parts["definition/expressions.tmdl"];
+        assert!(expr.contains(
+            "AzureStorage.DataLake(\"https://onelake.dfs.fabric.microsoft.com/wsid/whid\")"
+        ));
+        let ds = &parts["definition/tables/dimstore.tmdl"];
+        assert!(ds.contains("\t\t\tschemaName: sales\n"), "ds: {ds}");
+        assert!(ds.contains("\t\t\texpressionSource: DatabaseQuery\n"));
+    }
+
+    #[test]
+    fn storage_mode_labels_match_fabric_terminology() {
+        assert_eq!(storage_mode_label(StorageMode::Sql), "directLakeOnSql");
+        assert_eq!(
+            storage_mode_label(StorageMode::Onelake),
+            "directLakeOnOneLake"
+        );
     }
 
     #[test]

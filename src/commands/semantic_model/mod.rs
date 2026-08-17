@@ -112,6 +112,13 @@ pub enum SemanticModelCommand {
         #[arg(long, default_value = "dbo")]
         schema: String,
 
+        /// Direct Lake storage mode: `sql` binds via the SQL analytics endpoint
+        /// (single source, `DirectQuery` fallback); `onelake` binds directly to
+        /// `OneLake` Delta (recommended — `OneLake` security, more modeling features,
+        /// faster queries, multiple sources)
+        #[arg(long, value_enum, default_value_t = generate::StorageMode::Sql)]
+        storage_mode: generate::StorageMode,
+
         /// Skip the framing refresh (you must run `semantic-model refresh` before querying)
         #[arg(long)]
         no_refresh: bool,
@@ -1963,6 +1970,7 @@ pub async fn execute(
             warehouse,
             tables,
             schema,
+            storage_mode,
             no_refresh,
             description,
             sensitivity_label,
@@ -1976,6 +1984,7 @@ pub async fn execute(
                 name,
                 tables.as_deref(),
                 schema,
+                *storage_mode,
                 *no_refresh,
                 description.as_deref(),
                 sensitivity_label.as_deref(),

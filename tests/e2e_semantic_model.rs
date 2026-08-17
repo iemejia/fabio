@@ -5078,7 +5078,7 @@ fn semantic_model_generate_dry_run() {
     let data = extract_data(&json);
     assert_eq!(data["would_execute"], "semantic-model generate");
     assert!(data["dry_run"].as_bool().unwrap());
-    assert_eq!(data["details"]["storageMode"], "directLake");
+    assert_eq!(data["details"]["storageMode"], "directLakeOnSql");
     assert!(
         data["details"]["summary"]["tableCount"].as_u64().unwrap() >= 1,
         "expected at least one planned table, got: {data}"
@@ -5120,7 +5120,7 @@ fn semantic_model_generate_direct_lake_lifecycle() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     assert_eq!(data["status"], "generated");
-    assert_eq!(data["storageMode"], "directLake");
+    assert_eq!(data["storageMode"], "directLakeOnSql");
     let id = data["id"].as_str().unwrap().to_string();
 
     // INFO.VIEW must list the generated tables.
@@ -5167,6 +5167,184 @@ fn semantic_model_generate_direct_lake_lifecycle() {
     assert!(
         !extract_data(&qj).as_array().unwrap().is_empty(),
         "DAX query over the generated Direct Lake model should return a row"
+    );
+
+    // Cleanup.
+    fabio()
+        .args(["semantic-model", "delete", "--workspace", ws, "--id", &id])
+        .assert()
+        .success();
+}
+
+/// Offline: `generate` rejects an unknown `--storage-mode` and enumerates the
+/// valid values (clap `ValueEnum`), per the "errors that teach and enumerate"
+/// principle. No network — the arg is rejected before any API call.
+#[test]
+fn semantic_model_generate_rejects_invalid_storage_mode() {
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "generate",
+            "--workspace",
+            "ws",
+            "--lakehouse",
+            "lh",
+            "--name",
+            "X",
+            "--storage-mode",
+            "bogus",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("sql") && stderr.contains("onelake"),
+        "invalid --storage-mode should enumerate valid values, got: {stderr}"
+    );
+}
+
+/// `generate --storage-mode onelake --dry-run` reads the source schema and plans
+/// a Direct Lake on `OneLake` model (labelled `directLakeOnOneLake`) WITHOUT
+/// creating anything. Gated on `FABIO_TEST_LOADED_LAKEHOUSE` (schema read needs a
+/// SQL-scoped token from the ambient credential chain).
+#[test]
+#[ignore = "requires live Fabric tenant + a populated lakehouse (FABIO_TEST_LOADED_LAKEHOUSE)"]
+fn semantic_model_generate_onelake_dry_run() {
+    let Ok(lh) = std::env::var("FABIO_TEST_LOADED_LAKEHOUSE") else {
+        eprintln!("FABIO_TEST_LOADED_LAKEHOUSE not set — skipping onelake generate dry-run");
+        return;
+    };
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "generate",
+            "--workspace",
+            &cfg.source_workspace,
+            "--lakehouse",
+            &lh,
+            "--name",
+            "GenOneLakeDryRun",
+            "--storage-mode",
+            "onelake",
+            "--dry-run",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "semantic-model generate");
+    assert!(data["dry_run"].as_bool().unwrap());
+    assert_eq!(data["details"]["storageMode"], "directLakeOnOneLake");
+    assert!(data["details"]["summary"]["tableCount"].as_u64().unwrap() >= 1);
+}
+
+/// Full Direct Lake on `OneLake` lifecycle: generate from a populated lakehouse,
+/// confirm the synthesized definition binds via `AzureStorage.DataLake` at the
+/// `OneLake` item root (NOT `Sql.Database`), run a real DAX query that returns data
+/// over the `OneLake` binding, then delete.
+///
+/// Gated on `FABIO_TEST_LOADED_LAKEHOUSE`; needs a SQL-scoped token from the
+/// ambient credential chain (do NOT set a Fabric-only `FABIO_ACCESS_TOKEN`).
+#[test]
+#[ignore = "requires live Fabric tenant + a populated lakehouse (FABIO_TEST_LOADED_LAKEHOUSE)"]
+fn semantic_model_generate_direct_lake_onelake_lifecycle() {
+    let Ok(lh) = std::env::var("FABIO_TEST_LOADED_LAKEHOUSE") else {
+        eprintln!("FABIO_TEST_LOADED_LAKEHOUSE not set — skipping onelake generate lifecycle");
+        return;
+    };
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.source_workspace;
+
+    // Generate the Direct Lake on OneLake model.
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "generate",
+            "--workspace",
+            ws,
+            "--lakehouse",
+            &lh,
+            "--name",
+            &unique_name("gen_dl_onelake"),
+            "--storage-mode",
+            "onelake",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "generated");
+    assert_eq!(data["storageMode"], "directLakeOnOneLake");
+    let id = data["id"].as_str().unwrap().to_string();
+
+    // The definition must bind via AzureStorage.DataLake at the OneLake item root,
+    // not through the SQL analytics endpoint.
+    let def_assert = fabio()
+        .args([
+            "semantic-model",
+            "get-definition",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--decode",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let def_json = parse_json(&def_assert);
+    let raw = serde_json::to_string(&def_json).unwrap();
+    assert!(
+        raw.contains("AzureStorage.DataLake") && raw.contains("onelake.dfs.fabric.microsoft.com"),
+        "DL-on-OneLake definition must use AzureStorage.DataLake, got: {raw}"
+    );
+    assert!(
+        !raw.contains("Sql.Database"),
+        "DL-on-OneLake definition must NOT use Sql.Database"
+    );
+
+    // A real DAX query over Direct Lake on OneLake must return a row.
+    std::thread::sleep(std::time::Duration::from_secs(25)); // allow framing
+    let tables_assert = fabio()
+        .args([
+            "semantic-model",
+            "list-tables",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let tj = parse_json(&tables_assert);
+    let first_table = extract_data(&tj)
+        .as_array()
+        .and_then(|a| a.first())
+        .and_then(|r| r["Name"].as_str())
+        .expect("generated model must have at least one table")
+        .to_string();
+    let dax = format!("EVALUATE ROW(\"n\", COUNTROWS('{first_table}'))");
+    let q = fabio()
+        .args([
+            "semantic-model",
+            "query",
+            "--workspace",
+            ws,
+            "--id",
+            &id,
+            "--dax",
+            &dax,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    assert!(
+        !extract_data(&parse_json(&q)).as_array().unwrap().is_empty(),
+        "DAX query over the DL-on-OneLake model should return a row"
     );
 
     // Cleanup.
