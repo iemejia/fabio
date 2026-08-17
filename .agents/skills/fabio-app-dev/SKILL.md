@@ -192,6 +192,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 | `fabio context best-practices throttling` | fabio transparently handles 429 (Too Many Requests) and gateway errors. Agents do NOT need to implement retry logic. |
 | `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |
 | `fabio context best-practices lro` | Many Fabric operations are async (return 202). fabio polls them automatically. Use --wait for job operations. |
+| `fabio context best-practices translytical-writeback` | How to build and operate a Power BI translytical task flow (GA March 2026): a report button or input slicer invokes a Fabric User Data Function that writes back to a Fabric data source. Covers writeback-target choice (SQL Database vs Warehouse vs Lakehouse), optional parameters + defaults (May 2026), the input-slicer-as-input pattern (Feb 2026), testing with user-data-function invoke, safety/idempotency, and which parts are portal-authored. |
 
 ## See also
 - fabio context persona app-developer

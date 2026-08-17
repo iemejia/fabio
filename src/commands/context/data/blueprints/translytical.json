@@ -16,11 +16,11 @@
   ],
   "decisions": [
     {"decision": "Writeback logic layer", "options": ["UserDataFunction (recommended)", "Direct SQL connection"], "guidance": "User Data Functions encapsulate validated write logic callable from the report (the translytical pattern); direct SQL only for trusted server-side callers."},
-    {"decision": "Store", "options": ["SQLDatabase"], "guidance": "Translytical requires an OLTP store with read/write transactions — SQL Database (needs F4+ capacity). Lakehouse/Warehouse are read-mostly and NOT suitable for record-level writeback.", "disambiguate": "sql-endpoint"},
+    {"decision": "Store", "options": ["SQLDatabase", "Warehouse", "Lakehouse"], "guidance": "All three are supported writeback targets (March 2026 GA). SQL Database is RECOMMENDED for heavy read/write, record-level (OLTP) writeback (needs F4+); Warehouse for set-based/append writes; Lakehouse for Files writeback. Choose SQL Database when consumers edit individual records interactively.", "disambiguate": "sql-endpoint"},
     {"decision": "Post-writeback actions", "options": ["None", "Reflex/Activator", "Notification in the UDF"], "guidance": "Send notifications inside the UDF for synchronous feedback; use an Activator for async downstream workflows."}
   ],
   "build_with": {
-    "workflows": ["cicd-deploy"],
+    "workflows": ["translytical-task-flow", "cicd-deploy"],
     "deploy_ordering": "VariableLibrary + SQLDatabase (Environment/Foundation) before UserDataFunction, then SemanticModel -> Report; fabio deploy handles ordering.",
     "outline": [
       "Create the SQL Database (requires F4+ capacity).",
@@ -31,5 +31,5 @@
     ]
   },
   "personas": ["app-developer", "bi-developer"],
-  "see_also": ["fabio context blueprint app-backend", "fabio context persona app-developer", "fabio context persona bi-developer", "fabio context persona data-solution-architect"]
+  "see_also": ["fabio context workflow translytical-task-flow", "fabio context best-practices translytical-writeback", "fabio context blueprint app-backend", "fabio context persona app-developer", "fabio context persona bi-developer", "fabio context persona data-solution-architect"]
 }

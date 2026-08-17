@@ -1,0 +1,41 @@
+{
+  "topic": "translytical-writeback",
+  "title": "Translytical task flows — Power BI writeback via User Data Functions",
+  "summary": "How to build and operate a Power BI translytical task flow (GA March 2026): a report button or input slicer invokes a Fabric User Data Function that writes back to a Fabric data source. Covers writeback-target choice (SQL Database vs Warehouse vs Lakehouse), optional parameters + defaults (May 2026), the input-slicer-as-input pattern (Feb 2026), testing with user-data-function invoke, safety/idempotency, and which parts are portal-authored.",
+  "what_it_is": "A translytical task flow lets report consumers perform ACTIONS (update records, add annotations, delete entries, approve, notify, call external APIs like Azure OpenAI) directly inside a Power BI report, without navigating away. The report control (a button, or an input slicer used for free-form input) calls a Fabric User Data Function (UDF) that encapsulates the validated write logic and targets a Fabric data source. This unifies analytics (read) and operational writeback (write) in one surface.",
+  "writeback_targets": {
+    "SQLDatabase": "RECOMMENDED for heavy read/write, record-level (OLTP) writeback — update/insert/delete individual rows transactionally. Needs F4+ capacity.",
+    "Warehouse": "Supported writeback target (March 2026 GA). Use for set-based / append-style writes rather than high-frequency record-level OLTP.",
+    "Lakehouse": "Supported for FILES writeback (drop/append files). Not for record-level row updates.",
+    "guidance": "Pick SQL Database when consumers edit individual records interactively; Warehouse/Lakehouse for bulk/append or file outputs. All three are valid — SQL Database is only the RECOMMENDED default for the heavy interactive read/write case."
+  },
+  "optional_parameters": "May 2026: UDF parameters can declare default expressions, and reports pre-populate the input fields with those defaults and can submit the task flow WITHOUT specifying every parameter. Give parameters sensible defaults so the report form is low-friction. Mirror this when testing: `user-data-function invoke` can omit optional parameters to exercise their defaults.",
+  "report_binding": "The button/input-slicer -> UDF binding lives in the PBIR report definition and is authored in Power BI Desktop (the report visual's Fabric User Data Function action). fabio does NOT synthesize this binding. Two report-side patterns: (1) a BUTTON whose action invokes the UDF; (2) an INPUT SLICER with NO data column (Feb 2026) — it stops filtering and instead passes the consumer's free-form typed value to the UDF, so a button can submit comments/annotations/approvals not tied to any dataset column.",
+  "fabio_commands": {
+    "sql-database create / warehouse create / lakehouse create": "Provision the writeback target.",
+    "user-data-function create + update-definition --file": "Provision the write-logic function (create makes an empty item; update-definition --file pushes the function code/definition). dry-run-guarded.",
+    "user-data-function get-definition / show": "Inspect the deployed function (definition.json + .platform), its parameters and connection binding.",
+    "user-data-function invoke --url <public-url> [--parameter k=v | --body <json>]": "TEST the write path directly before wiring the report. The public Function URL is copied from the portal (Run-only mode -> Functions explorer -> Copy Function URL; public access must be enabled) — there is no API to discover it, so it is passed via --url. Values are sent as JSON strings; --body overrides --parameter.",
+    "sql-database query / warehouse query": "Verify the writeback actually landed (read back the row/annotation you wrote).",
+    "deploy apply": "Promote the task flow (VariableLibrary + SQLDatabase, then UserDataFunction, then SemanticModel -> Report; deploy handles ordering). Use a Variable Library for per-stage connection targets.",
+    "reflex list/create": "Optional Activator to trigger async downstream workflows on writeback events."
+  },
+  "safety": [
+    "Writeback is a MUTATION of operational data — make UDF write logic idempotent (e.g. upsert by key, guard against double-submit) so a report consumer re-clicking a button does not duplicate rows.",
+    "Validate inputs inside the UDF (the report can pass arbitrary user input via an input slicer); never trust client-supplied values for authorization.",
+    "Test with `user-data-function invoke` against a NON-production data source first, and read back to confirm the effect before binding it to a shared report.",
+    "Use --dry-run on fabio mutations (create/deploy) and confirm the plan before applying."
+  ],
+  "what_agents_should_do": [
+    "When a user asks to 'write back from a Power BI report', 'update records from a report', 'approve/annotate in a report', or 'trigger a workflow from Power BI', route to this translytical pattern: a User Data Function + a report button/input slicer.",
+    "Choose the writeback target by workload: record-level interactive edits -> SQL Database; append/bulk -> Warehouse; files -> Lakehouse.",
+    "Manage the UDF, data source, deployment, and TESTING with fabio; tell the user the button/input-slicer -> UDF binding is authored in Power BI Desktop / the PBIR definition.",
+    "Give UDF parameters defaults so the report form supports optional-parameter submission (May 2026)."
+  ],
+  "error_patterns": {
+    "invoke requires --url": "There is no API to discover a UDF's public endpoint; copy it from the portal (public access must be enabled) and pass --url. A non *.fabric.microsoft.com HTTPS URL is rejected.",
+    "SQL Database create fails on capacity": "SQL Database (the recommended OLTP writeback store) needs F4+ capacity; on F2 use a Warehouse/Lakehouse target or scale the capacity.",
+    "writeback seems to do nothing": "Confirm the UDF's connection is bound to the intended data source, then read back with sql-database/warehouse query; the report button must target the correct published function."
+  },
+  "see_also": ["fabio context workflow translytical-task-flow", "fabio context blueprint translytical", "fabio context persona app-developer", "fabio context best-practices deploy-parameters"]
+}
