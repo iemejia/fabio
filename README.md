@@ -61,7 +61,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 ### What fabio adds beyond both
 
 - **AI-native interactions** — create, configure, and query Data Agents (public staging management API: datasource CRUD, few-shot management, table selection, element descriptions, `--stage` for draft vs published, reset/publish lifecycle; multi-turn `query`, `evaluate` batch runs, and LLM-judged `validate-fewshots`/`evaluate --llm-*` with a bring-your-own judge model); execute KQL for real-time intelligence, NL-to-KQL translation
-- **Layered agent knowledge** — 8 orchestrator personas, 12 architecture blueprints, 6 term disambiguations, and 14 generated intent-scoped sub-skills (see [Agent knowledge architecture](#agent-knowledge-architecture)) route agents to the right workload; every mechanical command index is generated from the CLI schema and CI-drift-checked
+- **Layered agent knowledge** — 8 orchestrator personas, 12 architecture blueprints, 7 term disambiguations, and 15 generated intent-scoped sub-skills (see [Agent knowledge architecture](#agent-knowledge-architecture)) route agents to the right workload; every mechanical command index is generated from the CLI schema and CI-drift-checked
 - **Self-correcting error hints** — every error includes a `hint` field with the exact corrected command, valid enum values, or the logical next step so agents can retry without consulting docs
 - **Self-improving** — when new Fabric REST APIs are detected, fabio auto-implements support for new commands and item types
 - **Terraform-like convergence** — re-running `deploy apply` on a synced workspace produces zero API calls
@@ -120,7 +120,7 @@ git clone https://github.com/iemejia/fabio ~/.agents/skills/fabio-repo
 # Skills are at ~/.agents/skills/fabio-repo/.agents/skills/fabio/
 ```
 
-The root `fabio` skill covers cross-cutting concerns (install, auth, output envelope, safety). For progressive disclosure, fabio also ships fourteen **intent-scoped sub-skills** — `fabio-lakehouse`, `fabio-warehouse-sql`, `fabio-data-engineering`, `fabio-dataflows`, `fabio-data-science`, `fabio-mirroring`, `fabio-rti-kql`, `fabio-bi`, `fabio-ontology`, `fabio-geospatial`, `fabio-deploy-cicd`, `fabio-admin`, `fabio-migration`, `fabio-planning` — so an agent can load only the workload it needs. Each pairs authored judgment (when to use, gotchas, safety, routing) with a command index generated from fabio's own schema, so they never drift from the CLI.
+The root `fabio` skill covers cross-cutting concerns (install, auth, output envelope, safety). For progressive disclosure, fabio also ships fifteen **intent-scoped sub-skills** — `fabio-lakehouse`, `fabio-warehouse-sql`, `fabio-data-engineering`, `fabio-dataflows`, `fabio-data-science`, `fabio-mirroring`, `fabio-rti-kql`, `fabio-bi`, `fabio-app-dev`, `fabio-ontology`, `fabio-geospatial`, `fabio-deploy-cicd`, `fabio-admin`, `fabio-migration`, `fabio-planning` — so an agent can load only the workload it needs. Each pairs authored judgment (when to use, gotchas, safety, routing) with a command index generated from fabio's own schema, so they never drift from the CLI.
 
 **Docker** (multi-arch: amd64 + arm64):
 
@@ -312,7 +312,7 @@ fabio ships a layered, **generated** knowledge base for AI agents — inspired b
 - **Blueprints** (`fabio context blueprint <name>`) — 12 architecture-shape solutions (`medallion`, `lambda`, `event-analytics`, `event-medallion`, `basic-data-analytics`, `data-analytics-sql-endpoint`, `basic-machine-learning-models`, `sensitive-data-insights`, `conversational-analytics`, `app-backend`, `translytical`, `semantic-governance`) — the item set (each tagged with its deployment phase + command group), the key decisions, and the workflows that build it. The fabio-native equivalent of Fabric task flows.
 - **Item capabilities** (`fabio context item-capabilities [<type>]`) — a per-item-type matrix (`creatable`, `supports_definition`, `deploy_strategy` = content/platform_only/unsupported, `deployable_from_definition`, `deploy_order`) so an agent can check what an operation supports before attempting it. Derived entirely at runtime from the CLI's own sources (known types + definition specs + `DEPLOY_ORDER` + `commands.json`) — no hand-maintained registry to drift.
 - **Disambiguations** (`fabio context disambiguate <term>`) — resolve overloaded Fabric terms (`materialized-view`, `dataflow`, `semantic-model`, `sql-endpoint`, `mirroring`, `model`) to the concrete artifact + command group.
-- **Intent-scoped sub-skills** — 14 focused `fabio-<workload>` skills (see [Via agent skill](#installation)) each pairing authored judgment (when-to-use, MUST/PREFER/AVOID, troubleshooting, safety) with a generated command index.
+- **Intent-scoped sub-skills** — 15 focused `fabio-<workload>` skills (see [Via agent skill](#installation)) each pairing authored judgment (when-to-use, MUST/PREFER/AVOID, troubleshooting, safety) with a generated command index.
 - **Workflows & best-practices** (`fabio context workflow`, `fabio context best-practices`) — multi-step recipes and cross-cutting operational guidance (throttling, LRO, pagination, deploy parameters, migration API shims, …).
 
 Every Fabric workload command group is covered by a sub-skill family or persona. When you describe a business *outcome* rather than a Fabric item ("analyze streaming sensor data", "let users ask questions of our sales data", "build a batch pipeline from raw to reports"), start with `fabio context persona data-solution-architect` — it maps the problem to an architecture blueprint (`fabio context blueprint <name>`) that enumerates the item set (in deployment order) and the decisions to confirm. For broad multi-step tasks (build a medallion lakehouse, train and serve an ML model, mirror a Snowflake database, migrate from Synapse/Databricks/HDInsight, administer a tenant), start with `fabio context persona <name>`. Migration recipes ship as workflows (`synapse-migration`, `databricks-migration`, `hdinsight-migration`, `pipeline-migration`) plus the `migration-api-shims` best-practice (mssparkutils/dbutils→notebookutils, DBFS/WASB/ADLS→OneLake, Linked Services→Connections).
@@ -721,7 +721,7 @@ Configuration: [`prek.toml`](prek.toml)
 ### Project Stats
 
 - **79 command groups** with **850+ subcommands**
-- **8 orchestrator personas**, **12 architecture blueprints**, **6 term disambiguations**, **14 generated intent-scoped sub-skills**, **11 workflow recipes**, **13 best-practice topics** — the layered agent knowledge base
+- **8 orchestrator personas**, **12 architecture blueprints**, **7 term disambiguations**, **15 generated intent-scoped sub-skills**, **15 workflow recipes**, **17 best-practice topics** — the layered agent knowledge base
 - **1562 tests** (841 unit + 721 offline/E2E integration)
 - Zero clippy warnings, zero unsafe code
 
