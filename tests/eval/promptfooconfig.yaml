@@ -1986,6 +1986,27 @@ tests:
         value: "The response uses 'fabio semantic-model generate' with --lakehouse (and --name) to auto-build a Direct Lake model from the lakehouse WITHOUT hand-authoring a TMDL/model.bim file. It does not tell the user to write TMDL by hand for this task."
         metric: generate-not-handauthored
 
+  - description: "Power BI: generate a Direct Lake on OneLake semantic model (storage mode)"
+    vars:
+      user_query: "Generate a Direct Lake on OneLake semantic model called 'SalesModel' from my lakehouse lh-001 in workspace ws-001 — I want the OneLake binding, not the SQL endpoint one"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('semantic-model generate')
+        metric: onelake-generate-command
+      - type: icontains
+        value: "--storage-mode onelake"
+      - type: icontains
+        value: "--lakehouse"
+
+  - description: "Power BI: PBIR-Legacy report cannot be edited → convert to PBIR"
+    vars:
+      user_query: "I can't add a page to my report — fabio says it's PBIR-Legacy with a single report.json. What should I do?"
+    assert:
+      - type: llm-rubric
+        value: "The response explains that page/visual authoring (and report-level settings) require the enhanced PBIR format, and that the user must convert the PBIR-Legacy report to PBIR — e.g. by opening and saving it in the Power BI Service (or Desktop with the PBIR preview) — before editing. It does NOT claim fabio cannot help. It may mention that PBIR becomes the only supported format at GA."
+        metric: pbir-legacy-convert-guidance
+
   - description: "Power BI: create Direct Lake semantic model and report"
     vars:
       user_query: "Create a semantic model called 'SalesModel' from my model.bim file connected to the lakehouse SQL endpoint, refresh it for Direct Lake framing, then create a report called 'Sales Dashboard' bound to it"

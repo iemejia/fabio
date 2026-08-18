@@ -471,7 +471,7 @@ fabio notebook update-definition --workspace $WS --id $NB --file updated.py     
 **Semantic Models & Reports:**
 ```bash
 # Auto-generate a Direct Lake model from a lakehouse/warehouse (portal "New semantic model" — reads the SQL endpoint schema, picks tables, frames it). Needs a SQL-scoped token from the credential chain (az/device-code), NOT a static FABIO_ACCESS_TOKEN.
-fabio semantic-model generate --workspace $WS --lakehouse $LH --name "Sales"    # or --warehouse $WH; --tables a,b to pick; --schema dbo
+fabio semantic-model generate --workspace $WS --lakehouse $LH --name "Sales"    # or --warehouse $WH; --tables a,b to pick; --schema dbo; --storage-mode onelake for Direct Lake on OneLake (recommended: OneLake security, more modeling features, faster) vs default sql
 fabio semantic-model create --workspace $WS --name "Sales" --file model.tmdl --connection $SQLEP   # from hand-authored TMDL/model.bim
 fabio semantic-model query --workspace $WS --id $SM --dax "EVALUATE Sales"
 fabio semantic-model refresh --workspace $WS --id $SM
@@ -712,7 +712,7 @@ These cause silent failures if ignored:
 8. **Deploy is stateless** — Content-hash diffing against live workspace. No state file. `--workspace` accepts display name or GUID (auto-resolved).
 9. **Hard delete on 38 item types** — `--hard-delete` flag permanently removes items (skips recycle bin).
 10. **SQL Database needs F4+ capacity** — F2 fails with error 18456 State 240.
-11. **PBIR is the agent-authorable report format** — PBIR (the enhanced per-file `definition/` folder) is Microsoft's documented format for programmatic report generation and becomes the only format at GA. Author it, then `fabio report validate --source <folder>` (offline) and `fabio report create --definition <folder>` (full tree). Conform each file to its published `$schema`. `--dataset` rebinds a `byPath` folder to a concrete model by connection.
+11. **PBIR is the agent-authorable report format** — PBIR (the enhanced per-file `definition/` folder) is Microsoft's documented format for programmatic report generation and becomes the only format at GA. Author it, then `fabio report validate --source <folder>` (offline) and `fabio report create --definition <folder>` (full tree). Conform each file to its published `$schema`. `--dataset` rebinds a `byPath` folder to a concrete model by connection. Page/visual editing and report-level settings (`report add-page`/`add-visual`/`set-setting`) REQUIRE enhanced PBIR; a **PBIR-Legacy** report (a single `report.json`, e.g. from a bare `report create --dataset`) is rejected and `report validate` warns `PBIR_LEGACY_DEPRECATED` — convert it to PBIR by opening and saving it in the Power BI Service (or Desktop with the PBIR preview) first.
 12. **ARM scope for capacity lifecycle** — suspend/resume/create/delete use `management.azure.com`.
 
 ## Composability Patterns
