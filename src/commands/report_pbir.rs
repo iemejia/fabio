@@ -643,6 +643,14 @@ pub(super) fn validate_report_folder(dir: &Path) -> ReportValidation {
         format = Some("PBIR-Legacy".to_owned());
         checks += 1;
         parse_json(&report_json, "report.json", &mut errors);
+        // PBIR-Legacy is on the way out: PBIR (the enhanced `definition/` folder)
+        // becomes the ONLY supported report format at GA (planned Q3 2026). Nudge
+        // migration and note that fabio's page/visual editors need PBIR.
+        warnings.push(Finding::new(
+            "report.json",
+            "PBIR_LEGACY_DEPRECATED",
+            "PBIR-Legacy (single `report.json`) is deprecated; PBIR (the enhanced `definition/` folder) becomes the only supported report format at GA (planned Q3 2026). Convert to PBIR to stay supported and to enable per-page/visual editing (add-page/add-visual).",
+        ));
     } else {
         errors.push(Finding::new(
             "",
@@ -968,6 +976,36 @@ mod tests {
         let r = validate_report_folder(dir.path());
         assert!(r.valid, "errors: {:?}", r.errors);
         assert_eq!(r.format.as_deref(), Some("PBIR-Legacy"));
+        // A PBIR-Legacy report is valid but carries a deprecation warning.
+        assert!(
+            r.warnings
+                .iter()
+                .any(|w| w.code == "PBIR_LEGACY_DEPRECATED"),
+            "PBIR-Legacy should warn about deprecation: {:?}",
+            r.warnings
+        );
+    }
+
+    #[test]
+    fn pbir_enhanced_has_no_legacy_deprecation_warning() {
+        let dir = TempDir::new().unwrap();
+        write(&dir.path().join("definition.pbir"), PBIR_BYCONN);
+        write(
+            &dir.path().join("definition/report.json"),
+            r#"{"$schema":"https://developer.microsoft.com/json-schemas/fabric/item/report/definition/report/1.0.0/schema.json"}"#,
+        );
+        write(
+            &dir.path().join("definition/version.json"),
+            r#"{"version":"4.0"}"#,
+        );
+        let r = validate_report_folder(dir.path());
+        assert_eq!(r.format.as_deref(), Some("PBIR"));
+        assert!(
+            !r.warnings
+                .iter()
+                .any(|w| w.code == "PBIR_LEGACY_DEPRECATED"),
+            "enhanced PBIR must not carry the legacy deprecation warning"
+        );
     }
 
     #[test]

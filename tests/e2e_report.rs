@@ -402,6 +402,44 @@ fn report_validate_pbir_folder_offline() {
         .stderr(predicate::str::contains("validation failed"));
 }
 
+/// Offline (no tenant): a PBIR-Legacy report (single `report.json`, no
+/// `definition/` folder) validates as valid but carries the
+/// `PBIR_LEGACY_DEPRECATED` warning nudging migration to PBIR before GA.
+#[test]
+fn report_validate_legacy_warns_deprecation() {
+    use std::fs;
+    use std::io::Write;
+
+    let dir = tempfile::tempdir().unwrap();
+    let report = dir.path().join("Legacy.Report");
+    let mk = |rel: &str, content: &str| {
+        let p = report.join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        let mut f = fs::File::create(&p).unwrap();
+        f.write_all(content.as_bytes()).unwrap();
+    };
+    mk(
+        "definition.pbir",
+        r#"{"$schema":"https://developer.microsoft.com/json-schemas/fabric/item/report/definitionProperties/2.0.0/schema.json","version":"4.0","datasetReference":{"byConnection":{"connectionString":"semanticmodelid=abc"}}}"#,
+    );
+    mk("report.json", r#"{"sections":[]}"#);
+
+    let assert = fabio()
+        .args(["report", "validate", "--source", report.to_str().unwrap()])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert_eq!(json["data"]["status"], "valid");
+    assert_eq!(json["data"]["report"]["format"], "PBIR-Legacy");
+    let warnings = json["data"]["report"]["warnings"].as_array().unwrap();
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w["code"] == "PBIR_LEGACY_DEPRECATED"),
+        "expected PBIR_LEGACY_DEPRECATED warning, got: {warnings:?}"
+    );
+}
+
 /// Live: export a report → validate the exported PBIR → create a new report from
 /// the folder (full PBIR) → render it → delete. Exercises `report validate` and
 /// `report create --definition` end-to-end against the tenant.
