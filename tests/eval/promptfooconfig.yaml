@@ -2353,6 +2353,21 @@ tests:
         value: "The response correctly distinguishes the three T-SQL surfaces: SQL analytics endpoint (read-only over a Lakehouse, 'sql-endpoint' group), Warehouse (read-write analytics, 'warehouse' group), and SQL Database (OLTP, needs F4+, 'sql-database' group). It maps each to the correct fabio command group. It may reference 'fabio context disambiguate sql-endpoint'."
         metric: disambiguate-sql-surfaces
 
+  - description: "SQL endpoint: selectively refresh table metadata"
+    vars:
+      user_query: "Refresh only sales.Orders and sales.OrderDetails in SQL endpoint ep-001 in workspace ws-001, recreating their SQL metadata with a 10 minute request timeout"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('sql-endpoint refresh-metadata')
+        metric: selective-sql-endpoint-refresh
+      - type: icontains
+        value: "--tables"
+      - type: icontains
+        value: "--recreate-tables"
+      - type: contains
+        value: "\"timeUnit\":\"Minutes\""
+
   - description: "Persona routing: broad Databricks migration request"
     vars:
       user_query: "Help me migrate my Databricks notebooks and jobs to Microsoft Fabric"

@@ -17,6 +17,7 @@ license: MIT
 - Monitoring queries: running / frequent / long-running / history; killing a session.
 - Managing user-defined statistics (list/show/create/update/delete).
 - Creating/managing warehouse snapshots.
+- Refreshing all or selected SQL analytics endpoint tables, optionally recreating their SQL metadata.
 
 ## When NOT to use (route elsewhere)
 - Loading files into Delta tables -> use fabio-lakehouse (load-table).
@@ -111,7 +112,7 @@ Manage SQL endpoints (analytics endpoints for lakehouses)
 | `fabio sql-endpoint queries-long-running` | no | List long-running queries (from `queryinsights.long_running_queries`) |
 | `fabio sql-endpoint queries-running` | no | List currently running queries on a SQL endpoint |
 | `fabio sql-endpoint query` | no | Execute a SQL query against a SQL endpoint |
-| `fabio sql-endpoint refresh-metadata` | yes | Refresh metadata for all tables in a SQL endpoint (LRO) |
+| `fabio sql-endpoint refresh-metadata` | yes | Refresh metadata for all or selected tables in a SQL endpoint (LRO) |
 | `fabio sql-endpoint set-audit-actions` | yes | Set audit actions and groups for the endpoint |
 | `fabio sql-endpoint show` | no | Show details of a SQL endpoint |
 | `fabio sql-endpoint update-audit-settings` | yes | Update SQL audit settings for the endpoint |
@@ -151,6 +152,7 @@ Manage warehouse snapshots
 - A zero-row SELECT returns the LIST envelope {"data":[],"count":0} (a result set with 0 rows), NOT a scalar 'no result set' message; DDL/DML with no result set returns the scalar rows_affected message. Iterate/filter 'data' safely.
 - queryinsights.* views populate asynchronously (up to ~15 min after the first queries on a fresh warehouse) — 'Invalid object name queryinsights.*' is initialization lag, not a bug.
 - 'warehouse set-retention' sets the time-travel window (1-120 days); DECREASING it is irreversible (background GC permanently drops older history) — it is destructive and dry-run guarded. 'warehouse create --collation' is create-time only (case-sensitive default vs Latin1_General_100_CI_AS_KS_WS_SC_UTF8).
+- 'sql-endpoint refresh-metadata --tables' accepts a JSON array of {schema,tableNames} selectors (inline or @file), with at most 25 total tables. Its optional --timeout is a Duration JSON object with numeric value and a PascalCase timeUnit (Seconds, Minutes, Hours, or Days). Schema-enabled endpoints return schema-qualified tableName values; non-schema-enabled endpoints resolve under the default schema.
 
 ## Troubleshooting
 | Symptom | Fix |
@@ -159,11 +161,13 @@ Manage warehouse snapshots
 | Query against a lakehouse endpoint returns stale/missing tables | The SQL analytics endpoint syncs from Delta; ensure the lakehouse tables exist and metadata has refreshed. |
 | 'invalid column name login_name' | Join sys.dm_exec_sessions for login_name; sys.dm_exec_requests does not have it on Fabric. |
 | FORBIDDEN executing a query | You need appropriate workspace role / SQL permissions on the item. |
+| Selective refresh reports DeltaTableNotFound | For schema-enabled parent items, use the table's actual schema. Non-schema-enabled items resolve under the default schema and cannot resolve tables under a non-default schema. |
 
 ## Safety
 - queries-kill terminates a running session (KILL) — confirm the session id and impact with the user.
 - DDL/DML via query (DROP/DELETE/TRUNCATE) is executed for real — use 'plan' to inspect without executing, and confirm destructive statements.
 - 'set-retention' DECREASING the retention window is irreversible (permanently drops time-travel history older than the new window) — it is destructive and dry-run guarded; confirm with the user.
+- 'sql-endpoint refresh-metadata --recreate-tables' drops and recreates the selected SQL metadata tables; inspect the dry-run body and confirm the scope first.
 
 ## Shared references
 Cross-cutting operational guidance (the "common" layer) — consult the relevant topic before non-trivial work:

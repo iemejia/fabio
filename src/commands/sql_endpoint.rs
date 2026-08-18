@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::Subcommand;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::cli::Cli;
@@ -83,7 +84,7 @@ pub enum SqlEndpointCommand {
         #[arg(long)]
         sql: Option<String>,
     },
-    /// Refresh metadata for all tables in a SQL endpoint (LRO)
+    /// Refresh metadata for all or selected tables in a SQL endpoint (LRO)
     #[command(display_order = 6)]
     RefreshMetadata {
         /// Workspace ID
@@ -93,6 +94,18 @@ pub enum SqlEndpointCommand {
         /// SQL endpoint ID
         #[arg(long)]
         id: String,
+
+        /// Timeout JSON with value and timeUnit (inline or @file; default: 15 Minutes)
+        #[arg(long)]
+        timeout: Option<String>,
+
+        /// Drop and recreate SQL metadata for selected tables, or all tables if unscoped
+        #[arg(long)]
+        recreate_tables: bool,
+
+        /// Table selectors as JSON (inline or @file), up to 25 tables
+        #[arg(long)]
+        tables: Option<String>,
     },
     /// Get SQL audit settings for the endpoint
     #[command(display_order = 10)]
@@ -226,6 +239,7 @@ pub enum SqlEndpointCommand {
     },
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlEndpointCommand) -> Result<()> {
     match command {
         SqlEndpointCommand::List { workspace } => list(cli, client, workspace).await,
@@ -252,8 +266,23 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlEndpointComm
         SqlEndpointCommand::Plan { workspace, id, sql } => {
             Box::pin(plan(cli, client, workspace, id, sql.as_deref())).await
         }
-        SqlEndpointCommand::RefreshMetadata { workspace, id } => {
-            refresh_metadata(cli, client, workspace, id).await
+        SqlEndpointCommand::RefreshMetadata {
+            workspace,
+            id,
+            timeout,
+            recreate_tables,
+            tables,
+        } => {
+            refresh_metadata(
+                cli,
+                client,
+                workspace,
+                id,
+                timeout.as_deref(),
+                *recreate_tables,
+                tables.as_deref(),
+            )
+            .await
         }
         SqlEndpointCommand::GetAuditSettings { workspace, id } => {
             get_audit_settings(cli, client, workspace, id).await
@@ -537,24 +566,183 @@ async fn plan(
 
 // ─── Mutations ───────────────────────────────────────────────────────────────
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct TableDefinition {
+    schema: String,
+    table_names: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct DurationDefinition {
+    value: f64,
+    time_unit: String,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct RefreshMetadataRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    timeout: Option<DurationDefinition>,
+    #[serde(skip_serializing_if = "is_false")]
+    recreate_tables: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tables: Option<Vec<TableDefinition>>,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+const fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+fn parse_timeout(input: Option<&str>) -> Result<Option<DurationDefinition>> {
+    let Some(input) = input else {
+        return Ok(None);
+    };
+    let example = r#"{"value":10,"timeUnit":"Minutes"}"#;
+    let resolved = crate::commands::query_input::resolve_query_input(
+        Some(input),
+        "timeout JSON",
+        "--timeout",
+        example,
+    )?;
+    let timeout: DurationDefinition = serde_json::from_str(&resolved).map_err(|error| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid --timeout JSON: {error}"),
+            format!("Expected an object such as: {example}"),
+        )
+    })?;
+    if !timeout.value.is_finite() || timeout.value <= 0.0 {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Timeout value must be a positive finite number.",
+            format!("Use a duration such as: {example}"),
+        )
+        .into());
+    }
+    if !["Seconds", "Minutes", "Hours", "Days"].contains(&timeout.time_unit.as_str()) {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid timeout timeUnit '{}'.", timeout.time_unit),
+            "Valid values: Seconds, Minutes, Hours, Days.",
+        )
+        .into());
+    }
+    Ok(Some(timeout))
+}
+
+fn parse_table_definitions(input: Option<&str>) -> Result<Option<Vec<TableDefinition>>> {
+    let Some(input) = input else {
+        return Ok(None);
+    };
+    let example = r#"[{"schema":"dbo","tableNames":["Orders","OrderDetails"]}]"#;
+    let resolved = crate::commands::query_input::resolve_query_input(
+        Some(input),
+        "table selector JSON",
+        "--tables",
+        example,
+    )?;
+    let tables: Vec<TableDefinition> = serde_json::from_str(&resolved).map_err(|error| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid --tables JSON: {error}"),
+            format!("Expected a JSON array such as: {example}"),
+        )
+    })?;
+    validate_table_definitions(&tables)?;
+    Ok(Some(tables))
+}
+
+fn validate_table_definitions(tables: &[TableDefinition]) -> Result<()> {
+    let table_count = tables
+        .iter()
+        .map(|definition| definition.table_names.len())
+        .sum::<usize>();
+    if table_count > 25 {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("A refresh can include at most 25 tables; received {table_count}."),
+            "Split the table selectors across multiple refresh-metadata requests.",
+        )
+        .into());
+    }
+
+    for definition in tables {
+        validate_identifier("schema", &definition.schema)?;
+        if definition.schema.eq_ignore_ascii_case("sys")
+            || definition.schema.eq_ignore_ascii_case("information_schema")
+        {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!(
+                    "Schema '{}' is a reserved system schema.",
+                    definition.schema
+                ),
+                "Use the source table's user-defined schema, such as dbo, sales, or analytics.",
+            )
+            .into());
+        }
+        if definition.table_names.is_empty() {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!(
+                    "Schema '{}' must include at least one table name.",
+                    definition.schema
+                ),
+                r#"Add one or more values to "tableNames"."#,
+            )
+            .into());
+        }
+        for table_name in &definition.table_names {
+            validate_identifier("table name", table_name)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_identifier(kind: &str, value: &str) -> Result<()> {
+    let length = value.chars().count();
+    if !(1..=128).contains(&length) {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Each {kind} must contain between 1 and 128 characters."),
+            format!("Provide a non-empty {kind} no longer than 128 characters."),
+        )
+        .into());
+    }
+    Ok(())
+}
+
 async fn refresh_metadata(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
     id: &str,
+    timeout: Option<&str>,
+    recreate_tables: bool,
+    tables: Option<&str>,
 ) -> Result<()> {
-    if output::dry_run_guard(
-        cli,
-        "sql-endpoint refresh-metadata",
-        &serde_json::json!({ "workspace": workspace, "id": id }),
-    ) {
+    let request = RefreshMetadataRequest {
+        timeout: parse_timeout(timeout)?,
+        recreate_tables,
+        tables: parse_table_definitions(tables)?,
+    };
+    let body = serde_json::to_value(&request)?;
+    let preview = serde_json::json!({
+        "workspace": workspace,
+        "id": id,
+        "request": body,
+    });
+    if output::dry_run_guard(cli, "sql-endpoint refresh-metadata", &preview) {
         return Ok(());
     }
 
     let data = client
         .post(
             &format!("/workspaces/{workspace}/sqlEndpoints/{id}/refreshMetadata"),
-            &serde_json::json!({}),
+            &body,
             true,
         )
         .await
@@ -809,4 +997,127 @@ async fn insights_pool(
 ) -> Result<()> {
     let sql = pool_insights_sql(top);
     Box::pin(execute_endpoint_query(cli, client, workspace, id, &sql)).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        DurationDefinition, RefreshMetadataRequest, TableDefinition, parse_table_definitions,
+        parse_timeout, validate_table_definitions,
+    };
+
+    #[test]
+    fn refresh_request_serializes_selective_recreate() {
+        let request = RefreshMetadataRequest {
+            timeout: Some(DurationDefinition {
+                value: 10.0,
+                time_unit: "Minutes".to_string(),
+            }),
+            recreate_tables: true,
+            tables: Some(vec![TableDefinition {
+                schema: "sales".to_string(),
+                table_names: vec!["Orders".to_string(), "OrderDetails".to_string()],
+            }]),
+        };
+
+        assert_eq!(
+            serde_json::to_value(request).unwrap(),
+            serde_json::json!({
+                "timeout": {
+                    "value": 10.0,
+                    "timeUnit": "Minutes"
+                },
+                "recreateTables": true,
+                "tables": [{
+                    "schema": "sales",
+                    "tableNames": ["Orders", "OrderDetails"]
+                }]
+            })
+        );
+    }
+
+    #[test]
+    fn refresh_request_omits_default_optional_fields() {
+        let request = RefreshMetadataRequest {
+            timeout: None,
+            recreate_tables: false,
+            tables: None,
+        };
+
+        assert_eq!(
+            serde_json::to_value(request).unwrap(),
+            serde_json::json!({})
+        );
+    }
+
+    #[test]
+    fn parses_selective_table_definitions() {
+        let parsed = parse_table_definitions(Some(
+            r#"[{"schema":"dbo","tableNames":["Orders","OrderDetails"]}]"#,
+        ))
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].schema, "dbo");
+        assert_eq!(parsed[0].table_names, ["Orders", "OrderDetails"]);
+    }
+
+    #[test]
+    fn parses_and_validates_timeout() {
+        let parsed = parse_timeout(Some(r#"{"value":30,"timeUnit":"Seconds"}"#))
+            .unwrap()
+            .unwrap();
+        assert!((parsed.value - 30.0).abs() < f64::EPSILON);
+        assert_eq!(parsed.time_unit, "Seconds");
+
+        assert!(
+            parse_timeout(Some(r#"{"value":0,"timeUnit":"Minutes"}"#))
+                .unwrap_err()
+                .to_string()
+                .contains("positive finite")
+        );
+        assert!(
+            parse_timeout(Some(r#"{"value":1,"timeUnit":"Weeks"}"#))
+                .unwrap_err()
+                .to_string()
+                .contains("Invalid timeout timeUnit")
+        );
+    }
+
+    #[test]
+    fn rejects_more_than_twenty_five_tables() {
+        let tables = vec![TableDefinition {
+            schema: "dbo".to_string(),
+            table_names: (0..26).map(|index| format!("Table{index}")).collect(),
+        }];
+
+        let error = validate_table_definitions(&tables).unwrap_err();
+        assert!(error.to_string().contains("at most 25 tables"));
+    }
+
+    #[test]
+    fn rejects_empty_table_names_and_reserved_schemas() {
+        let empty = vec![TableDefinition {
+            schema: "dbo".to_string(),
+            table_names: Vec::new(),
+        }];
+        assert!(
+            validate_table_definitions(&empty)
+                .unwrap_err()
+                .to_string()
+                .contains("at least one table")
+        );
+
+        let reserved = vec![TableDefinition {
+            schema: "INFORMATION_SCHEMA".to_string(),
+            table_names: vec!["Tables".to_string()],
+        }];
+        assert!(
+            validate_table_definitions(&reserved)
+                .unwrap_err()
+                .to_string()
+                .contains("reserved system schema")
+        );
+    }
 }

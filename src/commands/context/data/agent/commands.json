@@ -1631,7 +1631,7 @@
         "returns": "object"
       },
       "get-encryption": {
-        "description": "Get workspace Customer-Managed Key (CMK) encryption settings (Preview)",
+        "description": "Get workspace Customer-Managed Key (CMK) encryption settings",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -1643,7 +1643,7 @@
         "returns": "object"
       },
       "assign-encryption": {
-        "description": "Assign a Customer-Managed Key (CMK) to a workspace, enabling or rotating encryption (Preview)",
+        "description": "Assign a Customer-Managed Key (CMK) to a workspace, enabling or rotating encryption",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -1661,7 +1661,7 @@
         "async": true
       },
       "reset-encryption": {
-        "description": "Reset workspace encryption by removing the CMK configuration (reverts to Microsoft-managed keys) (Preview)",
+        "description": "Reset workspace encryption by removing the CMK configuration (reverts to Microsoft-managed keys)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -6517,7 +6517,7 @@
         "returns": "object"
       },
       "refresh-metadata": {
-        "description": "Refresh metadata for all tables in a SQL endpoint (LRO)",
+        "description": "Refresh metadata for all or selected tables in a SQL endpoint (LRO)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -6528,10 +6528,29 @@
             "type": "string",
             "required": true,
             "description": "SQL endpoint ID"
+          },
+          "--timeout": {
+            "type": "string",
+            "description": "Timeout JSON with value and timeUnit (inline or @file; default: 15 Minutes)"
+          },
+          "--recreate-tables": {
+            "type": "bool",
+            "description": "Drop and recreate SQL metadata for selected tables, or all tables if unscoped"
+          },
+          "--tables": {
+            "type": "string",
+            "description": "Table selectors as JSON (inline or @file), up to 25 tables"
           }
         },
         "mutates": true,
-        "returns": "list"
+        "returns": "list",
+        "async": true,
+        "destructive": true,
+        "examples": [
+          "fabio sql-endpoint refresh-metadata --workspace $WS --id $EP",
+          "fabio sql-endpoint refresh-metadata --workspace $WS --id $EP --tables '[{\"schema\":\"dbo\",\"tableNames\":[\"Orders\",\"OrderDetails\"]}]'",
+          "fabio sql-endpoint refresh-metadata --workspace $WS --id $EP --recreate-tables --tables @tables.json --timeout '{\"value\":10,\"timeUnit\":\"Minutes\"}' --dry-run"
+        ]
       },
       "get-audit-settings": {
         "description": "Get SQL audit settings for the endpoint",
