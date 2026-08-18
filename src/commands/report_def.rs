@@ -27,8 +27,40 @@ pub(super) const PAGES_SCHEMA: &str = "https://developer.microsoft.com/json-sche
 pub(super) const VISUAL_SCHEMA: &str = "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.11.0/schema.json";
 
 const PAGES_JSON: &str = "definition/pages/pages.json";
+const REPORT_JSON: &str = "definition/report.json";
 const DEFAULT_WIDTH: i64 = 1280;
 const DEFAULT_HEIGHT: i64 = 720;
+
+/// Report-level boolean settings (PBIR `report.json` `settings`, the
+/// `ExplorationSettings` object). Curated from the published report schema.
+const BOOL_SETTINGS: &[&str] = &[
+    "isPersistentUserStateDisabled",
+    "hideVisualContainerHeader",
+    "useStylableVisualContainerHeader",
+    "isReportAnnotationsDisabled",
+    "defaultFilterActionIsDataFilter",
+    "defaultDrillFilterOtherVisuals",
+    "useCrossReportDrillthrough",
+    "allowChangeFilterTypes",
+    "allowInlineExploration",
+    "useEnhancedTooltips",
+    "useScaledTooltips",
+    "filterPaneHiddenInEditMode",
+    "disableFilterPaneSearch",
+    "allowAutomatedInsightsNotification",
+    "useDefaultAggregateDisplayName",
+    "enableDeveloperMode",
+    "pauseQueries",
+];
+
+/// Report-level string settings (free-form / enum values in the schema).
+const STRING_SETTINGS: &[&str] = &[
+    "exportDataMode",
+    "pagesPosition",
+    "queryLimitOption",
+    "customMemoryLimit",
+    "customTimeoutLimit",
+];
 
 // ── definition round-trip plumbing ────────────────────────────────────────────
 
@@ -545,8 +577,142 @@ pub(super) async fn set_active_page(
     Ok(())
 }
 
-// ── visual authoring ──────────────────────────────────────────────────────────
+// ── report-level settings (report.json `settings` / ExplorationSettings) ──────
 
+/// `report get-settings` — read the report-level settings object from
+/// `definition/report.json` (empty when none are set). Read-only.
+pub(super) async fn get_settings(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let op = "report get-settings";
+    let parts = fetch_parts(client, workspace, id, op).await?;
+    require_pbir(&parts)?;
+    let report_json = part_content(&parts, REPORT_JSON).unwrap_or("{}");
+    let settings = serde_json::from_str::<Value>(report_json)
+        .ok()
+        .and_then(|v| v.get("settings").cloned())
+        .unwrap_or_else(|| Value::Object(serde_json::Map::new()));
+    output::render_object(
+        cli,
+        &serde_json::json!({ "id": id, "settings": settings }),
+        "settings",
+    );
+    Ok(())
+}
+
+/// `report set-setting` — set one report-level setting in `report.json`.
+/// Overwrites the definition (dry-run guarded).
+pub(super) async fn set_setting(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    name: &str,
+    value: &str,
+) -> Result<()> {
+    let op = "report set-setting";
+    // Fail fast on an unknown setting / bad value BEFORE any network call.
+    let coerced = coerce_setting_value(name, value)?;
+    let parts = fetch_parts(client, workspace, id, op).await?;
+    require_pbir(&parts)?;
+    let report_json = part_content(&parts, REPORT_JSON).ok_or_else(|| {
+        FabioError::new(
+            ErrorCode::NotFound,
+            "report has no definition/report.json to edit",
+        )
+    })?;
+    let new_report_json = insert_setting(report_json, name, &coerced)?;
+    let new_parts = upsert_part(&parts, REPORT_JSON, &new_report_json);
+
+    if output::dry_run_guard(
+        cli,
+        op,
+        &serde_json::json!({ "id": id, "setting": name, "value": coerced }),
+    ) {
+        return Ok(());
+    }
+    push_parts(client, workspace, id, &new_parts, op).await?;
+    output::render_object(
+        cli,
+        &serde_json::json!({ "status": "setting_set", "id": id, "setting": name, "value": coerced }),
+        "status",
+    );
+    Ok(())
+}
+
+/// Validate `name`/`value` against the known report settings, coerce the value to
+/// its typed JSON form, and return `(new_report_json, coerced_value)`.
+///
+/// Pure (no I/O) so it is unit-testable. Errors — with the valid names/values
+/// enumerated — on an unknown setting name or a non-boolean value for a boolean
+/// setting. (Test-only composition of `coerce_setting_value` + `insert_setting`;
+/// production `set_setting` calls those two directly so it can fail fast on a bad
+/// name BEFORE any network call.)
+#[cfg(test)]
+fn apply_setting(report_json: &str, name: &str, value: &str) -> Result<(String, Value)> {
+    let coerced = coerce_setting_value(name, value)?;
+    let out = insert_setting(report_json, name, &coerced)?;
+    Ok((out, coerced))
+}
+
+/// Insert a pre-coerced setting value into `report.json`'s `settings` object,
+/// preserving all other content. Pure (no I/O).
+fn insert_setting(report_json: &str, name: &str, coerced: &Value) -> Result<String> {
+    let mut doc: Value = serde_json::from_str(report_json)
+        .map_err(|e| FabioError::invalid_input(format!("report.json is not valid JSON: {e}")))?;
+    let obj = doc
+        .as_object_mut()
+        .ok_or_else(|| FabioError::invalid_input("report.json is not a JSON object"))?;
+    let settings = obj
+        .entry("settings")
+        .or_insert_with(|| Value::Object(serde_json::Map::new()));
+    let settings_obj = settings
+        .as_object_mut()
+        .ok_or_else(|| FabioError::invalid_input("report.json `settings` is not an object"))?;
+    settings_obj.insert(name.to_string(), coerced.clone());
+    serde_json::to_string_pretty(&doc)
+        .map_err(|e| FabioError::new(ErrorCode::ApiError, e.to_string()).into())
+}
+
+/// Coerce a `--value` string to the typed JSON value the setting expects, or a
+/// teaching error enumerating the valid settings.
+fn coerce_setting_value(name: &str, value: &str) -> Result<Value> {
+    if BOOL_SETTINGS.contains(&name) {
+        match value.to_ascii_lowercase().as_str() {
+            "true" => Ok(Value::Bool(true)),
+            "false" => Ok(Value::Bool(false)),
+            _ => Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Setting '{name}' is a boolean; got '{value}'."),
+                "Use --value true or --value false.".to_string(),
+            )
+            .into()),
+        }
+    } else if STRING_SETTINGS.contains(&name) {
+        Ok(Value::from(value))
+    } else {
+        let mut all: Vec<&str> = BOOL_SETTINGS
+            .iter()
+            .chain(STRING_SETTINGS.iter())
+            .copied()
+            .collect();
+        all.sort_unstable();
+        Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Unknown report setting '{name}'."),
+            format!(
+                "Valid settings (report.json ExplorationSettings): {}. Boolean settings take true/false; string settings take a value.",
+                all.join(", ")
+            ),
+        )
+        .into())
+    }
+}
+
+// ── visual authoring ──────────────────────────────────────────────────────────
 /// A visual to add: its type, layout, title, and (data / text) content.
 pub(super) struct VisualSpec<'a> {
     pub visual_type: &'a str,
@@ -1062,6 +1228,54 @@ pub(super) fn page_not_found(name: &str) -> anyhow::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn apply_setting_coerces_bool_and_creates_settings_object() {
+        // report.json with no settings object yet.
+        let (out, coerced) = apply_setting(
+            "{\"layoutOptimization\":\"None\"}",
+            "hideVisualContainerHeader",
+            "true",
+        )
+        .unwrap();
+        assert_eq!(coerced, serde_json::json!(true));
+        let doc: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(doc["settings"]["hideVisualContainerHeader"], true);
+        // pre-existing top-level keys are preserved.
+        assert_eq!(doc["layoutOptimization"], "None");
+    }
+
+    #[test]
+    fn apply_setting_false_and_string_setting() {
+        let (out, _) = apply_setting(
+            "{\"settings\":{\"hideVisualContainerHeader\":true}}",
+            "filterPaneHiddenInEditMode",
+            "FALSE",
+        )
+        .unwrap();
+        let doc: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(doc["settings"]["filterPaneHiddenInEditMode"], false);
+        // existing setting untouched.
+        assert_eq!(doc["settings"]["hideVisualContainerHeader"], true);
+        // string setting keeps its raw value.
+        let (out2, coerced) = apply_setting(&out, "exportDataMode", "export").unwrap();
+        assert_eq!(coerced, serde_json::json!("export"));
+        let doc2: Value = serde_json::from_str(&out2).unwrap();
+        assert_eq!(doc2["settings"]["exportDataMode"], "export");
+    }
+
+    #[test]
+    fn apply_setting_rejects_unknown_name_and_non_bool_value() {
+        let unknown = apply_setting("{}", "notARealSetting", "true");
+        let err = unknown.unwrap_err().to_string();
+        assert!(err.contains("Unknown report setting"), "err: {err}");
+
+        let bad_bool = apply_setting("{}", "hideVisualContainerHeader", "yes");
+        assert!(
+            bad_bool.unwrap_err().to_string().contains("boolean"),
+            "a non true/false value for a boolean setting must be rejected"
+        );
+    }
 
     fn sample_parts() -> Vec<(String, String)> {
         vec![

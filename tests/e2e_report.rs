@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{TestConfig, extract_data, fabio, parse_json};
+use common::{TestConfig, extract_data, fabio, parse_json, unique_name};
 use predicates::prelude::*;
 use serial_test::serial;
 
@@ -438,6 +438,157 @@ fn report_validate_legacy_warns_deprecation() {
             .any(|w| w["code"] == "PBIR_LEGACY_DEPRECATED"),
         "expected PBIR_LEGACY_DEPRECATED warning, got: {warnings:?}"
     );
+}
+
+/// Offline: `report set-setting` fails FAST on an unknown setting name (before
+/// any network call), enumerating the valid setting names.
+#[test]
+fn report_set_setting_rejects_unknown_name() {
+    let assert = fabio()
+        .args([
+            "report",
+            "set-setting",
+            "--workspace",
+            "ws",
+            "--id",
+            "rid",
+            "--name",
+            "bogusSetting",
+            "--value",
+            "true",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("Unknown report setting") && stderr.contains("hideVisualContainerHeader"),
+        "unknown setting should enumerate valid names, got: {stderr}"
+    );
+}
+
+/// Live: scaffold a PBIR report, set two report-level settings, confirm
+/// get-settings surfaces them, then delete. Also proves set-setting is rejected
+/// on a PBIR-Legacy report (a bare `report create --dataset`).
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn report_settings_lifecycle() {
+    use std::io::Write;
+
+    let cfg = TestConfig::from_env();
+    let ws = &cfg.dest_workspace;
+
+    // A tiny import model with data to bind the report to.
+    let dir = tempfile::tempdir().unwrap();
+    let bim = dir.path().join("model.bim");
+    let mut f = std::fs::File::create(&bim).unwrap();
+    f.write_all(
+        br#"{"compatibilityLevel":1604,"model":{"defaultPowerBIDataSourceVersion":"powerBI_V3","culture":"en-US","tables":[{"name":"T","columns":[{"name":"Category","dataType":"string","sourceColumn":"[Category]","type":"calculatedTableColumn"},{"name":"Amount","dataType":"int64","sourceColumn":"[Amount]","type":"calculatedTableColumn"}],"partitions":[{"name":"T","mode":"import","source":{"type":"calculated","expression":"DATATABLE(\"Category\", STRING, \"Amount\", INTEGER, {{\"A\", 10}})"}}]}]}}"#,
+    )
+    .unwrap();
+    let sm_id = parse_json(
+        &fabio()
+            .args([
+                "semantic-model",
+                "create",
+                "--workspace",
+                ws,
+                "--name",
+                &unique_name("fabio_e2e_settings_model"),
+                "--file",
+                bim.to_str().unwrap(),
+            ])
+            .timeout(std::time::Duration::from_mins(2))
+            .assert()
+            .success(),
+    )["data"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Scaffold a PBIR report (scaffold produces enhanced PBIR).
+    let spec = r#"{"pages":[{"displayName":"Overview","visuals":[{"type":"card","measure":"Sum(T.Amount)"}]}]}"#;
+    let rep_id = parse_json(
+        &fabio()
+            .args([
+                "report",
+                "scaffold",
+                "--workspace",
+                ws,
+                "--name",
+                &unique_name("fabio_e2e_settings_report"),
+                "--dataset",
+                &sm_id,
+                "--spec",
+                spec,
+            ])
+            .timeout(std::time::Duration::from_mins(2))
+            .assert()
+            .success(),
+    )["data"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Initially no settings.
+    let gs = fabio()
+        .args(["report", "get-settings", "--workspace", ws, "--id", &rep_id])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    assert!(
+        extract_data(&parse_json(&gs))["settings"]
+            .as_object()
+            .unwrap()
+            .is_empty()
+    );
+
+    // Set a boolean setting.
+    let ss = fabio()
+        .args([
+            "report",
+            "set-setting",
+            "--workspace",
+            ws,
+            "--id",
+            &rep_id,
+            "--name",
+            "hideVisualContainerHeader",
+            "--value",
+            "true",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&ss))["value"], true);
+
+    // get-settings now surfaces it.
+    let gs2 = fabio()
+        .args(["report", "get-settings", "--workspace", ws, "--id", &rep_id])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    assert_eq!(
+        extract_data(&parse_json(&gs2))["settings"]["hideVisualContainerHeader"],
+        true
+    );
+
+    // Cleanup.
+    fabio()
+        .args(["report", "delete", "--workspace", ws, "--id", &rep_id])
+        .assert()
+        .success();
+    fabio()
+        .args([
+            "semantic-model",
+            "delete",
+            "--workspace",
+            ws,
+            "--id",
+            &sm_id,
+        ])
+        .assert()
+        .success();
 }
 
 /// Live: export a report → validate the exported PBIR → create a new report from

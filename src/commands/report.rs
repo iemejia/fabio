@@ -275,6 +275,43 @@ pub enum ReportCommand {
         #[arg(long)]
         name: String,
     },
+    /// Show the report-level settings (`report.json` `ExplorationSettings`) of a
+    /// PBIR report — read-only.
+    #[command(name = "get-settings", display_order = 9)]
+    GetSettings {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Report ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Set a report-level setting (`report.json` `ExplorationSettings`) of a PBIR
+    /// report by editing its definition, e.g. `hideVisualContainerHeader`,
+    /// `filterPaneHiddenInEditMode`, `allowInlineExploration`,
+    /// `isPersistentUserStateDisabled`, `useCrossReportDrillthrough`. Overwrites
+    /// the definition (irreversible) — dry-run guarded.
+    #[command(name = "set-setting", display_order = 9)]
+    SetSetting {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Report ID
+        #[arg(long)]
+        id: String,
+
+        /// Setting name (a `report.json` `ExplorationSettings` key). Unknown names
+        /// are rejected with the valid names enumerated.
+        #[arg(long)]
+        name: String,
+
+        /// Setting value: true/false for boolean settings, or a string for
+        /// string settings
+        #[arg(long)]
+        value: String,
+    },
     /// Add a visual to a page of a PBIR report by editing its definition. Build
     /// a data-bound visual with --category/--measure (fields as Table.Column or
     /// Sum(Table.Column)) or a textbox with --text. Overwrites the definition
@@ -535,6 +572,15 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) 
             id,
             name,
         } => authoring::set_active_page(cli, client, workspace, id, name).await,
+        ReportCommand::GetSettings { workspace, id } => {
+            authoring::get_settings(cli, client, workspace, id).await
+        }
+        ReportCommand::SetSetting {
+            workspace,
+            id,
+            name,
+            value,
+        } => authoring::set_setting(cli, client, workspace, id, name, value).await,
         ReportCommand::AddVisual {
             workspace,
             id,

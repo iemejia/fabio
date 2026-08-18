@@ -9986,6 +9986,50 @@
         "returns": "object",
         "destructive": true
       },
+      "get-settings": {
+        "description": "Show the report-level settings (`report.json` `ExplorationSettings`) of a PBIR report — read-only",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Report ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "set-setting": {
+        "description": "Set a report-level setting (`report.json` `ExplorationSettings`) of a PBIR report by editing its definition, e.g. `hideVisualContainerHeader`, `filterPaneHiddenInEditMode`, `allowInlineExploration`, `isPersistentUserStateDisabled`, `useCrossReportDrillthrough`. Overwrites the definition (irreversible) — dry-run guarded",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Report ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Setting name (a `report.json` `ExplorationSettings` key). Unknown names are rejected with the valid names enumerated"
+          },
+          "--value": {
+            "type": "string",
+            "required": true,
+            "description": "Setting value: true/false for boolean settings, or a string for string settings"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
       "add-visual": {
         "description": "Add a visual to a page of a PBIR report by editing its definition. Build a data-bound visual with --category/--measure (fields as Table.Column or Sum(Table.Column)) or a textbox with --text. Overwrites the definition (irreversible) — dry-run guarded",
         "flags": {
