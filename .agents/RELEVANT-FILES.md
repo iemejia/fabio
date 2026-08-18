@@ -233,6 +233,7 @@
 - `tests/e2e_user_data_function.rs`: User Data Function CRUD tests
 - `tests/e2e_variable_library.rs`: Variable Library CRUD + definition tests
 - `tests/e2e_sql_endpoint.rs`: SQL Endpoint tests
+- `src/commands/context/data/examples/sql_endpoint_refresh_metadata.json`: selective SQL endpoint refresh output example, including per-table failure details
 - `tests/e2e_profile.rs`: Profile save/use/list/show/delete tests
 - `tests/e2e_jobs.rs`: Jobs ledger tests
 - `tests/e2e_feedback.rs`: Feedback send/list tests

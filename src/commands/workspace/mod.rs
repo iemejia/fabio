@@ -545,14 +545,14 @@ pub enum WorkspaceCommand {
         workspace: String,
     },
     // ─── CMK Encryption ──────────────────────────────────────────────────────
-    /// Get workspace Customer-Managed Key (CMK) encryption settings (Preview)
+    /// Get workspace Customer-Managed Key (CMK) encryption settings
     #[command(display_order = 70)]
     GetEncryption {
         /// Workspace ID
         #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
-    /// Assign a Customer-Managed Key (CMK) to a workspace, enabling or rotating encryption (Preview)
+    /// Assign a Customer-Managed Key (CMK) to a workspace, enabling or rotating encryption
     #[command(display_order = 71)]
     AssignEncryption {
         /// Workspace ID
@@ -563,7 +563,7 @@ pub enum WorkspaceCommand {
         #[arg(long)]
         key_identifier: String,
     },
-    /// Reset workspace encryption by removing the CMK configuration (reverts to Microsoft-managed keys) (Preview)
+    /// Reset workspace encryption by removing the CMK configuration (reverts to Microsoft-managed keys)
     #[command(display_order = 72)]
     ResetEncryption {
         /// Workspace ID

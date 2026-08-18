@@ -258,6 +258,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/sql_database_import.json"),
     ),
     (
+        "sql-endpoint/refresh-metadata",
+        include_str!("data/examples/sql_endpoint_refresh_metadata.json"),
+    ),
+    (
         "data-pipeline/run",
         include_str!("data/examples/data_pipeline_run.json"),
     ),

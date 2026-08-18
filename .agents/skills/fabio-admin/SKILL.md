@@ -34,7 +34,7 @@ Manage workspaces
 | `fabio workspace add-role-assignment` | yes | Add a role assignment to a workspace |
 | `fabio workspace apply-tags` | yes | Apply tags to a workspace |
 | `fabio workspace assign-capacity` | yes | Assign a workspace to a capacity |
-| `fabio workspace assign-encryption` | yes | Assign a Customer-Managed Key (CMK) to a workspace, enabling or rotating encryption (Preview) |
+| `fabio workspace assign-encryption` | yes | Assign a Customer-Managed Key (CMK) to a workspace, enabling or rotating encryption |
 | `fabio workspace assign-to-domain` | yes | Assign workspace to a domain |
 | `fabio workspace clone` | yes | Clone workspace items from one workspace to another using bulk APIs |
 | `fabio workspace create` | yes | Create a new workspace |
@@ -46,7 +46,7 @@ Manage workspaces
 | `fabio workspace deprovision-identity` | yes | Deprovision a workspace identity |
 | `fabio workspace export-lifecycle-policy` | no | Export `OneLake` lifecycle policy |
 | `fabio workspace get-dataset-storage-format` | no | Get default dataset storage format via Power BI API |
-| `fabio workspace get-encryption` | no | Get workspace Customer-Managed Key (CMK) encryption settings (Preview) |
+| `fabio workspace get-encryption` | no | Get workspace Customer-Managed Key (CMK) encryption settings |
 | `fabio workspace get-firewall-rules` | no | Get workspace IP firewall rules |
 | `fabio workspace get-git-outbound-policy` | no | Get workspace git outbound policy |
 | `fabio workspace get-inbound-azure-resource-rules` | no | Get workspace inbound Azure resource instance rules |
@@ -67,7 +67,7 @@ Manage workspaces
 | `fabio workspace move-folder` | yes | Move a folder to another parent (or root) |
 | `fabio workspace provision-identity` | yes | Provision a workspace identity (managed identity) |
 | `fabio workspace recover-item` | yes | Recover a soft-deleted item and its recoverable descendants |
-| `fabio workspace reset-encryption` | yes | Reset workspace encryption by removing the CMK configuration (reverts to Microsoft-managed keys) (Preview) |
+| `fabio workspace reset-encryption` | yes | Reset workspace encryption by removing the CMK configuration (reverts to Microsoft-managed keys) |
 | `fabio workspace reset-shortcut-cache` | yes | Reset `OneLake` shortcut cache for a workspace |
 | `fabio workspace set-dataset-storage-format` | yes | Set default dataset storage format (Small or Large) via Power BI API |
 | `fabio workspace set-firewall-rules` | yes | Set workspace IP firewall rules (replaces all existing rules) |

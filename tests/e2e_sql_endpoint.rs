@@ -37,6 +37,11 @@ fn sql_endpoint_dry_run_refresh_metadata() {
             &cfg.source_workspace,
             "--id",
             "00000000-0000-0000-0000-000000000000",
+            "--timeout",
+            r#"{"value":10,"timeUnit":"Minutes"}"#,
+            "--recreate-tables",
+            "--tables",
+            r#"[{"schema":"sales","tableNames":["Orders","OrderDetails"]}]"#,
             "--dry-run",
         ])
         .assert()
@@ -46,6 +51,49 @@ fn sql_endpoint_dry_run_refresh_metadata() {
     let data = extract_data(&json);
     assert_eq!(data["dry_run"], true);
     assert_eq!(data["would_execute"], "sql-endpoint refresh-metadata");
+    assert_eq!(data["destructive"], true);
+    assert_eq!(
+        data["details"]["request"]["timeout"]["value"].as_f64(),
+        Some(10.0)
+    );
+    assert_eq!(data["details"]["request"]["timeout"]["timeUnit"], "Minutes");
+    assert_eq!(data["details"]["request"]["recreateTables"], true);
+    assert_eq!(data["details"]["request"]["tables"][0]["schema"], "sales");
+    assert_eq!(
+        data["details"]["request"]["tables"][0]["tableNames"],
+        serde_json::json!(["Orders", "OrderDetails"])
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sql_endpoint_refresh_metadata_rejects_too_many_tables() {
+    let cfg = TestConfig::from_env();
+    let names = (0..26)
+        .map(|index| format!(r#""Table{index}""#))
+        .collect::<Vec<_>>()
+        .join(",");
+    let tables = format!(r#"[{{"schema":"dbo","tableNames":[{names}]}}]"#);
+
+    let assert = fabio()
+        .args([
+            "sql-endpoint",
+            "refresh-metadata",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--tables",
+            &tables,
+            "--dry-run",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err_json["error"]["code"], "INVALID_INPUT");
 }
 
 // refresh-metadata renders the per-table sync results as a list so agents can
