@@ -96,6 +96,104 @@ fn sql_endpoint_refresh_metadata_rejects_too_many_tables() {
     assert_eq!(err_json["error"]["code"], "INVALID_INPUT");
 }
 
+// ─── Offline validation guards (no live tenant required) ─────────────────────
+//
+// The selective refresh-metadata request is validated client-side BEFORE any
+// network call, so these guards fire hermetically with dummy IDs and run in CI.
+
+/// Parse the first JSON error object from stderr.
+fn refresh_metadata_error(args: &[&str]) -> serde_json::Value {
+    let mut full = vec![
+        "sql-endpoint",
+        "refresh-metadata",
+        "--workspace",
+        "00000000-0000-0000-0000-000000000000",
+        "--id",
+        "00000000-0000-0000-0000-000000000000",
+    ];
+    full.extend_from_slice(args);
+
+    let assert = fabio().args(&full).assert().failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    stderr
+        .lines()
+        .find(|line| line.starts_with('{'))
+        .map_or_else(
+            || panic!("No JSON error in stderr: {stderr}"),
+            |line| serde_json::from_str(line).expect("parse stderr JSON"),
+        )
+}
+
+#[test]
+fn refresh_metadata_rejects_reserved_schema() {
+    let err =
+        refresh_metadata_error(&["--tables", r#"[{"schema":"sys","tableNames":["objects"]}]"#]);
+    assert_eq!(err["error"]["code"], "INVALID_INPUT");
+    assert!(
+        err["error"]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("reserved system schema")),
+        "unexpected message: {err}"
+    );
+}
+
+#[test]
+fn refresh_metadata_rejects_reserved_information_schema() {
+    let err = refresh_metadata_error(&[
+        "--tables",
+        r#"[{"schema":"INFORMATION_SCHEMA","tableNames":["TABLES"]}]"#,
+    ]);
+    assert_eq!(err["error"]["code"], "INVALID_INPUT");
+    assert!(
+        err["error"]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("reserved system schema")),
+        "unexpected message: {err}"
+    );
+}
+
+#[test]
+fn refresh_metadata_rejects_empty_table_names() {
+    let err = refresh_metadata_error(&["--tables", r#"[{"schema":"dbo","tableNames":[]}]"#]);
+    assert_eq!(err["error"]["code"], "INVALID_INPUT");
+    assert!(
+        err["error"]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("at least one table")),
+        "unexpected message: {err}"
+    );
+}
+
+#[test]
+fn refresh_metadata_rejects_invalid_timeout_time_unit() {
+    let err = refresh_metadata_error(&["--timeout", r#"{"value":5,"timeUnit":"Weeks"}"#]);
+    assert_eq!(err["error"]["code"], "INVALID_INPUT");
+    assert!(
+        err["error"]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("Invalid timeout timeUnit")),
+        "unexpected message: {err}"
+    );
+}
+
+#[test]
+fn refresh_metadata_rejects_non_positive_timeout() {
+    let err = refresh_metadata_error(&["--timeout", r#"{"value":0,"timeUnit":"Minutes"}"#]);
+    assert_eq!(err["error"]["code"], "INVALID_INPUT");
+    assert!(
+        err["error"]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("positive finite")),
+        "unexpected message: {err}"
+    );
+}
+
+#[test]
+fn refresh_metadata_rejects_malformed_tables_json() {
+    let err = refresh_metadata_error(&["--tables", "not-json"]);
+    assert_eq!(err["error"]["code"], "INVALID_INPUT");
+}
+
 // refresh-metadata renders the per-table sync results as a list so agents can
 // filter (e.g. --query "[?status!='Success']").
 #[test]
@@ -175,6 +273,57 @@ fn sql_endpoint_refresh_metadata_selective_returns_only_selected_table() {
         "unexpected tableName {table_name}"
     );
     assert!(rows[0].get("status").is_some());
+}
+
+// Selective refresh of a non-existent table: the API returns a per-table row
+// with status "Failure" and an `error` object carrying `errorCode`
+// "DeltaTableNotFound". Agents rely on this shape to filter failures
+// (e.g. --query "[?status!='Success']"). The command still exits 0 because the
+// LRO itself succeeded; failures are per-row.
+#[test]
+#[ignore = "requires live Fabric tenant with a lakehouse SQL endpoint"]
+#[serial]
+fn sql_endpoint_refresh_metadata_selective_missing_table_reports_failure_row() {
+    let cfg = TestConfig::from_env();
+    let Ok(endpoint_id) = std::env::var("FABIO_TEST_SQL_ENDPOINT_ID") else {
+        return; // skip when not configured
+    };
+    let schema =
+        std::env::var("FABIO_TEST_SQL_ENDPOINT_SCHEMA").unwrap_or_else(|_| "dbo".to_string());
+    // A table name that is extremely unlikely to exist in the endpoint.
+    let tables =
+        serde_json::json!([{ "schema": schema, "tableNames": ["fabio_nonexistent_table_zzz"] }])
+            .to_string();
+
+    let assert = fabio()
+        .args([
+            "sql-endpoint",
+            "refresh-metadata",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &endpoint_id,
+            "--tables",
+            &tables,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let rows = data.as_array().expect("expected a per-table result list");
+    assert_eq!(rows.len(), 1, "selective refresh must return one table");
+    assert_eq!(
+        rows[0]["status"], "Failure",
+        "missing table must report a Failure row: {}",
+        rows[0]
+    );
+    assert_eq!(
+        rows[0]["error"]["errorCode"], "DeltaTableNotFound",
+        "missing table must carry a DeltaTableNotFound error: {}",
+        rows[0]
+    );
 }
 
 #[test]
