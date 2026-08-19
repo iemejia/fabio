@@ -128,6 +128,55 @@ fn sql_endpoint_refresh_metadata_returns_table_list() {
     }
 }
 
+// Selective refresh: only the requested table is synchronized, and the API
+// returns it (schema-qualified for schema-enabled parent items).
+// Requires FABIO_TEST_SQL_ENDPOINT_ID and FABIO_TEST_SQL_ENDPOINT_TABLE
+// (optionally FABIO_TEST_SQL_ENDPOINT_SCHEMA, defaults to dbo).
+#[test]
+#[ignore = "requires live Fabric tenant with a lakehouse SQL endpoint"]
+#[serial]
+fn sql_endpoint_refresh_metadata_selective_returns_only_selected_table() {
+    let cfg = TestConfig::from_env();
+    let (Ok(endpoint_id), Ok(table)) = (
+        std::env::var("FABIO_TEST_SQL_ENDPOINT_ID"),
+        std::env::var("FABIO_TEST_SQL_ENDPOINT_TABLE"),
+    ) else {
+        return; // skip when not configured
+    };
+    let schema =
+        std::env::var("FABIO_TEST_SQL_ENDPOINT_SCHEMA").unwrap_or_else(|_| "dbo".to_string());
+    let tables = serde_json::json!([{ "schema": schema, "tableNames": [table] }]).to_string();
+
+    let assert = fabio()
+        .args([
+            "sql-endpoint",
+            "refresh-metadata",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &endpoint_id,
+            "--tables",
+            &tables,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let rows = data.as_array().expect("expected a per-table result list");
+    assert_eq!(rows.len(), 1, "selective refresh must return one table");
+    let table_name = rows[0]["tableName"]
+        .as_str()
+        .expect("result row missing 'tableName'");
+    // Schema-enabled parent items return "schema.table"; others return "table".
+    assert!(
+        table_name == table || table_name == format!("{schema}.{table}"),
+        "unexpected tableName {table_name}"
+    );
+    assert!(rows[0].get("status").is_some());
+}
+
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
