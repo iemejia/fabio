@@ -530,7 +530,7 @@ fn collect_calc_groups(parts: &[(String, String)]) -> Vec<Value> {
 
 fn group_exists(parts: &[(String, String)], name: &str) -> bool {
     if let Some(bim) = part_content(parts, "model.bim") {
-        return serde_json::from_str::<Value>(bim).ok().is_some_and(|j| {
+        return serde_json::from_str::<Value>(bim).is_ok_and(|j| {
             j.get("model")
                 .and_then(|m| m.get("tables"))
                 .and_then(Value::as_array)

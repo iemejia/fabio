@@ -2,13 +2,13 @@
 
 ## Overview
 
-Fabio is an agent-first CLI for Microsoft Fabric, written in Rust (edition 2024, MSRV 1.97.1). It manages 55+ command groups with 370+ subcommands across all Fabric artifact types. All output is structured JSON by default.
+Fabio is an agent-first CLI for Microsoft Fabric, written in Rust (edition 2024, MSRV 1.98.0). It manages 55+ command groups with 370+ subcommands across all Fabric artifact types. All output is structured JSON by default.
 
 ## Language & Framework Conventions
 
 ### Rust
 
-- **Edition 2024**, `rust-version = "1.97.1"`
+- **Edition 2024**, `rust-version = "1.98.0"`
 - Clippy: `pedantic` + `nursery` lints enabled, zero warnings required
 - `unsafe_code = "forbid"` — no unsafe code allowed anywhere
 - Use `thiserror` for error types, `anyhow` for propagation in command handlers

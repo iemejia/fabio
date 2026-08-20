@@ -671,7 +671,7 @@ fabio upgrade --check
 ```bash
 git clone https://github.com/iemejia/fabio.git && cd fabio
 
-# Install from source (requires Rust 1.97.1+)
+# Install from source (requires Rust 1.98.0+)
 cargo install --path .
 
 # Build

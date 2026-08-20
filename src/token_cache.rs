@@ -148,7 +148,7 @@ fn logout_marker_path() -> Result<PathBuf> {
 /// Check if the user has explicitly logged out.
 /// When true, the credential chain should NOT fall back to Azure CLI or other sources.
 pub fn is_explicitly_logged_out() -> bool {
-    logout_marker_path().ok().is_some_and(|p| p.exists())
+    logout_marker_path().is_ok_and(|p| p.exists())
 }
 
 /// Load cached token from disk.

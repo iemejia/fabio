@@ -807,8 +807,7 @@ pub fn get_git_metadata(source_dir: &Path) -> Option<SourceGitMetadata> {
         .args(["status", "--porcelain"])
         .current_dir(source_dir)
         .output()
-        .ok()
-        .is_some_and(|o| !o.stdout.is_empty());
+        .is_ok_and(|o| !o.stdout.is_empty());
 
     Some(SourceGitMetadata {
         commit,

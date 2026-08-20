@@ -1255,7 +1255,7 @@ async fn execute_init_params_with_connections(
             // GUID doesn't match any existing connection — ask user to fill in
             rules.push(json!({
                 "find_value": guid,
-                "replace_value": { "_ALL_": format!("TODO: replace with connection ID (original not found in tenant)") },
+                "replace_value": { "_ALL_": "TODO: replace with connection ID (original not found in tenant)" },
                 "item_type": "DataPipeline",
                 "_available_connections": available_connections.iter().map(|(id, name)| format!("{name}: {id}")).collect::<Vec<_>>()
             }));
