@@ -132,7 +132,7 @@ docker run --rm ghcr.io/iemejia/fabio --help
 Use a specific version:
 
 ```bash
-docker run --rm ghcr.io/iemejia/fabio:0.66.0 workspace list
+docker run --rm ghcr.io/iemejia/fabio:0.67.0 workspace list
 ```
 
 Pass credentials via environment variables for non-interactive use:
