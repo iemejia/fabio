@@ -32,8 +32,12 @@
 - `src/commands/warehouse/admin.rs`: connection-string/get-sql-pools-config/update-sql-pools-config/get-audit-settings/update-audit-settings/set-audit-actions
 - `src/commands/warehouse/restore_points.rs`: list/create/show/update/delete restore points + restore-to-point
 - `src/commands/warehouse/insights.rs`: queries-running/queries-frequent/queries-long-running/queries-history/queries-kill (TDS against DMVs and queryinsights schema)
-- `src/commands/warehouse/statistics.rs`: statistics-list/statistics-show/statistics-create/statistics-update/statistics-delete (TDS-based statistics CRUD)
-- `src/commands/sql_database/`: list/show/create/update/delete/query/plan/connection-string/import (TDS + type inference) + definitions/mirroring/cmk/audit + insights (queries-running/history/kill) + statistics (list/show/create/update/delete)
+ - `src/commands/warehouse/statistics.rs`: statistics-list/statistics-show/statistics-create/statistics-update/statistics-delete (TDS-based statistics CRUD)
+ - `src/commands/warehouse/mcp.rs`: `warehouse mcp-url` — emits the remote Fabric DW MCP server URLs (item-scoped + global) for external MCP clients
+ - `src/commands/warehouse/schema.rs`: `warehouse list-tables`/`describe-table` — INFORMATION_SCHEMA schema discovery (reuses the TDS path)
+ - `src/commands/warehouse/authoring.rs`: `warehouse copy-into` — COPY INTO bulk ingestion (dry-run + SAS redaction, readonly, HTTPS-storage validation)
+ - `src/commands/sql_mcp.rs`: `query --via-mcp` execution backend — routes T-SQL through the remote DW MCP server's `execute_query` tool via `mcp_client` (Fabric token, no database.windows.net token / TCP 1433); CSV→list-envelope parser + tool-name resolver (unit-tested)
+ - `src/commands/sql_database/`: list/show/create/update/delete/query/plan/connection-string/import (TDS + type inference) + definitions/mirroring/cmk/audit + insights (queries-running/history/kill) + statistics (list/show/create/update/delete)
 - `src/commands/tds_utils.rs`: Shared TDS utilities (resolve_sql_input, parse_connection_string, execute_and_render_sql, capture_query_plan, column_value_to_json)
 - `src/commands/dataagent.rs`: list/show/create/update/delete/query/get-definition/update-definition/publish + get-config/update-config, add/remove/list/show-datasource, select-tables, list-elements/describe-element, add/remove/list-fewshots/upload-fewshots
 - `src/commands/git/mod.rs`: GitCommand/ConnectionCommand/CredentialsCommand enums + execute() dispatch + shared `enrich_git_connect_error` + unit tests (directory module)
