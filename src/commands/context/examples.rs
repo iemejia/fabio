@@ -258,6 +258,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/warehouse_copy_into.json"),
     ),
     (
+        "warehouse/get-sql-pools-config",
+        include_str!("data/examples/warehouse_get_sql_pools_config.json"),
+    ),
+    (
         "semantic-model/query",
         include_str!("data/examples/semantic_model_query.json"),
     ),

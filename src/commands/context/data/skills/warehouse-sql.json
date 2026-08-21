@@ -65,7 +65,7 @@
     {"symptom": "FORBIDDEN executing a query", "fix": "You need appropriate workspace role / SQL permissions on the item."},
     {"symptom": "Selective refresh reports DeltaTableNotFound", "fix": "For schema-enabled parent items, use the table's actual schema. Non-schema-enabled items resolve under the default schema and cannot resolve tables under a non-default schema."}
   ],
-  "shared_references": ["throttling", "pagination", "lro"],
+  "shared_references": ["throttling", "pagination", "lro", "custom-sql-pools"],
   "see_also": [
     "fabio context persona data-engineer",
     "fabio context disambiguate sql-endpoint",

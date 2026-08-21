@@ -195,6 +195,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 | `fabio context best-practices throttling` | fabio transparently handles 429 (Too Many Requests) and gateway errors. Agents do NOT need to implement retry logic. |
 | `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |
 | `fabio context best-practices lro` | Many Fabric operations are async (return 202). fabio polls them automatically. Use --wait for job operations. |
+| `fabio context best-practices custom-sql-pools` | Custom SQL Pools cap the maximum share of warehouse compute a workload can consume (application-based classification), for workload ISOLATION and predictable resource usage — NOT a spending limit. Read the config with 'warehouse get-sql-pools-config' and apply one with 'warehouse update-sql-pools-config' (a beta JSON passthrough endpoint). Good candidates: ETL/data-loading, background processing, and Power BI reporting that must not starve other workloads. Under allocation-based billing, capping a bursty workload's peak allocation can indirectly reduce consumption (it runs longer at a lower vNode peak). |
 
 ## See also
 - fabio context persona data-engineer

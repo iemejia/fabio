@@ -1,0 +1,25 @@
+{
+  "name": "Customer-Managed Key (CMK) workspace encryption lifecycle",
+  "description": "Enable, verify, rotate, tenant-audit, and reset Customer-Managed Key (CMK) encryption for Fabric workspaces programmatically. Fabric encrypts data at rest with Microsoft-managed keys by default; CMK wraps that with your own Azure Key Vault key. The CMK REST APIs are GA, so this is fully scriptable for provisioning-time enablement, scheduled rotation, and tenant-wide encryption governance/drift detection.",
+  "prerequisites": [
+    "Authenticated via fabio auth login (or FABIO_ACCESS_TOKEN)",
+    "An Azure Key Vault key with a VERSIONLESS key URI (https://<vault>.vault.azure.net/keys/<key>) — Fabric rotates through the versionless URI",
+    "The Fabric workspace identity granted Key Vault permissions (Get/Wrap/Unwrap Key) on that key",
+    "Workspace Admin role for per-workspace encryption changes; Fabric Admin role for the tenant-wide audit (admin list-workspaces)"
+  ],
+  "steps": [
+    {"step_number": 1, "command": "fabio workspace get-encryption --workspace $WS", "description": "Inspect the current encryption state before changing anything (CMK applied? which key? status Enabled/EnableInProgress/Failed?).", "notes": "Ideal for validation, auditing, and drift detection. Read-only."},
+    {"step_number": 2, "command": "fabio workspace assign-encryption --workspace $WS --key-identifier https://my-vault.vault.azure.net/keys/my-key", "description": "Enable CMK on the workspace (or update to a different key). Sets keyIdentifier.", "notes": "The key URI MUST be versionless. Because it is versionless, KEY ROTATION flows through this SAME command — re-run assign-encryption after rotating the key material in Key Vault."},
+    {"step_number": 3, "command": "fabio workspace get-encryption --workspace $WS --query status -o plain", "description": "Poll until status becomes Enabled (it transitions through EnableInProgress).", "notes": "A Failed state usually means the workspace identity lacks Key Vault permissions on the key."},
+    {"step_number": 4, "command": "fabio admin list-workspaces --include encryption --encryption-status EnableInProgress", "description": "Tenant-wide governance: find every workspace mid-enablement (or Failed/Active) across the tenant in one call.", "notes": "Requires Fabric Admin. include=encryption adds each workspace's encryption block; --encryption-status filters server-side (Active | EnableInProgress | DisableInProgress | Failed | Disabled)."},
+    {"step_number": 5, "command": "fabio admin list-workspaces --include encryption --capacity-id $CAP", "description": "Scope the tenant encryption audit to a single capacity (e.g. verify all workspaces on a regulated capacity are CMK-protected).", "notes": "Combine with --encryption-status. --capacity-id maps to the API's capacityId filter."},
+    {"step_number": 6, "command": "fabio workspace reset-encryption --workspace $WS", "description": "OPTIONAL: revert the workspace to Microsoft-managed keys (disables CMK).", "notes": "Only when decommissioning CMK for a workspace. Confirm with the data owner first."}
+  ],
+  "tips": [
+    "Rotation is idempotent through the versionless URI: rotate the key in Key Vault, then re-run 'workspace assign-encryption' with the same --key-identifier to have Fabric pick up the new version.",
+    "Provision-time enablement: call 'workspace assign-encryption' right after 'workspace create' so data is CMK-wrapped from the start.",
+    "Scheduled fleet audit: 'fabio admin list-workspaces --include encryption --query \"[?encryption.status!='Active'].id\"' surfaces workspaces not fully CMK-protected.",
+    "All CMK APIs honor existing workspace/tenant-admin permissions — only authorized identities can view or change encryption posture.",
+    "See the Customer-managed keys for Fabric workspaces documentation for Key Vault setup and required workspace-identity permissions."
+  ]
+}

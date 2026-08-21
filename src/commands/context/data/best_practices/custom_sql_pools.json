@@ -1,0 +1,40 @@
+{
+  "topic": "custom-sql-pools",
+  "title": "Custom SQL Pools for Fabric Data Warehouse (workload governance)",
+  "summary": "Custom SQL Pools cap the maximum share of warehouse compute a workload can consume (application-based classification), for workload ISOLATION and predictable resource usage — NOT a spending limit. Read the config with 'warehouse get-sql-pools-config' and apply one with 'warehouse update-sql-pools-config' (a beta JSON passthrough endpoint). Good candidates: ETL/data-loading, background processing, and Power BI reporting that must not starve other workloads. Under allocation-based billing, capping a bursty workload's peak allocation can indirectly reduce consumption (it runs longer at a lower vNode peak).",
+  "what_it_is": "A governance boundary that limits the maximum percentage of warehouse resources a classified workload can access. Its primary purpose is workload isolation (keep a business-critical Power BI dashboard from contending with an aggressive ETL job); with allocation-based billing, governing allocation also affects consumption.",
+  "what_it_is_not": [
+    "NOT a spending limit, monthly budget cap, or '$X/month maximum' — it does not stop charges after a threshold.",
+    "NOT a performance boost — it TRADES performance for a smaller/steadier resource footprint (a capped query may run longer at a lower peak)."
+  ],
+  "good_candidates": [
+    "ETL / data loading that cares about completion, not finishing a few minutes faster.",
+    "Background processing / maintenance (non-interactive).",
+    "Power BI reporting you want to guarantee a fixed share so it cannot consume the whole warehouse during business hours.",
+    "Bursty workloads that frequently trigger the one-minute minimum allocation window — capping the scale peak can lower billed vNode-seconds."
+  ],
+  "commands": {
+    "read": "fabio warehouse get-sql-pools-config --workspace $WS",
+    "apply_inline": "fabio warehouse update-sql-pools-config --workspace $WS --content '<config JSON>'",
+    "apply_file": "fabio warehouse update-sql-pools-config --workspace $WS --file pools.json",
+    "preview": "fabio warehouse update-sql-pools-config --workspace $WS --file pools.json --dry-run"
+  },
+  "config_shape": {
+    "note": "The endpoint (POST/GET /workspaces/{ws}/warehouses/sqlPoolsConfiguration?beta=true) is workspace-scoped (governs all warehouses in the workspace), currently in preview/beta. The top-level shape is verified live; the per-pool classifier schema is defined by the beta API/portal and MUST NOT be hand-invented.",
+    "verified_get_response": {"customSQLPoolsEnabled": false, "customSQLPools": []},
+    "toggle": "customSQLPoolsEnabled (bool) turns the feature on/off; customSQLPools is the array of pool definitions."
+  },
+  "recommended_workflow": [
+    "1. Configure the pools ONCE in the Fabric Portal (Workspace settings) to produce a valid, classifier-correct configuration.",
+    "2. Capture it as source-of-truth JSON: fabio warehouse get-sql-pools-config --workspace $WS --query . -o json > pools.json",
+    "3. Version pools.json in git and re-apply it to other workspaces/environments: fabio warehouse update-sql-pools-config --workspace $WS2 --file pools.json (use --dry-run first).",
+    "This 'portal once, then GET → version → update' pattern avoids fabricating the beta pool schema while making the configuration reproducible and auditable."
+  ],
+  "gotchas": [
+    "The config is WORKSPACE-scoped (sqlPoolsConfiguration lives under /warehouses/, not a single warehouse id) — it governs all warehouses in the workspace.",
+    "It is a beta endpoint (?beta=true); the pool/classifier schema may change before GA.",
+    "Updating requires Contributor+ on the workspace; get requires Viewer.",
+    "Looking ahead (per Microsoft): identity-based classifiers and configurable built-in SELECT/NONSELECT workload groups are planned — future config shapes may add those."
+  ],
+  "see_also": ["fabio warehouse get-sql-pools-config --workspace $WS", "fabio context best-practices throttling", "Configure Custom SQL Pools in the Fabric Portal (Microsoft Learn)"]
+}

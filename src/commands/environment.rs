@@ -307,7 +307,9 @@ pub enum EnvironmentCommand {
         #[arg(long)]
         content: Option<String>,
 
-        /// Spark runtime version to set (e.g. "1.3" for Spark 3.5, "2.0" for the Spark 4.1 / Delta 4.2 preview). Merged into the existing staging compute (other fields preserved).
+        /// Spark runtime version to set (e.g. "1.3" for Spark 3.5 [current default], "2.0" for
+        /// Spark 4.1 / Delta 4.2 — GA but opt-in until it becomes the default ~late Sep 2026).
+        /// Merged into the existing staging compute (other fields preserved).
         #[arg(long, conflicts_with_all = ["file", "content"])]
         runtime_version: Option<String>,
 
