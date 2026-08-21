@@ -2558,6 +2558,40 @@ definition-authoring error hints, and the `definition_requirements` block merged
   aliases — promoted to failures with `--strict`. Verified `--strict` clean (0 warnings) against real
   exported CopyJob/Dataflow/DataPipeline/SparkJobDefinition/Notebook folders.
 
+## `query --via-mcp` execution backend + `execute_query` result shape — live-verified
+
+`warehouse query --via-mcp` and `sql-endpoint query --via-mcp` route the T-SQL
+through the remote Fabric DW MCP server's `execute_query` tool (via the generic
+`McpClient`) instead of a direct native-TDS connection. Shared impl:
+`src/commands/sql_mcp.rs`.
+
+- **Auth win**: `--via-mcp` uses `client.require_auth()` — the **Fabric** token
+  (`api.fabric.microsoft.com`), the same token every other fabio command uses — so
+  it needs NO separate `database.windows.net`-audience token
+  (`FABIO_SQL_ACCESS_TOKEN`) and no outbound TCP 1433. Live-verified: a `SELECT`
+  succeeded with only the Fabric token present.
+- **`execute_query` result shape** (live `tools/call`): `content` is an array of
+  MCP blocks —
+  1. a `resource` block: `{"type":"resource","resource":{"uri":"fabric://…/query-results/<guid>.csv","mimeType":"text/csv","text":"<CSV>"}}` — the result set as CSV (CRLF line endings, header row + data rows);
+  2. a `text` block: `{"type":"text","text":"Query returned N rows."}` — a summary.
+  fabio parses the CSV into the SAME list-of-objects envelope the TDS path produces
+  (`{"data":[{col:val,…}],"count":N}`), so `--via-mcp` is a drop-in for `query`.
+- **Values are strings (untyped)**: because results come back as CSV, every value is
+  a string — e.g. `Amount` is `"100"` via `--via-mcp` vs the integer `100` over
+  native TDS. The list shape is identical; only value types differ. This is the one
+  documented behavioral difference (native TDS is richer: typed values, plus
+  `plan`/`queries-*`/`statistics-*`, which the single-tool MCP path has no equivalent
+  for).
+- **Empty result set** → CSV with only a header row → `{"data":[],"count":0}` (matches
+  TDS). **DDL/DML** (no result set) → rendered as `{"status":"executed","message":…}`
+  from the server's text summary.
+- **SQL errors come back as a tool RESULT with `isError:true`** (NOT a JSON-RPC
+  error): the `text` block carries e.g. `Error -32002: Invalid object name
+  'dbo.NoSuchTable'.`. fabio surfaces it as an `API_ERROR` with a hint to review the
+  T-SQL or drop `--via-mcp`.
+- **Tool name resolution**: prefers `execute_query` (live) / `executeSQL` (docs);
+  falls back to the sole tool if a single-tool server renamed it.
+
 ## Warehouse COPY INTO bulk ingestion (`warehouse copy-into`) — live-verified
 
 `fabio warehouse copy-into` generates and runs a Fabric `COPY INTO` statement over

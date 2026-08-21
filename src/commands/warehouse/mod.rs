@@ -114,6 +114,10 @@ pub enum WarehouseCommand {
         /// SQL query to execute (prefix with @ to read from file, omit to read from stdin)
         #[arg(long)]
         sql: Option<String>,
+
+        /// Execute via the remote Fabric DW MCP server (Fabric token, no direct TDS/1433)
+        #[arg(long)]
+        via_mcp: bool,
     },
     /// Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query
     #[command(display_order = 11)]
@@ -655,10 +659,24 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
             id,
             hard_delete,
         } => crud::delete_warehouse(cli, client, workspace, id, *hard_delete).await,
-        WarehouseCommand::Query { workspace, id, sql } => {
-            Box::pin(query::query(cli, client, workspace, id, sql.as_deref()))
+        WarehouseCommand::Query {
+            workspace,
+            id,
+            sql,
+            via_mcp,
+        } => {
+            if *via_mcp {
+                let sql_text = crate::commands::tds_utils::resolve_sql_input(sql.as_deref())?;
+                Box::pin(crate::commands::sql_mcp::execute_via_mcp(
+                    cli, client, workspace, id, &sql_text,
+                ))
                 .await
                 .map_err(|e| enrich_forbidden(e, "warehouse query", "Viewer"))
+            } else {
+                Box::pin(query::query(cli, client, workspace, id, sql.as_deref()))
+                    .await
+                    .map_err(|e| enrich_forbidden(e, "warehouse query", "Viewer"))
+            }
         }
         WarehouseCommand::Plan { workspace, id, sql } => {
             Box::pin(query::plan(cli, client, workspace, id, sql.as_deref()))

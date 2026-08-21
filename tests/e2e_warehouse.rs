@@ -1681,3 +1681,109 @@ fn warehouse_copy_into_lifecycle() {
         .success();
     let _ = std::fs::remove_file(&csv);
 }
+
+// ---------------------------------------------------------------------------
+// warehouse query --via-mcp: execute over the remote Fabric DW MCP server
+// ---------------------------------------------------------------------------
+
+/// Live test: run a SELECT via the remote MCP server (`--via-mcp`) and assert it
+/// returns the same list envelope as the native-TDS path. Values come back as
+/// strings (CSV is untyped) — the one documented difference — so compare as text.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_query_via_mcp_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("wh_viamcp");
+
+    // Create a warehouse + a table with one known row.
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let wh_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    fabio()
+        .args([
+            "warehouse",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &wh_id,
+            "--sql",
+            "CREATE TABLE dbo.viamcp (Region VARCHAR(50), Amount INT); \
+             INSERT INTO dbo.viamcp VALUES ('West', 100)",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    // Query via the remote MCP server — no FABIO_SQL_ACCESS_TOKEN needed.
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &wh_id,
+            "--via-mcp",
+            "--sql",
+            "SELECT Region, Amount FROM dbo.viamcp",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let rows = extract_data(&json).as_array().unwrap().clone();
+    assert_eq!(json["count"], 1);
+    assert_eq!(rows[0]["Region"], "West");
+    // CSV is untyped, so Amount comes back as the string "100".
+    assert_eq!(rows[0]["Amount"], "100");
+
+    // A bad query surfaces the server error (not a panic).
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &wh_id,
+            "--via-mcp",
+            "--sql",
+            "SELECT * FROM dbo.no_such_table_here",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err["error"]["code"], "API_ERROR");
+
+    // Clean up.
+    fabio()
+        .args([
+            "warehouse",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &wh_id,
+            "--hard-delete",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+}

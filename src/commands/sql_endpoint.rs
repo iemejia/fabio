@@ -69,6 +69,10 @@ pub enum SqlEndpointCommand {
         /// SQL query text, @file path, or omit for stdin
         #[arg(long)]
         sql: Option<String>,
+
+        /// Execute via the remote Fabric DW MCP server (Fabric token, no direct TDS/1433)
+        #[arg(long)]
+        via_mcp: bool,
     },
     /// Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query
     #[command(display_order = 5)]
@@ -302,8 +306,21 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlEndpointComm
             )
             .await
         }
-        SqlEndpointCommand::Query { workspace, id, sql } => {
-            Box::pin(query(cli, client, workspace, id, sql.as_deref())).await
+        SqlEndpointCommand::Query {
+            workspace,
+            id,
+            sql,
+            via_mcp,
+        } => {
+            if *via_mcp {
+                let sql_text = resolve_sql_input(sql.as_deref())?;
+                Box::pin(crate::commands::sql_mcp::execute_via_mcp(
+                    cli, client, workspace, id, &sql_text,
+                ))
+                .await
+            } else {
+                Box::pin(query(cli, client, workspace, id, sql.as_deref())).await
+            }
         }
         SqlEndpointCommand::Plan { workspace, id, sql } => {
             Box::pin(plan(cli, client, workspace, id, sql.as_deref())).await

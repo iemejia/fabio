@@ -5211,6 +5211,10 @@
           "--sql": {
             "type": "string",
             "description": "SQL query to execute (prefix with @ to read from file, omit to read from stdin)"
+          },
+          "--via-mcp": {
+            "type": "bool",
+            "description": "Execute via the remote Fabric DW MCP server (Fabric token, no direct TDS/1433)"
           }
         },
         "mutates": true,
@@ -5311,7 +5315,7 @@
         ]
       },
       "copy-into": {
-        "description": "Bulk-load files from Azure storage / OneLake into a table with `COPY INTO`",
+        "description": "Bulk-load files from Azure storage / `OneLake` into a table with `COPY INTO`",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -5331,7 +5335,7 @@
           "--source": {
             "type": "string",
             "required": true,
-            "description": "Source location: HTTPS Azure storage / OneLake URL (file or folder/wildcard)"
+            "description": "Source location: HTTPS Azure storage / `OneLake` URL (file or folder/wildcard)"
           },
           "--file-type": {
             "type": "string",
@@ -6613,6 +6617,10 @@
           "--sql": {
             "type": "string",
             "description": "SQL query text, @file path, or omit for stdin"
+          },
+          "--via-mcp": {
+            "type": "bool",
+            "description": "Execute via the remote Fabric DW MCP server (Fabric token, no direct TDS/1433)"
           }
         },
         "mutates": false,

@@ -845,3 +845,47 @@ fn sql_endpoint_schema_discovery_lifecycle() {
     assert_eq!(cols[0]["ORDINAL_POSITION"], 1);
     assert!(cols.iter().all(|c| c["COLUMN_NAME"].is_string()));
 }
+
+/// Live test: `sql-endpoint query --via-mcp` runs over the remote Fabric DW MCP
+/// server and returns the list envelope (values as strings — CSV is untyped).
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sql_endpoint_query_via_mcp() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args(["sql-endpoint", "list", "--workspace", &cfg.source_workspace])
+        .assert()
+        .success();
+    let items = extract_data(&parse_json(&assert))
+        .as_array()
+        .unwrap()
+        .clone();
+    let Some(ep_id) = items.first().and_then(|e| e["id"].as_str()) else {
+        eprintln!("No SQL endpoint in source workspace; skipping --via-mcp test");
+        return;
+    };
+
+    let assert = fabio()
+        .args([
+            "sql-endpoint",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            ep_id,
+            "--via-mcp",
+            "--sql",
+            "SELECT TOP 2 TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES ORDER BY TABLE_NAME",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(extract_data(&json).is_array());
+    // Result columns are surfaced as object keys, matching the native-TDS shape.
+    if let Some(first) = extract_data(&json).as_array().unwrap().first() {
+        assert!(first["TABLE_NAME"].is_string());
+    }
+}
