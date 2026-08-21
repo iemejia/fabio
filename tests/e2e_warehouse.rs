@@ -5,6 +5,8 @@ mod common;
 use common::{TestConfig, extract_data, fabio, parse_json};
 use predicates::prelude::*;
 use serial_test::serial;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[test]
 #[ignore = "requires live Fabric tenant"]
@@ -1150,4 +1152,138 @@ fn warehouse_create_collation_in_body() {
         extract_data(&json)["details"]["collation"],
         "Latin1_General_100_CI_AS_KS_WS_SC_UTF8"
     );
+}
+
+// ---------------------------------------------------------------------------
+// warehouse mcp-url: emit the remote Fabric Data Warehouse MCP server URLs
+// ---------------------------------------------------------------------------
+
+/// Hermetic (mock-server) test: an existing warehouse yields the item-scoped +
+/// global remote MCP server URLs with `exists=true` and a consumption note; a
+/// missing warehouse still yields the deterministic URLs with `exists=false` +
+/// hint. Uses a loopback mock endpoint so no live tenant is required.
+#[test]
+fn warehouse_mcp_url_mocked_exists_and_missing() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let workspace = "00000000-0000-0000-0000-000000000001";
+    let present = "00000000-0000-0000-0000-0000000000aa";
+    let missing = "00000000-0000-0000-0000-0000000000bb";
+
+    let (server_uri, _server) = rt.block_on(async {
+        let server = MockServer::start().await;
+        // Only the "present" warehouse GET succeeds; the missing one 404s (default).
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/workspaces/{workspace}/warehouses/{present}"
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": present,
+                "displayName": "MockWH",
+                "type": "Warehouse"
+            })))
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    // Existing warehouse: exists=true, note present, no hint.
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "warehouse",
+            "mcp-url",
+            "--workspace",
+            workspace,
+            "--id",
+            present,
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&assert)).clone();
+    assert_eq!(
+        data["mcpUrl"].as_str().unwrap(),
+        format!("{server_uri}/mcp/dataPlane/workspaces/{workspace}/items/{present}/sqlEndpoint")
+    );
+    assert_eq!(
+        data["globalMcpUrl"].as_str().unwrap(),
+        format!("{server_uri}/mcp/dataPlane/sqlEndpoint")
+    );
+    assert_eq!(data["transport"], "http");
+    assert_eq!(data["exists"], true);
+    assert!(data["note"].as_str().unwrap().contains("execute_query"));
+    assert!(data["hint"].is_null());
+
+    // Missing warehouse: deterministic URL still emitted, exists=false + hint.
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "warehouse",
+            "mcp-url",
+            "--workspace",
+            workspace,
+            "--id",
+            missing,
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&assert)).clone();
+    assert!(
+        data["mcpUrl"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/items/{missing}/sqlEndpoint"))
+    );
+    assert_eq!(data["exists"], false);
+    assert!(data["note"].is_null());
+    assert!(!data["hint"].as_str().unwrap().is_empty());
+}
+
+/// Live test: emit the remote MCP server URL for a real warehouse and assert the
+/// canonical `api.fabric.microsoft.com` shape with `exists=true`.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_mcp_url_lifecycle() {
+    let cfg = TestConfig::from_env();
+
+    // Find (or skip if none) a warehouse in the source workspace.
+    let assert = fabio()
+        .args(["warehouse", "list", "--workspace", &cfg.source_workspace])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let items = extract_data(&json).as_array().unwrap().clone();
+    let Some(wh_id) = items.first().and_then(|w| w["id"].as_str()) else {
+        eprintln!("No warehouse in source workspace; skipping mcp-url lifecycle test");
+        return;
+    };
+
+    let expected = format!(
+        "https://api.fabric.microsoft.com/v1/mcp/dataPlane/workspaces/{}/items/{}/sqlEndpoint",
+        cfg.source_workspace, wh_id
+    );
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "mcp-url",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            wh_id,
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&assert)).clone();
+    assert_eq!(data["mcpUrl"], expected);
+    assert_eq!(
+        data["globalMcpUrl"],
+        "https://api.fabric.microsoft.com/v1/mcp/dataPlane/sqlEndpoint"
+    );
+    assert_eq!(data["exists"], true);
+    assert!(data["note"].as_str().unwrap().contains("MCP server"));
 }

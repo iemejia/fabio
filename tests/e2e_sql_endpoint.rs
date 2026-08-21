@@ -6,6 +6,8 @@ use common::{TestConfig, extract_count, extract_data, fabio, parse_json};
 use serial_test::serial;
 use std::fs;
 use tempfile::TempDir;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[test]
 #[ignore = "requires live Fabric tenant"]
@@ -706,4 +708,76 @@ fn sql_endpoint_pool_insights() {
         .success();
     let json = parse_json(&assert);
     assert!(json.get("data").is_some());
+}
+
+/// Hermetic (mock-server) test for `sql-endpoint mcp-url`: an existing SQL
+/// analytics endpoint yields the item-scoped + global remote MCP server URLs
+/// (`.../items/{id}/sqlEndpoint`) with `exists=true`; a missing one still emits
+/// the deterministic URLs with `exists=false` + hint. No live tenant required.
+#[test]
+fn sql_endpoint_mcp_url_mocked_exists_and_missing() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let workspace = "00000000-0000-0000-0000-000000000001";
+    let present = "00000000-0000-0000-0000-0000000000cc";
+    let missing = "00000000-0000-0000-0000-0000000000dd";
+
+    let (server_uri, _server) = rt.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/workspaces/{workspace}/sqlEndpoints/{present}"
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": present,
+                "displayName": "MockSqlEp"
+            })))
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "sql-endpoint",
+            "mcp-url",
+            "--workspace",
+            workspace,
+            "--id",
+            present,
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&assert)).clone();
+    assert_eq!(
+        data["mcpUrl"].as_str().unwrap(),
+        format!("{server_uri}/mcp/dataPlane/workspaces/{workspace}/items/{present}/sqlEndpoint")
+    );
+    assert_eq!(
+        data["globalMcpUrl"].as_str().unwrap(),
+        format!("{server_uri}/mcp/dataPlane/sqlEndpoint")
+    );
+    assert_eq!(data["exists"], true);
+    assert!(data["hint"].is_null());
+
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "sql-endpoint",
+            "mcp-url",
+            "--workspace",
+            workspace,
+            "--id",
+            missing,
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&assert)).clone();
+    assert_eq!(data["exists"], false);
+    assert!(!data["hint"].as_str().unwrap().is_empty());
 }

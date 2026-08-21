@@ -43,6 +43,7 @@ Manage warehouses and run SQL queries
 | `fabio warehouse get-sql-pools-config` | no | Get SQL pools configuration for a workspace |
 | `fabio warehouse list` | no | List warehouses in a workspace |
 | `fabio warehouse list-restore-points` | no | List restore points for a warehouse |
+| `fabio warehouse mcp-url` | no | Print the remote Fabric Data Warehouse MCP server URLs (item-scoped + global) for agent consumption |
 | `fabio warehouse plan` | no | Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query |
 | `fabio warehouse pool-insights` | no | Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`) |
 | `fabio warehouse queries-frequent` | no | List frequently-run queries (from `queryinsights.frequently_run_queries`) |
@@ -105,6 +106,7 @@ Manage SQL endpoints (analytics endpoints for lakehouses)
 | `fabio sql-endpoint connection-string` | no | Get the SQL connection string for a SQL endpoint |
 | `fabio sql-endpoint get-audit-settings` | no | Get SQL audit settings for the endpoint |
 | `fabio sql-endpoint list` | no | List SQL endpoints in a workspace |
+| `fabio sql-endpoint mcp-url` | no | Print the remote Fabric Data Warehouse MCP server URLs (item-scoped + global) for agent consumption |
 | `fabio sql-endpoint plan` | no | Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query |
 | `fabio sql-endpoint pool-insights` | no | Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`) |
 | `fabio sql-endpoint queries-frequent` | no | List frequently-run queries (from `queryinsights.frequently_run_queries`) |
@@ -138,6 +140,7 @@ Manage warehouse snapshots
 - --sql @file.sql or stdin piping for large/multiline queries over inline strings.
 - queries-history / queries-long-running for diagnostics instead of ad-hoc DMV queries.
 - 'queries-history --label <name>' (with the allocated-CPU + data-scanned-remote/memory/disk columns) to compare labeled executions — e.g. tag queries with OPTION (LABEL='Regular'|'Clustered') to assess clustering effectiveness.
+- 'warehouse mcp-url' / 'sql-endpoint mcp-url' when the user wants an external MCP client (VS Code agent mode, Copilot) to connect to the remote Fabric Data Warehouse MCP server; otherwise use fabio's native query/plan/insights for scripted execution.
 
 ### AVOID
 - Using a Warehouse for OLTP or a SQL Database for heavy analytics — pick the surface that matches the workload.
@@ -153,6 +156,7 @@ Manage warehouse snapshots
 - queryinsights.* views populate asynchronously (up to ~15 min after the first queries on a fresh warehouse) — 'Invalid object name queryinsights.*' is initialization lag, not a bug.
 - 'warehouse set-retention' sets the time-travel window (1-120 days); DECREASING it is irreversible (background GC permanently drops older history) — it is destructive and dry-run guarded. 'warehouse create --collation' is create-time only (case-sensitive default vs Latin1_General_100_CI_AS_KS_WS_SC_UTF8).
 - 'sql-endpoint refresh-metadata --tables' accepts a JSON array of {schema,tableNames} selectors (inline or @file), with at most 25 total tables. Its optional --timeout is a Duration JSON object with numeric value and a PascalCase timeUnit (Seconds, Minutes, Hours, or Days). Schema-enabled endpoints return schema-qualified tableName values; non-schema-enabled endpoints resolve under the default schema.
+- 'warehouse mcp-url' / 'sql-endpoint mcp-url' emit the deterministic remote Fabric Data Warehouse MCP server URLs (preview) for external MCP clients (VS Code agent mode, Copilot, Copilot Studio, Azure AI Foundry) — an item-scoped mcpUrl (.../items/{id}/sqlEndpoint, binds to one item) plus a global globalMcpUrl (.../mcp/dataPlane/sqlEndpoint, agent supplies workspace+item per-prompt). That remote server exposes ONE T-SQL execution tool (live tool name 'execute_query'; docs call it 'executeSQL') and NO schema/metadata tools — it's for interactive Copilot SQL authoring. For scripted/composable execution, execution plans, query insights, and statistics, use fabio's native 'warehouse query'/'plan'/'queries-*'/'statistics-*' instead of emitting an MCP URL.
 
 ## Troubleshooting
 | Symptom | Fix |

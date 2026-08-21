@@ -7,7 +7,7 @@ use crate::cli::Cli;
 use crate::client::FabricClient;
 use crate::commands::tds_utils::{
     capture_query_plan, execute_and_render_sql, parse_connection_string, pool_insights_sql,
-    resolve_sql_input,
+    render_sql_mcp_url, resolve_sql_input,
 };
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
@@ -83,6 +83,17 @@ pub enum SqlEndpointCommand {
         /// SQL query to plan (prefix with @ to read from file, omit to read from stdin)
         #[arg(long)]
         sql: Option<String>,
+    },
+    /// Print the remote Fabric Data Warehouse MCP server URLs (item-scoped + global) for agent consumption
+    #[command(display_order = 7)]
+    McpUrl {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL endpoint ID
+        #[arg(long)]
+        id: String,
     },
     /// Refresh metadata for all or selected tables in a SQL endpoint (LRO)
     #[command(display_order = 6)]
@@ -266,6 +277,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlEndpointComm
         SqlEndpointCommand::Plan { workspace, id, sql } => {
             Box::pin(plan(cli, client, workspace, id, sql.as_deref())).await
         }
+        SqlEndpointCommand::McpUrl { workspace, id } => mcp_url(cli, client, workspace, id).await,
         SqlEndpointCommand::RefreshMetadata {
             workspace,
             id,
@@ -443,6 +455,26 @@ async fn connection_string(
 
     let data = client.get(&url).await?;
     output::render_object(cli, &data, "connectionString");
+    Ok(())
+}
+
+/// Print the remote Fabric Data Warehouse MCP server URLs (item-scoped + global)
+/// for a SQL analytics endpoint, plus a best-effort existence check.
+///
+/// The remote MCP server's item-scoped endpoint is generic over item types
+/// (`.../items/{id}/sqlEndpoint`), so it works for both a Warehouse and a SQL
+/// analytics endpoint item. See `warehouse mcp-url` for the Warehouse analog.
+async fn mcp_url(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let exists = client
+        .get(&format!("/workspaces/{workspace}/sqlEndpoints/{id}"))
+        .await
+        .is_ok();
+
+    let hint = format!(
+        "SQL endpoint '{id}' was not found in workspace '{workspace}'. \
+         List SQL endpoints with: fabio sql-endpoint list --workspace {workspace}"
+    );
+    render_sql_mcp_url(cli, workspace, id, exists, &hint);
     Ok(())
 }
 

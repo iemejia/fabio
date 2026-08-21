@@ -5241,6 +5241,26 @@
         "mutates": false,
         "returns": "object"
       },
+      "mcp-url": {
+        "description": "Print the remote Fabric Data Warehouse MCP server URLs (item-scoped + global) for agent consumption",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio warehouse mcp-url --workspace $WS --id $WH"
+        ]
+      },
       "connection-string": {
         "description": "Get the connection string for a warehouse",
         "flags": {
@@ -6515,6 +6535,26 @@
         },
         "mutates": false,
         "returns": "object"
+      },
+      "mcp-url": {
+        "description": "Print the remote Fabric Data Warehouse MCP server URLs (item-scoped + global) for agent consumption",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "SQL endpoint ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio sql-endpoint mcp-url --workspace $WS --id $SQLEP"
+        ]
       },
       "refresh-metadata": {
         "description": "Refresh metadata for all or selected tables in a SQL endpoint (LRO)",

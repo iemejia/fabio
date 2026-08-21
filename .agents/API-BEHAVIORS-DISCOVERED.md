@@ -2558,6 +2558,50 @@ definition-authoring error hints, and the `definition_requirements` block merged
   aliases — promoted to failures with `--strict`. Verified `--strict` clean (0 warnings) against real
   exported CopyJob/Dataflow/DataPipeline/SparkJobDefinition/Notebook folders.
 
+## Fabric Data Warehouse MCP Server (Preview) — live-verified
+
+The remote **Fabric Data Warehouse MCP server** (preview) is a Microsoft-hosted MCP
+endpoint that lets agents run T-SQL against a Warehouse or SQL analytics endpoint.
+`fabio warehouse mcp-url` and `fabio sql-endpoint mcp-url` construct the endpoint URLs
+(agents cannot guess the `/mcp/dataPlane/.../sqlEndpoint` shape). Docs:
+<https://learn.microsoft.com/fabric/data-warehouse/data-warehouse-mcp-server>.
+
+- **Two endpoint shapes:**
+  - Item-scoped: `{fabricBase}/mcp/dataPlane/workspaces/{ws}/items/{id}/sqlEndpoint`
+    = `https://api.fabric.microsoft.com/v1/mcp/dataPlane/workspaces/{ws}/items/{id}/sqlEndpoint`
+    (binds the connection to one Warehouse / SQL analytics endpoint item). The
+    `/items/{id}/` path is generic over item type, so the SAME shape serves a
+    Warehouse item and a SQL analytics endpoint item — `fabio sql-endpoint mcp-url`
+    and `fabio warehouse mcp-url` emit the identical suffix, differing only in the
+    id passed.
+  - Global: `{fabricBase}/mcp/dataPlane/sqlEndpoint` (the agent supplies workspace +
+    item context per-prompt / via tool arguments).
+- **The endpoint is a real MCP server (streamable HTTP transport)**. Live-verified: a
+  JSON-RPC `initialize` handshake (protocolVersion `2025-06-18`) returns
+  `serverInfo: {"name":"microsoft.fabric.sqlEndpoint","version":"0.1.0",`
+  `"description":"Fabric SQL Endpoint – executes T-SQL queries"}` with a `tools`
+  capability (`listChanged: true`).
+- **Tool name is `execute_query`, NOT `executeSQL`.** The Microsoft docs "Available
+  tools" table names the single tool `executeSQL`, but the live server's `tools/list`
+  returns exactly ONE tool named **`execute_query`** (title "Execute T-SQL Query").
+  Its `inputSchema` requires `workspaceId` (string), `itemId` (string), and `query`
+  (string, the T-SQL text); results come back as an embedded CSV resource. Annotations:
+  `readOnlyHint:false`, `destructiveHint:true`, `idempotentHint:true`,
+  `openWorldHint:false`. There are NO separate schema/metadata/history tools — agents
+  discover schema by running `INFORMATION_SCHEMA.*` / `sys.*` queries through
+  `execute_query`.
+- **Auth**: Microsoft Entra ID OAuth 2.0; the signed-in user's existing Fabric +
+  SQL permissions apply (no separate security model). This is a governed data-plane
+  path — unlike fabio's native TDS execution it does NOT need a separate
+  `database.windows.net`-audience token.
+- **fabio's role**: `warehouse mcp-url` / `sql-endpoint mcp-url` are URL *emitters*
+  (fabio does not proxy the server) — a best-effort existence GET annotates
+  `exists`; when false, fabio still emits the deterministic URLs plus a hint. Division
+  of labor: the remote MCP server is for interactive Copilot-in-VS-Code SQL authoring;
+  fabio's native `warehouse`/`sql-endpoint` `query`/`plan`/`queries-*`/`statistics-*`
+  are for scripted/composable execution, execution plans, monitoring, and statistics
+  (which the single-tool MCP server does not expose).
+
 ## Ontology MCP Server (Preview) — live-verified
 
 A Fabric ontology (preview) item can be consumed as a Model Context Protocol (MCP)

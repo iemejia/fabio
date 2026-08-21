@@ -614,6 +614,85 @@ pub async fn capture_query_plan(
     .await
 }
 
+// ─── Fabric Data Warehouse remote MCP server URLs ────────────────────────────
+//
+// The remote Fabric Data Warehouse MCP server (preview) is a Microsoft-hosted MCP
+// endpoint that exposes a single T-SQL execution tool (live tool name
+// `execute_query`; the docs call it `executeSQL`) over streamable HTTP. External
+// MCP clients (VS Code agent mode, GitHub Copilot, Copilot Studio, Azure AI
+// Foundry, ...) connect to it, signing in with Fabric credentials; the user's
+// existing Fabric + SQL permissions apply. fabio constructs the deterministic URLs
+// so agents don't have to guess the `/mcp/dataPlane/.../sqlEndpoint` shape. This is
+// the Warehouse / SQL-analytics-endpoint analog of `kql-database mcp-url` and
+// `ontology mcp-url`.
+//
+// See: <https://learn.microsoft.com/fabric/data-warehouse/data-warehouse-mcp-server>
+
+/// Build the **global** Fabric Data Warehouse remote MCP server URL.
+///
+/// The global endpoint lets an agent work across warehouses by supplying the
+/// workspace/item context per-prompt: `{base}/mcp/dataPlane/sqlEndpoint`.
+#[must_use]
+pub fn global_sql_mcp_url(base: &str) -> String {
+    format!("{}/mcp/dataPlane/sqlEndpoint", base.trim_end_matches('/'))
+}
+
+/// Build the **item-scoped** Fabric Data Warehouse remote MCP server URL.
+///
+/// The item-scoped endpoint binds the connection to a specific warehouse or SQL
+/// analytics endpoint item:
+/// `{base}/mcp/dataPlane/workspaces/{workspace}/items/{id}/sqlEndpoint`.
+#[must_use]
+pub fn item_sql_mcp_url(base: &str, workspace: &str, id: &str) -> String {
+    let base = base.trim_end_matches('/');
+    format!("{base}/mcp/dataPlane/workspaces/{workspace}/items/{id}/sqlEndpoint")
+}
+
+/// Render the Fabric Data Warehouse remote MCP server URLs (item-scoped + global)
+/// for a Warehouse or SQL analytics endpoint item.
+///
+/// `exists` is a best-effort existence signal (a failed lookup means the id is
+/// wrong, not that the URL is malformed). `not_found_hint` is emitted in place of
+/// the consumption note when `exists` is false. Both URLs are derived from the
+/// trusted `client::fabric_base_url()` (HTTPS) and are only *emitted* — fabio does
+/// not call them, so no bearer token is ever sent to them.
+pub fn render_sql_mcp_url(
+    cli: &Cli,
+    workspace: &str,
+    id: &str,
+    exists: bool,
+    not_found_hint: &str,
+) {
+    let base = crate::client::fabric_base_url();
+    let item = item_sql_mcp_url(base, workspace, id);
+    let global = global_sql_mcp_url(base);
+
+    let mut result = serde_json::json!({
+        "id": id,
+        "mcpUrl": item,
+        "globalMcpUrl": global,
+        "transport": "http",
+        "exists": exists,
+    });
+    if exists {
+        result["note"] = Value::from(
+            "Consume the item-scoped mcpUrl as a remote MCP server (HTTP transport) from VS \
+             Code agent mode, GitHub Copilot, Copilot Studio, Azure AI Foundry, or any MCP \
+             client, signing in with a Fabric credential that has access to the item; it binds \
+             the connection to this warehouse / SQL analytics endpoint. Use globalMcpUrl to \
+             instead select the warehouse per-prompt (supply workspace + item context in chat). \
+             The remote server (preview) exposes a single T-SQL execution tool (`execute_query`, \
+             taking workspaceId/itemId/query; the docs also call it `executeSQL`) — no separate \
+             schema/metadata tools, so agents discover schema via INFORMATION_SCHEMA/sys.* queries. \
+             For scripted execution, execution plans, query insights, and statistics, prefer \
+             fabio's native commands: warehouse/sql-endpoint query, plan, queries-*, statistics-*.",
+        );
+    } else {
+        result["hint"] = Value::from(not_found_hint.to_string());
+    }
+    output::render_object(cli, &result, "mcpUrl");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -839,5 +918,38 @@ mod tests {
         let sql = queries_history_sql(10, Some("O'Brien"));
         // Single quote is doubled to prevent injection.
         assert!(sql.contains("WHERE label = N'O''Brien'"));
+    }
+
+    #[test]
+    fn global_sql_mcp_url_is_data_plane_sql_endpoint() {
+        assert_eq!(
+            global_sql_mcp_url("https://api.fabric.microsoft.com/v1"),
+            "https://api.fabric.microsoft.com/v1/mcp/dataPlane/sqlEndpoint"
+        );
+        // Trailing slash on the base is normalized.
+        assert_eq!(
+            global_sql_mcp_url("https://api.fabric.microsoft.com/v1/"),
+            "https://api.fabric.microsoft.com/v1/mcp/dataPlane/sqlEndpoint"
+        );
+    }
+
+    #[test]
+    fn item_sql_mcp_url_binds_workspace_and_item() {
+        assert_eq!(
+            item_sql_mcp_url("https://api.fabric.microsoft.com/v1", "ws-1", "item-2"),
+            "https://api.fabric.microsoft.com/v1/mcp/dataPlane/workspaces/ws-1/items/item-2/sqlEndpoint"
+        );
+        assert_eq!(
+            item_sql_mcp_url("https://api.fabric.microsoft.com/v1/", "ws-1", "item-2"),
+            "https://api.fabric.microsoft.com/v1/mcp/dataPlane/workspaces/ws-1/items/item-2/sqlEndpoint"
+        );
+    }
+
+    #[test]
+    fn sql_mcp_urls_are_https() {
+        // Security invariant: emitted MCP endpoints are always HTTPS (trusted base).
+        let base = crate::client::fabric_base_url();
+        assert!(global_sql_mcp_url(base).starts_with("https://"));
+        assert!(item_sql_mcp_url(base, "w", "i").starts_with("https://"));
     }
 }

@@ -10,6 +10,7 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 mod admin;
 mod crud;
 mod insights;
+mod mcp;
 mod query;
 mod restore_points;
 mod retention;
@@ -126,6 +127,17 @@ pub enum WarehouseCommand {
         /// SQL query to plan (prefix with @ to read from file, omit to read from stdin)
         #[arg(long)]
         sql: Option<String>,
+    },
+    /// Print the remote Fabric Data Warehouse MCP server URLs (item-scoped + global) for agent consumption
+    #[command(display_order = 12)]
+    McpUrl {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Warehouse ID
+        #[arg(long)]
+        id: String,
     },
     /// Get the connection string for a warehouse
     #[command(display_order = 15)]
@@ -573,6 +585,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
             Box::pin(query::plan(cli, client, workspace, id, sql.as_deref()))
                 .await
                 .map_err(|e| enrich_forbidden(e, "warehouse plan", "Viewer"))
+        }
+        WarehouseCommand::McpUrl { workspace, id } => {
+            mcp::mcp_url(cli, client, workspace, id).await
         }
         WarehouseCommand::ConnectionString {
             workspace,

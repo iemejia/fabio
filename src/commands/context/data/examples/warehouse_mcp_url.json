@@ -1,0 +1,19 @@
+{
+  "command": "fabio warehouse mcp-url --workspace <WS> --id <WAREHOUSE_ID>",
+  "description": "Print the remote Fabric Data Warehouse MCP server URLs (preview) for a Warehouse (also works for a SQL analytics endpoint via 'fabio sql-endpoint mcp-url'). External MCP clients (VS Code agent mode, GitHub Copilot, Copilot Studio, Azure AI Foundry) connect to the item-scoped mcpUrl over HTTP transport with Fabric auth to run T-SQL. fabio constructs the deterministic /mcp/dataPlane/.../sqlEndpoint URL because agents cannot guess it.",
+  "response": {
+    "data": {
+      "id": "f919f90c-600f-4d8f-bf69-610df5f40289",
+      "mcpUrl": "https://api.fabric.microsoft.com/v1/mcp/dataPlane/workspaces/376a5172-75a0-450f-9080-92ba5dd58797/items/f919f90c-600f-4d8f-bf69-610df5f40289/sqlEndpoint",
+      "globalMcpUrl": "https://api.fabric.microsoft.com/v1/mcp/dataPlane/sqlEndpoint",
+      "transport": "http",
+      "exists": true,
+      "note": "Consume the item-scoped mcpUrl as a remote MCP server (HTTP transport) ... The remote server (preview) exposes a single T-SQL execution tool (execute_query). For scripted execution, execution plans, query insights, and statistics, prefer fabio's native commands."
+    }
+  },
+  "notes": "Two endpoint shapes: item-scoped (mcpUrl, binds to this warehouse/SQL-endpoint item) and global (globalMcpUrl, /mcp/dataPlane/sqlEndpoint, where the agent supplies workspace+item context per-prompt). Live-verified: an MCP 'initialize' handshake returns serverInfo 'microsoft.fabric.sqlEndpoint' and 'tools/list' exposes ONE tool named 'execute_query' (inputs workspaceId/itemId/query) — the docs table calls it 'executeSQL', but the live server tool name is 'execute_query'. There are NO separate schema/metadata tools, so agents discover schema via INFORMATION_SCHEMA / sys.* queries through execute_query. Uses the signed-in user's Entra identity and respects existing Fabric + SQL permissions. When the id is not found, the command still emits the deterministic URLs but sets exists=false with a hint. Division of labor: use the remote MCP server for interactive Copilot-in-VS-Code SQL authoring; use fabio's native warehouse/sql-endpoint query, plan, queries-*, statistics-* for scripted/composable execution, execution plans, monitoring, and statistics.",
+  "query_examples": [
+    "fabio warehouse mcp-url --workspace <WS> --id <ID> --query mcpUrl -o plain",
+    "fabio sql-endpoint mcp-url --workspace <WS> --id <SQLEP_ID> --query globalMcpUrl -o plain"
+  ]
+}
