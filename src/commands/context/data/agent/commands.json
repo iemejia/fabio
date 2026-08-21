@@ -5310,6 +5310,66 @@
           "fabio warehouse describe-table --workspace $WS --id $WH --table dbo.Orders"
         ]
       },
+      "copy-into": {
+        "description": "Bulk-load files from Azure storage / OneLake into a table with `COPY INTO`",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse ID"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Target table, optionally schema-qualified (e.g. dbo.Orders). Must already exist"
+          },
+          "--source": {
+            "type": "string",
+            "required": true,
+            "description": "Source location: HTTPS Azure storage / OneLake URL (file or folder/wildcard)"
+          },
+          "--file-type": {
+            "type": "string",
+            "required": true,
+            "description": "File format of the source data"
+          },
+          "--columns": {
+            "type": "string",
+            "description": "Optional target column list (comma-separated), matching the source order"
+          },
+          "--field-terminator": {
+            "type": "string",
+            "description": "CSV field terminator (e.g. ,)"
+          },
+          "--row-terminator": {
+            "type": "string",
+            "description": "CSV row terminator (e.g. \\n)"
+          },
+          "--first-row": {
+            "type": "string",
+            "description": "CSV first data row (e.g. 2 to skip a header row)"
+          },
+          "--encoding": {
+            "type": "string",
+            "description": "CSV encoding (UTF8 or UTF16)"
+          },
+          "--sas-token": {
+            "type": "string",
+            "description": "SAS token for the source storage (omit to use the caller's Entra ID)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio warehouse copy-into --workspace $WS --id $WH --table dbo.Orders --source https://acct.dfs.core.windows.net/c/data/*.parquet --file-type PARQUET",
+          "fabio warehouse copy-into --workspace $WS --id $WH --table dbo.Raw --source https://acct.blob.core.windows.net/c/data.csv --file-type CSV --first-row 2 --dry-run"
+        ]
+      },
       "connection-string": {
         "description": "Get the connection string for a warehouse",
         "flags": {

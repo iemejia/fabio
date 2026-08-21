@@ -2558,6 +2558,39 @@ definition-authoring error hints, and the `definition_requirements` block merged
   aliases — promoted to failures with `--strict`. Verified `--strict` clean (0 warnings) against real
   exported CopyJob/Dataflow/DataPipeline/SparkJobDefinition/Notebook folders.
 
+## Warehouse COPY INTO bulk ingestion (`warehouse copy-into`) — live-verified
+
+`fabio warehouse copy-into` generates and runs a Fabric `COPY INTO` statement over
+the same native-TDS path as `warehouse query`. It completes the authoring loop with
+`list-tables`/`describe-table` (create table → COPY INTO → validate).
+
+- **Append-only mutation, NOT destructive**: COPY INTO inserts rows; it never
+  truncates/overwrites. Annotated `mutates: true`, `destructive: false`. It is
+  `--dry-run` guarded and `--readonly` blocks execution (the TDS path bypasses the
+  HTTP client's readonly guard, so `copy-into` enforces `cli.readonly` itself, AFTER
+  the dry-run guard so a read-only preview is still allowed).
+- **Source must be HTTPS Azure storage / OneLake**: `validate_copy_into_source`
+  requires `https://` and a host ending in `.dfs.core.windows.net`,
+  `.blob.core.windows.net`, or `.fabric.microsoft.com` (OneLake). Plaintext `http://`,
+  embedded userinfo (`user:pass@host`), and non-storage hosts are rejected before any
+  network call.
+- **OneLake as a COPY INTO source works with Entra passthrough** — live-verified:
+  loaded `https://onelake.dfs.fabric.microsoft.com/{workspaceId}/{lakehouseId}/Files/
+  <path>/file.csv` into a warehouse table with NO `--sas-token` (the warehouse engine
+  used the executing user's Entra identity, which had lakehouse access). `--first-row 2`
+  correctly skipped the CSV header (West=100+75=175 over 2 rows, East=250 over 1 row).
+- **File types**: `CSV` and `PARQUET` (case-insensitive → normalized). CSV-only
+  options (`FIELDTERMINATOR`, `ROWTERMINATOR`, `FIRSTROW`, `ENCODING`) are rejected
+  when `--file-type PARQUET`.
+- **Injection-safe + secret-safe**: the FROM location and all option values are
+  injected as escaped `'…'` literals, identifiers are bracket-quoted (`[schema].[table]`,
+  `]` doubled), and `FILE_TYPE` is a normalized enum. The SAS token is redacted
+  (`SECRET = '***REDACTED***'`) in the `--dry-run` preview so it never lands in
+  stdout/logs; it is only present in the actually-executed statement.
+- **Result shape**: on success fabio renders `{status:"loaded", table, source,
+  fileType, hint}` (plus a `result` array if COPY INTO returns a summary result set).
+  The target table must already exist — `copy-into` does NOT create it.
+
 ## Warehouse / SQL-endpoint schema discovery (INFORMATION_SCHEMA) — live-verified
 
 `fabio warehouse list-tables` / `describe-table` and the identical `sql-endpoint`

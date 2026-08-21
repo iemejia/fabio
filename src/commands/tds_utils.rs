@@ -224,6 +224,169 @@ pub fn describe_table_sql(schema: Option<&str>, table: &str) -> String {
     )
 }
 
+// ─── COPY INTO (bulk ingestion authoring) ───────────────────────────────────
+//
+// COPY INTO is Fabric Warehouse's high-throughput bulk-load statement (append-only
+// ingestion from Azure storage / OneLake). It completes the authoring loop with
+// list-tables/describe-table (create table -> COPY INTO -> validate). The builder
+// is pure and unit-tested; the FROM location and all option values are injected as
+// escaped '...' literals, identifiers are bracket-quoted, and the FILE_TYPE is a
+// normalized enum — so no user input reaches the statement as raw SQL.
+
+/// Bracket-quote a single SQL identifier as `[ident]`, doubling any embedded `]`
+/// to prevent identifier breakout.
+#[must_use]
+pub fn quote_identifier(ident: &str) -> String {
+    format!("[{}]", ident.trim().replace(']', "]]"))
+}
+
+/// Bracket-quote a possibly schema-qualified table target: `[schema].[table]` or
+/// `[table]` when unqualified.
+#[must_use]
+pub fn quote_table_target(schema: Option<&str>, table: &str) -> String {
+    match schema {
+        Some(s) if !s.is_empty() => format!("{}.{}", quote_identifier(s), quote_identifier(table)),
+        _ => quote_identifier(table),
+    }
+}
+
+/// Normalize a COPY INTO file type to the canonical `CSV` or `PARQUET`.
+///
+/// Case-insensitive. Returns an enumerating error for any other value so agents
+/// learn the supported set (Principle 3: errors that teach and enumerate).
+pub fn normalize_copy_file_type(file_type: &str) -> anyhow::Result<&'static str> {
+    if file_type.eq_ignore_ascii_case("csv") {
+        Ok("CSV")
+    } else if file_type.eq_ignore_ascii_case("parquet") {
+        Ok("PARQUET")
+    } else {
+        Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Unsupported --file-type '{file_type}'."),
+            "Valid values: CSV, PARQUET.",
+        )
+        .into())
+    }
+}
+
+/// Validate a COPY INTO `--source` location.
+///
+/// Must be an HTTPS URL to an Azure storage or `OneLake` host (Fabric COPY INTO only
+/// reads from Azure Data Lake Storage Gen2 / Blob / `OneLake`). Rejects plaintext
+/// `http://`, embedded userinfo (`user:pass@host`), and non-storage hosts — both a
+/// security guard (no plaintext / SSRF-style host) and a correctness guard.
+pub fn validate_copy_into_source(url: &str) -> anyhow::Result<()> {
+    let lower = url.to_lowercase();
+    if !lower.starts_with("https://") {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("--source must use HTTPS (got: {url})."),
+            "COPY INTO reads from Azure storage over HTTPS, e.g. \
+             https://<account>.dfs.core.windows.net/<container>/<path>/*.parquet or a OneLake \
+             https://onelake.dfs.fabric.microsoft.com/... path.",
+        )
+        .into());
+    }
+    let authority = lower
+        .strip_prefix("https://")
+        .and_then(|rest| rest.split('/').next())
+        .unwrap_or("");
+    if authority.contains('@') {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "--source must not contain userinfo (@ in the authority).".to_string(),
+            "Use a plain https://host/path URL and pass credentials via --sas-token \
+             (or omit for Entra ID passthrough).",
+        )
+        .into());
+    }
+    let host = authority.split(':').next().unwrap_or("");
+    let allowed = [
+        ".blob.core.windows.net",
+        ".dfs.core.windows.net",
+        ".fabric.microsoft.com", // OneLake: onelake.dfs.fabric.microsoft.com (+ private link)
+    ];
+    if !allowed.iter().any(|s| host.ends_with(s)) {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("--source host '{host}' is not an Azure storage or OneLake endpoint."),
+            "Allowed hosts: *.dfs.core.windows.net, *.blob.core.windows.net, \
+             onelake.dfs.fabric.microsoft.com.",
+        )
+        .into());
+    }
+    Ok(())
+}
+
+/// Options for a Fabric `COPY INTO` statement. `file_type` must be pre-normalized
+/// via [`normalize_copy_file_type`]; `table`/`schema` are bracket-quoted and the
+/// remaining values are injected as escaped literals by [`build_copy_into_sql`].
+pub struct CopyIntoOptions<'a> {
+    pub schema: Option<&'a str>,
+    pub table: &'a str,
+    pub source: &'a str,
+    pub file_type: &'a str,
+    pub columns: Option<&'a str>,
+    pub field_terminator: Option<&'a str>,
+    pub row_terminator: Option<&'a str>,
+    pub first_row: Option<u32>,
+    pub encoding: Option<&'a str>,
+    pub sas_token: Option<&'a str>,
+}
+
+/// Build a Fabric `COPY INTO` statement from [`CopyIntoOptions`].
+///
+/// When `redact_secret` is true, a provided SAS token is replaced with
+/// `***REDACTED***` in the `CREDENTIAL` clause — used for the `--dry-run` preview
+/// so the secret never lands in stdout/logs. Pass `false` for actual execution.
+#[must_use]
+pub fn build_copy_into_sql(opts: &CopyIntoOptions<'_>, redact_secret: bool) -> String {
+    let target = quote_table_target(opts.schema, opts.table);
+    let columns = opts.columns.map_or_else(String::new, |cols| {
+        let quoted: Vec<String> = cols
+            .split(',')
+            .filter(|c| !c.trim().is_empty())
+            .map(quote_identifier)
+            .collect();
+        if quoted.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", quoted.join(", "))
+        }
+    });
+
+    // FILE_TYPE is a normalized enum ("CSV"/"PARQUET"), so it is safe unescaped.
+    let mut with_opts: Vec<String> = vec![format!("FILE_TYPE = '{}'", opts.file_type)];
+    if let Some(sas) = opts.sas_token {
+        let secret = if redact_secret {
+            "***REDACTED***".to_string()
+        } else {
+            escape_sql_literal(sas)
+        };
+        with_opts.push(format!(
+            "CREDENTIAL = (IDENTITY = 'Shared Access Signature', SECRET = '{secret}')"
+        ));
+    }
+    if let Some(ft) = opts.field_terminator {
+        with_opts.push(format!("FIELDTERMINATOR = '{}'", escape_sql_literal(ft)));
+    }
+    if let Some(rt) = opts.row_terminator {
+        with_opts.push(format!("ROWTERMINATOR = '{}'", escape_sql_literal(rt)));
+    }
+    if let Some(fr) = opts.first_row {
+        with_opts.push(format!("FIRSTROW = {fr}"));
+    }
+    if let Some(enc) = opts.encoding {
+        with_opts.push(format!("ENCODING = '{}'", escape_sql_literal(enc)));
+    }
+
+    format!(
+        "COPY INTO {target}{columns}\nFROM '{}'\nWITH (\n    {}\n)",
+        escape_sql_literal(opts.source),
+        with_opts.join(",\n    ")
+    )
+}
+
 /// Build an `UPDATE STATISTICS` statement that first resolves the OWNING table
 /// of a statistic from `sys.stats` (a statistic is per-table), then runs the
 /// statement via dynamic SQL (the object name can't be a variable in
@@ -1073,6 +1236,112 @@ mod tests {
         assert!(!sql.contains("N'x'; DROP"));
         let tables = list_tables_sql(Some("a' OR '1'='1"));
         assert!(tables.contains("N'a'' OR ''1''=''1'"));
+    }
+
+    fn copy_opts(sas: Option<&str>) -> CopyIntoOptions<'_> {
+        CopyIntoOptions {
+            schema: Some("dbo"),
+            table: "Orders",
+            source: "https://acct.dfs.core.windows.net/c/data/*.parquet",
+            file_type: "PARQUET",
+            columns: None,
+            field_terminator: None,
+            row_terminator: None,
+            first_row: None,
+            encoding: None,
+            sas_token: sas,
+        }
+    }
+
+    #[test]
+    fn quote_identifier_brackets_and_escapes() {
+        assert_eq!(quote_identifier("Orders"), "[Orders]");
+        assert_eq!(quote_identifier(" my col "), "[my col]");
+        // A `]` inside the identifier is doubled to prevent breakout.
+        assert_eq!(quote_identifier("a]b"), "[a]]b]");
+        assert_eq!(quote_table_target(Some("dbo"), "Orders"), "[dbo].[Orders]");
+        assert_eq!(quote_table_target(None, "Orders"), "[Orders]");
+    }
+
+    #[test]
+    fn normalize_copy_file_type_accepts_csv_parquet_case_insensitive() {
+        assert_eq!(normalize_copy_file_type("csv").unwrap(), "CSV");
+        assert_eq!(normalize_copy_file_type("CSV").unwrap(), "CSV");
+        assert_eq!(normalize_copy_file_type("Parquet").unwrap(), "PARQUET");
+        let err = normalize_copy_file_type("json").unwrap_err().to_string();
+        assert!(err.contains("Unsupported"));
+    }
+
+    #[test]
+    fn validate_copy_into_source_enforces_https_and_storage_host() {
+        assert!(validate_copy_into_source("https://a.dfs.core.windows.net/c/f.parquet").is_ok());
+        assert!(validate_copy_into_source("https://a.blob.core.windows.net/c/f.csv").is_ok());
+        assert!(
+            validate_copy_into_source("https://onelake.dfs.fabric.microsoft.com/ws/lh/Files/f.csv")
+                .is_ok()
+        );
+        // Plaintext http is rejected.
+        assert!(validate_copy_into_source("http://a.dfs.core.windows.net/c/f.csv").is_err());
+        // Non-storage host is rejected.
+        assert!(validate_copy_into_source("https://evil.example.com/f.csv").is_err());
+        // Embedded userinfo is rejected.
+        assert!(
+            validate_copy_into_source("https://a.dfs.core.windows.net@evil.com/f.csv").is_err()
+        );
+    }
+
+    #[test]
+    fn build_copy_into_sql_parquet_minimal() {
+        let sql = build_copy_into_sql(&copy_opts(None), false);
+        assert!(sql.starts_with("COPY INTO [dbo].[Orders]\nFROM '"));
+        assert!(sql.contains("FROM 'https://acct.dfs.core.windows.net/c/data/*.parquet'"));
+        assert!(sql.contains("FILE_TYPE = 'PARQUET'"));
+        assert!(!sql.contains("CREDENTIAL"));
+    }
+
+    #[test]
+    fn build_copy_into_sql_csv_with_options_and_columns() {
+        let opts = CopyIntoOptions {
+            schema: None,
+            table: "Raw",
+            source: "https://a.blob.core.windows.net/c/f.csv",
+            file_type: "CSV",
+            columns: Some("id, name , amount"),
+            field_terminator: Some(","),
+            row_terminator: Some("\\n"),
+            first_row: Some(2),
+            encoding: Some("UTF8"),
+            sas_token: None,
+        };
+        let sql = build_copy_into_sql(&opts, false);
+        assert!(sql.contains("COPY INTO [Raw] ([id], [name], [amount])"));
+        assert!(sql.contains("FIELDTERMINATOR = ','"));
+        assert!(sql.contains("ROWTERMINATOR = '\\n'"));
+        assert!(sql.contains("FIRSTROW = 2"));
+        assert!(sql.contains("ENCODING = 'UTF8'"));
+    }
+
+    #[test]
+    fn build_copy_into_sql_redacts_sas_in_preview_but_not_execution() {
+        let secret = "sv=2022&sig=SECRETSIG";
+        let exec = build_copy_into_sql(&copy_opts(Some(secret)), false);
+        assert!(exec.contains(&format!(
+            "CREDENTIAL = (IDENTITY = 'Shared Access Signature', SECRET = '{secret}')"
+        )));
+        let preview = build_copy_into_sql(&copy_opts(Some(secret)), true);
+        assert!(preview.contains("SECRET = '***REDACTED***'"));
+        assert!(!preview.contains(secret));
+    }
+
+    #[test]
+    fn build_copy_into_sql_escapes_source_injection() {
+        let opts = CopyIntoOptions {
+            source: "https://a.dfs.core.windows.net/c/f.csv' ) ; DROP TABLE x--",
+            ..copy_opts(None)
+        };
+        let sql = build_copy_into_sql(&opts, false);
+        // The single quote in the location is doubled — the statement cannot break out.
+        assert!(sql.contains("f.csv'' ) ; DROP TABLE x--'"));
     }
 
     #[test]

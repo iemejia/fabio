@@ -1421,3 +1421,263 @@ fn warehouse_schema_discovery_lifecycle() {
         .assert()
         .success();
 }
+
+// ---------------------------------------------------------------------------
+// warehouse copy-into: COPY INTO bulk ingestion (authoring)
+// ---------------------------------------------------------------------------
+
+/// Hermetic test: `--dry-run` previews the generated COPY INTO SQL (with the SAS
+/// secret redacted) and never touches the network; input validation rejects a
+/// non-HTTPS/non-storage source and an unknown file type. No live tenant needed.
+#[test]
+fn warehouse_copy_into_dry_run_and_validation() {
+    let ws = "00000000-0000-0000-0000-000000000001";
+    let wh = "00000000-0000-0000-0000-000000000002";
+
+    // Dry-run preview with a SAS token: SQL is shown, secret is redacted.
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_SQL_ACCESS_TOKEN", "fake-test-token")
+        .args([
+            "warehouse",
+            "copy-into",
+            "--workspace",
+            ws,
+            "--id",
+            wh,
+            "--table",
+            "dbo.Orders",
+            "--source",
+            "https://acct.blob.core.windows.net/c/data.csv",
+            "--file-type",
+            "csv",
+            "--first-row",
+            "2",
+            "--sas-token",
+            "sv=2022&sig=TOPSECRETSIG",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "warehouse copy-into");
+    let sql = data["details"]["sql"].as_str().unwrap();
+    assert!(sql.contains("COPY INTO [dbo].[Orders]"));
+    assert!(sql.contains("FILE_TYPE = 'CSV'"));
+    assert!(sql.contains("FIRSTROW = 2"));
+    assert!(sql.contains("SECRET = '***REDACTED***'"));
+    // The secret must not appear anywhere in the output.
+    let raw = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        !raw.contains("TOPSECRETSIG"),
+        "SAS secret leaked into output"
+    );
+
+    // Unknown file type is rejected (enumerating error), before any network call.
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_SQL_ACCESS_TOKEN", "fake-test-token")
+        .args([
+            "warehouse",
+            "copy-into",
+            "--workspace",
+            ws,
+            "--id",
+            wh,
+            "--table",
+            "dbo.Orders",
+            "--source",
+            "https://acct.dfs.core.windows.net/c/data.parquet",
+            "--file-type",
+            "json",
+            "--dry-run",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err["error"]["code"], "INVALID_INPUT");
+    assert!(
+        err["error"]["hint"]
+            .as_str()
+            .unwrap()
+            .contains("CSV, PARQUET")
+    );
+
+    // A non-storage / non-HTTPS source is rejected.
+    for bad in [
+        "http://acct.dfs.core.windows.net/c/data.csv",
+        "https://evil.example.com/data.csv",
+    ] {
+        fabio()
+            .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+            .env("FABIO_SQL_ACCESS_TOKEN", "fake-test-token")
+            .args([
+                "warehouse",
+                "copy-into",
+                "--workspace",
+                ws,
+                "--id",
+                wh,
+                "--table",
+                "dbo.Orders",
+                "--source",
+                bad,
+                "--file-type",
+                "csv",
+                "--dry-run",
+            ])
+            .assert()
+            .failure();
+    }
+}
+
+/// Live test: full authoring loop — upload a CSV to `OneLake`, create a warehouse
+/// table, COPY INTO from the `OneLake` URL via Entra passthrough, and verify the
+/// rows landed.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_copy_into_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("wh_copyinto");
+
+    // Upload a small CSV into the source lakehouse's Files area.
+    let csv = std::env::temp_dir().join(format!("{name}.csv"));
+    std::fs::write(&csv, "Region,Amount\nWest,100\nEast,250\nWest,75\n").unwrap();
+    let dest = format!("Files/{name}/data.csv");
+    fabio()
+        .args([
+            "lakehouse",
+            "upload",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--source-path",
+            csv.to_str().unwrap(),
+            "--dest-path",
+            &dest,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    // Create a warehouse + target table.
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let wh_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    fabio()
+        .args([
+            "warehouse",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &wh_id,
+            "--sql",
+            "CREATE TABLE dbo.copy_probe (Region VARCHAR(50), Amount INT)",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    // COPY INTO from OneLake via Entra passthrough (no SAS), skipping the header.
+    let source = format!(
+        "https://onelake.dfs.fabric.microsoft.com/{}/{}/{}",
+        cfg.source_workspace, cfg.source_lakehouse, dest
+    );
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "copy-into",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &wh_id,
+            "--table",
+            "dbo.copy_probe",
+            "--source",
+            &source,
+            "--file-type",
+            "CSV",
+            "--first-row",
+            "2",
+            "--field-terminator",
+            ",",
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&assert))["status"], "loaded");
+
+    // Verify the rows landed (3 rows: West 100+75, East 250).
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &wh_id,
+            "--sql",
+            "SELECT COUNT(*) AS n, SUM(Amount) AS total FROM dbo.copy_probe",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let rows = extract_data(&parse_json(&assert))
+        .as_array()
+        .unwrap()
+        .clone();
+    assert_eq!(
+        rows[0]["n"]
+            .as_i64()
+            .or_else(|| rows[0]["n"].as_str().and_then(|s| s.parse().ok())),
+        Some(3)
+    );
+
+    // Clean up: warehouse + uploaded file.
+    fabio()
+        .args([
+            "warehouse",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &wh_id,
+            "--hard-delete",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    fabio()
+        .args([
+            "lakehouse",
+            "delete-file",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cfg.source_lakehouse,
+            "--path",
+            &dest,
+        ])
+        .assert()
+        .success();
+    let _ = std::fs::remove_file(&csv);
+}

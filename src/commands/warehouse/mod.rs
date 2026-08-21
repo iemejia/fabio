@@ -8,6 +8,7 @@ use crate::commands::tds_utils::{execute_and_render_sql, parse_connection_string
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 
 mod admin;
+mod authoring;
 mod crud;
 mod insights;
 mod mcp;
@@ -169,6 +170,53 @@ pub enum WarehouseCommand {
         /// Table name, optionally schema-qualified (e.g. dbo.Customers or Customers)
         #[arg(long)]
         table: String,
+    },
+    /// Bulk-load files from Azure storage / `OneLake` into a table with `COPY INTO`
+    #[command(display_order = 16)]
+    CopyInto {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Warehouse ID
+        #[arg(long)]
+        id: String,
+
+        /// Target table, optionally schema-qualified (e.g. dbo.Orders). Must already exist.
+        #[arg(long)]
+        table: String,
+
+        /// Source location: HTTPS Azure storage / `OneLake` URL (file or folder/wildcard)
+        #[arg(long)]
+        source: String,
+
+        /// File format of the source data
+        #[arg(long)]
+        file_type: String,
+
+        /// Optional target column list (comma-separated), matching the source order
+        #[arg(long)]
+        columns: Option<String>,
+
+        /// CSV field terminator (e.g. ,)
+        #[arg(long)]
+        field_terminator: Option<String>,
+
+        /// CSV row terminator (e.g. \n)
+        #[arg(long)]
+        row_terminator: Option<String>,
+
+        /// CSV first data row (e.g. 2 to skip a header row)
+        #[arg(long)]
+        first_row: Option<u32>,
+
+        /// CSV encoding (UTF8 or UTF16)
+        #[arg(long)]
+        encoding: Option<String>,
+
+        /// SAS token for the source storage (omit to use the caller's Entra ID)
+        #[arg(long)]
+        sas_token: Option<String>,
     },
     /// Get the connection string for a warehouse
     #[command(display_order = 15)]
@@ -639,6 +687,32 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
             id,
             table,
         } => Box::pin(schema::describe_table(cli, client, workspace, id, table)).await,
+        WarehouseCommand::CopyInto {
+            workspace,
+            id,
+            table,
+            source,
+            file_type,
+            columns,
+            field_terminator,
+            row_terminator,
+            first_row,
+            encoding,
+            sas_token,
+        } => {
+            let args = authoring::CopyIntoArgs {
+                table,
+                source,
+                file_type,
+                columns: columns.as_deref(),
+                field_terminator: field_terminator.as_deref(),
+                row_terminator: row_terminator.as_deref(),
+                first_row: *first_row,
+                encoding: encoding.as_deref(),
+                sas_token: sas_token.as_deref(),
+            };
+            Box::pin(authoring::copy_into(cli, client, workspace, id, &args)).await
+        }
         WarehouseCommand::ConnectionString {
             workspace,
             id,
