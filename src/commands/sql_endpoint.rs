@@ -6,8 +6,9 @@ use serde_json::Value;
 use crate::cli::Cli;
 use crate::client::FabricClient;
 use crate::commands::tds_utils::{
-    capture_query_plan, execute_and_render_sql, parse_connection_string, pool_insights_sql,
-    render_sql_mcp_url, resolve_sql_input,
+    capture_query_plan, describe_table_sql, execute_and_render_sql, list_tables_sql,
+    parse_connection_string, pool_insights_sql, render_sql_mcp_url, resolve_sql_input,
+    split_schema_qualified,
 };
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
@@ -94,6 +95,36 @@ pub enum SqlEndpointCommand {
         /// SQL endpoint ID
         #[arg(long)]
         id: String,
+    },
+    /// List tables and views in a SQL endpoint (from `INFORMATION_SCHEMA.TABLES`)
+    #[command(display_order = 8)]
+    ListTables {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL endpoint ID
+        #[arg(long)]
+        id: String,
+
+        /// Only list tables in this schema (e.g. dbo)
+        #[arg(long)]
+        schema: Option<String>,
+    },
+    /// Describe the columns of a table (from `INFORMATION_SCHEMA.COLUMNS`)
+    #[command(display_order = 9)]
+    DescribeTable {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL endpoint ID
+        #[arg(long)]
+        id: String,
+
+        /// Table name, optionally schema-qualified (e.g. dbo.Customers or Customers)
+        #[arg(long)]
+        table: String,
     },
     /// Refresh metadata for all or selected tables in a SQL endpoint (LRO)
     #[command(display_order = 6)]
@@ -278,6 +309,16 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlEndpointComm
             Box::pin(plan(cli, client, workspace, id, sql.as_deref())).await
         }
         SqlEndpointCommand::McpUrl { workspace, id } => mcp_url(cli, client, workspace, id).await,
+        SqlEndpointCommand::ListTables {
+            workspace,
+            id,
+            schema,
+        } => Box::pin(list_tables(cli, client, workspace, id, schema.as_deref())).await,
+        SqlEndpointCommand::DescribeTable {
+            workspace,
+            id,
+            table,
+        } => Box::pin(describe_table(cli, client, workspace, id, table)).await,
         SqlEndpointCommand::RefreshMetadata {
             workspace,
             id,
@@ -476,6 +517,33 @@ async fn mcp_url(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) ->
     );
     render_sql_mcp_url(cli, workspace, id, exists, &hint);
     Ok(())
+}
+
+/// List tables and views in a SQL endpoint (optionally scoped to one schema),
+/// over `INFORMATION_SCHEMA.TABLES`.
+async fn list_tables(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    schema: Option<&str>,
+) -> Result<()> {
+    let sql = list_tables_sql(schema);
+    execute_endpoint_query(cli, client, workspace, id, &sql).await
+}
+
+/// Describe the columns of a single table (`--table [schema.]table`), over
+/// `INFORMATION_SCHEMA.COLUMNS`.
+async fn describe_table(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    table: &str,
+) -> Result<()> {
+    let (schema, tbl) = split_schema_qualified(table);
+    let sql = describe_table_sql(schema.as_deref(), &tbl);
+    execute_endpoint_query(cli, client, workspace, id, &sql).await
 }
 
 async fn query(

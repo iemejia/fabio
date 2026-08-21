@@ -5261,6 +5261,55 @@
           "fabio warehouse mcp-url --workspace $WS --id $WH"
         ]
       },
+      "list-tables": {
+        "description": "List tables and views in a warehouse (from `INFORMATION_SCHEMA.TABLES`)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse or Lakehouse ID"
+          },
+          "--schema": {
+            "type": "string",
+            "description": "Only list tables in this schema (e.g. dbo)"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio warehouse list-tables --workspace $WS --id $WH --schema dbo"
+        ]
+      },
+      "describe-table": {
+        "description": "Describe the columns of a table (from `INFORMATION_SCHEMA.COLUMNS`)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse or Lakehouse ID"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Table name, optionally schema-qualified (e.g. dbo.Customers or Customers)"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio warehouse describe-table --workspace $WS --id $WH --table dbo.Orders"
+        ]
+      },
       "connection-string": {
         "description": "Get the connection string for a warehouse",
         "flags": {
@@ -6554,6 +6603,55 @@
         "returns": "object",
         "examples": [
           "fabio sql-endpoint mcp-url --workspace $WS --id $SQLEP"
+        ]
+      },
+      "list-tables": {
+        "description": "List tables and views in a SQL endpoint (from `INFORMATION_SCHEMA.TABLES`)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "SQL endpoint ID"
+          },
+          "--schema": {
+            "type": "string",
+            "description": "Only list tables in this schema (e.g. dbo)"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio sql-endpoint list-tables --workspace $WS --id $SQLEP"
+        ]
+      },
+      "describe-table": {
+        "description": "Describe the columns of a table (from `INFORMATION_SCHEMA.COLUMNS`)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "SQL endpoint ID"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Table name, optionally schema-qualified (e.g. dbo.Customers or Customers)"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio sql-endpoint describe-table --workspace $WS --id $SQLEP --table dbo.Customers"
         ]
       },
       "refresh-metadata": {

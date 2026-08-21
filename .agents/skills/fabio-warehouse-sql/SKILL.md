@@ -13,6 +13,7 @@ license: MIT
 
 ## When to use
 - Executing T-SQL against a Warehouse, SQL Database, or SQL analytics endpoint (also lakehouse plan/query).
+- Discovering schema: list-tables (tables + views, optional --schema) and describe-table (columns, types, nullability for one table) over INFORMATION_SCHEMA.
 - Capturing estimated execution plans (SHOWPLAN_XML) without running the query.
 - Monitoring queries: running / frequent / long-running / history; killing a session.
 - Managing user-defined statistics (list/show/create/update/delete).
@@ -38,11 +39,13 @@ Manage warehouses and run SQL queries
 | `fabio warehouse create-restore-point` | yes | Create a restore point for a warehouse |
 | `fabio warehouse delete` | yes | Delete a warehouse |
 | `fabio warehouse delete-restore-point` | yes | Delete a restore point |
+| `fabio warehouse describe-table` | no | Describe the columns of a table (from `INFORMATION_SCHEMA.COLUMNS`) |
 | `fabio warehouse get-audit-settings` | no | Get SQL audit settings for a warehouse |
 | `fabio warehouse get-retention` | no | Report the configured data-retention (time-travel) period, in days |
 | `fabio warehouse get-sql-pools-config` | no | Get SQL pools configuration for a workspace |
 | `fabio warehouse list` | no | List warehouses in a workspace |
 | `fabio warehouse list-restore-points` | no | List restore points for a warehouse |
+| `fabio warehouse list-tables` | no | List tables and views in a warehouse (from `INFORMATION_SCHEMA.TABLES`) |
 | `fabio warehouse mcp-url` | no | Print the remote Fabric Data Warehouse MCP server URLs (item-scoped + global) for agent consumption |
 | `fabio warehouse plan` | no | Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query |
 | `fabio warehouse pool-insights` | no | Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`) |
@@ -104,8 +107,10 @@ Manage SQL endpoints (analytics endpoints for lakehouses)
 | Command | Mutates | Description |
 |---|---|---|
 | `fabio sql-endpoint connection-string` | no | Get the SQL connection string for a SQL endpoint |
+| `fabio sql-endpoint describe-table` | no | Describe the columns of a table (from `INFORMATION_SCHEMA.COLUMNS`) |
 | `fabio sql-endpoint get-audit-settings` | no | Get SQL audit settings for the endpoint |
 | `fabio sql-endpoint list` | no | List SQL endpoints in a workspace |
+| `fabio sql-endpoint list-tables` | no | List tables and views in a SQL endpoint (from `INFORMATION_SCHEMA.TABLES`) |
 | `fabio sql-endpoint mcp-url` | no | Print the remote Fabric Data Warehouse MCP server URLs (item-scoped + global) for agent consumption |
 | `fabio sql-endpoint plan` | no | Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query |
 | `fabio sql-endpoint pool-insights` | no | Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`) |
@@ -136,6 +141,7 @@ Manage warehouse snapshots
 - Provision SQL Database on F4+ capacity (F2 fails with error 18456 State 240).
 
 ### PREFER
+- 'list-tables' / 'describe-table' for schema discovery instead of hand-written INFORMATION_SCHEMA queries via 'query --sql'.
 - 'plan' (SHOWPLAN_XML) to inspect a query's cost before executing it.
 - --sql @file.sql or stdin piping for large/multiline queries over inline strings.
 - queries-history / queries-long-running for diagnostics instead of ad-hoc DMV queries.
@@ -157,6 +163,7 @@ Manage warehouse snapshots
 - 'warehouse set-retention' sets the time-travel window (1-120 days); DECREASING it is irreversible (background GC permanently drops older history) — it is destructive and dry-run guarded. 'warehouse create --collation' is create-time only (case-sensitive default vs Latin1_General_100_CI_AS_KS_WS_SC_UTF8).
 - 'sql-endpoint refresh-metadata --tables' accepts a JSON array of {schema,tableNames} selectors (inline or @file), with at most 25 total tables. Its optional --timeout is a Duration JSON object with numeric value and a PascalCase timeUnit (Seconds, Minutes, Hours, or Days). Schema-enabled endpoints return schema-qualified tableName values; non-schema-enabled endpoints resolve under the default schema.
 - 'warehouse mcp-url' / 'sql-endpoint mcp-url' emit the deterministic remote Fabric Data Warehouse MCP server URLs (preview) for external MCP clients (VS Code agent mode, Copilot, Copilot Studio, Azure AI Foundry) — an item-scoped mcpUrl (.../items/{id}/sqlEndpoint, binds to one item) plus a global globalMcpUrl (.../mcp/dataPlane/sqlEndpoint, agent supplies workspace+item per-prompt). That remote server exposes ONE T-SQL execution tool (live tool name 'execute_query'; docs call it 'executeSQL') and NO schema/metadata tools — it's for interactive Copilot SQL authoring. For scripted/composable execution, execution plans, query insights, and statistics, use fabio's native 'warehouse query'/'plan'/'queries-*'/'statistics-*' instead of emitting an MCP URL.
+- Because the remote DW MCP server has NO schema tools, prefer fabio's typed 'list-tables' (tables+views, optional --schema) and 'describe-table --table [schema.]table' (columns/types/nullability) over hand-writing INFORMATION_SCHEMA.TABLES/COLUMNS queries via 'query --sql'. Both accept a Warehouse OR Lakehouse/SQL-endpoint id (schema discovery works on any TDS surface). describe-table returns the LIST envelope (one row per column); a count of 0 means the table/schema does not exist. --table accepts 'schema.table', '[schema].[table]', or a bare 'table' (unqualified matches the name across schemas).
 
 ## Troubleshooting
 | Symptom | Fix |

@@ -250,6 +250,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/warehouse_mcp_url.json"),
     ),
     (
+        "warehouse/list-tables",
+        include_str!("data/examples/warehouse_list_tables.json"),
+    ),
+    (
         "semantic-model/query",
         include_str!("data/examples/semantic_model_query.json"),
     ),

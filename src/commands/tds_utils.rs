@@ -130,6 +130,100 @@ pub fn queries_history_sql(top: u32, label: Option<&str>) -> String {
     )
 }
 
+// ─── Schema discovery (INFORMATION_SCHEMA) ──────────────────────────────────
+//
+// Fabric's remote Data Warehouse MCP server exposes ONLY an execute_query tool
+// (no schema/metadata tools), so agents must hand-write INFORMATION_SCHEMA
+// queries to discover tables/columns. fabio turns that into first-class, bounded,
+// typed subcommands (warehouse/sql-endpoint list-tables + describe-table) reusing
+// the same TDS execution path. These builders are pure and unit-tested; all
+// user-supplied identifiers are injected as escaped N'...' string literals (single
+// quotes doubled) — never as raw SQL — so the WHERE filters cannot be used for
+// injection.
+
+/// Escape a T-SQL string literal by doubling embedded single quotes.
+#[must_use]
+pub fn escape_sql_literal(s: &str) -> String {
+    s.replace('\'', "''")
+}
+
+/// Strip surrounding `[ ]` delimiters and whitespace from a single SQL identifier.
+fn strip_identifier_delimiters(s: &str) -> &str {
+    let s = s.trim();
+    s.strip_prefix('[')
+        .and_then(|inner| inner.strip_suffix(']'))
+        .map_or(s, str::trim)
+}
+
+/// Split a possibly schema-qualified table name into `(schema, table)`.
+///
+/// Accepts `schema.table`, `[schema].[table]`, `table`, or `[table]`. Surrounding
+/// brackets and whitespace are stripped. Returns `schema = None` when the name is
+/// unqualified (the caller then does not constrain `TABLE_SCHEMA`). Pure.
+#[must_use]
+pub fn split_schema_qualified(name: &str) -> (Option<String>, String) {
+    let name = name.trim();
+    // Bracket-aware first segment: "[schema].[table]" — the closing ']' ends the
+    // schema even if the table part contains a dot.
+    if let Some(rest) = name.strip_prefix('[')
+        && let Some(close) = rest.find(']')
+    {
+        let schema = rest[..close].trim();
+        let after = rest[close + 1..].trim_start();
+        if let Some(table) = after.strip_prefix('.') {
+            return (
+                Some(schema.to_string()),
+                strip_identifier_delimiters(table).to_string(),
+            );
+        }
+        // Just "[table]" with no schema.
+        return (None, schema.to_string());
+    }
+    match name.split_once('.') {
+        Some((schema, table)) => (
+            Some(strip_identifier_delimiters(schema).to_string()),
+            strip_identifier_delimiters(table).to_string(),
+        ),
+        None => (None, strip_identifier_delimiters(name).to_string()),
+    }
+}
+
+/// Build the `list-tables` SQL over `INFORMATION_SCHEMA.TABLES` (tables + views).
+///
+/// When `schema` is provided it filters `WHERE TABLE_SCHEMA = N'...'` (escaped).
+#[must_use]
+pub fn list_tables_sql(schema: Option<&str>) -> String {
+    let where_clause = schema.map_or_else(String::new, |s| {
+        format!(" WHERE TABLE_SCHEMA = N'{}'", escape_sql_literal(s))
+    });
+    format!(
+        "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE \
+         FROM INFORMATION_SCHEMA.TABLES{where_clause} \
+         ORDER BY TABLE_SCHEMA, TABLE_NAME"
+    )
+}
+
+/// Build the `describe-table` SQL over `INFORMATION_SCHEMA.COLUMNS` for one table.
+///
+/// Returns one row per column (ordinal, name, type, length/precision/scale,
+/// nullability, default), ordered by `ORDINAL_POSITION`. When `schema` is
+/// provided it additionally filters `AND TABLE_SCHEMA = N'...'` (escaped). The
+/// `table` name is always matched as an escaped `N'...'` literal.
+#[must_use]
+pub fn describe_table_sql(schema: Option<&str>, table: &str) -> String {
+    let schema_clause = schema.map_or_else(String::new, |s| {
+        format!(" AND TABLE_SCHEMA = N'{}'", escape_sql_literal(s))
+    });
+    format!(
+        "SELECT ORDINAL_POSITION, TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE, \
+         CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE, IS_NULLABLE, COLUMN_DEFAULT \
+         FROM INFORMATION_SCHEMA.COLUMNS \
+         WHERE TABLE_NAME = N'{}'{schema_clause} \
+         ORDER BY ORDINAL_POSITION",
+        escape_sql_literal(table)
+    )
+}
+
 /// Build an `UPDATE STATISTICS` statement that first resolves the OWNING table
 /// of a statistic from `sys.stats` (a statistic is per-table), then runs the
 /// statement via dynamic SQL (the object name can't be a variable in
@@ -918,6 +1012,67 @@ mod tests {
         let sql = queries_history_sql(10, Some("O'Brien"));
         // Single quote is doubled to prevent injection.
         assert!(sql.contains("WHERE label = N'O''Brien'"));
+    }
+
+    #[test]
+    fn split_schema_qualified_variants() {
+        assert_eq!(
+            split_schema_qualified("dbo.Customers"),
+            (Some("dbo".to_string()), "Customers".to_string())
+        );
+        assert_eq!(
+            split_schema_qualified("[dbo].[Customers]"),
+            (Some("dbo".to_string()), "Customers".to_string())
+        );
+        assert_eq!(
+            split_schema_qualified("Customers"),
+            (None, "Customers".to_string())
+        );
+        assert_eq!(
+            split_schema_qualified("[Customers]"),
+            (None, "Customers".to_string())
+        );
+        // Whitespace around the parts is trimmed.
+        assert_eq!(
+            split_schema_qualified("  sales . orders "),
+            (Some("sales".to_string()), "orders".to_string())
+        );
+    }
+
+    #[test]
+    fn list_tables_sql_optional_schema_filter() {
+        let all = list_tables_sql(None);
+        assert!(all.contains("FROM INFORMATION_SCHEMA.TABLES"));
+        assert!(all.contains("TABLE_TYPE"));
+        assert!(all.contains("ORDER BY TABLE_SCHEMA, TABLE_NAME"));
+        assert!(!all.contains("WHERE"));
+
+        let scoped = list_tables_sql(Some("dbo"));
+        assert!(scoped.contains("WHERE TABLE_SCHEMA = N'dbo'"));
+    }
+
+    #[test]
+    fn describe_table_sql_filters_and_orders() {
+        let sql = describe_table_sql(Some("dbo"), "Customers");
+        assert!(sql.contains("FROM INFORMATION_SCHEMA.COLUMNS"));
+        assert!(sql.contains("WHERE TABLE_NAME = N'Customers'"));
+        assert!(sql.contains("AND TABLE_SCHEMA = N'dbo'"));
+        assert!(sql.contains("ORDER BY ORDINAL_POSITION"));
+
+        // No schema → no schema clause.
+        let no_schema = describe_table_sql(None, "Orders");
+        assert!(no_schema.contains("WHERE TABLE_NAME = N'Orders'"));
+        assert!(!no_schema.contains("TABLE_SCHEMA ="));
+    }
+
+    #[test]
+    fn schema_discovery_sql_escapes_injection_attempts() {
+        // A malicious identifier is neutralized by doubling the single quote.
+        let sql = describe_table_sql(None, "x'; DROP TABLE Users--");
+        assert!(sql.contains("N'x''; DROP TABLE Users--'"));
+        assert!(!sql.contains("N'x'; DROP"));
+        let tables = list_tables_sql(Some("a' OR '1'='1"));
+        assert!(tables.contains("N'a'' OR ''1''=''1'"));
     }
 
     #[test]

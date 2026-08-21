@@ -2558,6 +2558,35 @@ definition-authoring error hints, and the `definition_requirements` block merged
   aliases — promoted to failures with `--strict`. Verified `--strict` clean (0 warnings) against real
   exported CopyJob/Dataflow/DataPipeline/SparkJobDefinition/Notebook folders.
 
+## Warehouse / SQL-endpoint schema discovery (INFORMATION_SCHEMA) — live-verified
+
+`fabio warehouse list-tables` / `describe-table` and the identical `sql-endpoint`
+subcommands run over the same native-TDS path as `warehouse query` (they reuse
+`execute_insights_query` / `execute_endpoint_query`), backed by `INFORMATION_SCHEMA`.
+Added because the remote Fabric DW MCP server exposes no schema tools (only
+`execute_query`), so agents otherwise hand-write these queries.
+
+- **`list-tables`** = `SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE FROM
+  INFORMATION_SCHEMA.TABLES [WHERE TABLE_SCHEMA = N'…'] ORDER BY …`. Live-verified a
+  Fabric warehouse returns the user schema (`dbo`) plus the built-in system schemas
+  as VIEWs: `queryinsights.*` (exec_requests_history, exec_sessions_history,
+  frequently_run_queries, long_running_queries, sql_pool_insights), `sys.*`
+  (external_delta_tables, managed_delta_table_checkpoints, dm_db_external_tables_log_status,
+  …), and `INFORMATION_SCHEMA.*`. `TABLE_TYPE` is `BASE TABLE` or `VIEW`. Use
+  `--schema dbo` to filter to user tables.
+- **`describe-table`** = `SELECT ORDINAL_POSITION, TABLE_SCHEMA, TABLE_NAME,
+  COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE,
+  IS_NULLABLE, COLUMN_DEFAULT FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = N'…'
+  [AND TABLE_SCHEMA = N'…'] ORDER BY ORDINAL_POSITION`. Returns the LIST envelope (one
+  row per column); a `count` of 0 means the table/schema does not exist (NOT an error —
+  a 0-row SELECT is still a result set). `--table` accepts `schema.table`,
+  `[schema].[table]`, or a bare `table` (unqualified matches the name across schemas).
+- **Injection-safe**: all user-supplied schema/table identifiers are injected as
+  escaped `N'…'` literals (single quotes doubled) — never as raw SQL. Unit-tested.
+- **Works on any TDS surface**: both accept a Warehouse OR a Lakehouse/SQL-analytics-
+  endpoint id (schema discovery is resolved through the same connection-string path),
+  so they double as lakehouse SQL-endpoint schema discovery.
+
 ## Fabric Data Warehouse MCP Server (Preview) — live-verified
 
 The remote **Fabric Data Warehouse MCP server** (preview) is a Microsoft-hosted MCP

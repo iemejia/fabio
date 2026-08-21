@@ -1287,3 +1287,137 @@ fn warehouse_mcp_url_lifecycle() {
     assert_eq!(data["exists"], true);
     assert!(data["note"].as_str().unwrap().contains("MCP server"));
 }
+
+// ---------------------------------------------------------------------------
+// warehouse list-tables / describe-table: INFORMATION_SCHEMA schema discovery
+// ---------------------------------------------------------------------------
+
+/// Live test: discover tables and columns of a warehouse over `INFORMATION_SCHEMA`.
+/// Creates a warehouse, creates a table via `query`, then asserts `list-tables`
+/// surfaces it and `describe-table` returns its columns.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn warehouse_schema_discovery_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("wh_schema");
+
+    // Create a warehouse.
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let wh_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Create a table via a DDL query.
+    fabio()
+        .args([
+            "warehouse",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &wh_id,
+            "--sql",
+            "CREATE TABLE dbo.fabio_schema_probe (id INT NOT NULL, label VARCHAR(50) NULL)",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    // list-tables (scoped to dbo) must surface the new table.
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "list-tables",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &wh_id,
+            "--schema",
+            "dbo",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let rows = extract_data(&parse_json(&assert))
+        .as_array()
+        .unwrap()
+        .clone();
+    assert!(
+        rows.iter()
+            .any(|r| r["TABLE_NAME"].as_str() == Some("fabio_schema_probe")),
+        "list-tables should include the created table: {rows:?}"
+    );
+
+    // describe-table returns the two columns in order.
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "describe-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &wh_id,
+            "--table",
+            "dbo.fabio_schema_probe",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let cols = extract_data(&parse_json(&assert))
+        .as_array()
+        .unwrap()
+        .clone();
+    assert_eq!(cols.len(), 2, "expected 2 columns, got {cols:?}");
+    assert_eq!(cols[0]["COLUMN_NAME"], "id");
+    assert_eq!(cols[0]["DATA_TYPE"], "int");
+    assert_eq!(cols[0]["IS_NULLABLE"], "NO");
+    assert_eq!(cols[1]["COLUMN_NAME"], "label");
+    assert_eq!(cols[1]["DATA_TYPE"], "varchar");
+    assert_eq!(cols[1]["IS_NULLABLE"], "YES");
+
+    // A non-existent table yields an empty list (count 0), not an error.
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "describe-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &wh_id,
+            "--table",
+            "dbo.this_table_does_not_exist",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert_eq!(json["count"], 0);
+
+    // Clean up.
+    fabio()
+        .args([
+            "warehouse",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &wh_id,
+            "--hard-delete",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+}

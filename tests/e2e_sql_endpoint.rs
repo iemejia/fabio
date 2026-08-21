@@ -781,3 +781,67 @@ fn sql_endpoint_mcp_url_mocked_exists_and_missing() {
     assert_eq!(data["exists"], false);
     assert!(!data["hint"].as_str().unwrap().is_empty());
 }
+
+/// Live test: schema discovery over a SQL analytics endpoint. Picks the first
+/// SQL endpoint in the source workspace, asserts `list-tables` returns a list
+/// (system views are always present) and `describe-table` on a queryinsights
+/// view returns its columns.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn sql_endpoint_schema_discovery_lifecycle() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args(["sql-endpoint", "list", "--workspace", &cfg.source_workspace])
+        .assert()
+        .success();
+    let items = extract_data(&parse_json(&assert))
+        .as_array()
+        .unwrap()
+        .clone();
+    let Some(ep_id) = items.first().and_then(|e| e["id"].as_str()) else {
+        eprintln!("No SQL endpoint in source workspace; skipping schema-discovery test");
+        return;
+    };
+
+    // list-tables returns a list envelope (queryinsights/sys views always exist).
+    let assert = fabio()
+        .args([
+            "sql-endpoint",
+            "list-tables",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            ep_id,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(extract_data(&json).is_array());
+    assert!(json["count"].as_u64().unwrap() >= 1);
+
+    // describe-table on a known system view returns ordered columns.
+    let assert = fabio()
+        .args([
+            "sql-endpoint",
+            "describe-table",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            ep_id,
+            "--table",
+            "queryinsights.long_running_queries",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let cols = extract_data(&parse_json(&assert))
+        .as_array()
+        .unwrap()
+        .clone();
+    assert!(!cols.is_empty());
+    assert_eq!(cols[0]["ORDINAL_POSITION"], 1);
+    assert!(cols.iter().all(|c| c["COLUMN_NAME"].is_string()));
+}

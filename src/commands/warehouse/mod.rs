@@ -14,6 +14,7 @@ mod mcp;
 mod query;
 mod restore_points;
 mod retention;
+mod schema;
 mod statistics;
 
 #[derive(Debug, Subcommand)]
@@ -138,6 +139,36 @@ pub enum WarehouseCommand {
         /// Warehouse ID
         #[arg(long)]
         id: String,
+    },
+    /// List tables and views in a warehouse (from `INFORMATION_SCHEMA.TABLES`)
+    #[command(display_order = 13)]
+    ListTables {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Warehouse or Lakehouse ID
+        #[arg(long)]
+        id: String,
+
+        /// Only list tables in this schema (e.g. dbo)
+        #[arg(long)]
+        schema: Option<String>,
+    },
+    /// Describe the columns of a table (from `INFORMATION_SCHEMA.COLUMNS`)
+    #[command(display_order = 14)]
+    DescribeTable {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Warehouse or Lakehouse ID
+        #[arg(long)]
+        id: String,
+
+        /// Table name, optionally schema-qualified (e.g. dbo.Customers or Customers)
+        #[arg(long)]
+        table: String,
     },
     /// Get the connection string for a warehouse
     #[command(display_order = 15)]
@@ -589,6 +620,25 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
         WarehouseCommand::McpUrl { workspace, id } => {
             mcp::mcp_url(cli, client, workspace, id).await
         }
+        WarehouseCommand::ListTables {
+            workspace,
+            id,
+            schema: schema_filter,
+        } => {
+            Box::pin(schema::list_tables(
+                cli,
+                client,
+                workspace,
+                id,
+                schema_filter.as_deref(),
+            ))
+            .await
+        }
+        WarehouseCommand::DescribeTable {
+            workspace,
+            id,
+            table,
+        } => Box::pin(schema::describe_table(cli, client, workspace, id, table)).await,
         WarehouseCommand::ConnectionString {
             workspace,
             id,

@@ -1,0 +1,39 @@
+{
+  "command": "fabio warehouse list-tables --workspace <WS> --id <WAREHOUSE_ID> [--schema dbo]",
+  "description": "Discover the schema of a Warehouse or SQL analytics endpoint over INFORMATION_SCHEMA. 'list-tables' returns tables and views (optionally scoped to one --schema); 'describe-table --table [schema.]table' returns one row per column with type, length/precision/scale, nullability, and default. The same two subcommands exist under 'fabio sql-endpoint'. These make schema discovery first-class instead of hand-writing INFORMATION_SCHEMA queries (which is all the remote Fabric DW MCP server's single execute_query tool can do).",
+  "response": {
+    "data": [
+      {
+        "ORDINAL_POSITION": 1,
+        "TABLE_SCHEMA": "dbo",
+        "TABLE_NAME": "Orders",
+        "COLUMN_NAME": "Region",
+        "DATA_TYPE": "varchar",
+        "CHARACTER_MAXIMUM_LENGTH": 50,
+        "NUMERIC_PRECISION": null,
+        "NUMERIC_SCALE": null,
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null
+      },
+      {
+        "ORDINAL_POSITION": 2,
+        "TABLE_SCHEMA": "dbo",
+        "TABLE_NAME": "Orders",
+        "COLUMN_NAME": "Amount",
+        "DATA_TYPE": "int",
+        "CHARACTER_MAXIMUM_LENGTH": null,
+        "NUMERIC_PRECISION": 10,
+        "NUMERIC_SCALE": 0,
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null
+      }
+    ],
+    "count": 2
+  },
+  "notes": "Both commands run over the same native-TDS path as 'warehouse query' (SQL-audience token; see the SQL-scope gotcha) and accept a Warehouse OR Lakehouse/SQL-endpoint id. list-tables includes system schemas (queryinsights, sys, INFORMATION_SCHEMA) alongside user schemas — filter with --schema dbo for user tables. describe-table returns the LIST envelope shown above (one row per column); count 0 means the table/schema does not exist. --table accepts 'schema.table', '[schema].[table]', or a bare 'table' (a bare name matches across schemas). All identifiers are injected as escaped N'...' literals, so a schema/table containing a quote cannot be used for SQL injection. Live-verified against a Fabric warehouse and a lakehouse SQL analytics endpoint.",
+  "query_examples": [
+    "fabio warehouse list-tables --workspace <WS> --id <ID> --schema dbo --query \"data[].TABLE_NAME\" -o plain",
+    "fabio warehouse describe-table --workspace <WS> --id <ID> --table dbo.Orders --query \"data[].{col: COLUMN_NAME, type: DATA_TYPE, nullable: IS_NULLABLE}\"",
+    "fabio sql-endpoint list-tables --workspace <WS> --id <SQLEP_ID>"
+  ]
+}
