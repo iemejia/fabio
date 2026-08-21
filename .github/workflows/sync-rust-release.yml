@@ -1,0 +1,264 @@
+name: Sync Rust release
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Rust ships a new stable roughly every 6 weeks, on Thursdays. Check twice a
+    # week (Thu release day + the following Mon to catch slipped releases). The
+    # detection step is cheap (checkout + toolchain install + a version compare);
+    # the expensive Copilot/build steps only run when a newer stable exists.
+    - cron: '0 20 * * 1,4'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync-rust:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fabio
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      # rust-toolchain.toml pins channel = "stable", so this installs the
+      # CURRENT stable release. `rustc --version` is therefore our source of
+      # truth for the latest released Rust version.
+      - name: Install Rust toolchain (latest stable)
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Detect new Rust release
+        id: detect
+        run: |
+          LATEST=$(rustc --version | cut -d' ' -f2)
+          CURRENT=$(grep '^rust-version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          echo "Installed stable rustc: $LATEST"
+          echo "Current MSRV (Cargo.toml rust-version): $CURRENT"
+
+          if [ "$LATEST" = "$CURRENT" ]; then
+            echo "Already on the latest stable ($CURRENT) — nothing to do."
+            echo "has_update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Only proceed if the installed stable is strictly NEWER than the MSRV
+          # (guards against a transient rollback / prerelease weirdness).
+          NEWER=$(printf '%s\n%s\n' "$CURRENT" "$LATEST" | sort -V | tail -1)
+          if [ "$NEWER" != "$LATEST" ]; then
+            echo "Installed stable ($LATEST) is not newer than MSRV ($CURRENT) — skipping."
+            echo "has_update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "New Rust release detected: $CURRENT -> $LATEST"
+          {
+            echo "has_update=true"
+            echo "old_version=$CURRENT"
+            echo "new_version=$LATEST"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Bump MSRV in Cargo.toml and docs
+        if: steps.detect.outputs.has_update == 'true'
+        env:
+          OLD_VERSION: ${{ steps.detect.outputs.old_version }}
+          NEW_VERSION: ${{ steps.detect.outputs.new_version }}
+        run: |
+          set -euo pipefail
+          # Deterministic, mechanical part: bump the MSRV everywhere it is
+          # declared. The old version string only appears in Rust/MSRV contexts
+          # in these curated files, so a targeted replace is safe. Copilot then
+          # handles the judgement part (fixing new lints / adopting idioms).
+          sed -i "s/^rust-version = \"${OLD_VERSION}\"/rust-version = \"${NEW_VERSION}\"/" Cargo.toml
+          for f in README.md AGENTS.md .github/copilot-instructions.md; do
+            if [ -f "$f" ]; then
+              sed -i "s/${OLD_VERSION//./\\.}/${NEW_VERSION}/g" "$f"
+            fi
+          done
+
+          # Refresh Cargo.lock (rust-version change does not alter the dependency
+          # tree, but keep the lockfile consistent).
+          cargo check --quiet 2>/dev/null || true
+
+          echo "=== MSRV bump applied ==="
+          git diff --stat
+
+      - name: Cache cargo registry
+        if: steps.detect.outputs.has_update == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: sync-rust-cargo-${{ steps.detect.outputs.new_version }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            sync-rust-cargo-
+
+      - name: Cache build artifacts
+        if: steps.detect.outputs.has_update == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
+        with:
+          path: target
+          key: sync-rust-target-${{ steps.detect.outputs.new_version }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            sync-rust-target-
+
+      - name: Set up Node.js
+        if: steps.detect.outputs.has_update == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+
+      - name: Install Copilot CLI
+        if: steps.detect.outputs.has_update == 'true'
+        run: npm install -g @github/copilot
+
+      - name: Migrate to new toolchain with Copilot
+        if: steps.detect.outputs.has_update == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
+          OLD_VERSION: ${{ steps.detect.outputs.old_version }}
+          NEW_VERSION: ${{ steps.detect.outputs.new_version }}
+        run: |
+          PROMPT=$(envsubst '${OLD_VERSION} ${NEW_VERSION}' < .github/prompts/sync-rust-release.md)
+          copilot -p "$PROMPT" \
+            --model gpt-5.6-sol \
+            --allow-tool='shell(git:status,diff,log,show,rev-parse,ls-files,blame,branch)' \
+            --allow-tool='shell(cargo:*)' \
+            --allow-tool='shell(cat:*)' \
+            --allow-tool='shell(ls:*)' \
+            --allow-tool='shell(find:*)' \
+            --allow-tool='shell(head:*)' \
+            --allow-tool='shell(tail:*)' \
+            --allow-tool='shell(grep:*)' \
+            --allow-tool=read \
+            --allow-tool=write \
+            --allow-tool=edit \
+            --no-ask-user
+
+      - name: Check for code changes
+        if: steps.detect.outputs.has_update == 'true'
+        id: code-changes
+        run: |
+          if git diff --quiet; then
+            echo "No changes were made"
+            echo "has_code_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Changes detected:"
+            git diff --stat
+            echo "has_code_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify build
+        if: steps.code-changes.outputs.has_code_changes == 'true'
+        id: verify-build
+        run: |
+          if cargo fmt -- --check 2>/tmp/build-errors.txt \
+            && cargo clippy --tests -- -D warnings 2>>/tmp/build-errors.txt; then
+            echo "build_ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Build/lint failed — will ask Copilot to fix"
+            echo "build_ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fix build errors with Copilot
+        if: steps.verify-build.outputs.build_ok == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
+        run: |
+          BUILD_ERRORS=$(cat /tmp/build-errors.txt)
+          copilot -p "The changes made for the Rust toolchain bump have formatting or clippy errors. Fix them, preferring the modern Rust idioms listed in AGENTS.md. Here are the errors:
+
+          $BUILD_ERRORS
+
+          Run 'cargo fmt -- --check' and 'cargo clippy --tests -- -D warnings' after fixing to confirm they pass." \
+            --model gpt-5.6-sol \
+            --allow-tool='shell(git:status,diff,log,show,rev-parse,ls-files,blame,branch)' \
+            --allow-tool='shell(cargo:*)' \
+            --allow-tool='shell(cat:*)' \
+            --allow-tool='shell(ls:*)' \
+            --allow-tool='shell(find:*)' \
+            --allow-tool='shell(head:*)' \
+            --allow-tool='shell(tail:*)' \
+            --allow-tool='shell(grep:*)' \
+            --allow-tool=read \
+            --allow-tool=write \
+            --allow-tool=edit \
+            --no-ask-user
+
+      - name: Final validation
+        if: steps.code-changes.outputs.has_code_changes == 'true'
+        run: |
+          cargo fmt -- --check
+          cargo clippy --tests -- -D warnings
+          cargo test
+
+      - name: Create pull request
+        if: steps.code-changes.outputs.has_code_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_PAT }}
+          OLD_VERSION: ${{ steps.detect.outputs.old_version }}
+          NEW_VERSION: ${{ steps.detect.outputs.new_version }}
+        run: |
+          BRANCH="sync/rust-${NEW_VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Skip if an open PR already exists for this release.
+          EXISTING_PR=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR already exists for branch $BRANCH — skipping"
+            exit 0
+          fi
+
+          git checkout -b "$BRANCH"
+
+          # --- Commit subject / PR title (authored by Copilot, with fallback) ---
+          CONVENTIONAL_RE='^(feat|fix|docs|style|refactor|perf|test|chore|build|ci|revert)(\([^)]+\))?(!?): .+'
+          DEFAULT_TITLE="chore: bump MSRV to Rust ${NEW_VERSION}"
+          TITLE=""
+          if [ -f /tmp/commit-title.txt ]; then
+            TITLE=$(head -n 1 /tmp/commit-title.txt | sed 's/[[:space:]]*$//')
+          fi
+          if [ -z "$TITLE" ] || ! printf '%s' "$TITLE" | grep -Eq "$CONVENTIONAL_RE"; then
+            echo "::warning::No valid /tmp/commit-title.txt from Copilot — using default title"
+            TITLE="$DEFAULT_TITLE"
+          fi
+          echo "Commit/PR title: $TITLE"
+
+          # --- Commit body (authored by Copilot, with fallback) ---
+          COMMIT_BODY="/tmp/commit-body.txt"
+          if [ ! -s "$COMMIT_BODY" ]; then
+            COMMIT_BODY="/tmp/commit-body-fallback.txt"
+            {
+              echo "Bump MSRV from ${OLD_VERSION} to Rust ${NEW_VERSION} and adopt idioms"
+              echo "enabled by the new toolchain."
+            } > "$COMMIT_BODY"
+          fi
+
+          git add -A
+          COMMIT_MSG="/tmp/commit-message.txt"
+          {
+            printf '%s\n\n' "$TITLE"
+            cat "$COMMIT_BODY"
+          } > "$COMMIT_MSG"
+          git commit -F "$COMMIT_MSG"
+          git push --force origin "$BRANCH"
+
+          # --- PR body (authored by Copilot, with fallback) ---
+          PR_BODY="/tmp/pr-body.md"
+          if [ ! -s "$PR_BODY" ]; then
+            {
+              echo "Automated bump to the newly released **Rust ${NEW_VERSION}** toolchain (was ${OLD_VERSION})."
+              echo ""
+              echo "- Updated \`rust-version\` in \`Cargo.toml\` and all MSRV references in the docs."
+              echo "- Fixed any new clippy lints and adopted modern idioms enabled by the new toolchain."
+              echo ""
+              echo "Validated with \`cargo fmt\`, \`cargo clippy --tests -- -D warnings\`, and \`cargo test\`."
+            } > "$PR_BODY"
+          fi
+
+          gh pr create \
+            --title "$TITLE" \
+            --body-file "$PR_BODY" \
+            --label "automated,rust-sync"

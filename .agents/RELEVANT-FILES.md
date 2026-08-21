@@ -248,6 +248,9 @@
 - `.github/workflows/release.yml`: Release workflow (tag-triggered, 6 binaries, SHA256 checksums, GitHub Release)
 - `.github/workflows/docs.yml`: Builds, validates, and publishes the Astro documentation site to GitHub Pages
 - `.github/workflows/dependabot-auto-merge.yml`: Auto-merge Dependabot PRs on CI pass
+- `.github/workflows/sync-fabric-api-specs.yml`: Scheduled Copilot-driven sync of the Microsoft Fabric REST API specs into fabio; opens a PR (uses `.github/prompts/sync-fabric-api-specs.md`, cursor `.github/fabric-api-specs-cursor`)
+- `.github/workflows/sync-rust-release.yml`: Scheduled sync that detects a new stable Rust release (via the `rust-toolchain.toml` stable channel), mechanically bumps the MSRV in `Cargo.toml` + docs, then uses Copilot to fix new clippy lints / adopt modern idioms and opens a `rust-sync` PR (prompt `.github/prompts/sync-rust-release.md`)
+- `.github/prompts/sync-rust-release.md`: Copilot prompt for the Rust-release sync workflow (fix new lints, adopt idioms, write commit/PR metadata to `/tmp`)
 - `.github/dependabot.yml`: Cargo + GitHub Actions dependency updates
 - `docs/`: Astro + Starlight marketing and documentation website
 - `docs/README.md`: Contributor quickstart for the docs site (scripts, structure, generated vs authored, adding pages/blog posts, deployment)
