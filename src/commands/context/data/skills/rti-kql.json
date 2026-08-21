@@ -81,7 +81,8 @@
   "shared_references": [
     "throttling",
     "pagination",
-    "lro"
+    "lro",
+    "workspace-monitoring"
   ],
   "see_also": [
     "fabio context persona rti-engineer",

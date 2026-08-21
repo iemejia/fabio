@@ -1,0 +1,30 @@
+{
+  "topic": "workspace-monitoring",
+  "title": "Workspace Monitoring — enable in portal, query the data with fabio KQL",
+  "summary": "Workspace Monitoring provisions a read-only monitoring Eventhouse/KQL database that collects diagnostic logs + metrics from Fabric items (eventstreams, pipelines, copy jobs, GraphQL APIs, semantic models, eventhouses, mirrored databases, Real-Time hub job events). There is NO public REST API to enable/configure it or the per-eventstream 'Log Eventstream activity' toggle — both are PORTAL-ONLY. Enablement is gated by the tenant setting PlatformMonitoringTenantSetting (fabio can toggle THAT). Once enabled, query the monitoring tables with fabio's existing 'kql-database query' — there is no 'fabio workspace-monitoring' command and there does not need to be.",
+  "no_rest_api": "Verified against microsoft/fabric-rest-api-specs (zero monitoring paths) and the official 'Enable workspace monitoring' how-to (portal-only): enabling workspace monitoring (Workspace settings -> Monitoring -> +Eventhouse) and the per-eventstream 'Log Eventstream activity' toggle are PORTAL-ONLY. Do NOT look for or invent a 'fabio workspace-monitoring enable' command — it cannot exist against the public API.",
+  "enablement": {
+    "tenant_setting": "The tenant setting 'Workspace admins can turn on monitoring for their workspaces' (settingName: PlatformMonitoringTenantSetting) must be ON. fabio CAN set it (admin): fabio admin update-tenant-setting --setting-name PlatformMonitoringTenantSetting --content '{\"enabled\": true}'",
+    "per_workspace": "Then a workspace Admin enables it in the PORTAL: Workspace settings (gear) -> Monitoring -> +Eventhouse (wait for the database to provision). This creates the read-only monitoring Eventhouse. No REST API.",
+    "per_eventstream_toggle": "Eventstream observability is OFF by default per eventstream. Enable 'Log Eventstream activity' in each eventstream's Settings panel (portal-only) — a workspace with 10 eventstreams can monitor just the 2-3 critical ones.",
+    "prerequisites": ["Power BI Premium or Fabric capacity", "PlatformMonitoringTenantSetting enabled (Fabric admin)", "Workspace Admin role", "Log Analytics NOT enabled in the same workspace (mutually exclusive)"]
+  },
+  "query_the_data_with_fabio": {
+    "note": "The monitoring Eventhouse is a normal KQL database item in the workspace, so fabio's EXISTING commands work against it — no new surface needed.",
+    "find_it": "fabio kql-database list --workspace $WS   # locate the monitoring KQL database (auto-created by enablement)",
+    "query": "fabio kql-database query --workspace $WS --id $MON_KQLDB --kql \"EventStreamErrorMetrics | where Timestamp > ago(1h) | summarize count() by ErrorCode, Severity\"",
+    "schema": "fabio kql-database query --workspace $WS --id $MON_KQLDB --kql \".show tables\"   # list the available monitoring tables (then '<Table> | getschema' for columns)"
+  },
+  "tables": {
+    "eventstream": ["EventStreamMetrics (throughput, event counts, ingress/egress; ~1 min)", "EventStreamErrorMetrics (error category/code/severity, affected events; ~1 min)", "EventStreamNodeStatus (node running/stopped; ~6 h)"],
+    "other_workloads": ["Data Factory: Pipeline activity run logs; Copy job activity run details", "Data Engineering: GraphQL metrics + operation logs", "Real-Time Intelligence: Eventhouse metric/command/data-operation/ingestion-results logs", "Mirroring: Mirrored database execution logs", "Power BI: Semantic model operation logs", "Real-Time hub: Job Events"]
+  },
+  "constraints": [
+    "The monitoring Eventhouse is READ-ONLY; delete it via workspace settings (wait ~15 min before recreating).",
+    "Retention is 30 days; ingestion CANNOT be filtered by log type/category (e.g. only errors).",
+    "Workspace monitoring and Log Analytics are mutually exclusive per workspace.",
+    "Monitoring Eventhouse/Eventstream operations are not throttled by capacity state, but Power BI reports/Activator alerts built on the monitoring DB ARE throttled.",
+    "If a table is missing, toggle 'Log workspace activity' off then on in the Monitoring tab (the Eventhouse predates that table)."
+  ],
+  "see_also": ["fabio kql-database query --workspace $WS --id $MON_KQLDB --kql <KQL>", "fabio admin update-tenant-setting --setting-name PlatformMonitoringTenantSetting", "fabio context best-practices tenant-feature-gates", "Enable workspace monitoring (Microsoft Learn) — portal steps"]
+}

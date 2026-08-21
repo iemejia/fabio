@@ -239,6 +239,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 | `fabio context best-practices throttling` | fabio transparently handles 429 (Too Many Requests) and gateway errors. Agents do NOT need to implement retry logic. |
 | `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |
 | `fabio context best-practices lro` | Many Fabric operations are async (return 202). fabio polls them automatically. Use --wait for job operations. |
+| `fabio context best-practices workspace-monitoring` | Workspace Monitoring provisions a read-only monitoring Eventhouse/KQL database that collects diagnostic logs + metrics from Fabric items (eventstreams, pipelines, copy jobs, GraphQL APIs, semantic models, eventhouses, mirrored databases, Real-Time hub job events). There is NO public REST API to enable/configure it or the per-eventstream 'Log Eventstream activity' toggle — both are PORTAL-ONLY. Enablement is gated by the tenant setting PlatformMonitoringTenantSetting (fabio can toggle THAT). Once enabled, query the monitoring tables with fabio's existing 'kql-database query' — there is no 'fabio workspace-monitoring' command and there does not need to be. |
 
 ## See also
 - fabio context persona rti-engineer
