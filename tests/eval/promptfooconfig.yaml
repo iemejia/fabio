@@ -2748,3 +2748,52 @@ tests:
       - type: llm-rubric
         value: "The response audits convergence after applying — either by passing '--verify' to 'deploy apply' (which adds a verification block), or by re-running 'deploy plan' and expecting all Skip / zero create-update-delete. It does not assume success without a check."
         metric: deploy-verify-audit
+
+  - description: "Warehouse: get the remote Fabric DW MCP server URL for an external agent"
+    vars:
+      user_query: "I want VS Code agent mode to run SQL against my Fabric warehouse over MCP. How do I get the MCP server URL?"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('warehouse mcp-url') || output.includes('sql-endpoint mcp-url')
+        metric: warehouse-mcp-url-command
+      - type: llm-rubric
+        value: "The response uses 'fabio warehouse mcp-url' (or 'sql-endpoint mcp-url') with --workspace and --id to print the remote Fabric Data Warehouse MCP server URL for an external MCP client. It does not invent a different command or hand-write the /mcp/dataPlane/.../sqlEndpoint URL from scratch."
+        metric: warehouse-mcp-url-routing
+
+  - description: "Warehouse: discover tables and columns (schema discovery)"
+    vars:
+      user_query: "List the tables in my Fabric warehouse and then show the columns and types of the dbo.Orders table"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('list-tables') && output.includes('describe-table')
+        metric: warehouse-schema-discovery-commands
+      - type: llm-rubric
+        value: "The response uses 'fabio warehouse list-tables' to list tables and 'fabio warehouse describe-table --table dbo.Orders' to show columns/types, rather than hand-writing INFORMATION_SCHEMA queries via 'query --sql'."
+        metric: warehouse-schema-discovery-routing
+
+  - description: "Warehouse: bulk-load files into a table with COPY INTO"
+    vars:
+      user_query: "Load these Parquet files from https://acct.dfs.core.windows.net/data/orders/ into the dbo.Orders table in my Fabric warehouse"
+    assert:
+      - type: icontains
+        value: "warehouse copy-into"
+        metric: warehouse-copy-into-command
+      - type: icontains
+        value: "--file-type"
+        metric: warehouse-copy-into-file-type
+      - type: llm-rubric
+        value: "The response uses 'fabio warehouse copy-into' with --table dbo.Orders, --source (the HTTPS storage URL), and --file-type PARQUET. It understands the target table must already exist (COPY INTO does not create it) and may mention --dry-run to preview the generated SQL."
+        metric: warehouse-copy-into-routing
+
+  - description: "Warehouse: run SQL without configuring a separate SQL token"
+    vars:
+      user_query: "Running fabio warehouse query fails asking for a database.windows.net SQL token and my network blocks port 1433. Is there another way to run the query?"
+    assert:
+      - type: icontains
+        value: "--via-mcp"
+        metric: warehouse-via-mcp-flag
+      - type: llm-rubric
+        value: "The response suggests 'fabio warehouse query --via-mcp' (or 'sql-endpoint query --via-mcp'), explaining it routes the T-SQL through the remote Fabric Data Warehouse MCP server using the Fabric token — so it avoids the separate database.windows.net SQL token and outbound TCP 1433. It may note values come back as strings (CSV) and that native TDS is richer (plans/insights)."
+        metric: warehouse-via-mcp-routing

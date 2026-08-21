@@ -200,9 +200,25 @@ fabio warehouse queries-running --workspace <ws> --id <warehouse-id>
 
 # 10. Find your most expensive queries
 fabio warehouse queries-long-running --workspace <ws> --id <warehouse-id> --top 5
+
+# 11. Discover the schema (tables + columns) over INFORMATION_SCHEMA
+fabio warehouse list-tables --workspace <ws> --id <warehouse-id> --schema dbo
+fabio warehouse describe-table --workspace <ws> --id <warehouse-id> --table dbo.orders
+
+# 12. Bulk-load files into a table with COPY INTO (append-only; --dry-run to preview the SQL)
+fabio warehouse copy-into --workspace <ws> --id <warehouse-id> \
+  --table dbo.orders --file-type PARQUET \
+  --source https://acct.dfs.core.windows.net/container/orders/*.parquet
+
+# 13. Run SQL via the remote Fabric DW MCP server (Fabric token — no SQL token / TCP 1433)
+fabio warehouse query --workspace <ws> --id <warehouse-id> --via-mcp \
+  --sql "SELECT TOP 10 * FROM dbo.orders"
+
+# 14. Print the remote MCP server URL for an external MCP client (VS Code, Copilot)
+fabio warehouse mcp-url --workspace <ws> --id <warehouse-id>
 ```
 
-That's it -- from sign-in to queryable Delta tables in 7 commands.
+That's it -- from sign-in to queryable Delta tables in 7 commands. Steps 8-14 add execution plans, live query monitoring, schema discovery, `COPY INTO` bulk load, remote-MCP execution, and the MCP server URL for external agents.
 
 ## Output Formats
 

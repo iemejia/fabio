@@ -397,6 +397,17 @@ fabio lakehouse delete-directory --workspace $WS --id $LH --path Files/tmp --dry
 fabio warehouse create --workspace $WS --name "Analytics"
 fabio warehouse query --workspace $WS --id $WH --sql "SELECT COUNT(*) FROM dbo.orders"
 fabio warehouse query --workspace $WS --id $WH --sql @queries/report.sql   # from file
+# Run SQL via the remote Fabric DW MCP server: Fabric token, no database.windows.net SQL token, no TCP 1433 (values come back as strings)
+fabio warehouse query --workspace $WS --id $WH --via-mcp --sql "SELECT TOP 10 * FROM dbo.orders"
+# Schema discovery over INFORMATION_SCHEMA (typed subcommands, no hand-written queries)
+fabio warehouse list-tables --workspace $WS --id $WH --schema dbo         # tables + views
+fabio warehouse describe-table --workspace $WS --id $WH --table dbo.orders  # columns, types, nullability
+# Bulk-load files into an EXISTING table with COPY INTO (append-only; --dry-run previews the SQL, SAS secret redacted)
+fabio warehouse copy-into --workspace $WS --id $WH --table dbo.orders \
+  --file-type PARQUET --source https://acct.dfs.core.windows.net/c/orders/*.parquet   # omit --sas-token for Entra ID passthrough
+# Print the remote MCP server URL for an external MCP client (VS Code agent mode / Copilot / Copilot Studio / Foundry)
+fabio warehouse mcp-url --workspace $WS --id $WH
+fabio sql-endpoint mcp-url --workspace $WS --id $SQLEP
 fabio sql-database create --workspace $WS --name "OrdersDB"
 fabio sql-database import --workspace $WS --id $DB --file data.csv --table orders --drop-if-exists
 # Execution plans (estimated, does not execute the query)
