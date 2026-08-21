@@ -296,6 +296,10 @@ pub enum WarehouseCommand {
         /// Comma-separated list of audit actions
         #[arg(long)]
         audit_actions: Option<String>,
+
+        /// Predicate expression for filtering audit logs (identity-based / column filters)
+        #[arg(long)]
+        predicate_expression: Option<String>,
     },
     /// Set audit actions and groups for a warehouse
     #[command(display_order = 27)]
@@ -773,6 +777,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
             state,
             retention_days,
             audit_actions,
+            predicate_expression,
         } => {
             admin::update_audit_settings(
                 cli,
@@ -782,6 +787,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
                 state.as_deref(),
                 *retention_days,
                 audit_actions.as_deref(),
+                predicate_expression.as_deref(),
             )
             .await
         }

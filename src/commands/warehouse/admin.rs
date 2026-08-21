@@ -107,6 +107,7 @@ pub(super) async fn get_audit_settings(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn update_audit_settings(
     cli: &Cli,
     client: &FabricClient,
@@ -115,6 +116,7 @@ pub(super) async fn update_audit_settings(
     state: Option<&str>,
     retention_days: Option<u32>,
     audit_actions: Option<&str>,
+    predicate_expression: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({});
     if let Some(s) = state {
@@ -126,6 +128,9 @@ pub(super) async fn update_audit_settings(
     if let Some(actions) = audit_actions {
         let list: Vec<&str> = actions.split(',').map(str::trim).collect();
         body["auditActionsAndGroups"] = serde_json::json!(list);
+    }
+    if let Some(pred) = predicate_expression {
+        body["predicateExpression"] = Value::from(pred);
     }
 
     if output::dry_run_guard(cli, "warehouse update-audit-settings", &body) {

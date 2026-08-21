@@ -166,6 +166,10 @@ pub enum AdminCommand {
         /// Valid values: `Disabled`, `Active`, `EnableInProgress`, `DisableInProgress`, `Failed`
         #[arg(long)]
         encryption_status: Option<String>,
+
+        /// Scope the listing to a single capacity ID
+        #[arg(long)]
+        capacity_id: Option<String>,
     },
     /// Show workspace details (admin view)
     #[command(display_order = 31)]
@@ -573,12 +577,14 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &AdminCommand) -
         AdminCommand::ListWorkspaces {
             include,
             encryption_status,
+            capacity_id,
         } => {
             workspaces::list_workspaces(
                 cli,
                 client,
                 include.as_deref(),
                 encryption_status.as_deref(),
+                capacity_id.as_deref(),
             )
             .await
         }

@@ -6,12 +6,15 @@ use crate::client::FabricClient;
 use crate::errors::enrich_admin;
 use crate::output;
 
-pub(super) async fn list_workspaces(
-    cli: &Cli,
-    client: &FabricClient,
+/// Build the admin `list-workspaces` URL with optional query params.
+///
+/// `include` → `include=`, `encryption_status` → `encryptionStatus=`,
+/// `capacity_id` → `capacityId=` (per the CMK tenant-governance API). Pure.
+fn build_list_workspaces_url(
     include: Option<&str>,
     encryption_status: Option<&str>,
-) -> Result<()> {
+    capacity_id: Option<&str>,
+) -> String {
     let mut url = "/admin/workspaces".to_string();
     let mut params: Vec<String> = Vec::new();
     if let Some(inc) = include {
@@ -20,10 +23,24 @@ pub(super) async fn list_workspaces(
     if let Some(status) = encryption_status {
         params.push(format!("encryptionStatus={status}"));
     }
+    if let Some(cap) = capacity_id {
+        params.push(format!("capacityId={cap}"));
+    }
     if !params.is_empty() {
         url.push('?');
         url.push_str(&params.join("&"));
     }
+    url
+}
+
+pub(super) async fn list_workspaces(
+    cli: &Cli,
+    client: &FabricClient,
+    include: Option<&str>,
+    encryption_status: Option<&str>,
+    capacity_id: Option<&str>,
+) -> Result<()> {
+    let url = build_list_workspaces_url(include, encryption_status, capacity_id);
 
     let resp = client
         .get_list(
@@ -286,7 +303,7 @@ fn network_policies_url(filter: Option<&str>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::network_policies_url;
+    use super::{build_list_workspaces_url, network_policies_url};
 
     #[test]
     fn network_policies_url_omits_filter_when_absent() {
@@ -302,6 +319,30 @@ mod tests {
         assert_eq!(
             url,
             "/admin/workspaces/networking/communicationpolicies?filter=inbound%2FpublicAccessRules%2FdefaultAction%20eq%20%27deny%27"
+        );
+    }
+
+    #[test]
+    fn list_workspaces_url_builds_query_params() {
+        // No params → bare path.
+        assert_eq!(
+            build_list_workspaces_url(None, None, None),
+            "/admin/workspaces"
+        );
+        // include only.
+        assert_eq!(
+            build_list_workspaces_url(Some("encryption"), None, None),
+            "/admin/workspaces?include=encryption"
+        );
+        // All three, in order.
+        assert_eq!(
+            build_list_workspaces_url(Some("encryption"), Some("EnableInProgress"), Some("cap-1")),
+            "/admin/workspaces?include=encryption&encryptionStatus=EnableInProgress&capacityId=cap-1"
+        );
+        // capacity-id without include (still valid query param).
+        assert_eq!(
+            build_list_workspaces_url(None, None, Some("cap-2")),
+            "/admin/workspaces?capacityId=cap-2"
         );
     }
 }

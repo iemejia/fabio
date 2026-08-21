@@ -2558,6 +2558,27 @@ definition-authoring error hints, and the `definition_requirements` block merged
   aliases — promoted to failures with `--strict`. Verified `--strict` clean (0 warnings) against real
   exported CopyJob/Dataflow/DataPipeline/SparkJobDefinition/Notebook folders.
 
+## SQL Audit predicate filtering (warehouse) + CMK capacity governance — live-verified
+
+Two small consistency additions aligned with GA blog features (Aug 2026):
+
+- **`warehouse update-audit-settings --predicate-expression`** — the SQL Audit
+  Predicate Filtering GA applies to Warehouse too, but the flag existed only on
+  `sql-endpoint` / `sql-database`. Added to warehouse for parity: it sets a
+  top-level `predicateExpression` (camelCase) in the
+  `PATCH /workspaces/{ws}/warehouses/{id}/settings/sqlAudit` body — same field
+  name and placement as the other two surfaces. Live note: a correctly-formed
+  request may return `403 FORBIDDEN InsufficientScopes` — writing SQL audit
+  settings needs Contributor+ AND an elevated audit scope beyond the default
+  `az login` token (the `GET` read works; the `PATCH` is scope-gated). A 403
+  (authorization) vs 400 (bad request) confirms the body shape is accepted.
+- **`admin list-workspaces --capacity-id`** — the CMK tenant-governance API
+  documents `GET /admin/workspaces?include=encryption&capacityId={id}` to scope
+  the encryption audit to one capacity. Added as `--capacity-id` alongside the
+  existing `--include` / `--encryption-status`. Live-verified: `--capacity-id`
+  narrowed the listing to 46 workspaces (all matching the capacity) vs 61
+  unfiltered — the filter is applied server-side.
+
 ## `query --via-mcp` execution backend + `execute_query` result shape — live-verified
 
 `warehouse query --via-mcp` and `sql-endpoint query --via-mcp` route the T-SQL

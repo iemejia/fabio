@@ -203,6 +203,10 @@
           "--encryption-status": {
             "type": "string",
             "description": "Filter workspaces by encryption status (only valid when --include=encryption is set). Valid values: `Disabled`, `Active`, `EnableInProgress`, `DisableInProgress`, `Failed`"
+          },
+          "--capacity-id": {
+            "type": "string",
+            "description": "Scope the listing to a single capacity ID"
           }
         },
         "mutates": false,
@@ -5475,6 +5479,10 @@
           "--audit-actions": {
             "type": "string",
             "description": "Comma-separated list of audit actions"
+          },
+          "--predicate-expression": {
+            "type": "string",
+            "description": "Predicate expression for filtering audit logs (identity-based / column filters)"
           }
         },
         "mutates": true,

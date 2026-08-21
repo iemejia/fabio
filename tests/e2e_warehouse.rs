@@ -1787,3 +1787,40 @@ fn warehouse_query_via_mcp_lifecycle() {
         .assert()
         .success();
 }
+
+// ---------------------------------------------------------------------------
+// warehouse update-audit-settings --predicate-expression (SQL Audit predicate)
+// ---------------------------------------------------------------------------
+
+/// Hermetic test: `--predicate-expression` is placed as top-level
+/// `predicateExpression` in the audit-settings body (matching sql-endpoint /
+/// sql-database). Verified via `--dry-run` — no live tenant required.
+#[test]
+fn warehouse_update_audit_settings_predicate_dry_run() {
+    let ws = "00000000-0000-0000-0000-000000000001";
+    let wh = "00000000-0000-0000-0000-000000000002";
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .args([
+            "warehouse",
+            "update-audit-settings",
+            "--workspace",
+            ws,
+            "--id",
+            wh,
+            "--state",
+            "Enabled",
+            "--predicate-expression",
+            "database_principal_name <> 'dbo'",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let details = &extract_data(&json)["details"];
+    assert_eq!(details["state"], "Enabled");
+    assert_eq!(
+        details["predicateExpression"],
+        "database_principal_name <> 'dbo'"
+    );
+}

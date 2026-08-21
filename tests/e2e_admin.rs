@@ -15,6 +15,8 @@ mod common;
 use common::{TestConfig, fabio, unique_name};
 use serde_json::Value;
 use serial_test::serial;
+use wiremock::matchers::{method, path, query_param};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -2195,4 +2197,87 @@ fn admin_list_workspaces_with_encryption_filter() {
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert!(json["data"].is_array());
+}
+
+// ---------------------------------------------------------------------------
+// admin list-workspaces --capacity-id (CMK tenant-governance scoping)
+// ---------------------------------------------------------------------------
+
+/// Hermetic test: `--include encryption --capacity-id <cap>` sends both
+/// `include=encryption` and `capacityId=<cap>` as query params. The mock only
+/// answers when BOTH are present, so a missing/wrong param fails the request.
+#[test]
+fn admin_list_workspaces_capacity_filter_query_params() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let cap = "11111111-2222-3333-4444-555555555555";
+
+    let (server_uri, _server) = rt.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/admin/workspaces"))
+            .and(query_param("include", "encryption"))
+            .and(query_param("capacityId", cap))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "workspaces": [
+                    {"id": "ws-1", "name": "Scoped", "capacityId": cap,
+                     "encryption": {"status": "Active"}}
+                ]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "admin",
+            "list-workspaces",
+            "--include",
+            "encryption",
+            "--capacity-id",
+            cap,
+        ])
+        .assert()
+        .success();
+    let json: Value = serde_json::from_slice(&assert.get_output().stdout).unwrap();
+    assert_eq!(json["data"][0]["capacityId"], cap);
+}
+
+/// Live test: `--capacity-id` narrows the admin workspace listing to one capacity
+/// (every returned workspace matches). Requires the Fabric Admin role; on a
+/// non-admin caller it returns a well-formed FORBIDDEN and is skipped.
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn admin_list_workspaces_capacity_filter_live() {
+    let cfg = TestConfig::from_env();
+    let output = fabio()
+        .args([
+            "admin",
+            "list-workspaces",
+            "--include",
+            "encryption",
+            "--capacity-id",
+            &cfg.capacity_id,
+        ])
+        .output()
+        .unwrap();
+
+    if let Some(json) = assert_admin_output(&output)
+        && let Some(items) = json["data"].as_array()
+    {
+        for w in items {
+            assert_eq!(
+                w["capacityId"].as_str().map(str::to_lowercase),
+                Some(cfg.capacity_id.to_lowercase()),
+                "every workspace should match the requested capacity"
+            );
+        }
+    }
 }
