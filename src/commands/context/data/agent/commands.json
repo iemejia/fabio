@@ -20169,6 +20169,259 @@
       }
     }
   },
+  "mirrored-google-lakehouse-catalog": {
+    "auth_scope": "fabric",
+    "description": "Manage mirrored Google Lakehouse runtime catalogs (Google BigLake/Iceberg mirroring)",
+    "subcommands": {
+      "list": {
+        "description": "List mirrored Google Lakehouse runtime catalogs in a workspace",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "show": {
+        "description": "Show details of a mirrored Google Lakehouse runtime catalog",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Mirrored Google Lakehouse runtime catalog ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "create": {
+        "description": "Create a new mirrored Google Lakehouse runtime catalog",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Display name"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Optional description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "update": {
+        "description": "Update mirrored Google Lakehouse runtime catalog properties (name and/or description)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Mirrored Google Lakehouse runtime catalog ID"
+          },
+          "--name": {
+            "type": "string",
+            "description": "New display name"
+          },
+          "--description": {
+            "type": "string",
+            "description": "New description"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "delete": {
+        "description": "Delete a mirrored Google Lakehouse runtime catalog",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Mirrored Google Lakehouse runtime catalog ID"
+          },
+          "--hard-delete": {
+            "type": "bool",
+            "description": "Permanently delete (cannot be recovered)"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "get-definition": {
+        "description": "Get the definition of a mirrored Google Lakehouse runtime catalog",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Mirrored Google Lakehouse runtime catalog ID"
+          },
+          "--decode": {
+            "type": "bool",
+            "description": "Decode base64 payloads inline (adds decodedPayload field)"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "async": true
+      },
+      "update-definition": {
+        "description": "Update the definition of a mirrored Google Lakehouse runtime catalog",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Mirrored Google Lakehouse runtime catalog ID"
+          },
+          "--file": {
+            "type": "string",
+            "description": "Path to definition file"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline definition content"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "async": true
+      },
+      "refresh-metadata": {
+        "description": "Refresh catalog metadata",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Mirrored Google Lakehouse runtime catalog ID"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "async": true
+      },
+      "list-scopes": {
+        "description": "List catalog mirroring scopes (workspace-level)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--connection-id": {
+            "type": "string",
+            "required": true,
+            "description": "Connection ID of the catalog mirroring source (required)"
+          },
+          "--parent": {
+            "type": "string",
+            "description": "Parent scope to list under (optional)"
+          },
+          "--recursive": {
+            "type": "bool",
+            "description": "Recurse into nested scopes (optional)"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "list-tables": {
+        "description": "List catalog mirroring tables (workspace-level)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--connection-id": {
+            "type": "string",
+            "required": true,
+            "description": "Connection ID of the catalog mirroring source (required)"
+          },
+          "--scope": {
+            "type": "string",
+            "description": "Scope to list tables under (optional)"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "mirroring-status": {
+        "description": "Get mirroring status",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Mirrored Google Lakehouse runtime catalog ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "tables-mirroring-status": {
+        "description": "Get tables mirroring status",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Mirrored Google Lakehouse runtime catalog ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      }
+    }
+  },
   "warehouse-snapshot": {
     "auth_scope": "fabric",
     "description": "Manage warehouse snapshots",

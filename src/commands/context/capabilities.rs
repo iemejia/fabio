@@ -53,10 +53,16 @@ impl Capability {
 
 /// Item types fabio cannot map to its command group by pure normalization
 /// (irregular casing that drops a word). Keyed by item type → command group.
-const GROUP_ALIASES: &[(&str, &str)] = &[(
-    "MirroredAzureDatabricksCatalog",
-    "mirrored-databricks-catalog",
-)];
+const GROUP_ALIASES: &[(&str, &str)] = &[
+    (
+        "MirroredAzureDatabricksCatalog",
+        "mirrored-databricks-catalog",
+    ),
+    (
+        "MirroredGoogleLakehouseRuntimeCatalog",
+        "mirrored-google-lakehouse-catalog",
+    ),
+];
 
 /// Normalize a name for case/-/_-insensitive matching.
 fn normalize(s: &str) -> String {

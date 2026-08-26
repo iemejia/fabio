@@ -957,7 +957,8 @@ pub(super) async fn get_connection_string(
     // Item types whose SQL endpoint lives directly at `properties.connectionString`
     // (Warehouse, WarehouseSnapshot), and those that expose it under
     // `properties.sqlEndpointProperties.connectionString` (Lakehouse,
-    // MirroredAzureDatabricksCatalog, MirroredDatabase). Each is tried in turn;
+    // MirroredAzureDatabricksCatalog, MirroredDatabase,
+    // MirroredGoogleLakehouseRuntimeCatalog). Each is tried in turn;
     // the first whose GET succeeds with a non-empty connection string wins.
     let direct = [
         ("warehouses", false),
@@ -965,6 +966,7 @@ pub(super) async fn get_connection_string(
         ("warehouseSnapshots", false),
         ("mirroredAzureDatabricksCatalogs", true),
         ("mirroredDatabases", true),
+        ("mirroredGoogleLakehouseRuntimeCatalogs", true),
     ];
     for (collection, via_sql_endpoint) in direct {
         if let Ok(data) = client

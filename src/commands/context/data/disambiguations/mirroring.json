@@ -5,8 +5,8 @@
   "meanings": [
     {
       "context": "Continuous replication of an external DB",
-      "artifact": "Mirrored Database / Catalog (Snowflake, Databricks UC, Cosmos, SQL)",
-      "description": "Continuously replicates a source into OneLake Delta; read-only in Fabric, queried via the SQL analytics endpoint. Use when you want a live, queryable copy.",
+      "artifact": "Mirrored Database / Catalog (Snowflake, Databricks UC, Google Lakehouse/BigLake, Cosmos, SQL)",
+      "description": "Continuously replicates a source into OneLake Delta; read-only in Fabric, queried via the SQL analytics endpoint. Use when you want a live, queryable copy. Catalog variants: mirrored-catalog (generic Iceberg REST / Unity Catalog), mirrored-databricks-catalog (Azure Databricks UC), mirrored-google-lakehouse-catalog (Google Cloud Lakehouse runtime catalog / BigLake Iceberg).",
       "command_group": "mirrored-database",
       "example_commands": [
         "fabio mirrored-database create --workspace $WS --name Repl --content '{...}'",

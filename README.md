@@ -19,7 +19,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 | Design philosophy | Interactive-first (shell with `cd`/`ls`) | Agent-native (non-interactive, structured output) |
 | CI/CD deployment | Wraps fabric-cicd library | Native engine with content-hash diffing |
 | Default output | Human text | JSON (machine-parseable by default) |
-| Item type coverage | ~20 commands | 79 command groups |
+| Item type coverage | ~20 commands | 80 command groups |
 | SQL query execution | No | Warehouse, SQL Database, Lakehouse (T-SQL via TDS) |
 | Query plan capture | No | Estimated execution plan (SHOWPLAN_XML) without executing |
 | Query performance monitoring | No | Running/frequent/long-running queries, kill sessions |
@@ -54,7 +54,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 | Post-deploy convergence audit | No | `apply --verify` re-checks applied items converged to source (report-only) |
 | Deployment strategy | Single (always deploys all) | `--strategy default\|bulk\|sequential` (per-item, bulk API, or serial) |
 | Output format | Python logs | JSON envelope (stdout/stderr separation) |
-| Item types supported | 27 (deploy only) | 47 (deploy) + 79 command groups (full CRUD, query, run) |
+| Item types supported | 27 (deploy only) | 47 (deploy) + 80 command groups (full CRUD, query, run) |
 | Selective filtering | Feature-flagged, limited | `--exclude-regex`, `--include-items`, `--include-folders` |
 | Runtime | Python 3.9+ (pip install) | Single Rust binary, no runtime |
 
@@ -268,7 +268,7 @@ Error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITE
 
 ## Commands
 
-79 command groups with 850+ subcommands covering the full Fabric REST API surface. Use the built-in introspection to discover commands:
+80 command groups with 850+ subcommands covering the full Fabric REST API surface. Use the built-in introspection to discover commands:
 
 ```bash
 # Compact index of all groups + subcommand names
@@ -397,7 +397,7 @@ To create a compatible app registration (multitenant, public client, correct red
 
 ## Shell Completions
 
-Generate tab-completion scripts for your shell. Completions cover all 79 command groups, 850+ subcommands, and their flags.
+Generate tab-completion scripts for your shell. Completions cover all 80 command groups, 850+ subcommands, and their flags.
 
 ### Bash
 
@@ -736,7 +736,7 @@ Configuration: [`prek.toml`](prek.toml)
 
 ### Project Stats
 
-- **79 command groups** with **850+ subcommands**
+- **80 command groups** with **850+ subcommands**
 - **8 orchestrator personas**, **12 architecture blueprints**, **7 term disambiguations**, **15 generated intent-scoped sub-skills**, **15 workflow recipes**, **17 best-practice topics** — the layered agent knowledge base
 - **1562 tests** (841 unit + 721 offline/E2E integration)
 - Zero clippy warnings, zero unsafe code

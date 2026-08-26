@@ -8,11 +8,12 @@ use crate::commands::{
     eventhouse, eventstream, feedback, gateway, git, graph_model, graph_query_set, graphql_api,
     item, job_scheduler, jobs, kql_dashboard, kql_database, kql_queryset, label, lakehouse, lro,
     managed_private_endpoint, map, mirrored_catalog, mirrored_database,
-    mirrored_databricks_catalog, mirrored_warehouse, ml_experiment, ml_model, mounted_data_factory,
-    notebook, onelake_security, ontology, operations_agent, org_app, org_app_audience,
-    paginated_report, plan, profile, reflex, report, rest, rti, scorecard, semantic_model,
-    snowflake_database, spark, spark_job_definition, sql_database, sql_endpoint,
-    user_data_function, variable_library, warehouse, warehouse_snapshot, workspace,
+    mirrored_databricks_catalog, mirrored_google_lakehouse_catalog, mirrored_warehouse,
+    ml_experiment, ml_model, mounted_data_factory, notebook, onelake_security, ontology,
+    operations_agent, org_app, org_app_audience, paginated_report, plan, profile, reflex, report,
+    rest, rti, scorecard, semantic_model, snowflake_database, spark, spark_job_definition,
+    sql_database, sql_endpoint, user_data_function, variable_library, warehouse,
+    warehouse_snapshot, workspace,
 };
 
 /// Agent-native CLI for managing Microsoft Fabric artifacts and data.
@@ -538,6 +539,12 @@ pub enum Command {
     MirroredDatabricksCatalog {
         #[command(subcommand)]
         command: mirrored_databricks_catalog::MirroredDatabricksCatalogCommand,
+    },
+    /// Manage mirrored Google Lakehouse runtime catalogs (Google BigLake/Iceberg mirroring)
+    #[command(display_order = 53)]
+    MirroredGoogleLakehouseCatalog {
+        #[command(subcommand)]
+        command: mirrored_google_lakehouse_catalog::MirroredGoogleLakehouseCatalogCommand,
     },
     /// Manage warehouse snapshots
     #[command(display_order = 54)]

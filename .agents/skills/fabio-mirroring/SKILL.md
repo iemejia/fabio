@@ -1,7 +1,7 @@
 ---
 name: fabio-mirroring
 description: >-
-  Intent-scoped fabio skill for Fabric database mirroring / real-time replication: mirrored databases, mirrored catalogs (Unity Catalog), mirrored Azure Databricks catalogs, mirrored warehouses, Snowflake databases, and Azure Databricks storage. Use to replicate external sources into OneLake Delta and query them with the SQL endpoint. Triggers: "mirror database", "mirroring", "replicate snowflake", "unity catalog mirror", "databricks catalog mirror", "real-time replication", "mirror status", "start mirroring".
+  Intent-scoped fabio skill for Fabric database mirroring / real-time replication: mirrored databases, mirrored catalogs (Unity Catalog), mirrored Azure Databricks catalogs, mirrored Google Lakehouse runtime catalogs (Google BigLake/Iceberg), mirrored warehouses, Snowflake databases, and Azure Databricks storage. Use to replicate external sources into OneLake Delta and query them with the SQL endpoint. Triggers: "mirror database", "mirroring", "replicate snowflake", "unity catalog mirror", "databricks catalog mirror", "google lakehouse", "biglake", "real-time replication", "mirror status", "start mirroring".
 license: MIT
 ---
 
@@ -15,6 +15,7 @@ license: MIT
 - Creating a mirrored database and starting/stopping replication (start, stop, status, table-status).
 - Mirroring a Unity Catalog (mirrored-catalog: list-scopes, list-tables, refresh-metadata, mirroring-status).
 - Mirroring an Azure Databricks catalog (discover-catalogs/schemas/tables, refresh-metadata).
+- Mirroring a Google Lakehouse runtime catalog / Google BigLake Iceberg tables (mirrored-google-lakehouse-catalog: list-scopes, list-tables, refresh-metadata, mirroring-status).
 - Mirroring a Snowflake database into OneLake.
 - Wiring Azure Databricks storage integration.
 
@@ -81,6 +82,24 @@ Manage mirrored Azure Databricks catalogs
 | `fabio mirrored-databricks-catalog update` | yes | Update mirrored Databricks catalog properties (name, description, auto-sync, mirroring mode) |
 | `fabio mirrored-databricks-catalog update-definition` | yes | Update the definition of a mirrored Databricks catalog |
 
+### fabio mirrored-google-lakehouse-catalog
+Manage mirrored Google Lakehouse runtime catalogs (Google BigLake/Iceberg mirroring)
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio mirrored-google-lakehouse-catalog create` | yes | Create a new mirrored Google Lakehouse runtime catalog |
+| `fabio mirrored-google-lakehouse-catalog delete` | yes | Delete a mirrored Google Lakehouse runtime catalog |
+| `fabio mirrored-google-lakehouse-catalog get-definition` | no | Get the definition of a mirrored Google Lakehouse runtime catalog |
+| `fabio mirrored-google-lakehouse-catalog list` | no | List mirrored Google Lakehouse runtime catalogs in a workspace |
+| `fabio mirrored-google-lakehouse-catalog list-scopes` | no | List catalog mirroring scopes (workspace-level) |
+| `fabio mirrored-google-lakehouse-catalog list-tables` | no | List catalog mirroring tables (workspace-level) |
+| `fabio mirrored-google-lakehouse-catalog mirroring-status` | no | Get mirroring status |
+| `fabio mirrored-google-lakehouse-catalog refresh-metadata` | yes | Refresh catalog metadata |
+| `fabio mirrored-google-lakehouse-catalog show` | no | Show details of a mirrored Google Lakehouse runtime catalog |
+| `fabio mirrored-google-lakehouse-catalog tables-mirroring-status` | no | Get tables mirroring status |
+| `fabio mirrored-google-lakehouse-catalog update` | yes | Update mirrored Google Lakehouse runtime catalog properties (name and/or description) |
+| `fabio mirrored-google-lakehouse-catalog update-definition` | yes | Update the definition of a mirrored Google Lakehouse runtime catalog |
+
 ### fabio mirrored-warehouse
 Manage mirrored warehouses
 
@@ -136,6 +155,7 @@ Manage Azure Databricks storage items (Fabric integration with Azure Databricks)
 - mirrored-warehouse is list-only in fabio (it is provisioned/managed by Fabric, not independently created).
 - Catalog mirrors expose discovery + refresh-metadata; the source schema must be re-discovered after upstream DDL.
 - A freshly created mirrored-databricks-catalog is autoSync:Disabled / mirrorStatus:NotMirrored — it does NOT replicate until you run 'mirrored-databricks-catalog update --auto-sync Enabled' (the PATCH also requires the current displayName; fabio resolves it). Databricks MANAGED tables in Databricks-managed storage CANNOT be read via the mirror SQL endpoint (storage BadRequest); use EXTERNAL tables in customer ADLS (+ update --storage-connection-id) or the OneLake 'Azure Databricks Storage' external-location flow. Disabling deletion vectors is necessary but NOT sufficient.
+- mirrored-google-lakehouse-catalog mirrors a Google Cloud Lakehouse runtime catalog's Apache Iceberg V2 tables (V1 unsupported) into OneLake via the Iceberg REST catalog endpoint (https://biglake.googleapis.com/iceberg/v1/restcatalog); only the catalog structure is mirrored (no data movement — table data stays in Google Cloud Storage, read via shortcuts). Auth uses Google Cloud Workload Identity Federation (OIDC audience https://analysis.windows.net/powerbi/connector/MirroredGoogleLakehouseRuntimeCatalog) — no service-account key. It is read-only in Fabric and queried via its auto-provisioned SQL analytics endpoint. Requires the 'Enable new mirrored catalog items (preview)' tenant setting (ArtifactMirroredCatalogPreview). Note: the typed REST API is a very new preview and may return NOT_FOUND/InvalidItemType in regions where it hasn't rolled out yet.
 - Open mirroring: 'mirrored-database create --open-mirroring' makes a push-based (GenericMirror) DB; get its OneLake landing zone with 'mirrored-database landing-zone', push a 20-digit <n>.parquet per table + a _metadata.json ({keyColumns:[...]}) via 'lakehouse upload --id <mirroredDbId>', then 'mirrored-database start'. Query it with 'warehouse query --id <mirroredDbId>'.
 - mirrored-database status / table-status are POST actions (fabio handles this); table-status is paginated — filter with --query "[?status!='Replicating']".
 
