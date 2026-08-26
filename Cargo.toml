@@ -1,6 +1,6 @@
 [package]
 name = "fabio"
-version = "0.69.0-dev"
+version = "0.69.0"
 edition = "2024"
 rust-version = "1.98.0"
 description = "Agent-first CLI for managing Microsoft Fabric artifacts and data"
