@@ -47,6 +47,7 @@ pub mod mcp;
 pub mod mirrored_catalog;
 pub mod mirrored_database;
 pub mod mirrored_databricks_catalog;
+pub mod mirrored_google_lakehouse_catalog;
 pub mod mirrored_warehouse;
 pub mod ml_experiment;
 pub mod ml_model;
@@ -205,6 +206,9 @@ pub async fn execute(cli: Cli) -> Result<()> {
         }
         Command::MirroredDatabricksCatalog { command } => {
             mirrored_databricks_catalog::execute(&cli, &client, command).await
+        }
+        Command::MirroredGoogleLakehouseCatalog { command } => {
+            mirrored_google_lakehouse_catalog::execute(&cli, &client, command).await
         }
         Command::WarehouseSnapshot { command } => {
             warehouse_snapshot::execute(&cli, &client, command).await
@@ -484,6 +488,7 @@ fn extract_command_path(cli: &Cli) -> String {
         Command::WarehouseSnapshot { .. } => "warehouse-snapshot",
         Command::MirroredCatalog { .. } => "mirrored-catalog",
         Command::MirroredDatabricksCatalog { .. } => "mirrored-databricks-catalog",
+        Command::MirroredGoogleLakehouseCatalog { .. } => "mirrored-google-lakehouse-catalog",
         Command::MirroredWarehouse { .. } => "mirrored-warehouse",
         Command::ApacheAirflowJob { .. } => "apache-airflow-job",
         Command::AnomalyDetector { .. } => "anomaly-detector",

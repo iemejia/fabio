@@ -638,6 +638,7 @@ fn type_specific_endpoint(item_type: &str) -> Option<&'static str> {
         "SparkJobDefinition" => Some("sparkJobDefinitions"),
         "Environment" => Some("environments"),
         "MirroredAzureDatabricksCatalog" => Some("mirroredAzureDatabricksCatalogs"),
+        "MirroredGoogleLakehouseRuntimeCatalog" => Some("mirroredGoogleLakehouseRuntimeCatalogs"),
         "GraphModel" => Some("graphModels"),
         _ => None,
     }

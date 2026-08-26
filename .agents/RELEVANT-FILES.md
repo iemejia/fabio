@@ -132,6 +132,7 @@
 - `src/commands/azure_databricks_storage.rs`: list/show/create/update/delete/get-definition/update-definition (definition.json, AzureDatabricksStorageV1 format)
 - `src/commands/mirrored_catalog.rs`: CRUD + definition + mirroring operations
 - `src/commands/mirrored_databricks_catalog.rs`: CRUD + definition + discover/refresh/status
+- `src/commands/mirrored_google_lakehouse_catalog.rs`: CRUD + definition + refresh/status + list-scopes/list-tables (Google BigLake/Iceberg mirroring)
 - `src/commands/mirrored_warehouse.rs`: list only (tenant feature flag blocks mutations)
 - `src/commands/warehouse_snapshot.rs`: list/show/create/update/delete
 - `src/commands/graph_model.rs`: CRUD + definition + refresh-graph/execute-query/get-queryable-graph-type
@@ -217,6 +218,7 @@
 - `tests/e2e_azure_databricks_storage.rs`: Azure Databricks storage CRUD + definition + lifecycle tests
 - `tests/e2e_mirrored_catalog.rs`: Mirrored catalog tests
 - `tests/e2e_mirrored_databricks_catalog.rs`: Mirrored Databricks catalog tests
+- `tests/e2e_mirrored_google_lakehouse_catalog.rs`: Mirrored Google Lakehouse runtime catalog tests
 - `tests/e2e_mirrored_warehouse.rs`: Mirrored warehouse tests
 - `tests/e2e_warehouse_snapshot.rs`: Warehouse snapshot tests
 - `tests/e2e_graph_model.rs`: Graph model CRUD + refresh + query tests

@@ -23,53 +23,54 @@ use crate::errors::{ErrorCode, FabioError};
 /// lands in fabric-cicd's relative position (after `Ontology`, before
 /// `MLExperiment`), while staying after every data source it can reference.
 pub const DEPLOY_ORDER: &[&str] = &[
-    "VariableLibrary",                // fabric-cicd 1
-    "Warehouse",                      // fabric-cicd 2
-    "WarehouseSnapshot",              // fabio-only (after Warehouse)
-    "MirroredDatabase",               // fabric-cicd 3
-    "MirroredAzureDatabricksCatalog", // fabio-only (mirrored family)
-    "AzureDatabricksStorage",         // fabio-only (storage family)
-    "Lakehouse",                      // fabric-cicd 4
-    "SQLDatabase",                    // fabric-cicd 5
-    "CosmosDbDatabase",               // fabio-only (database family)
-    "SnowflakeDatabase",              // fabio-only (database family)
-    "Environment",                    // fabric-cicd 6
-    "UserDataFunction",               // fabric-cicd 7
-    "Eventhouse",                     // fabric-cicd 8
-    "SparkJobDefinition",             // fabric-cicd 9
-    "Notebook",                       // fabric-cicd 10
-    "SemanticModel",                  // fabric-cicd 11
-    "Report",                         // fabric-cicd 12
-    "PaginatedReport",                // fabric-cicd 13
-    "Dashboard",                      // fabio-only (reports family)
-    "CopyJob",                        // fabric-cicd 14
-    "DataBuildToolJob",               // fabric-cicd 15
-    "KQLDatabase",                    // fabric-cicd 16
-    "KQLQueryset",                    // fabric-cicd 17
-    "Dataflow",                       // fabric-cicd 18
-    "DataPipeline",                   // fabric-cicd 19
-    "Reflex",                         // fabric-cicd 20
-    "Eventstream",                    // fabric-cicd 21
-    "EventSchemaSet",                 // fabio-only (eventstream family)
-    "KQLDashboard",                   // fabric-cicd 22
-    "GraphQLApi",                     // fabric-cicd 23
-    "ApacheAirflowJob",               // fabric-cicd 24
-    "MountedDataFactory",             // fabric-cicd 25
-    "OperationsAgent",                // fabio-only (RTI)
-    "AnomalyDetector",                // fabio-only (RTI)
-    "Ontology",                       // fabric-cicd 26
-    "GraphModel",                     // fabio-only (after Ontology; a DataAgent data source)
-    "GraphQuerySet",                  // fabio-only
-    "DigitalTwinBuilder",             // fabio-only
-    "DigitalTwinBuilderFlow",         // fabio-only
-    "DataAgent",                      // fabric-cicd 27 (after GraphModel — a DataAgent data source)
-    "MLExperiment",                   // fabric-cicd 28
-    "MLModel",                        // fabio-only (after MLExperiment)
-    "Map",                            // fabric-cicd 29
-    "Plan",                           // fabio-only (after Map; standalone item)
-    "Connection",                     // fabio-only (cross-cutting, last)
-    "OrgApp",                         // fabio-only
-    "OrgAppAudience",                 // fabio-only
+    "VariableLibrary",                       // fabric-cicd 1
+    "Warehouse",                             // fabric-cicd 2
+    "WarehouseSnapshot",                     // fabio-only (after Warehouse)
+    "MirroredDatabase",                      // fabric-cicd 3
+    "MirroredAzureDatabricksCatalog",        // fabio-only (mirrored family)
+    "MirroredGoogleLakehouseRuntimeCatalog", // fabio-only (mirrored family)
+    "AzureDatabricksStorage",                // fabio-only (storage family)
+    "Lakehouse",                             // fabric-cicd 4
+    "SQLDatabase",                           // fabric-cicd 5
+    "CosmosDbDatabase",                      // fabio-only (database family)
+    "SnowflakeDatabase",                     // fabio-only (database family)
+    "Environment",                           // fabric-cicd 6
+    "UserDataFunction",                      // fabric-cicd 7
+    "Eventhouse",                            // fabric-cicd 8
+    "SparkJobDefinition",                    // fabric-cicd 9
+    "Notebook",                              // fabric-cicd 10
+    "SemanticModel",                         // fabric-cicd 11
+    "Report",                                // fabric-cicd 12
+    "PaginatedReport",                       // fabric-cicd 13
+    "Dashboard",                             // fabio-only (reports family)
+    "CopyJob",                               // fabric-cicd 14
+    "DataBuildToolJob",                      // fabric-cicd 15
+    "KQLDatabase",                           // fabric-cicd 16
+    "KQLQueryset",                           // fabric-cicd 17
+    "Dataflow",                              // fabric-cicd 18
+    "DataPipeline",                          // fabric-cicd 19
+    "Reflex",                                // fabric-cicd 20
+    "Eventstream",                           // fabric-cicd 21
+    "EventSchemaSet",                        // fabio-only (eventstream family)
+    "KQLDashboard",                          // fabric-cicd 22
+    "GraphQLApi",                            // fabric-cicd 23
+    "ApacheAirflowJob",                      // fabric-cicd 24
+    "MountedDataFactory",                    // fabric-cicd 25
+    "OperationsAgent",                       // fabio-only (RTI)
+    "AnomalyDetector",                       // fabio-only (RTI)
+    "Ontology",                              // fabric-cicd 26
+    "GraphModel",                            // fabio-only (after Ontology; a DataAgent data source)
+    "GraphQuerySet",                         // fabio-only
+    "DigitalTwinBuilder",                    // fabio-only
+    "DigitalTwinBuilderFlow",                // fabio-only
+    "DataAgent",      // fabric-cicd 27 (after GraphModel — a DataAgent data source)
+    "MLExperiment",   // fabric-cicd 28
+    "MLModel",        // fabio-only (after MLExperiment)
+    "Map",            // fabric-cicd 29
+    "Plan",           // fabio-only (after Map; standalone item)
+    "Connection",     // fabio-only (cross-cutting, last)
+    "OrgApp",         // fabio-only
+    "OrgAppAudience", // fabio-only
 ];
 
 /// Returns the deploy priority for a given item type.
@@ -106,18 +107,18 @@ pub fn deploy_priority(item_type: &str) -> usize {
 pub fn deploy_tier(item_type: &str) -> usize {
     let priority = deploy_priority(item_type);
     match priority {
-        0..=9 => 0,   // Storage: VariableLibrary..SnowflakeDatabase
-        10..=12 => 1, // Compute: Environment, UserDataFunction, Eventhouse
-        13..=14 => 2, // Code: SparkJobDefinition, Notebook
-        15 => 3,      // SemanticModel (needs refresh before Reports can use it)
-        16..=21 => 4, // Reports, jobs & KQLDatabase: Report..KQLDatabase
-        22..=28 => 5, // Reactive: KQLQueryset..KQLDashboard
-        29..=31 => 6, // APIs: GraphQLApi..MountedDataFactory
-        32..=33 => 7, // RTI agents: OperationsAgent, AnomalyDetector
-        34 => 8,      // Ontology
-        35..=38 => 9, // Graph: GraphModel..DigitalTwinBuilderFlow
-        39 => 10,     // DataAgent: binds any data source, must come after all of them
-        40 => 11,     // MLExperiment
+        0..=10 => 0,  // Storage: VariableLibrary..SnowflakeDatabase
+        11..=13 => 1, // Compute: Environment, UserDataFunction, Eventhouse
+        14..=15 => 2, // Code: SparkJobDefinition, Notebook
+        16 => 3,      // SemanticModel (needs refresh before Reports can use it)
+        17..=22 => 4, // Reports, jobs & KQLDatabase: Report..KQLDatabase
+        23..=29 => 5, // Reactive: KQLQueryset..KQLDashboard
+        30..=32 => 6, // APIs: GraphQLApi..MountedDataFactory
+        33..=34 => 7, // RTI agents: OperationsAgent, AnomalyDetector
+        35 => 8,      // Ontology
+        36..=39 => 9, // Graph: GraphModel..DigitalTwinBuilderFlow
+        40 => 10,     // DataAgent: binds any data source, must come after all of them
+        41 => 11,     // MLExperiment
         _ => 12,      // MLModel, Map, Connection, OrgApp, OrgAppAudience + unknown
     }
 }
@@ -399,8 +400,8 @@ mod tests {
         // Guard against accidental additions/removals — update this if DEPLOY_ORDER changes
         assert_eq!(
             DEPLOY_ORDER.len(),
-            47,
-            "DEPLOY_ORDER should have 47 entries; update this test if intentionally changed"
+            48,
+            "DEPLOY_ORDER should have 48 entries; update this test if intentionally changed"
         );
     }
 

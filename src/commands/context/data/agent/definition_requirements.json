@@ -124,6 +124,11 @@
       "optionalParts": [".platform"],
       "note": "mirroring.json holds the Azure Databricks (Unity Catalog) mirroring config."
     },
+    "MirroredGoogleLakehouseRuntimeCatalog": {
+      "requiredParts": ["mirroring.json"],
+      "optionalParts": [".platform"],
+      "note": "mirroring.json holds the Google Lakehouse runtime catalog (Google BigLake / Apache Iceberg REST catalog) mirroring config: catalog scope + namespace/table inclusion/exclusion + Workload Identity Federation connection."
+    },
     "GraphQLApi": {
       "requiredOneOf": [["graphql-definition.json", "schema.graphql"]],
       "optionalParts": [".platform"],

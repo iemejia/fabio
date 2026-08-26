@@ -99,7 +99,7 @@ fn setting_for_command(path: &str) -> Option<TenantSetting> {
             "Users can create Digital Twin Builder (preview) items",
             None,
         ),
-        "mirrored-catalog" => mk(
+        "mirrored-catalog" | "mirrored-google-lakehouse-catalog" => mk(
             "ArtifactMirroredCatalogPreview",
             "Enable new mirrored catalog items (preview)",
             None,
@@ -299,6 +299,12 @@ mod tests {
         );
         assert_eq!(
             setting_for_command("mirrored-catalog.create").unwrap().name,
+            "ArtifactMirroredCatalogPreview"
+        );
+        assert_eq!(
+            setting_for_command("mirrored-google-lakehouse-catalog.create")
+                .unwrap()
+                .name,
             "ArtifactMirroredCatalogPreview"
         );
         // Every currently-registered mapping (coverage guard — keep in sync with
