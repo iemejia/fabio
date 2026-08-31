@@ -78,7 +78,7 @@ mssql-tds = { git = "https://github.com/iemejia/mssql-rs.git", rev = "bb063b01fa
 urlencoding = "2"
 
 # XML parsing (OWL/RDF ontology import)
-quick-xml = "0.41"
+quick-xml = "0.42"
 
 # File locking for job ledger (security: prevent race conditions)
 fs2 = "0.4"
