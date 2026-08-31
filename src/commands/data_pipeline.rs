@@ -515,75 +515,22 @@ async fn run(
     timeout_secs: u64,
     cancel_on_timeout: bool,
 ) -> Result<()> {
-    if output::dry_run_guard(
+    crate::commands::item_job::run_and_wait(
         cli,
-        "data-pipeline run",
-        &serde_json::json!({ "workspace": workspace, "id": id, "wait": wait, "timeout": timeout_secs }),
-    ) {
-        return Ok(());
-    }
-
-    let job_id = client
-        .trigger_item_job(workspace, id, "Pipeline", None)
-        .await
-        .map_err(|e| enrich_forbidden(e, "data-pipeline run", "Contributor"))?;
-
-    if !wait {
-        let obj = serde_json::json!({ "itemId": id, "jobInstanceId": job_id, "status": "started" });
-        output::render_object(cli, &obj, "status");
-        return Ok(());
-    }
-
-    // Poll until completion
-    let poll_interval = std::time::Duration::from_secs(5);
-    let max_wait = std::time::Duration::from_secs(timeout_secs);
-    let start = std::time::Instant::now();
-
-    loop {
-        if start.elapsed() > max_wait {
-            if cancel_on_timeout && !job_id.is_empty() {
-                let cancel_path =
-                    format!("/workspaces/{workspace}/items/{id}/jobs/instances/{job_id}/cancel");
-                let _ = client
-                    .post(&cancel_path, &serde_json::json!({}), false)
-                    .await;
-            }
-            return Err(FabioError::with_hint(
-                ErrorCode::Timeout,
-                format!("Pipeline run timed out after {timeout_secs}s. Job ID: {job_id}"),
-                format!("Increase --timeout (current: {timeout_secs}s) or use --cancel-on-timeout"),
-            )
-            .into());
-        }
-
-        tokio::time::sleep(poll_interval).await;
-
-        let status_path = format!("/workspaces/{workspace}/items/{id}/jobs/instances/{job_id}");
-        let status_resp = client.get(&status_path).await;
-
-        if let Ok(ref status_data) = status_resp {
-            let status = status_data
-                .get("status")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
-
-            match status {
-                "Completed" => {
-                    output::render_object(cli, status_data, "status");
-                    return Ok(());
-                }
-                "Failed" | "Cancelled" | "Deduped" => {
-                    output::render_object(cli, status_data, "status");
-                    return Err(FabioError::new(
-                        ErrorCode::ApiError,
-                        format!("Pipeline run {status}. Job ID: {job_id}"),
-                    )
-                    .into());
-                }
-                _ => {} // InProgress, NotStarted — keep polling
-            }
-        }
-    }
+        client,
+        workspace,
+        id,
+        wait,
+        timeout_secs,
+        cancel_on_timeout,
+        &crate::commands::item_job::RunSpec {
+            op: "data-pipeline run",
+            label: "Pipeline run",
+            job_type: "Pipeline",
+            role: "Contributor",
+        },
+    )
+    .await
 }
 
 // ─── Definitions ─────────────────────────────────────────────────────────────

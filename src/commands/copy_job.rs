@@ -269,74 +269,22 @@ async fn run(
     timeout_secs: u64,
     cancel_on_timeout: bool,
 ) -> Result<()> {
-    if output::dry_run_guard(
+    crate::commands::item_job::run_and_wait(
         cli,
-        "copy-job run",
-        &serde_json::json!({ "workspace": workspace, "id": id, "wait": wait, "timeout": timeout_secs }),
-    ) {
-        return Ok(());
-    }
-
-    // The copy-job on-demand run type is `Execute` (the resulting instance's
-    // own jobType is reported by the API as `CopyJob`). `trigger_item_job`
-    // reads the new instance id from the 202 `Location` header.
-    let job_id = client
-        .trigger_item_job(workspace, id, "Execute", None)
-        .await
-        .map_err(|e| enrich_forbidden(e, "copy-job run", "Contributor"))?;
-
-    if !wait {
-        let obj = serde_json::json!({ "itemId": id, "jobInstanceId": job_id, "status": "started" });
-        output::render_object(cli, &obj, "status");
-        return Ok(());
-    }
-
-    let poll_interval = std::time::Duration::from_secs(5);
-    let max_wait = std::time::Duration::from_secs(timeout_secs);
-    let start = std::time::Instant::now();
-
-    loop {
-        if start.elapsed() > max_wait {
-            if cancel_on_timeout && !job_id.is_empty() {
-                let cancel_path =
-                    format!("/workspaces/{workspace}/items/{id}/jobs/instances/{job_id}/cancel");
-                let _ = client
-                    .post(&cancel_path, &serde_json::json!({}), false)
-                    .await;
-            }
-            return Err(FabioError::with_hint(
-                ErrorCode::Timeout,
-                format!("Copy job run timed out after {timeout_secs}s. Job ID: {job_id}"),
-                format!("Increase --timeout (current: {timeout_secs}s) or use --cancel-on-timeout"),
-            )
-            .into());
-        }
-
-        tokio::time::sleep(poll_interval).await;
-
-        let status_path = format!("/workspaces/{workspace}/items/{id}/jobs/instances/{job_id}");
-        if let Ok(ref status_data) = client.get(&status_path).await {
-            let status = status_data
-                .get("status")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            match status {
-                "Completed" => {
-                    output::render_object(cli, status_data, "status");
-                    return Ok(());
-                }
-                "Failed" | "Cancelled" | "Deduped" => {
-                    output::render_object(cli, status_data, "status");
-                    return Err(FabioError::new(
-                        ErrorCode::ApiError,
-                        format!("Copy job run {status}. Job ID: {job_id}"),
-                    )
-                    .into());
-                }
-                _ => {} // InProgress, NotStarted — keep polling
-            }
-        }
-    }
+        client,
+        workspace,
+        id,
+        wait,
+        timeout_secs,
+        cancel_on_timeout,
+        &crate::commands::item_job::RunSpec {
+            op: "copy-job run",
+            label: "Copy job run",
+            job_type: "Execute",
+            role: "Contributor",
+        },
+    )
+    .await
 }
 
 // ─── CRUD ────────────────────────────────────────────────────────────────────

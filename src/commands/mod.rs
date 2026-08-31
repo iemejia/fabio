@@ -33,6 +33,7 @@ pub mod graph_model;
 pub mod graph_query_set;
 pub mod graphql_api;
 pub mod item;
+pub mod item_job;
 pub mod job_scheduler;
 pub mod jobs;
 pub mod kql_dashboard;
