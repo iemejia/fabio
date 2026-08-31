@@ -7141,6 +7141,18 @@
             "type": "string",
             "description": "Maximum wait time in seconds per question run (default: 300)"
           },
+          "--concurrency": {
+            "type": "string",
+            "description": "Number of question runs to execute concurrently (default: 1 = sequential). Higher values speed up large sets but increase capacity load"
+          },
+          "--critic-prompt": {
+            "type": "string",
+            "description": "Custom LLM-judge grading prompt (supports `{query}`, `{expected_answer}`, `{actual_answer}` placeholders). Requires the `--llm-*` judge"
+          },
+          "--critic-prompt-file": {
+            "type": "string",
+            "description": "Path to a file containing the custom grading prompt (alternative to --critic-prompt)"
+          },
           "--llm-endpoint": {
             "type": "string",
             "description": "LLM judge endpoint to grade answers (Azure `OpenAI` resource URL or `OpenAI`-compatible base). Enables LLM grading"

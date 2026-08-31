@@ -1688,6 +1688,96 @@ fn dataagent_evaluate_repeats_zero_fails() {
 }
 
 #[test]
+fn dataagent_evaluate_concurrency_zero_fails() {
+    let tmp = std::env::temp_dir().join("fabio_eval_q_conc0.json");
+    std::fs::write(&tmp, r#"["what?"]"#).unwrap();
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "evaluate",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--questions",
+            tmp.to_str().unwrap(),
+            "--concurrency",
+            "0",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("concurrency") && stderr.contains("at least 1"),
+        "--concurrency 0 should be rejected: {stderr}"
+    );
+    std::fs::remove_file(&tmp).ok();
+}
+
+#[test]
+fn dataagent_evaluate_critic_prompt_requires_llm() {
+    // A custom critic prompt without a configured LLM judge fails fast (before
+    // any network call). Clear FABIO_LLM_* so the test is deterministic.
+    let tmp = std::env::temp_dir().join("fabio_eval_q_critic.json");
+    std::fs::write(&tmp, r#"["what?"]"#).unwrap();
+    let assert = fabio()
+        .env_remove("FABIO_LLM_ENDPOINT")
+        .env_remove("FABIO_LLM_KEY")
+        .env_remove("FABIO_LLM_MODEL")
+        .args([
+            "data-agent",
+            "evaluate",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--questions",
+            tmp.to_str().unwrap(),
+            "--critic-prompt",
+            "Is {actual_answer} equivalent to {expected_answer}?",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("INVALID_INPUT") && stderr.contains("requires an LLM judge"),
+        "--critic-prompt without --llm-* should be rejected: {stderr}"
+    );
+    assert!(
+        stderr.contains("--llm-endpoint"),
+        "error hint should name the LLM flags: {stderr}"
+    );
+    std::fs::remove_file(&tmp).ok();
+}
+
+#[test]
+fn dataagent_evaluate_critic_prompt_and_file_conflict() {
+    // --critic-prompt and --critic-prompt-file are mutually exclusive (clap).
+    let assert = fabio()
+        .args([
+            "data-agent",
+            "evaluate",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--questions",
+            "/tmp/q.json",
+            "--critic-prompt",
+            "grade it",
+            "--critic-prompt-file",
+            "/tmp/critic.txt",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("cannot be used with") || stderr.contains("critic-prompt"),
+        "conflicting critic flags should be rejected: {stderr}"
+    );
+}
+
+#[test]
 fn dataagent_validate_fewshots_requires_llm() {
     // Without an LLM endpoint/key/model the command must fail fast (before any
     // network call). Clear the FABIO_LLM_* env so the test is deterministic.

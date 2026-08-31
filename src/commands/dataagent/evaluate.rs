@@ -11,6 +11,7 @@
 //! Mirrors the Python `fabric.dataagent.evaluation.evaluate_data_agent` shape
 //! (questions + expected answers, `num_query_repeats`).
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -22,6 +23,7 @@ use crate::client::{self, FabricClient};
 use crate::errors::{ErrorCode, FabioError};
 use crate::llm::{LlmClient, LlmConfig};
 use crate::output;
+use crate::parallel::execute_parallel;
 
 /// System prompt for the optional LLM grader (`--llm-*`).
 const GRADER_SYSTEM_PROMPT: &str = "You grade a Microsoft Fabric data agent's answer to a \
@@ -49,19 +51,36 @@ pub(super) async fn evaluate(
     repeats: u32,
     stage: &str,
     timeout: u64,
+    concurrency: usize,
+    critic_prompt: Option<&str>,
     llm: &LlmConfig,
 ) -> Result<()> {
     if repeats == 0 {
         return Err(FabioError::invalid_input("--repeats must be at least 1").into());
     }
+    if concurrency == 0 {
+        return Err(FabioError::invalid_input("--concurrency must be at least 1").into());
+    }
 
-    // Optional LLM grader: built once and reused. When absent, evaluation still
-    // runs and reports answers (plus the naive expected-match signal).
-    let grader = if llm.is_configured() {
-        Some(LlmClient::from_config(llm)?)
+    // Optional LLM grader: built once and shared across parallel runs. When
+    // absent, evaluation still runs and reports answers (plus the naive
+    // expected-match signal).
+    let grader: Option<Arc<LlmClient>> = if llm.is_configured() {
+        Some(Arc::new(LlmClient::from_config(llm)?))
     } else {
         None
     };
+    // A custom critic prompt only applies to LLM grading.
+    if critic_prompt.is_some() && grader.is_none() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "--critic-prompt/--critic-prompt-file requires an LLM judge".to_string(),
+            "Configure the judge with --llm-endpoint/--llm-key/--llm-model (or the FABIO_LLM_* env \
+             vars) to enable grading with your custom prompt.",
+        )
+        .into());
+    }
+    let critic: Option<Arc<String>> = critic_prompt.map(|p| Arc::new(p.to_string()));
 
     let content = std::fs::read_to_string(questions_file).map_err(|e| {
         FabioError::with_hint(
@@ -93,39 +112,68 @@ pub(super) async fn evaluate(
     let token = client.require_auth().await?;
     let max_wait = Duration::from_secs(timeout);
 
+    // Flatten (question × repeat) into independent work items, run them with
+    // bounded concurrency (results come back in input order), then regroup by
+    // question. `--concurrency 1` preserves the original sequential behavior.
+    let mut items: Vec<RunItem> = Vec::with_capacity(specs.len() * repeats as usize);
+    for spec in &specs {
+        for _ in 0..repeats {
+            items.push(RunItem {
+                question: spec.question.clone(),
+                expected: spec.expected.clone(),
+            });
+        }
+    }
+
+    let op_results = execute_parallel(items, concurrency, move |item| {
+        let url = resolved_url.clone();
+        let token = token.clone();
+        let grader = grader.clone();
+        let critic = critic.clone();
+        async move {
+            run_one(
+                &url,
+                &token,
+                &item,
+                max_wait,
+                grader.as_deref(),
+                critic.as_deref().map(String::as_str),
+            )
+            .await
+        }
+    })
+    .await;
+
+    // Each parallel run yields one answer entry; regroup into per-question chunks
+    // of `repeats`.
+    let entries: Vec<Value> = op_results
+        .into_iter()
+        .map(|r| {
+            r.result
+                .unwrap_or_else(|e| serde_json::json!({ "error": e.message }))
+        })
+        .collect();
+
     let mut results = Vec::with_capacity(specs.len());
     let mut total_runs: u64 = 0;
     let mut failed_runs: u64 = 0;
     let mut graded_runs: u64 = 0;
     let mut passed_runs: u64 = 0;
 
-    for spec in &specs {
-        let mut answers = Vec::with_capacity(repeats as usize);
-        for _ in 0..repeats {
+    for (spec, answers) in specs.iter().zip(entries.chunks(repeats as usize)) {
+        let answers: Vec<Value> = answers.to_vec();
+        for entry in &answers {
             total_runs += 1;
-            match run_mcp_query(&resolved_url, &token, &spec.question, max_wait).await {
-                Ok(res) => {
-                    let mut entry = serde_json::json!({ "answer": res.answer });
-                    // Optional LLM grade.
-                    if let Some(g) = &grader {
-                        let grade =
-                            grade_answer(g, &spec.question, spec.expected.as_deref(), &res.answer)
-                                .await;
-                        graded_runs += 1;
-                        if grade.get("correct").and_then(Value::as_bool) == Some(true) {
-                            passed_runs += 1;
-                        }
-                        entry["grade"] = grade;
-                    }
-                    answers.push(entry);
-                }
-                Err(e) => {
-                    failed_runs += 1;
-                    answers.push(serde_json::json!({ "error": e.to_string() }));
+            if entry.get("error").is_some() {
+                failed_runs += 1;
+            }
+            if let Some(grade) = entry.get("grade") {
+                graded_runs += 1;
+                if grade.get("correct").and_then(Value::as_bool) == Some(true) {
+                    passed_runs += 1;
                 }
             }
         }
-
         let mut entry = serde_json::json!({
             "question": spec.question,
             "answers": answers,
@@ -160,7 +208,7 @@ pub(super) async fn evaluate(
         "failedRuns": failed_runs,
         "results": results,
     });
-    if grader.is_some() {
+    if llm.is_configured() {
         out["gradedRuns"] = Value::from(graded_runs);
         out["passedRuns"] = Value::from(passed_runs);
         out["passRate"] = if graded_runs > 0 {
@@ -175,15 +223,54 @@ pub(super) async fn evaluate(
     Ok(())
 }
 
+/// One flattened evaluation run (a question + its optional expected answer).
+#[derive(Clone)]
+struct RunItem {
+    question: String,
+    expected: Option<String>,
+}
+
+/// Run one question against the agent and (optionally) grade it. Returns the
+/// answer entry. Only an MCP-query failure is an `Err` (retried/collected by the
+/// parallel driver); a grading failure is embedded non-fatally in the entry.
+async fn run_one(
+    url: &str,
+    token: &str,
+    item: &RunItem,
+    max_wait: Duration,
+    grader: Option<&LlmClient>,
+    critic_prompt: Option<&str>,
+) -> Result<Value> {
+    let res = run_mcp_query(url, token, &item.question, max_wait).await?;
+    let mut entry = serde_json::json!({ "answer": res.answer });
+    if let Some(g) = grader {
+        entry["grade"] = grade_answer(
+            g,
+            &item.question,
+            item.expected.as_deref(),
+            &res.answer,
+            critic_prompt,
+        )
+        .await;
+    }
+    Ok(entry)
+}
+
 /// Grade a single answer with the LLM judge. Non-fatal: a grading failure yields
-/// a `{"error": ...}` grade object rather than aborting the evaluation.
+/// a `{"error": ...}` grade object rather than aborting the evaluation. When
+/// `critic_prompt` is provided it replaces the default user prompt (with
+/// `{query}`/`{expected_answer}`/`{actual_answer}` placeholders substituted).
 async fn grade_answer(
     grader: &LlmClient,
     question: &str,
     expected: Option<&str>,
     actual: &str,
+    critic_prompt: Option<&str>,
 ) -> Value {
-    let user = build_grade_prompt(question, expected, actual);
+    let user = critic_prompt.map_or_else(
+        || build_grade_prompt(question, expected, actual),
+        |tpl| render_critic_prompt(tpl, question, expected, actual),
+    );
     match grader.complete_json(GRADER_SYSTEM_PROMPT, &user).await {
         Ok(v) => v,
         Err(e) => serde_json::json!({ "error": e.to_string() }),
@@ -197,6 +284,21 @@ fn build_grade_prompt(question: &str, expected: Option<&str>, actual: &str) -> S
         |e| format!("Expected answer: {e}"),
     );
     format!("Question: {question}\n{expected_line}\nActual answer: {actual}")
+}
+
+/// Substitute the `{query}`, `{expected_answer}`, and `{actual_answer}`
+/// placeholders in a user-supplied critic prompt (matching the Fabric SDK's
+/// `critic_prompt` contract). Missing placeholders are left untouched.
+fn render_critic_prompt(
+    template: &str,
+    question: &str,
+    expected: Option<&str>,
+    actual: &str,
+) -> String {
+    template
+        .replace("{query}", question)
+        .replace("{expected_answer}", expected.unwrap_or("(none provided)"))
+        .replace("{actual_answer}", actual)
 }
 
 /// Parse a questions file (JSON or delimited) into question specs.
@@ -491,5 +593,33 @@ mod tests {
         let p = build_grade_prompt("total?", None, "42");
         assert!(p.contains("none provided"));
         assert!(p.contains("Actual answer: 42"));
+    }
+
+    #[test]
+    fn render_critic_prompt_substitutes_all_placeholders() {
+        let tpl = "Q: {query}\nExpected: {expected_answer}\nActual: {actual_answer}\nEquivalent?";
+        let p = render_critic_prompt(tpl, "total sales?", Some("42"), "The total is 42");
+        assert_eq!(
+            p,
+            "Q: total sales?\nExpected: 42\nActual: The total is 42\nEquivalent?"
+        );
+    }
+
+    #[test]
+    fn render_critic_prompt_fills_missing_expected() {
+        let p = render_critic_prompt(
+            "{query} => {expected_answer} / {actual_answer}",
+            "q",
+            None,
+            "a",
+        );
+        assert_eq!(p, "q => (none provided) / a");
+    }
+
+    #[test]
+    fn render_critic_prompt_leaves_unknown_placeholders_untouched() {
+        // A template with no recognized placeholders is used verbatim.
+        let p = render_critic_prompt("grade strictly", "q", Some("e"), "a");
+        assert_eq!(p, "grade strictly");
     }
 }

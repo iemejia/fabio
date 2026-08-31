@@ -164,6 +164,18 @@ pub enum DataAgentCommand {
         #[arg(long, default_value = "300")]
         timeout: u64,
 
+        /// Number of question runs to execute concurrently (default: 1 = sequential). Higher values speed up large sets but increase capacity load.
+        #[arg(long, default_value = "1")]
+        concurrency: usize,
+
+        /// Custom LLM-judge grading prompt (supports `{query}`, `{expected_answer}`, `{actual_answer}` placeholders). Requires the `--llm-*` judge.
+        #[arg(long)]
+        critic_prompt: Option<String>,
+
+        /// Path to a file containing the custom grading prompt (alternative to --critic-prompt)
+        #[arg(long, conflicts_with = "critic_prompt")]
+        critic_prompt_file: Option<String>,
+
         /// LLM judge endpoint to grade answers (Azure `OpenAI` resource URL or `OpenAI`-compatible base). Enables LLM grading.
         #[arg(long, env = "FABIO_LLM_ENDPOINT")]
         llm_endpoint: Option<String>,
@@ -760,6 +772,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             repeats,
             stage,
             timeout,
+            concurrency,
+            critic_prompt,
+            critic_prompt_file,
             llm_endpoint,
             llm_key,
             llm_model,
@@ -771,6 +786,16 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
                 model: llm_model.clone(),
                 api_version: llm_api_version.clone(),
             };
+            // Resolve the critic prompt: inline flag or file.
+            let critic = match (critic_prompt, critic_prompt_file) {
+                (Some(p), _) => Some(p.clone()),
+                (_, Some(path)) => Some(std::fs::read_to_string(path).map_err(|e| {
+                    FabioError::invalid_input(format!(
+                        "Failed to read --critic-prompt-file '{path}': {e}"
+                    ))
+                })?),
+                (None, None) => None,
+            };
             evaluate::evaluate(
                 cli,
                 client,
@@ -781,6 +806,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
                 *repeats,
                 stage,
                 *timeout,
+                *concurrency,
+                critic.as_deref(),
                 &llm,
             )
             .await
