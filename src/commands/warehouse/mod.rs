@@ -1032,6 +1032,25 @@ fn extract_connection(data: &Value, via_sql_endpoint: bool) -> Option<(String, S
     Some((conn.to_string(), db_name))
 }
 
+/// Resolve a warehouse's TDS connection to `(server, database)`.
+///
+/// Shared by the insights/statistics paths (and the lazy resolver passed to the
+/// cross-backend `tds_stats` helpers).
+pub(super) async fn resolve_connection(
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<(String, String)> {
+    let (connection_string, item_name) = get_connection_string(client, workspace, id).await?;
+    let (server, parsed_db) = parse_connection_string(&connection_string);
+    let database = if item_name.is_empty() {
+        parsed_db
+    } else {
+        item_name
+    };
+    Ok((server, database))
+}
+
 /// Helper: resolve connection and execute a TDS query, rendering results as a list.
 pub(super) async fn execute_insights_query(
     cli: &Cli,
@@ -1040,13 +1059,7 @@ pub(super) async fn execute_insights_query(
     id: &str,
     sql_text: &str,
 ) -> Result<()> {
-    let (connection_string, item_name) = get_connection_string(client, workspace, id).await?;
-    let (server, parsed_db) = parse_connection_string(&connection_string);
-    let database = if item_name.is_empty() {
-        parsed_db
-    } else {
-        item_name
-    };
+    let (server, database) = resolve_connection(client, workspace, id).await?;
     execute_and_render_sql(cli, client, &server, &database, sql_text).await
 }
 
