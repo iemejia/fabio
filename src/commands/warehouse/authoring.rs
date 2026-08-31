@@ -32,6 +32,58 @@ pub(super) struct CopyIntoArgs<'a> {
     pub first_row: Option<u32>,
     pub encoding: Option<&'a str>,
     pub sas_token: Option<&'a str>,
+    /// Source authentication mode: `entra-id` (default), `sas`, or
+    /// `workspace-identity`. When `None`, it is inferred: `sas` if a `sas_token`
+    /// is present, otherwise `entra-id`.
+    pub auth_mode: Option<&'a str>,
+}
+
+/// Resolve the effective COPY INTO source authentication mode and validate that
+/// the supplied flags are internally consistent (e.g. `--auth-mode sas` requires
+/// `--sas-token`; `--auth-mode workspace-identity` forbids one). Returns whether
+/// the workspace managed identity should be used. Pure for unit testing.
+fn resolve_auth_mode(auth_mode: Option<&str>, has_sas: bool) -> Result<bool> {
+    let mode = auth_mode.unwrap_or(if has_sas { "sas" } else { "entra-id" });
+    match mode {
+        "sas" => {
+            if !has_sas {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    "--auth-mode sas requires --sas-token.".to_string(),
+                    "Provide the SAS token with --sas-token, or use --auth-mode workspace-identity \
+                     (no secret) / --auth-mode entra-id (caller identity).",
+                )
+                .into());
+            }
+            Ok(false)
+        }
+        "workspace-identity" => {
+            if has_sas {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    "--auth-mode workspace-identity cannot be combined with --sas-token."
+                        .to_string(),
+                    "Drop --sas-token to authenticate with the workspace managed identity, or use \
+                     --auth-mode sas to authenticate with the SAS token.",
+                )
+                .into());
+            }
+            Ok(true)
+        }
+        // "entra-id" (or the inferred default) — caller identity, no credential.
+        _ => {
+            if has_sas {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    "--auth-mode entra-id cannot be combined with --sas-token.".to_string(),
+                    "Drop --sas-token to use the caller's Entra identity, or use --auth-mode sas \
+                     to authenticate with the SAS token.",
+                )
+                .into());
+            }
+            Ok(false)
+        }
+    }
 }
 
 /// Bulk-load files into a warehouse table with `COPY INTO`.
@@ -74,6 +126,9 @@ pub(super) async fn copy_into(
         .into());
     }
 
+    // Resolve + validate the source authentication mode before any network call.
+    let workspace_identity = resolve_auth_mode(args.auth_mode, args.sas_token.is_some())?;
+
     let opts = CopyIntoOptions {
         schema: schema.as_deref(),
         table: &table,
@@ -85,6 +140,7 @@ pub(super) async fn copy_into(
         first_row: args.first_row,
         encoding: args.encoding,
         sas_token: args.sas_token,
+        workspace_identity,
     };
     let display_target = match schema.as_deref() {
         Some(s) if !s.is_empty() => format!("{s}.{table}"),
@@ -149,4 +205,53 @@ pub(super) async fn copy_into(
     ));
     output::render_object(cli, &result, "status");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_auth_mode;
+
+    #[test]
+    fn infers_sas_when_token_present_and_no_mode() {
+        assert!(!resolve_auth_mode(None, true).unwrap());
+    }
+
+    #[test]
+    fn infers_entra_id_when_no_token_and_no_mode() {
+        assert!(!resolve_auth_mode(None, false).unwrap());
+    }
+
+    #[test]
+    fn workspace_identity_requests_managed_identity() {
+        assert!(resolve_auth_mode(Some("workspace-identity"), false).unwrap());
+    }
+
+    #[test]
+    fn workspace_identity_conflicts_with_sas_token() {
+        let err = resolve_auth_mode(Some("workspace-identity"), true)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("cannot be combined with --sas-token"));
+    }
+
+    #[test]
+    fn sas_mode_requires_token() {
+        let err = resolve_auth_mode(Some("sas"), false)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("requires --sas-token"));
+    }
+
+    #[test]
+    fn sas_mode_with_token_ok() {
+        assert!(!resolve_auth_mode(Some("sas"), true).unwrap());
+    }
+
+    #[test]
+    fn entra_id_mode_conflicts_with_sas_token() {
+        let err = resolve_auth_mode(Some("entra-id"), true)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("cannot be combined with --sas-token"));
+    }
 }

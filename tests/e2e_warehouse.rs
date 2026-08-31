@@ -1534,9 +1534,113 @@ fn warehouse_copy_into_dry_run_and_validation() {
     }
 }
 
-/// Live test: full authoring loop — upload a CSV to `OneLake`, create a warehouse
-/// table, COPY INTO from the `OneLake` URL via Entra passthrough, and verify the
-/// rows landed.
+/// Hermetic test: `--auth-mode workspace-identity` emits a managed-identity
+/// CREDENTIAL (no secret) in the dry-run SQL, and the mode's flag validation
+/// rejects a conflicting `--sas-token` and an inconsistent `--auth-mode sas`
+/// without a token. No live tenant needed.
+#[test]
+fn warehouse_copy_into_workspace_identity_auth() {
+    let ws = "00000000-0000-0000-0000-000000000001";
+    let wh = "00000000-0000-0000-0000-000000000002";
+
+    // Workspace-identity auth: managed-identity credential, no secret.
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_SQL_ACCESS_TOKEN", "fake-test-token")
+        .args([
+            "warehouse",
+            "copy-into",
+            "--workspace",
+            ws,
+            "--id",
+            wh,
+            "--table",
+            "dbo.Orders",
+            "--source",
+            "https://acct.dfs.core.windows.net/c/data.parquet",
+            "--file-type",
+            "parquet",
+            "--auth-mode",
+            "workspace-identity",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    let sql = data["details"]["sql"].as_str().unwrap();
+    assert!(sql.contains("CREDENTIAL = (IDENTITY = 'Managed Identity')"));
+    assert!(!sql.contains("SECRET ="));
+
+    // workspace-identity + --sas-token is a conflict (fails before any network call).
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_SQL_ACCESS_TOKEN", "fake-test-token")
+        .args([
+            "warehouse",
+            "copy-into",
+            "--workspace",
+            ws,
+            "--id",
+            wh,
+            "--table",
+            "dbo.Orders",
+            "--source",
+            "https://acct.dfs.core.windows.net/c/data.parquet",
+            "--file-type",
+            "parquet",
+            "--auth-mode",
+            "workspace-identity",
+            "--sas-token",
+            "sv=2022&sig=SIG",
+            "--dry-run",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err["error"]["code"], "INVALID_INPUT");
+    assert!(
+        err["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("cannot be combined with --sas-token")
+    );
+
+    // --auth-mode sas without a token is rejected.
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_SQL_ACCESS_TOKEN", "fake-test-token")
+        .args([
+            "warehouse",
+            "copy-into",
+            "--workspace",
+            ws,
+            "--id",
+            wh,
+            "--table",
+            "dbo.Orders",
+            "--source",
+            "https://acct.dfs.core.windows.net/c/data.parquet",
+            "--file-type",
+            "parquet",
+            "--auth-mode",
+            "sas",
+            "--dry-run",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err["error"]["code"], "INVALID_INPUT");
+    assert!(
+        err["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("requires --sas-token")
+    );
+}
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]

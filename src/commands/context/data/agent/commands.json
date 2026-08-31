@@ -5369,6 +5369,15 @@
           "--sas-token": {
             "type": "string",
             "description": "SAS token for the source storage (omit to use the caller's Entra ID)"
+          },
+          "--auth-mode": {
+            "type": "enum",
+            "values": [
+              "entra-id",
+              "sas",
+              "workspace-identity"
+            ],
+            "description": "Source authentication mode. `entra-id` (default) uses the caller's Entra identity; `sas` uses --sas-token; `workspace-identity` uses the Fabric workspace's managed identity (no secret; the workspace identity must be granted access to the source, e.g. Storage Blob Data Reader)"
           }
         },
         "mutates": true,

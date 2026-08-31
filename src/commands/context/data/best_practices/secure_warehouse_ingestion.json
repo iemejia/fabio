@@ -1,0 +1,34 @@
+{
+  "topic": "secure-warehouse-ingestion",
+  "title": "Secure COPY INTO ingestion (Entra ID / SAS / Workspace Identity)",
+  "summary": "warehouse copy-into bulk-loads Azure storage / OneLake files into an existing Fabric Warehouse table. Choose the source authentication with --auth-mode: entra-id (default, the caller's identity), sas (--sas-token), or workspace-identity (the Fabric workspace managed identity, no secret). Prefer workspace-identity for automation/pipelines — it emits CREDENTIAL = (IDENTITY = 'Managed Identity') and needs no SAS token or account key, matching the Aug 2026 GA 'Secure data ingestion with COPY INTO and Workspace Identity'.",
+  "auth_modes": {
+    "entra-id": {
+      "when": "Interactive/ad-hoc loads where the signed-in user already has access to the source storage.",
+      "how": "Default. Omit --auth-mode and --sas-token. No CREDENTIAL clause is emitted; the source is read with the caller's Entra identity.",
+      "example": "fabio warehouse copy-into --workspace $WS --id $WH --table dbo.Orders --source https://acct.dfs.core.windows.net/c/data/*.parquet --file-type parquet"
+    },
+    "workspace-identity": {
+      "when": "Automation, scheduled jobs, and CI/CD — the RECOMMENDED secure default. No secret is embedded; the workspace's managed identity is granted access centrally.",
+      "how": "--auth-mode workspace-identity. Grant the workspace identity access to the source first (e.g. Storage Blob Data Reader on the ADLS Gen2 account / container). Provision it with: fabio workspace provision-identity --workspace $WS.",
+      "emits": "CREDENTIAL = (IDENTITY = 'Managed Identity')",
+      "example": "fabio warehouse copy-into --workspace $WS --id $WH --table dbo.Orders --source https://acct.dfs.core.windows.net/c/data/*.parquet --file-type parquet --auth-mode workspace-identity"
+    },
+    "sas": {
+      "when": "The source only offers a SAS token, or the workspace identity cannot be granted access.",
+      "how": "--auth-mode sas --sas-token \"<token>\" (or just pass --sas-token; sas is inferred). The token is redacted in --dry-run previews and never printed.",
+      "example": "fabio warehouse copy-into --workspace $WS --id $WH --table dbo.Orders --source https://acct.dfs.core.windows.net/c/data/*.parquet --file-type parquet --sas-token \"$SAS\""
+    }
+  },
+  "validation": {
+    "mutual_exclusivity": "--auth-mode workspace-identity and --auth-mode entra-id both REJECT a --sas-token (ambiguous). --auth-mode sas REQUIRES --sas-token. Errors fail fast before any network call and enumerate the fix.",
+    "https_only": "--source must be an HTTPS Azure storage / OneLake URL; http:// and host-confusion URLs are rejected.",
+    "table_exists": "The target table must already exist — create it first with fabio warehouse query --sql \"CREATE TABLE ...\". COPY INTO is append-only (never deletes/overwrites)."
+  },
+  "what_agents_should_do": [
+    "Default to --auth-mode workspace-identity for any non-interactive / pipeline load — it avoids SAS tokens and account keys entirely.",
+    "Before the first workspace-identity load, ensure the workspace identity exists (fabio workspace provision-identity) and has been granted read access to the source storage.",
+    "Never inline a SAS token in logs or committed scripts; pass it via an env var and rely on fabio's --dry-run redaction to verify the statement.",
+    "Preview the exact COPY INTO statement with --dry-run before executing, then validate the load with fabio warehouse describe-table or a COUNT(*)."
+  ]
+}

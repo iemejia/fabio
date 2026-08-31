@@ -332,6 +332,11 @@ pub struct CopyIntoOptions<'a> {
     pub first_row: Option<u32>,
     pub encoding: Option<&'a str>,
     pub sas_token: Option<&'a str>,
+    /// Authenticate to the source with the Fabric **workspace identity** (managed
+    /// identity) instead of the caller's Entra ID or a SAS token. Emits
+    /// `CREDENTIAL = (IDENTITY = 'Managed Identity')`. Mutually exclusive with
+    /// `sas_token` (enforced by the caller).
+    pub workspace_identity: bool,
 }
 
 /// Build a Fabric `COPY INTO` statement from [`CopyIntoOptions`].
@@ -366,6 +371,11 @@ pub fn build_copy_into_sql(opts: &CopyIntoOptions<'_>, redact_secret: bool) -> S
         with_opts.push(format!(
             "CREDENTIAL = (IDENTITY = 'Shared Access Signature', SECRET = '{secret}')"
         ));
+    } else if opts.workspace_identity {
+        // Workspace identity (managed identity) auth — the workspace's managed
+        // identity must be granted access to the source (e.g. Storage Blob Data
+        // Reader). No secret is embedded in the statement.
+        with_opts.push("CREDENTIAL = (IDENTITY = 'Managed Identity')".to_string());
     }
     if let Some(ft) = opts.field_terminator {
         with_opts.push(format!("FIELDTERMINATOR = '{}'", escape_sql_literal(ft)));
@@ -1250,6 +1260,7 @@ mod tests {
             first_row: None,
             encoding: None,
             sas_token: sas,
+            workspace_identity: false,
         }
     }
 
@@ -1312,6 +1323,7 @@ mod tests {
             first_row: Some(2),
             encoding: Some("UTF8"),
             sas_token: None,
+            workspace_identity: false,
         };
         let sql = build_copy_into_sql(&opts, false);
         assert!(sql.contains("COPY INTO [Raw] ([id], [name], [amount])"));
@@ -1331,6 +1343,32 @@ mod tests {
         let preview = build_copy_into_sql(&copy_opts(Some(secret)), true);
         assert!(preview.contains("SECRET = '***REDACTED***'"));
         assert!(!preview.contains(secret));
+    }
+
+    #[test]
+    fn build_copy_into_sql_workspace_identity_emits_managed_identity_credential() {
+        let opts = CopyIntoOptions {
+            workspace_identity: true,
+            ..copy_opts(None)
+        };
+        let sql = build_copy_into_sql(&opts, false);
+        assert!(sql.contains("CREDENTIAL = (IDENTITY = 'Managed Identity')"));
+        // No secret is embedded for managed-identity auth.
+        assert!(!sql.contains("SECRET ="));
+    }
+
+    #[test]
+    fn build_copy_into_sql_sas_takes_precedence_over_workspace_identity() {
+        // The caller enforces mutual exclusivity, but defensively verify the SAS
+        // branch wins if both are somehow set, so no secret path is skipped.
+        let opts = CopyIntoOptions {
+            workspace_identity: true,
+            sas_token: Some("sv=2022&sig=SIG"),
+            ..copy_opts(None)
+        };
+        let sql = build_copy_into_sql(&opts, false);
+        assert!(sql.contains("Shared Access Signature"));
+        assert!(!sql.contains("Managed Identity"));
     }
 
     #[test]

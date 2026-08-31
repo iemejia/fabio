@@ -221,6 +221,13 @@ pub enum WarehouseCommand {
         /// SAS token for the source storage (omit to use the caller's Entra ID)
         #[arg(long)]
         sas_token: Option<String>,
+
+        /// Source authentication mode. `entra-id` (default) uses the caller's
+        /// Entra identity; `sas` uses --sas-token; `workspace-identity` uses the
+        /// Fabric workspace's managed identity (no secret; the workspace identity
+        /// must be granted access to the source, e.g. Storage Blob Data Reader).
+        #[arg(long, value_parser = ["entra-id", "sas", "workspace-identity"])]
+        auth_mode: Option<String>,
     },
     /// Get the connection string for a warehouse
     #[command(display_order = 15)]
@@ -721,6 +728,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
             first_row,
             encoding,
             sas_token,
+            auth_mode,
         } => {
             let args = authoring::CopyIntoArgs {
                 table,
@@ -732,6 +740,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
                 first_row: *first_row,
                 encoding: encoding.as_deref(),
                 sas_token: sas_token.as_deref(),
+                auth_mode: auth_mode.as_deref(),
             };
             Box::pin(authoring::copy_into(cli, client, workspace, id, &args)).await
         }
