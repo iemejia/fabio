@@ -1147,12 +1147,8 @@ fn dataagent_full_lifecycle_create_publish_query_delete() {
     // ─── Step 4: Query the data agent ────────────────────────────────────────
     eprintln!("[4/5] Querying data agent...");
 
-    // Construct the published URL (since V3 settings may not be enabled)
-    let published_url = format!(
-        "https://api.fabric.microsoft.com/v1/workspaces/{}/dataagents/{}/aiassistant/openai",
-        cfg.source_workspace, agent_id
-    );
-
+    // Query via the published agent's MCP endpoint (the constructed well-known
+    // URL; no --published-url override needed).
     let assert = fabio()
         .args([
             "data-agent",
@@ -1161,8 +1157,6 @@ fn dataagent_full_lifecycle_create_publish_query_delete() {
             &cfg.source_workspace,
             "--id",
             &agent_id,
-            "--published-url",
-            &published_url,
             "--prompt",
             "What is the most expensive product and how much does it cost?",
         ])
@@ -1586,8 +1580,8 @@ fn dataagent_query_stage_invalid_is_rejected() {
 }
 
 #[test]
-fn dataagent_query_accepts_thread_and_download_flags() {
-    // The new multi-turn / file-download flags must be accepted by the parser.
+fn dataagent_query_accepts_raw_flag_and_rejects_retired_assistants_flags() {
+    // The MCP-backed query accepts --raw (full tool result) ...
     let assert = fabio()
         .args([
             "data-agent",
@@ -1598,23 +1592,48 @@ fn dataagent_query_accepts_thread_and_download_flags() {
             "00000000-0000-0000-0000-000000000000",
             "--prompt",
             "test",
-            "--thread-id",
-            "thread_abc",
-            "--keep-thread",
-            "--download-files",
-            "/tmp/fabio-dl-test",
+            "--raw",
             "--published-url",
             "https://api.fabric.microsoft.com/v1/x",
             "--timeout",
             "5",
         ])
         .assert();
-
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     assert!(
         !stderr.contains("unexpected argument") && !stderr.contains("unrecognized"),
-        "CLI should accept --thread-id/--keep-thread/--download-files: {stderr}"
+        "CLI should accept --raw: {stderr}"
     );
+
+    // ... and the retired OpenAI Assistants API flags are gone.
+    for retired in [
+        "--thread-id",
+        "--keep-thread",
+        "--download-files",
+        "--visuals",
+        "--show-steps",
+    ] {
+        let assert = fabio()
+            .args([
+                "data-agent",
+                "query",
+                "--workspace",
+                "00000000-0000-0000-0000-000000000000",
+                "--id",
+                "00000000-0000-0000-0000-000000000000",
+                "--prompt",
+                "test",
+                retired,
+                "x",
+            ])
+            .assert()
+            .failure();
+        let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+        assert!(
+            stderr.contains("unexpected argument") || stderr.contains("unrecognized"),
+            "retired flag {retired} should be rejected: {stderr}"
+        );
+    }
 }
 
 #[test]
@@ -3093,7 +3112,7 @@ fn dataagent_preview_runtime_toggle_lifecycle() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
-fn dataagent_query_show_steps_flag_accepted() {
+fn dataagent_query_raw_flag_accepted() {
     let cfg = TestConfig::from_env();
     fabio()
         .args([
@@ -3105,14 +3124,14 @@ fn dataagent_query_show_steps_flag_accepted() {
             "00000000-0000-0000-0000-000000000001",
             "--prompt",
             "test",
-            "--show-steps",
+            "--raw",
             "--published-url",
-            "https://api.fabric.microsoft.com/v1/workspaces/test/dataagents/test/aiassistant/openai",
+            "https://api.fabric.microsoft.com/v1/mcp/workspaces/test/dataagents/test/agent",
             "--timeout",
             "5",
         ])
         .assert()
-        .failure(); // Will fail (agent doesn't exist) but --show-steps flag is accepted
+        .failure(); // Will fail (agent doesn't exist) but --raw flag is accepted
 }
 
 #[test]
@@ -3463,14 +3482,14 @@ fn dataagent_ground_on_ontology_and_select_elements() {
         .assert();
 }
 
-/// End-to-end live validation of the published-consumption features:
-/// constructed published-URL fallback, `threadId` in the response, multi-turn
-/// thread reuse (`--keep-thread` + `--thread-id`), and the `evaluate` batch
-/// primitive. Creates + publishes an agent, exercises the flow, then cleans up.
+/// End-to-end live validation of the published-consumption features over the
+/// MCP endpoint: constructed MCP-URL fallback, a single-turn `query`, and the
+/// `evaluate` batch primitive. Creates + publishes an agent, exercises the
+/// flow, then cleans up.
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
-fn dataagent_query_multiturn_and_evaluate_lifecycle() {
+fn dataagent_query_and_evaluate_lifecycle() {
     let cfg = TestConfig::from_env();
     let name = unique_name("da_query_e2e");
 
@@ -3512,7 +3531,7 @@ fn dataagent_query_multiturn_and_evaluate_lifecycle() {
         .assert()
         .success();
 
-    // Publish so the OpenAI-compatible consumption endpoint goes live.
+    // Publish so the MCP consumption endpoint goes live.
     fabio()
         .args([
             "data-agent",
@@ -3526,8 +3545,8 @@ fn dataagent_query_multiturn_and_evaluate_lifecycle() {
         .assert()
         .success();
 
-    // ── Basic query: no --published-url (exercises the constructed fallback),
-    //    and the response must carry a threadId. ──────────────────────────────
+    // ── Query over MCP: no --published-url (exercises the constructed MCP URL);
+    //    the response must carry the answer and the discovered tool name. ──────
     let assert = fabio()
         .args([
             "data-agent",
@@ -3547,67 +3566,12 @@ fn dataagent_query_multiturn_and_evaluate_lifecycle() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     assert!(
-        data["threadId"].as_str().is_some_and(|t| !t.is_empty()),
-        "query response must include a non-empty threadId, got: {data}"
-    );
-    assert!(
         data["answer"].as_str().is_some_and(|a| !a.is_empty()),
         "query response must include an answer, got: {data}"
     );
-
-    // ── Multi-turn: keep a thread, then reuse it. The reused thread id must be
-    //    identical, proving the follow-up ran on the same conversation. ───────
-    let assert = fabio()
-        .args([
-            "data-agent",
-            "query",
-            "--workspace",
-            &cfg.source_workspace,
-            "--id",
-            &agent_id,
-            "--prompt",
-            "Remember the number 7 for later.",
-            "--keep-thread",
-            "--timeout",
-            "300",
-        ])
-        .timeout(std::time::Duration::from_mins(6))
-        .assert()
-        .success();
-    let thread_id = extract_data(&parse_json(&assert))["threadId"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    assert!(!thread_id.is_empty(), "kept thread id must be non-empty");
-
-    let assert = fabio()
-        .args([
-            "data-agent",
-            "query",
-            "--workspace",
-            &cfg.source_workspace,
-            "--id",
-            &agent_id,
-            "--prompt",
-            "What number did I ask you to remember?",
-            "--thread-id",
-            &thread_id,
-            "--timeout",
-            "300",
-        ])
-        .timeout(std::time::Duration::from_mins(6))
-        .assert()
-        .success();
-    let json = parse_json(&assert);
-    let data = extract_data(&json);
-    assert_eq!(
-        data["threadId"].as_str(),
-        Some(thread_id.as_str()),
-        "follow-up must reuse the same thread, got: {data}"
-    );
     assert!(
-        data["answer"].as_str().is_some_and(|a| !a.is_empty()),
-        "follow-up must return an answer, got: {data}"
+        data["tool"].as_str().is_some_and(|t| !t.is_empty()),
+        "query response must include the discovered MCP tool name, got: {data}"
     );
 
     // ── Evaluate: batch-run a small question set (no --published-url). ────────
@@ -3967,8 +3931,10 @@ fn dataagent_semantic_model_nl2dax_lifecycle() {
         .assert()
         .success();
 
-    // 5) Ask a counting question and inspect the run steps: a grounded answer
-    //    must generate DAX via the SemanticModel NL2DAX tool.
+    // 5) Ask a counting question: a grounded answer must come back from the
+    //    SemanticModel-backed agent. (The MCP consumption surface returns the
+    //    answer only; per-step DAX introspection was removed with the retired
+    //    Assistants API, so we assert on a grounded answer, not on run steps.)
     let assert = fabio()
         .args([
             "data-agent",
@@ -3979,24 +3945,16 @@ fn dataagent_semantic_model_nl2dax_lifecycle() {
             &id,
             "--prompt",
             &format!("How many rows are in {table}? Return a single count."),
-            "--show-steps",
+            "--raw",
         ])
         .timeout(std::time::Duration::from_mins(4))
         .assert()
         .success();
     let result = parse_json(&assert);
-    let blob = serde_json::to_string(&result).unwrap();
+    let data = extract_data(&result);
     assert!(
-        blob.contains("SemanticModel"),
-        "run steps must reference the SemanticModel datasource: {blob}"
-    );
-    let did_nl2dax = blob.contains("nl2code")
-        || blob.contains("analyze_semantic_model")
-        || blob.to_uppercase().contains("EVALUATE")
-        || blob.to_lowercase().contains("dax");
-    assert!(
-        did_nl2dax,
-        "expected evidence of NL2DAX (a generated DAX query) in the run steps: {blob}"
+        data["answer"].as_str().is_some_and(|a| !a.is_empty()),
+        "expected a grounded NL2DAX answer, got: {data}"
     );
 
     // Cleanup.
@@ -4164,7 +4122,9 @@ fn dataagent_kql_database_nl2kql_lifecycle() {
         .assert()
         .success();
 
-    // 5) Ask a question requiring aggregation and confirm KQL was generated.
+    // 5) Ask a question requiring aggregation and confirm a grounded answer.
+    //    (MCP returns the answer only; per-step KQL introspection was removed
+    //    with the retired Assistants API.)
     let assert = fabio()
         .args([
             "data-agent",
@@ -4175,18 +4135,16 @@ fn dataagent_kql_database_nl2kql_lifecycle() {
             &id,
             "--prompt",
             "What is the total Amount per Region?",
-            "--show-steps",
+            "--raw",
         ])
         .timeout(std::time::Duration::from_mins(4))
         .assert()
         .success();
-    let blob = serde_json::to_string(&parse_json(&assert)).unwrap();
-    let did_nl2kql = blob.contains("analyze_kusto_database")
-        || blob.contains("nl2code")
-        || blob.to_lowercase().contains("summarize");
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
     assert!(
-        did_nl2kql,
-        "expected evidence of NL2KQL (a generated KQL query): {blob}"
+        data["answer"].as_str().is_some_and(|a| !a.is_empty()),
+        "expected a grounded NL2KQL answer, got: {data}"
     );
 
     // Cleanup: agent + eventhouse (cascades the KQL database).
@@ -4309,19 +4267,18 @@ fn dataagent_graph_model_nl2gql_generation_lifecycle() {
             &id,
             "--prompt",
             "Using the graph, list the DimStore node StoreName values.",
-            "--show-steps",
+            "--raw",
         ])
         .timeout(std::time::Duration::from_mins(4))
         .assert()
         .success();
-    let blob = serde_json::to_string(&parse_json(&assert)).unwrap();
+    // MCP returns the answer only; per-step GQL introspection was removed with
+    // the retired Assistants API, so we assert on a grounded answer.
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
     assert!(
-        blob.contains("analyze_graph"),
-        "run steps must invoke the NL2GQL graph tool: {blob}"
-    );
-    assert!(
-        blob.contains("MATCH"),
-        "expected a generated GQL query (MATCH ... RETURN) in the steps: {blob}"
+        data["answer"].as_str().is_some_and(|a| !a.is_empty()),
+        "expected a grounded NL2GQL answer, got: {data}"
     );
 
     fabio()
@@ -4461,8 +4418,9 @@ fn run_nl2sql_source_lifecycle(fixture_env: &str, artifact_type: &str) {
     .assert()
     .success();
 
-    // 3) Ask a question and confirm a grounded NL2SQL answer (a generated
-    //    T-SQL query in the run steps).
+    // 3) Ask a question and confirm a grounded NL2SQL answer. (MCP returns the
+    //    answer only; per-step T-SQL introspection was removed with the retired
+    //    Assistants API.)
     let assert = fb()
         .args([
             "data-agent",
@@ -4473,16 +4431,16 @@ fn run_nl2sql_source_lifecycle(fixture_env: &str, artifact_type: &str) {
             &id,
             "--prompt",
             "List the tables available and how many rows each one has.",
-            "--show-steps",
+            "--raw",
         ])
         .timeout(std::time::Duration::from_mins(4))
         .assert()
         .success();
-    let blob = serde_json::to_string(&parse_json(&assert)).unwrap();
-    let did_nl2sql = blob.contains("nl2code") || blob.to_lowercase().contains("select");
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
     assert!(
-        did_nl2sql,
-        "expected evidence of NL2SQL (a generated T-SQL query): {blob}"
+        data["answer"].as_str().is_some_and(|a| !a.is_empty()),
+        "expected a grounded NL2SQL answer, got: {data}"
     );
 
     // Cleanup: the agent only — the source fixture is pre-existing.
@@ -4555,143 +4513,6 @@ fn az_fabric_token() -> Option<String> {
     }
     let token = String::from_utf8(output.stdout).ok()?.trim().to_string();
     (!token.is_empty()).then_some(token)
-}
-
-/// Chart/visual extraction (`data-agent query --visuals`).
-///
-/// Verifies fabio's finding that a Fabric data agent's visual responses — which
-/// the docs describe as portal-only — are in fact reachable through the
-/// published Assistants API: when the agent answers with a chart it invokes a
-/// `VisualizeDataset` tool whose `arguments` carry the COMPLETE chart spec
-/// (chart type, x/y columns, title, axis titles, sort, and the aggregated data
-/// as inline CSV). `--visuals` surfaces that spec.
-///
-/// Fixture: `FABIO_TEST_LOADED_LAKEHOUSE` (a pre-populated, schema-enabled
-/// lakehouse — same fixture the NL2SQL tests use) plus `az` for the
-/// OBO-capable Fabric token that add-datasource's schema fetch needs.
-#[test]
-#[ignore = "requires live Fabric tenant + a populated lakehouse (FABIO_TEST_LOADED_LAKEHOUSE) + az"]
-#[serial]
-fn dataagent_query_visuals_lifecycle() {
-    let Ok(lh) = std::env::var("FABIO_TEST_LOADED_LAKEHOUSE") else {
-        eprintln!("FABIO_TEST_LOADED_LAKEHOUSE not set — skipping visuals validation");
-        return;
-    };
-    let Some(token) = az_fabric_token() else {
-        eprintln!("az Fabric token unavailable — skipping visuals validation");
-        return;
-    };
-    let cfg = TestConfig::from_env();
-    let ws = &cfg.source_workspace;
-    let fb = || {
-        let mut c = fabio();
-        c.env("FABIO_ACCESS_TOKEN", &token);
-        c
-    };
-
-    // 1) Agent grounded on the pre-populated lakehouse.
-    let id = extract_data(&parse_json(
-        &fb()
-            .args([
-                "data-agent",
-                "create",
-                "--workspace",
-                ws,
-                "--name",
-                &unique_name("viz_agent"),
-            ])
-            .timeout(std::time::Duration::from_mins(2))
-            .assert()
-            .success(),
-    ))["id"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    fb().args([
-        "data-agent",
-        "add-datasource",
-        "--workspace",
-        ws,
-        "--id",
-        &id,
-        "--artifact",
-        &lh,
-        "--artifact-type",
-        "Lakehouse",
-        "--lro-timeout",
-        "300",
-    ])
-    .timeout(std::time::Duration::from_mins(6))
-    .assert()
-    .success();
-    fb().args([
-        "data-agent",
-        "select-tables",
-        "--workspace",
-        ws,
-        "--id",
-        &id,
-        "--datasource",
-        &lh,
-        "--all-tables",
-    ])
-    .timeout(std::time::Duration::from_mins(2))
-    .assert()
-    .success();
-    fb().args([
-        "data-agent",
-        "publish",
-        "--workspace",
-        ws,
-        "--id",
-        &id,
-        "--description",
-        "visuals e2e",
-    ])
-    .timeout(std::time::Duration::from_mins(3))
-    .assert()
-    .success();
-
-    // 2) Ask for a chart and assert a structured chart spec comes back. The
-    //    prompt is deliberately explicit so the agent invokes VisualizeDataset
-    //    regardless of the fixture's exact schema.
-    let assert = fb()
-        .args([
-            "data-agent",
-            "query",
-            "--workspace",
-            ws,
-            "--id",
-            &id,
-            "--prompt",
-            "Create a bar chart that visualizes a summary of the available data. \
-             Aggregate a numeric column grouped by a categorical column and return a chart.",
-            "--visuals",
-        ])
-        .timeout(std::time::Duration::from_mins(4))
-        .assert()
-        .success();
-    let json = parse_json(&assert);
-    let data = extract_data(&json);
-    let visuals = data["visuals"].as_array().expect("visuals array");
-    assert!(
-        !visuals.is_empty(),
-        "expected at least one extracted chart spec, got: {data}"
-    );
-    let v = &visuals[0];
-    assert!(
-        v.get("chart_type").is_some(),
-        "chart spec must carry a chart_type: {v}"
-    );
-    assert!(
-        v.get("inline_csv_data").is_some(),
-        "chart spec must carry the aggregated inline_csv_data: {v}"
-    );
-
-    // Cleanup: the agent only — the lakehouse fixture is pre-existing.
-    fb().args(["data-agent", "delete", "--workspace", ws, "--id", &id])
-        .assert()
-        .success();
 }
 
 #[test]

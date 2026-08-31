@@ -2,21 +2,21 @@
 //! data agent.
 //!
 //! This is an *evaluation primitive*, not a judge: it runs each question
-//! (optionally several times) through the published agent's Assistants endpoint
-//! and emits the answers (and, with `--show-steps`, the execution steps). When a
-//! question row carries an `expected` answer, fabio adds a **naive** string-match
-//! signal (`match.exact` / `match.contains`) — it deliberately does NOT perform
-//! semantic/LLM grading, leaving that judgment to the agent consuming fabio.
+//! (optionally several times) through the published agent's MCP endpoint and
+//! emits the answers. When a question row carries an `expected` answer, fabio
+//! adds a **naive** string-match signal (`match.exact` / `match.contains`) — it
+//! deliberately does NOT perform semantic grading unless an optional LLM judge
+//! (`--llm-*`) is configured.
 //!
 //! Mirrors the Python `fabric.dataagent.evaluation.evaluate_data_agent` shape
-//! (questions + expected answers, `num_query_repeats`) without the LLM critic.
+//! (questions + expected answers, `num_query_repeats`).
 
 use std::time::Duration;
 
 use anyhow::Result;
 use serde_json::Value;
 
-use super::query::{QueryOptions, run_assistant_query};
+use super::mcp::run_mcp_query;
 use crate::cli::Cli;
 use crate::client::{self, FabricClient};
 use crate::errors::{ErrorCode, FabioError};
@@ -47,7 +47,6 @@ pub(super) async fn evaluate(
     questions_file: &str,
     published_url: Option<&str>,
     repeats: u32,
-    show_steps: bool,
     stage: &str,
     timeout: u64,
     llm: &LlmConfig,
@@ -82,13 +81,13 @@ pub(super) async fn evaluate(
         .into());
     }
 
-    // Resolve the published endpoint once and reuse it for every question.
+    // Resolve the MCP endpoint once and reuse it for every question.
     let resolved_url = if let Some(url) = published_url {
         client::validate_trusted_url(url, "--published-url")?;
         url.to_string()
     } else {
         // Only a published agent is queryable; surface the same guidance as `query`.
-        super::query::resolve_published_url(client, workspace, id, stage).await?
+        super::query::resolve_mcp_url(workspace, id, stage)?
     };
 
     let token = client.require_auth().await?;
@@ -104,21 +103,9 @@ pub(super) async fn evaluate(
         let mut answers = Vec::with_capacity(repeats as usize);
         for _ in 0..repeats {
             total_runs += 1;
-            // Each run uses its own throwaway thread so questions stay independent.
-            let opts = QueryOptions {
-                thread_id: None,
-                keep_thread: false,
-                show_steps,
-                download_dir: None,
-                visuals: false,
-            };
-            match run_assistant_query(&resolved_url, &token, &spec.question, &opts, max_wait).await
-            {
+            match run_mcp_query(&resolved_url, &token, &spec.question, max_wait).await {
                 Ok(res) => {
                     let mut entry = serde_json::json!({ "answer": res.answer });
-                    if let Some(steps) = res.steps {
-                        entry["steps"] = steps;
-                    }
                     // Optional LLM grade.
                     if let Some(g) = &grader {
                         let grade =

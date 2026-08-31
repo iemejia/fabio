@@ -1,19 +1,17 @@
 {
   "command": "fabio data-agent query --workspace $WS_ID --id $AGENT_ID --prompt \"What are the top 5 products by revenue?\"",
-  "description": "Queries a published Data Agent with a natural language question over the OpenAI-compatible Assistants endpoint. Returns the agent's answer and the threadId used for the run (reuse it for a multi-turn follow-up). Only a published agent is queryable; the draft/staging stage has no public endpoint.",
+  "description": "Queries a published Data Agent with a natural language question over its Model Context Protocol (MCP) endpoint. Returns the agent's answer plus the name of the MCP tool that was invoked. Only a published agent is queryable; the draft/staging stage has no MCP endpoint.",
   "response": {
     "data": {
       "question": "What are the top 5 products by revenue?",
       "answer": "The top 5 products by revenue are: Widget Pro ($1.2M), Gadget X ($980K), SuperTool ($875K), MegaPack ($720K), BasicKit ($650K).",
-      "threadId": "thread_abc123def456"
+      "tool": "query_core_data_agent"
     }
   },
-  "notes": "Only --stage production (published, the default) is supported — querying a draft/sandbox agent is not available via the public Fabric API (publish first with `fabio data-agent publish`). The published consumption URL is auto-constructed; pass --published-url only to target a specific endpoint. MULTI-TURN: pass --keep-thread to retain the thread, then reuse its threadId on the next call with --thread-id to continue the conversation. FILES: pass --download-files <dir> to save any files the answer attaches (generated CSVs/charts) into <dir>; the response then includes a `files` array. VISUALS: pass --visuals to extract chart specifications the agent generated — when it charts an answer it invokes a VisualizeDataset tool whose arguments carry the full spec (chart_type, x_column, y_columns, title, axis titles, sort, and the aggregated data as inline_csv_data); the response then includes a `visuals` array so a client can render the chart without the portal. (The pre-rendered report_specs_*.json file is NOT downloadable — its file id 404s on the published /files endpoint — but its content is redundant with the extracted spec.) Add --show-steps to include the SQL/tool-call run steps. Use --timeout to control max wait (default: 300s; Spark cold start can take minutes).",
+  "notes": "Runtime consumption goes through the data agent's MCP server (the OpenAI Assistants API that previously backed this path was retired by OpenAI on 2026-08-26). fabio initializes the MCP session, discovers the single query tool, calls it with your prompt, and returns the text answer. Only --stage production (published, the default) is supported — a draft/sandbox agent has no MCP endpoint (publish first with `fabio data-agent publish`). The MCP URL is auto-constructed (see `fabio data-agent mcp-url`); pass --published-url only to target a specific MCP server URL (from the agent's Settings → Model Context Protocol tab). Add --raw to include the full raw MCP tool result (all content blocks + any structuredContent) in the output for debugging. Use --timeout to control max wait (default: 300s; Spark cold start can take minutes). NOTE: per-step SQL/DAX/KQL introspection, multi-turn threads, answer-file downloads, and chart-spec extraction are NOT available over the MCP surface — those were artifacts of the retired Assistants API.",
   "query_examples": [
     {"query": "answer", "description": "Get the natural language answer."},
-    {"query": "threadId", "description": "Thread id to reuse for a multi-turn follow-up (--thread-id)."},
-    {"query": "files[].path", "description": "Local paths of any downloaded answer files (with --download-files)."},
-    {"query": "visuals[0].chart_type", "description": "Chart type of the first extracted visual (with --visuals), e.g. column_chart."},
-    {"query": "visuals[].inline_csv_data", "description": "The aggregated data behind each chart (with --visuals)."}
+    {"query": "tool", "description": "The MCP tool the data agent exposed and fabio invoked."},
+    {"query": "raw.content", "description": "The raw MCP tool result content blocks (with --raw)."}
   ]
 }

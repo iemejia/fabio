@@ -19,7 +19,7 @@
     "3. Add descriptions to tables/columns/measures (grounds the AI). fabio flags missing ones; author them in Power BI Desktop/Service or via update-definition.",
     "4. Configure Prep for AI (AI data schema, verified answers, AI instructions) — see the note below; this is portal/Desktop-only today.",
     "5. Add the model to the data agent and select the SAME tables you scoped in Prep for AI.",
-    "6. Test: run questions and inspect the generated DAX (`data-agent query --show-steps`).",
+    "6. Test: run questions and verify the answers are correct (`data-agent query`; validate a question set with `data-agent evaluate`).",
     "7. Evaluate & iterate with `data-agent evaluate` against ground-truth pairs.",
     "8. Put it under source control and promote with deploy/deployment pipelines."
   ],

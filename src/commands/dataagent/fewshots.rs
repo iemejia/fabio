@@ -1,6 +1,7 @@
 use anyhow::Result;
 use serde_json::Value;
 
+use super::stage_prefix;
 use crate::cli::Cli;
 use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError};
@@ -403,14 +404,6 @@ pub(super) async fn upload_fewshots(
 }
 
 // ─── Private Helpers ─────────────────────────────────────────────────────────
-
-const fn stage_prefix(stage: &str) -> &str {
-    if stage.eq_ignore_ascii_case("published") {
-        ""
-    } else {
-        "/staging"
-    }
-}
 
 /// Parse few-shot examples from a CSV/TSV file.
 ///

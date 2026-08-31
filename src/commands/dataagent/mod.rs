@@ -5,6 +5,7 @@ mod definition;
 mod elements;
 mod evaluate;
 mod fewshots;
+mod mcp;
 mod query;
 mod validate;
 
@@ -16,6 +17,20 @@ use crate::cli::Cli;
 use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::llm::LlmConfig;
+
+/// Map a `--stage` value to the data agent REST path prefix.
+///
+/// A data agent has two configuration stages: the live `published` state
+/// (no path prefix) and the editable `staging`/draft state (`/staging`). Shared
+/// by every submodule that reads/writes stage-scoped resources (config,
+/// datasources, few-shots, elements).
+pub(super) const fn stage_prefix(stage: &str) -> &str {
+    if stage.eq_ignore_ascii_case("published") {
+        ""
+    } else {
+        "/staging"
+    }
+}
 
 #[derive(Debug, Subcommand)]
 #[command(
@@ -102,34 +117,17 @@ pub enum DataAgentCommand {
         #[arg(short, long)]
         prompt: Option<String>,
 
-        /// Published URL (from portal Settings page after publishing the agent)
+        /// MCP server URL to query directly (from the agent's Settings → Model Context Protocol tab)
         #[arg(long)]
         published_url: Option<String>,
 
-        /// Include execution details (SQL queries, tool calls, run steps)
+        /// Include the raw MCP tool result (all content blocks + structuredContent) in the output
         #[arg(long)]
-        show_steps: bool,
+        raw: bool,
 
         /// Agent stage to query: only `production` (published) is supported via the public API
         #[arg(long, default_value = "production")]
         stage: String,
-
-        /// Reuse an existing thread for a multi-turn follow-up (from a prior query's `threadId`)
-        #[arg(long)]
-        thread_id: Option<String>,
-
-        /// Keep the thread after the query (returns its `threadId` for a follow-up turn)
-        #[arg(long)]
-        keep_thread: bool,
-
-        /// Download files attached to the answer into this directory (e.g. generated CSVs/charts)
-        #[arg(long, value_name = "DIR")]
-        download_files: Option<String>,
-
-        /// Extract chart/visual specifications the agent generated (chart type, axes,
-        /// title, sort, and the aggregated data) into a `visuals` array in the output
-        #[arg(long)]
-        visuals: bool,
 
         /// Maximum wait time in seconds for the query to complete (default: 300)
         #[arg(long, default_value = "300")]
@@ -150,17 +148,13 @@ pub enum DataAgentCommand {
         #[arg(long)]
         questions: String,
 
-        /// Published URL (from portal Settings page after publishing the agent)
+        /// MCP server URL to query directly (from the agent's Settings → Model Context Protocol tab)
         #[arg(long)]
         published_url: Option<String>,
 
         /// Number of times to run each question (default: 1)
         #[arg(long, default_value = "1")]
         repeats: u32,
-
-        /// Include execution details (SQL queries, tool calls, run steps) per run
-        #[arg(long)]
-        show_steps: bool,
 
         /// Agent stage to query: only `production` (published) is supported via the public API
         #[arg(long, default_value = "production")]
@@ -742,12 +736,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             id,
             prompt,
             published_url,
-            show_steps,
+            raw,
             stage,
-            thread_id,
-            keep_thread,
-            download_files,
-            visuals,
             timeout,
         } => query::query(
             cli,
@@ -756,12 +746,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             id,
             prompt.as_deref(),
             published_url.as_deref(),
-            *show_steps,
+            *raw,
             stage,
-            thread_id.as_deref(),
-            *keep_thread,
-            download_files.as_deref(),
-            *visuals,
             *timeout,
         )
         .await
@@ -772,7 +758,6 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
             questions,
             published_url,
             repeats,
-            show_steps,
             stage,
             timeout,
             llm_endpoint,
@@ -794,7 +779,6 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
                 questions,
                 published_url.as_deref(),
                 *repeats,
-                *show_steps,
                 stage,
                 *timeout,
                 &llm,

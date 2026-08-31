@@ -547,14 +547,8 @@ fabio data-agent select-tables --workspace $WS --id $AGENT --datasource $DS --ta
 fabio data-agent update-config --workspace $WS --id $AGENT --instructions "Use total revenue, not quantity"
 fabio data-agent add-fewshot --workspace $WS --id $AGENT --datasource $DS --question "Top products?" --sql "SELECT ..."
 fabio data-agent publish --workspace $WS --id $AGENT                              # make agent available (only published agents are queryable)
-fabio data-agent query --workspace $WS --id $AGENT --prompt "What is the most sold product?"   # returns answer + threadId
-# Multi-turn: keep the thread, then reuse its threadId for a follow-up
-fabio data-agent query --workspace $WS --id $AGENT --prompt "Remember 7." --keep-thread
-fabio data-agent query --workspace $WS --id $AGENT --prompt "What number?" --thread-id thread_abc
-# Download answer-attached files (generated CSVs/charts); adds a files[] array
-fabio data-agent query --workspace $WS --id $AGENT --prompt "Chart revenue as CSV" --download-files ./out
-# Extract chart/visual specs the agent generated (chart type, axes, title, sort, inline data) — adds a visuals[] array
-fabio data-agent query --workspace $WS --id $AGENT --prompt "Show me a bar chart of sales by region" --visuals
+fabio data-agent query --workspace $WS --id $AGENT --prompt "What is the most sold product?"   # single-turn call over the agent's MCP endpoint; returns answer + tool
+fabio data-agent query --workspace $WS --id $AGENT --prompt "Top products?" --raw              # add --raw to include the full raw MCP tool result
 # Batch-run a question set (evaluation primitive; naive expected-match only, not an LLM judge)
 fabio data-agent evaluate --workspace $WS --id $AGENT --questions questions.json
 # LLM-powered (bring your own judge model via --llm-* or FABIO_LLM_ENDPOINT/KEY/MODEL):

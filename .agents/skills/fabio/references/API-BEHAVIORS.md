@@ -505,8 +505,9 @@ The publish_info.json format:
 {"$schema": "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/publishInfo/1.0.0/schema.json", "description": "<publish description>"}
 ```
 
-Publishing activates the OpenAI Assistants-compatible endpoint:
-`https://api.fabric.microsoft.com/v1/workspaces/{wsId}/dataagents/{agentId}/aiassistant/openai`
+Publishing activates the data agent's Model Context Protocol (MCP) consumption endpoint:
+`https://api.fabric.microsoft.com/v1/mcp/workspaces/{wsId}/dataagents/{agentId}/agent`
+(The OpenAI Assistants-compatible endpoint that previously backed runtime querying was retired by OpenAI on 2026-08-26; `data-agent query`/`evaluate` now consume the MCP endpoint.)
 
 ### M365 Copilot Agent Store Publishing
 `--to-m365` on `publish` additionally calls the internal M365 endpoint to register the agent in the Microsoft 365 Copilot Agent Store. Requires a successful standard publish first.

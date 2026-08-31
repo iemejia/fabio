@@ -7080,32 +7080,16 @@
           },
           "--published-url": {
             "type": "string",
-            "description": "Published URL (from portal Settings page after publishing the agent)"
+            "description": "MCP server URL to query directly (from the agent's Settings → Model Context Protocol tab)"
           },
-          "--show-steps": {
+          "--raw": {
             "type": "bool",
-            "description": "Include execution details (SQL queries, tool calls, run steps)"
+            "description": "Include the raw MCP tool result (all content blocks + structuredContent) in the output"
           },
           "--stage": {
             "type": "string",
             "description": "Agent stage to query: only `production` (published) is supported via the public API",
             "default": "production"
-          },
-          "--thread-id": {
-            "type": "string",
-            "description": "Reuse an existing thread for a multi-turn follow-up (from a prior query's `threadId`)"
-          },
-          "--keep-thread": {
-            "type": "bool",
-            "description": "Keep the thread after the query (returns its `threadId` for a follow-up turn)"
-          },
-          "--download-files": {
-            "type": "string",
-            "description": "Download files attached to the answer into this directory (e.g. generated CSVs/charts)"
-          },
-          "--visuals": {
-            "type": "bool",
-            "description": "Extract chart/visual specifications the agent generated (chart type, axes, title, sort, and the aggregated data) into a `visuals` array in the output"
           },
           "--timeout": {
             "type": "integer",
@@ -7143,15 +7127,11 @@
           },
           "--published-url": {
             "type": "string",
-            "description": "Published URL (from portal Settings page after publishing the agent)"
+            "description": "MCP server URL to query directly (from the agent's Settings → Model Context Protocol tab)"
           },
           "--repeats": {
             "type": "string",
             "description": "Number of times to run each question (default: 1)"
-          },
-          "--show-steps": {
-            "type": "bool",
-            "description": "Include execution details (SQL queries, tool calls, run steps) per run"
           },
           "--stage": {
             "type": "string",

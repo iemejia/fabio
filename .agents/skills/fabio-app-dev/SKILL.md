@@ -151,7 +151,7 @@ Manage org app audiences (audience definitions for org apps)
 
 ### PREFER
 - A Data Agent for NL Q&A over Fabric data instead of hand-building query logic; ground it on a lakehouse/warehouse/ontology via add-datasource.
-- Multi-turn Data Agent conversations by reusing the returned threadId (--thread-id/--keep-thread); evaluate answers with 'data-agent evaluate' (add --llm-* for a judge model).
+- Evaluate Data Agent answers with 'data-agent evaluate' (add --llm-* for a judge model) before relying on the agent; query a published agent with 'data-agent query'.
 - GraphQL API / User Data Functions over bespoke external services when the data lives in Fabric.
 - Runtime introspection (context agent --group data-agent|graphql-api|user-data-function) for exact flags.
 
@@ -161,9 +161,9 @@ Manage org app audiences (audience definitions for org apps)
 - Assuming a User Data Function is REST-discoverable — Fabric exposes no API to list/invoke it; the public URL is copied from the portal.
 
 ## Key gotchas
-- Only a PUBLISHED Data Agent is queryable; 'data-agent query' builds the consumption URL ({fabricBase}/workspaces/{ws}/dataagents/{id}/aiassistant/openai) when --published-url is omitted. 'data-agent mcp-url' prints the MCP endpoint for external MCP clients.
+- Only a PUBLISHED Data Agent is queryable. Runtime consumption goes through the agent's Model Context Protocol (MCP) endpoint ({fabricBase}/mcp/workspaces/{ws}/dataagents/{id}/agent) — 'data-agent query' initializes the MCP session, discovers the single query tool, calls it, and returns the answer (pass --published-url only to target a specific MCP URL; 'data-agent mcp-url' prints it). The OpenAI Assistants API that previously backed this path was retired by OpenAI on 2026-08-26.
 - Data Agent preview runtime is toggled via 'update-config --enable-preview-runtime'. It selects the multi-step-reasoning variant of EVERY built-in query tool: Advanced NL2SQL for SQL sources AND Advanced DAX generation (preview) for semantic-model sources (iterative reasoning, ambiguity resolution, instance-value indexing for accurate filters). A published agent's runtime is fixed at publish time (republish to change). Advanced DAX generation's instance-value indexing needs the semantic model's Q&A setting enabled (default on for Import/Direct Lake). For semantic models the DAX tool IGNORES data-agent-level instructions — model-specific guidance must live in Power BI 'Prep for AI' (portal/Desktop-only); see context best-practices semantic-model-optimization.
-- Data Agent visual/chart responses ARE reachable via 'data-agent query --visuals' — despite the docs calling visuals portal-only. When the agent charts an answer it invokes a VisualizeDataset tool whose args carry the full spec (chart_type, x_column, y_columns, title, axis titles, sort, and the aggregated inline_csv_data); --visuals extracts these into a 'visuals' array so a client can render the chart. Only the pre-rendered report_specs_*.json file is NOT downloadable (its file id 404s on the published /files endpoint).
+- The MCP consumption surface returns the answer text only. Per-step SQL/DAX/KQL introspection, multi-turn threads, answer-file downloads, and chart-spec extraction are NOT available — those were artifacts of the retired Assistants API. Use 'data-agent query --raw' to inspect the full MCP tool result.
 - 'user-data-function invoke' needs a PUBLISHED function with public access enabled in the portal; fabio SSRF-guards the URL (HTTPS + trusted Microsoft host) and attaches the Fabric bearer token.
 - Cosmos DB and SQL Database backends require F4+ capacity.
 - app-backend has aliases (rayfin-app, data-app); org-app distribution pairs org-app with org-app-audience.
