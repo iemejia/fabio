@@ -37,8 +37,10 @@ pub(super) async fn run_mcp_query(
     question: &str,
     max_wait: Duration,
 ) -> Result<McpAnswer> {
+    // `token` is already a full Authorization header value ("Bearer <jwt>")
+    // from `require_auth()`; pass it through unchanged (do NOT re-prefix).
     let client =
-        McpClient::connect_with_timeout(mcp_url, Some(format!("Bearer {token}")), max_wait).await?;
+        McpClient::connect_with_timeout(mcp_url, Some(token.to_string()), max_wait).await?;
 
     // A published data agent exposes exactly one tool; discover it dynamically.
     let tools = client.list_tools().await?;
