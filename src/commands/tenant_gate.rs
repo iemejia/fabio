@@ -24,6 +24,10 @@ pub struct TenantSetting {
     pub title: &'static str,
     /// Optional feature-specific guidance (what to do meanwhile / not to retry).
     pub fallback: Option<&'static str>,
+    /// When `true`, the triggering error is only a *possible* symptom of the
+    /// disabled setting (not a definitive `403 FeatureNotAvailable`). The hint is
+    /// then framed as a likely-cause with other possibilities, not a certainty.
+    pub conditional: bool,
 }
 
 const POWERBI_MCP_FALLBACK: &str = "Do NOT retry `semantic-model generate-dax`/`copilot-schema` or `report copilot-metadata` — \
@@ -31,6 +35,12 @@ const POWERBI_MCP_FALLBACK: &str = "Do NOT retry `semantic-model generate-dax`/`
      `semantic-model query --dax`; read the model schema with \
      `semantic-model list-tables`/`list-columns`/`list-measures`/`list-relationships`; read a \
      report's definition with `report get-definition`.";
+
+const DATA_AGENT_STORE_FALLBACK: &str = "The data agent's conversational orchestrator must store \
+     conversation history via Azure OpenAI. If your capacity's region is outside the EU data \
+     boundary and the US, this requires the storing switch above. This message can ALSO be a \
+     transient backend or paused/throttled-capacity failure — verify the capacity is Active \
+     (`fabio capacity show`) and retry once before changing tenant settings.";
 
 /// Map a command path (`group` or `group.subcommand`) to the tenant setting that
 /// gates it. Exact subcommand matches take precedence over group-level ones.
@@ -50,10 +60,25 @@ fn setting_for_command(path: &str) -> Option<TenantSetting> {
             name,
             title,
             fallback,
+            conditional: false,
         })
     };
     // Exact subcommand paths first (a group can mix gated + ungated subcommands).
     match path {
+        "data-agent.query" | "data-agent.evaluate" => {
+            // A data-agent run that "failed before producing a result" is a
+            // *likely* symptom of the storing switch being off (the conversational
+            // orchestrator must store history via Azure OpenAI, which is gated for
+            // capacities whose region is outside the EU data boundary and the US) —
+            // but it can also be a transient/paused-capacity failure, so this is
+            // marked `conditional`.
+            return Some(TenantSetting {
+                name: "AllowStoreAOAIDataInOtherRegions",
+                title: "Data sent to Azure OpenAI can be stored outside your capacity's geographic region",
+                fallback: Some(DATA_AGENT_STORE_FALLBACK),
+                conditional: true,
+            });
+        }
         "semantic-model.generate-dax"
         | "semantic-model.copilot-schema"
         | "report.copilot-metadata" => {
@@ -130,6 +155,11 @@ pub fn is_feature_disabled(err: &anyhow::Error) -> bool {
         || hay.contains("not enabled in the tenant")
         || hay.contains("tenantswitchdisabled")
         || (hay.contains("tenant setting") && hay.contains("disabled"))
+        // Data-agent conversational orchestrator could not run — a likely (not
+        // certain) symptom of the disabled AOAI-storing switch. Kept narrow: only
+        // the "failed before producing a result" phrasing (the orchestrator never
+        // ran); a run that failed WITH output is a different problem.
+        || hay.contains("data agent run failed before producing a result")
 }
 
 /// Probe whether the authenticated caller is a Fabric administrator by reading
@@ -187,11 +217,19 @@ fn build_hint(is_admin: Option<bool>, setting: Option<&TenantSetting>, path: &st
             )
         },
         |s| {
-            let mut h = format!(
-                "The Fabric tenant setting \"{}\" ({}) is disabled — it is required for `{path}`. \
-                 {enable}",
-                s.title, s.name
-            );
+            let mut h = if s.conditional {
+                format!(
+                    "A likely cause is the Fabric tenant setting \"{}\" ({}) being disabled — it \
+                     may be required for `{path}`. {enable}",
+                    s.title, s.name
+                )
+            } else {
+                format!(
+                    "The Fabric tenant setting \"{}\" ({}) is disabled — it is required for \
+                     `{path}`. {enable}",
+                    s.title, s.name
+                )
+            };
             if let Some(fb) = s.fallback {
                 h.push(' ');
                 h.push_str(fb);
@@ -206,10 +244,18 @@ fn build_message(setting: Option<&TenantSetting>) -> String {
     setting.map_or_else(
         || "A required Fabric tenant setting is disabled.".to_string(),
         |s| {
-            format!(
-                "The '{}' feature is not enabled for this tenant (tenant setting {} is disabled).",
-                s.title, s.name
-            )
+            if s.conditional {
+                format!(
+                    "The operation did not complete. A likely cause is the disabled tenant setting \
+                     '{}' ({}), though it can also be a transient failure.",
+                    s.title, s.name
+                )
+            } else {
+                format!(
+                    "The '{}' feature is not enabled for this tenant (tenant setting {} is disabled).",
+                    s.title, s.name
+                )
+            }
         },
     )
 }
@@ -225,8 +271,15 @@ pub async fn enrich(client: &FabricClient, path: &str, err: anyhow::Error) -> an
     }
     let admin = is_fabric_admin(client).await;
     let setting = setting_for_command(path);
+    // A conditional gate is only a LIKELY cause (e.g. a data-agent run failure),
+    // so keep the original error family (ApiError) instead of asserting Forbidden.
+    let code = if setting.as_ref().is_some_and(|s| s.conditional) {
+        ErrorCode::ApiError
+    } else {
+        ErrorCode::Forbidden
+    };
     FabioError::with_typed_hint(
-        ErrorCode::Forbidden,
+        code,
         build_message(setting.as_ref()),
         build_hint(admin, setting.as_ref(), path),
         HintType::SemanticCorrection,
@@ -339,7 +392,44 @@ mod tests {
             setting_for_command("report.publish-to-web").unwrap().name,
             "PublishToWeb"
         );
+        // Data-agent run failures map (conditionally) to the AOAI-storing switch.
+        let da = setting_for_command("data-agent.query").unwrap();
+        assert_eq!(da.name, "AllowStoreAOAIDataInOtherRegions");
+        assert!(da.conditional);
+        assert_eq!(
+            setting_for_command("data-agent.evaluate").unwrap().name,
+            "AllowStoreAOAIDataInOtherRegions"
+        );
         assert!(setting_for_command("workspace.list").is_none());
+    }
+
+    #[test]
+    fn detects_data_agent_run_failure_marker() {
+        // The exact message run_mcp_query surfaces on an isError tool result.
+        let e: anyhow::Error = FabioError::with_hint(
+            ErrorCode::ApiError,
+            "The data agent returned an error: The Data Agent run failed before producing a result.",
+            "Check the agent's data sources and instructions.",
+        )
+        .into();
+        assert!(is_feature_disabled(&e));
+        // A data-agent failure WITH output (different phrasing) must NOT match.
+        assert!(!is_feature_disabled(&anyhow::anyhow!(
+            "The data agent returned an error: SQL error near 'FROM'"
+        )));
+    }
+
+    #[test]
+    fn conditional_setting_uses_soft_language_and_keeps_api_error() {
+        let s = setting_for_command("data-agent.query");
+        let msg = build_message(s.as_ref());
+        let hint = build_hint(Some(true), s.as_ref(), "data-agent.query");
+        // Soft framing (not a definitive "is disabled" assertion).
+        assert!(msg.contains("likely cause"));
+        assert!(hint.contains("likely cause") || hint.contains("may be required"));
+        assert!(hint.contains("AllowStoreAOAIDataInOtherRegions"));
+        // The fallback names the transient/capacity alternative.
+        assert!(hint.contains("transient") || hint.contains("paused"));
     }
 
     #[test]
