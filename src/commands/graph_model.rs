@@ -273,32 +273,19 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GraphModelComma
 }
 
 async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
-    let resp = client
-        .get_list(
-            &format!("/workspaces/{workspace}/graphModels"),
-            "value",
-            cli.all,
-            cli.continuation_token.as_deref(),
-        )
-        .await?;
-
-    output::render_item_list(
+    crate::commands::crud::list(
         cli,
-        &resp.items,
+        client,
+        "graphModels",
+        workspace,
         &["displayName", "id", "description"],
         &["NAME", "ID", "DESCRIPTION"],
-        "id",
-        resp.continuation_token.as_deref(),
-    );
-    Ok(())
+    )
+    .await
 }
 
 async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
-    let data = client
-        .get(&format!("/workspaces/{workspace}/graphModels/{id}"))
-        .await?;
-    output::render_object(cli, &data, "id");
-    Ok(())
+    crate::commands::crud::show(cli, client, "graphModels", workspace, id).await
 }
 
 async fn create(

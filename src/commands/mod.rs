@@ -10,6 +10,7 @@ pub mod connection;
 pub mod context;
 pub mod copy_job;
 pub mod cosmos_db_database;
+pub mod crud;
 pub mod dashboard;
 pub mod data_build_tool_job;
 pub mod data_pipeline;

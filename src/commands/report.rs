@@ -715,32 +715,19 @@ fn validate(cli: &Cli, source: &str) -> Result<()> {
 // ─── CRUD ────────────────────────────────────────────────────────────────────
 
 async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
-    let resp = client
-        .get_list(
-            &format!("/workspaces/{workspace}/reports"),
-            "value",
-            cli.all,
-            cli.continuation_token.as_deref(),
-        )
-        .await?;
-
-    output::render_item_list(
+    crate::commands::crud::list(
         cli,
-        &resp.items,
+        client,
+        "reports",
+        workspace,
         &["displayName", "id", "description"],
         &["NAME", "ID", "DESCRIPTION"],
-        "id",
-        resp.continuation_token.as_deref(),
-    );
-    Ok(())
+    )
+    .await
 }
 
 async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
-    let data = client
-        .get(&format!("/workspaces/{workspace}/reports/{id}"))
-        .await?;
-    output::render_object(cli, &data, "id");
-    Ok(())
+    crate::commands::crud::show(cli, client, "reports", workspace, id).await
 }
 
 /// Build the `definition.pbir` binding a report to a semantic model by ID.

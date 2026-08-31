@@ -194,24 +194,15 @@ pub async fn execute(
 // ─── CRUD ────────────────────────────────────────────────────────────────────
 
 async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
-    let resp = client
-        .get_list(
-            &format!("/workspaces/{workspace}/azureDatabricksStorages"),
-            "value",
-            cli.all,
-            cli.continuation_token.as_deref(),
-        )
-        .await?;
-
-    output::render_item_list(
+    crate::commands::crud::list(
         cli,
-        &resp.items,
+        client,
+        "azureDatabricksStorages",
+        workspace,
         &["displayName", "id", "description"],
         &["NAME", "ID", "DESCRIPTION"],
-        "id",
-        resp.continuation_token.as_deref(),
-    );
-    Ok(())
+    )
+    .await
 }
 
 async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {

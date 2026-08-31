@@ -3,7 +3,6 @@ use clap::Subcommand;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::output;
 
 #[derive(Debug, Subcommand)]
 #[command(
@@ -26,22 +25,13 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DashboardComman
 }
 
 async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
-    let resp = client
-        .get_list(
-            &format!("/workspaces/{workspace}/dashboards"),
-            "value",
-            cli.all,
-            cli.continuation_token.as_deref(),
-        )
-        .await?;
-
-    output::render_item_list(
+    crate::commands::crud::list(
         cli,
-        &resp.items,
+        client,
+        "dashboards",
+        workspace,
         &["displayName", "id", "description"],
         &["NAME", "ID", "DESCRIPTION"],
-        "id",
-        resp.continuation_token.as_deref(),
-    );
-    Ok(())
+    )
+    .await
 }

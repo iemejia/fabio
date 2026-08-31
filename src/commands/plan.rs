@@ -233,11 +233,7 @@ async fn list(
 }
 
 async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
-    let data = client
-        .get(&format!("/workspaces/{workspace}/plans/{id}"))
-        .await?;
-    output::render_object(cli, &data, "id");
-    Ok(())
+    crate::commands::crud::show(cli, client, "plans", workspace, id).await
 }
 
 async fn create(
