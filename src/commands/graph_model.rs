@@ -350,34 +350,18 @@ async fn update(
     name: Option<&str>,
     description: Option<&str>,
 ) -> Result<()> {
-    if name.is_none() && description.is_none() {
-        return Err(FabioError::with_hint(
-            ErrorCode::InvalidInput,
-            "At least one of --name or --description must be provided".to_string(),
-            "Example: fabio graph-model update --workspace <WS> --id <ID> --name \"New Name\""
-                .to_string(),
-        )
-        .into());
-    }
-
-    let mut body = serde_json::json!({});
-    if let Some(n) = name {
-        body["displayName"] = Value::from(n);
-    }
-    if let Some(d) = description {
-        body["description"] = Value::from(d);
-    }
-
-    if output::dry_run_guard(cli, "graph-model update", &body) {
-        return Ok(());
-    }
-
-    let data = client
-        .patch(&format!("/workspaces/{workspace}/graphModels/{id}"), &body)
-        .await
-        .map_err(|e| enrich_forbidden(e, "graph-model update", "Contributor"))?;
-    output::render_object(cli, &data, "id");
-    Ok(())
+    crate::commands::crud::update(
+        cli,
+        client,
+        "graph-model",
+        "graphModels",
+        "Contributor",
+        workspace,
+        id,
+        name,
+        description,
+    )
+    .await
 }
 
 async fn delete(

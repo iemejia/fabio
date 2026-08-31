@@ -191,3 +191,97 @@ pub async fn update_definition(
     }
     Ok(())
 }
+
+/// Create an item with the common `{displayName, description?,
+/// sensitivityLabelSettings?}` body shared by most item types.
+///
+/// `group` is the op-name prefix (e.g. `"map"` → `"map create"`). The dry-run
+/// preview mirrors the historical per-module shape
+/// (`{workspace, displayName, description, sensitivityLabel}`).
+#[allow(clippy::too_many_arguments)]
+pub async fn create(
+    cli: &Cli,
+    client: &FabricClient,
+    group: &str,
+    collection: &str,
+    role: &str,
+    workspace: &str,
+    name: &str,
+    description: Option<&str>,
+    sensitivity_label: Option<&str>,
+) -> Result<()> {
+    let mut body = serde_json::json!({ "displayName": name });
+    if let Some(desc) = description {
+        body["description"] = serde_json::Value::from(desc);
+    }
+    if let Some(label_id) = sensitivity_label {
+        body["sensitivityLabelSettings"] = serde_json::json!({ "sensitivityLabelId": label_id });
+    }
+
+    let op = format!("{group} create");
+    if output::dry_run_guard(
+        cli,
+        &op,
+        &serde_json::json!({
+            "workspace": workspace,
+            "displayName": name,
+            "description": description,
+            "sensitivityLabel": sensitivity_label,
+        }),
+    ) {
+        return Ok(());
+    }
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/{collection}"),
+            &body,
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, &op, role))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+/// Update an item's `displayName`/`description` (the common metadata patch).
+///
+/// Requires at least one of `name`/`description`; the "neither provided" error
+/// hint is built from `group` to match the historical per-module message.
+#[allow(clippy::too_many_arguments)]
+pub async fn update(
+    cli: &Cli,
+    client: &FabricClient,
+    group: &str,
+    collection: &str,
+    role: &str,
+    workspace: &str,
+    id: &str,
+    name: Option<&str>,
+    description: Option<&str>,
+) -> Result<()> {
+    if name.is_none() && description.is_none() {
+        return Err(crate::errors::FabioError::with_hint(
+            crate::errors::ErrorCode::InvalidInput,
+            "At least one of --name or --description must be provided".to_string(),
+            format!("Example: fabio {group} update --workspace <WS> --id <ID> --name \"New Name\""),
+        )
+        .into());
+    }
+    let mut body = serde_json::json!({});
+    if let Some(n) = name {
+        body["displayName"] = serde_json::Value::from(n);
+    }
+    if let Some(d) = description {
+        body["description"] = serde_json::Value::from(d);
+    }
+    let op = format!("{group} update");
+    if output::dry_run_guard(cli, &op, &body) {
+        return Ok(());
+    }
+    let data = client
+        .patch(&format!("/workspaces/{workspace}/{collection}/{id}"), &body)
+        .await
+        .map_err(|e| enrich_forbidden(e, &op, role))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}

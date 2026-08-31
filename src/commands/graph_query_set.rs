@@ -200,33 +200,18 @@ async fn create(
     description: Option<&str>,
     sensitivity_label: Option<&str>,
 ) -> Result<()> {
-    let mut body = serde_json::json!({ "displayName": name });
-    if let Some(desc) = description {
-        body["description"] = Value::from(desc);
-    }
-    if let Some(label_id) = sensitivity_label {
-        body["sensitivityLabelSettings"] = serde_json::json!({
-            "sensitivityLabelId": label_id
-        });
-    }
-
-    if output::dry_run_guard(
+    crate::commands::crud::create(
         cli,
-        "graph-query-set create",
-        &serde_json::json!({ "workspace": workspace, "displayName": name, "description": description , "sensitivityLabel": sensitivity_label }),
-    ) {
-        return Ok(());
-    }
-    let data = client
-        .post(
-            &format!("/workspaces/{workspace}/graphQuerySets"),
-            &body,
-            true,
-        )
-        .await
-        .map_err(|e| enrich_forbidden(e, "graph-query-set create", "Contributor"))?;
-    output::render_object(cli, &data, "id");
-    Ok(())
+        client,
+        "graph-query-set",
+        "graphQuerySets",
+        "Contributor",
+        workspace,
+        name,
+        description,
+        sensitivity_label,
+    )
+    .await
 }
 
 async fn update(

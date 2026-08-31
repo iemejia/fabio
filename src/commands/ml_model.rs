@@ -444,37 +444,18 @@ async fn create(
     description: Option<&str>,
     sensitivity_label: Option<&str>,
 ) -> Result<()> {
-    let mut body = serde_json::json!({
-        "displayName": name,
-    });
-    if let Some(desc) = description {
-        body["description"] = Value::from(desc);
-    }
-    if let Some(label_id) = sensitivity_label {
-        body["sensitivityLabelSettings"] = serde_json::json!({
-            "sensitivityLabelId": label_id
-        });
-    }
-
-    if output::dry_run_guard(
+    crate::commands::crud::create(
         cli,
-        "ml-model create",
-        &serde_json::json!({
-            "workspace": workspace,
-            "displayName": name,
-            "description": description,
-            "sensitivityLabel": sensitivity_label
-        }),
-    ) {
-        return Ok(());
-    }
-
-    let data = client
-        .post(&format!("/workspaces/{workspace}/mlModels"), &body, true)
-        .await
-        .map_err(|e| enrich_forbidden(e, "ml-model create", "Member"))?;
-    output::render_object(cli, &data, "id");
-    Ok(())
+        client,
+        "ml-model",
+        "mlModels",
+        "Member",
+        workspace,
+        name,
+        description,
+        sensitivity_label,
+    )
+    .await
 }
 
 async fn update(
@@ -485,34 +466,18 @@ async fn update(
     name: Option<&str>,
     description: Option<&str>,
 ) -> Result<()> {
-    if name.is_none() && description.is_none() {
-        return Err(FabioError::with_hint(
-            ErrorCode::InvalidInput,
-            "At least one of --name or --description must be provided".to_string(),
-            "Example: fabio ml-model update --workspace <WS> --id <ID> --name \"New Name\""
-                .to_string(),
-        )
-        .into());
-    }
-
-    let mut body = serde_json::json!({});
-    if let Some(n) = name {
-        body["displayName"] = Value::from(n);
-    }
-    if let Some(d) = description {
-        body["description"] = Value::from(d);
-    }
-
-    if output::dry_run_guard(cli, "ml-model update", &body) {
-        return Ok(());
-    }
-
-    let data = client
-        .patch(&format!("/workspaces/{workspace}/mlModels/{id}"), &body)
-        .await
-        .map_err(|e| enrich_forbidden(e, "ml-model update", "Contributor"))?;
-    output::render_object(cli, &data, "id");
-    Ok(())
+    crate::commands::crud::update(
+        cli,
+        client,
+        "ml-model",
+        "mlModels",
+        "Contributor",
+        workspace,
+        id,
+        name,
+        description,
+    )
+    .await
 }
 
 fn read_json_body(file: Option<&str>, content: Option<&str>, command: &str) -> Result<Value> {
