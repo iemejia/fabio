@@ -117,6 +117,56 @@ pub fn enrich_with_tags_display(items: &[Value]) -> Vec<Value> {
         .collect()
 }
 
+/// Render a list of Fabric items, auto-appending SENSITIVITY LABEL and TAGS
+/// columns only when those fields are present in the data.
+///
+/// This collapses the four-way `(has_labels, has_tags)` rendering that every
+/// item-type `list` handler used to duplicate: `base_columns`/`base_headers`
+/// are the type-specific leading columns (typically name/id/description), and
+/// the `sensitivityLabel.id` + `_tagsDisplay` columns are appended
+/// automatically (with tag display enrichment) when any item carries them.
+pub fn render_item_list(
+    cli: &Cli,
+    items: &[Value],
+    base_columns: &[&str],
+    base_headers: &[&str],
+    plain_key: &str,
+    continuation_token: Option<&str>,
+) {
+    let has_labels = items
+        .iter()
+        .any(|item| item.get("sensitivityLabel").is_some_and(|v| !v.is_null()));
+    let has_tags = has_tags(items);
+
+    let display_items;
+    let items_ref: &[Value] = if has_tags {
+        display_items = enrich_with_tags_display(items);
+        &display_items
+    } else {
+        items
+    };
+
+    let mut columns: Vec<&str> = base_columns.to_vec();
+    let mut headers: Vec<&str> = base_headers.to_vec();
+    if has_labels {
+        columns.push("sensitivityLabel.id");
+        headers.push("SENSITIVITY LABEL");
+    }
+    if has_tags {
+        columns.push("_tagsDisplay");
+        headers.push("TAGS");
+    }
+
+    render_list_with_token(
+        cli,
+        items_ref,
+        &columns,
+        &headers,
+        plain_key,
+        continuation_token,
+    );
+}
+
 /// Render a list of items with optional pagination continuation token.
 #[allow(clippy::too_many_lines)]
 pub fn render_list_with_token(
