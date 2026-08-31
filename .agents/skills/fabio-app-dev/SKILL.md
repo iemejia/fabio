@@ -178,6 +178,7 @@ Manage org app audiences (audience definitions for org apps)
 | user-data-function invoke fails | Ensure the function is published with public access; pass the exact portal-copied --url (HTTPS *.fabric.microsoft.com). fabio rejects non-trusted/non-HTTPS URLs. |
 | SQL Database / Cosmos DB create fails on small capacity | These need F4+ capacity; resume/scale the capacity first. |
 | data-agent add-datasource fails 'Failed to fetch schema' for an OPEN (push/GenericMirror) MirroredDatabase, even though 'warehouse query' reads it fine | This is a Fabric data-agent server limitation, not a fabio bug: an open mirror deterministically fails NL2SQL schema fetch (a Warehouse added to the same agent/session/token succeeds). Use a connection-based mirror (Snowflake/CosmosDB/Azure SQL) or a Warehouse/Lakehouse/SQLDatabase source for the data-agent NL2SQL case. |
+| data-agent query/evaluate fails with 'The Data Agent run failed before producing a result.' | The orchestrator never ran. This is a LIKELY symptom of the 'AllowStoreAOAIDataInOtherRegions' tenant setting being disabled (the conversational runtime must store history via Azure OpenAI, gated for capacities outside the EU data boundary and the US) — ask an admin to enable it (fabio admin update-tenant-setting). It can also be a transient failure or a paused capacity, so retry once and confirm the capacity is running before escalating. |
 
 ## Safety
 - Publishing a Data Agent makes it available to consumers — confirm datasources/table scope and validate answers first.
