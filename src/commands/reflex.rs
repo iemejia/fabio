@@ -670,28 +670,17 @@ async fn delete(
     id: &str,
     hard_delete: bool,
 ) -> Result<()> {
-    if output::dry_run_guard(
+    crate::commands::crud::delete(
         cli,
-        "reflex delete",
-        &serde_json::json!({ "workspace": workspace, "id": id, "hardDelete": hard_delete }),
-    ) {
-        return Ok(());
-    }
-
-    let url = if hard_delete {
-        format!("/workspaces/{workspace}/reflexes/{id}?hardDelete=true")
-    } else {
-        format!("/workspaces/{workspace}/reflexes/{id}")
-    };
-
-    client
-        .delete(&url)
-        .await
-        .map_err(|e| enrich_forbidden(e, "reflex delete", "Member"))?;
-
-    let obj = serde_json::json!({ "id": id, "status": "deleted" });
-    output::render_object(cli, &obj, "status");
-    Ok(())
+        client,
+        "reflex",
+        "reflexes",
+        "Member",
+        workspace,
+        id,
+        hard_delete,
+    )
+    .await
 }
 
 // ─── Definitions ─────────────────────────────────────────────────────────────
@@ -703,21 +692,17 @@ async fn get_definition(
     id: &str,
     decode: bool,
 ) -> Result<()> {
-    let data = client
-        .post(
-            &format!("/workspaces/{workspace}/reflexes/{id}/getDefinition"),
-            &serde_json::json!({}),
-            true,
-        )
-        .await
-        .map_err(|e| enrich_forbidden(e, "reflex get-definition", "Contributor"))?;
-    if decode {
-        let decoded = output::decode_definition_parts(data);
-        output::render_object(cli, &decoded, "definition");
-    } else {
-        output::render_object(cli, &data, "definition");
-    }
-    Ok(())
+    crate::commands::crud::get_definition(
+        cli,
+        client,
+        "reflex",
+        "reflexes",
+        "Contributor",
+        workspace,
+        id,
+        decode,
+    )
+    .await
 }
 
 async fn update_definition(

@@ -12,6 +12,7 @@ use anyhow::Result;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
+use crate::errors::enrich_forbidden;
 use crate::output;
 
 /// List items in a workspace and render them.
@@ -60,5 +61,74 @@ pub async fn show(
         .get(&format!("/workspaces/{workspace}/{collection}/{id}"))
         .await?;
     output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+/// Delete an item (soft by default, or permanently with `hard_delete`).
+///
+/// `group` is the op-name prefix (e.g. `"map"` → `"map delete"`); `role` is the
+/// minimum role named in the permission-error hint. Dry-run guarded.
+#[allow(clippy::too_many_arguments)]
+pub async fn delete(
+    cli: &Cli,
+    client: &FabricClient,
+    group: &str,
+    collection: &str,
+    role: &str,
+    workspace: &str,
+    id: &str,
+    hard_delete: bool,
+) -> Result<()> {
+    let op = format!("{group} delete");
+    if output::dry_run_guard(
+        cli,
+        &op,
+        &serde_json::json!({ "workspace": workspace, "id": id, "hardDelete": hard_delete }),
+    ) {
+        return Ok(());
+    }
+    let url = if hard_delete {
+        format!("/workspaces/{workspace}/{collection}/{id}?hardDelete=true")
+    } else {
+        format!("/workspaces/{workspace}/{collection}/{id}")
+    };
+    client
+        .delete(&url)
+        .await
+        .map_err(|e| enrich_forbidden(e, &op, role))?;
+    let obj = serde_json::json!({ "id": id, "status": "deleted" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+/// Fetch an item's definition via `POST .../{id}/getDefinition`.
+///
+/// With `decode`, base64 definition parts are decoded for readability.
+#[allow(clippy::too_many_arguments)]
+pub async fn get_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    group: &str,
+    collection: &str,
+    role: &str,
+    workspace: &str,
+    id: &str,
+    decode: bool,
+) -> Result<()> {
+    let op = format!("{group} get-definition");
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/{collection}/{id}/getDefinition"),
+            &serde_json::json!({}),
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, &op, role))?;
+    if decode {
+        let decoded = output::decode_definition_parts(data);
+        output::render_object(cli, &decoded, "definition");
+    } else {
+        output::render_object(cli, &data, "definition");
+    }
     Ok(())
 }

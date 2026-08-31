@@ -296,25 +296,17 @@ async fn delete(
     id: &str,
     hard_delete: bool,
 ) -> Result<()> {
-    if output::dry_run_guard(
+    crate::commands::crud::delete(
         cli,
-        "digital-twin-builder-flow delete",
-        &serde_json::json!({ "workspace": workspace, "id": id, "hardDelete": hard_delete }),
-    ) {
-        return Ok(());
-    }
-    let url = if hard_delete {
-        format!("/workspaces/{workspace}/digitalTwinBuilderFlows/{id}?hardDelete=true")
-    } else {
-        format!("/workspaces/{workspace}/digitalTwinBuilderFlows/{id}")
-    };
-    client
-        .delete(&url)
-        .await
-        .map_err(|e| enrich_forbidden(e, "digital-twin-builder-flow delete", "Contributor"))?;
-    let obj = serde_json::json!({ "id": id, "status": "deleted" });
-    output::render_object(cli, &obj, "status");
-    Ok(())
+        client,
+        "digital-twin-builder-flow",
+        "digitalTwinBuilderFlows",
+        "Contributor",
+        workspace,
+        id,
+        hard_delete,
+    )
+    .await
 }
 
 async fn get_definition(

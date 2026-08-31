@@ -277,26 +277,15 @@ async fn delete(
     id: &str,
     hard_delete: bool,
 ) -> Result<()> {
-    if output::dry_run_guard(
+    crate::commands::crud::delete(
         cli,
-        "warehouse-snapshot delete",
-        &serde_json::json!({ "workspace": workspace, "id": id, "hardDelete": hard_delete }),
-    ) {
-        return Ok(());
-    }
-
-    let url = if hard_delete {
-        format!("/workspaces/{workspace}/warehouseSnapshots/{id}?hardDelete=true")
-    } else {
-        format!("/workspaces/{workspace}/warehouseSnapshots/{id}")
-    };
-
-    client
-        .delete(&url)
-        .await
-        .map_err(|e| enrich_forbidden(e, "warehouse-snapshot delete", "Member"))?;
-
-    let obj = serde_json::json!({ "id": id, "status": "deleted" });
-    output::render_object(cli, &obj, "status");
-    Ok(())
+        client,
+        "warehouse-snapshot",
+        "warehouseSnapshots",
+        "Member",
+        workspace,
+        id,
+        hard_delete,
+    )
+    .await
 }

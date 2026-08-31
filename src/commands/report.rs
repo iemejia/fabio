@@ -977,21 +977,17 @@ async fn get_definition(
     id: &str,
     decode: bool,
 ) -> Result<()> {
-    let data = client
-        .post(
-            &format!("/workspaces/{workspace}/reports/{id}/getDefinition"),
-            &serde_json::json!({}),
-            true,
-        )
-        .await
-        .map_err(|e| enrich_forbidden(e, "report get-definition", "Contributor"))?;
-    if decode {
-        let decoded = output::decode_definition_parts(data);
-        output::render_object(cli, &decoded, "definition");
-    } else {
-        output::render_object(cli, &data, "definition");
-    }
-    Ok(())
+    crate::commands::crud::get_definition(
+        cli,
+        client,
+        "report",
+        "reports",
+        "Contributor",
+        workspace,
+        id,
+        decode,
+    )
+    .await
 }
 
 async fn update_definition(

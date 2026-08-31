@@ -312,26 +312,17 @@ async fn delete(
     id: &str,
     hard_delete: bool,
 ) -> Result<()> {
-    if output::dry_run_guard(
+    crate::commands::crud::delete(
         cli,
-        "snowflake-database delete",
-        &serde_json::json!({ "workspace": workspace, "id": id, "hardDelete": hard_delete }),
-    ) {
-        return Ok(());
-    }
-    let url = if hard_delete {
-        format!("/workspaces/{workspace}/snowflakeDatabases/{id}?hardDelete=true")
-    } else {
-        format!("/workspaces/{workspace}/snowflakeDatabases/{id}")
-    };
-
-    client
-        .delete(&url)
-        .await
-        .map_err(|e| enrich_forbidden(e, "snowflake-database delete", "Contributor"))?;
-    let obj = serde_json::json!({ "id": id, "status": "deleted" });
-    output::render_object(cli, &obj, "status");
-    Ok(())
+        client,
+        "snowflake-database",
+        "snowflakeDatabases",
+        "Contributor",
+        workspace,
+        id,
+        hard_delete,
+    )
+    .await
 }
 
 async fn get_definition(
@@ -341,21 +332,17 @@ async fn get_definition(
     id: &str,
     decode: bool,
 ) -> Result<()> {
-    let data = client
-        .post(
-            &format!("/workspaces/{workspace}/snowflakeDatabases/{id}/getDefinition"),
-            &serde_json::json!({}),
-            true,
-        )
-        .await
-        .map_err(|e| enrich_forbidden(e, "snowflake-database get-definition", "Contributor"))?;
-    if decode {
-        let decoded = output::decode_definition_parts(data);
-        output::render_object(cli, &decoded, "definition");
-    } else {
-        output::render_object(cli, &data, "definition");
-    }
-    Ok(())
+    crate::commands::crud::get_definition(
+        cli,
+        client,
+        "snowflake-database",
+        "snowflakeDatabases",
+        "Contributor",
+        workspace,
+        id,
+        decode,
+    )
+    .await
 }
 
 async fn update_definition(

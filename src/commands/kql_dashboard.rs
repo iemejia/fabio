@@ -293,28 +293,17 @@ async fn delete(
     id: &str,
     hard_delete: bool,
 ) -> Result<()> {
-    if output::dry_run_guard(
+    crate::commands::crud::delete(
         cli,
-        "kql-dashboard delete",
-        &serde_json::json!({ "workspace": workspace, "id": id, "hardDelete": hard_delete }),
-    ) {
-        return Ok(());
-    }
-
-    let url = if hard_delete {
-        format!("/workspaces/{workspace}/kqlDashboards/{id}?hardDelete=true")
-    } else {
-        format!("/workspaces/{workspace}/kqlDashboards/{id}")
-    };
-
-    client
-        .delete(&url)
-        .await
-        .map_err(|e| enrich_forbidden(e, "kql-dashboard delete", "Member"))?;
-
-    let obj = serde_json::json!({ "id": id, "status": "deleted" });
-    output::render_object(cli, &obj, "status");
-    Ok(())
+        client,
+        "kql-dashboard",
+        "kqlDashboards",
+        "Member",
+        workspace,
+        id,
+        hard_delete,
+    )
+    .await
 }
 
 // ─── Definitions ─────────────────────────────────────────────────────────────
@@ -326,21 +315,17 @@ async fn get_definition(
     id: &str,
     decode: bool,
 ) -> Result<()> {
-    let data = client
-        .post(
-            &format!("/workspaces/{workspace}/kqlDashboards/{id}/getDefinition"),
-            &serde_json::json!({}),
-            true,
-        )
-        .await
-        .map_err(|e| enrich_forbidden(e, "kql-dashboard get-definition", "Contributor"))?;
-    if decode {
-        let decoded = output::decode_definition_parts(data);
-        output::render_object(cli, &decoded, "definition");
-    } else {
-        output::render_object(cli, &data, "definition");
-    }
-    Ok(())
+    crate::commands::crud::get_definition(
+        cli,
+        client,
+        "kql-dashboard",
+        "kqlDashboards",
+        "Contributor",
+        workspace,
+        id,
+        decode,
+    )
+    .await
 }
 
 async fn update_definition(
