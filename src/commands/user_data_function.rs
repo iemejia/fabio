@@ -343,42 +343,19 @@ async fn update_definition(
     file: Option<&str>,
     content: Option<&str>,
 ) -> Result<()> {
-    let script = match (file, content) {
-        (Some(path), _) => std::fs::read_to_string(path)
-            .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?,
-        (_, Some(c)) => c.to_string(),
-        (None, None) => {
-            return Err(FabioError::with_hint(
-                ErrorCode::InvalidInput,
-                "Either --file or --content must be provided".to_string(),
-                "Example: fabio user-data-function update-definition --workspace <WS> --id <ID> --file definition.json".to_string(),
-            )
-            .into());
-        }
-    };
-    let body = crate::definition_spec::build_update_definition_body(&script, "definition.json");
-    if output::dry_run_guard(
+    crate::commands::crud::update_definition(
         cli,
-        "user-data-function update-definition",
-        &serde_json::json!({ "workspace": workspace, "id": id, "contentLength": script.len() }),
-    ) {
-        return Ok(());
-    }
-    let data = client
-        .post(
-            &format!("/workspaces/{workspace}/userDataFunctions/{id}/updateDefinition"),
-            &body,
-            true,
-        )
-        .await
-        .map_err(|e| enrich_forbidden(e, "user-data-function update-definition", "Contributor"))?;
-    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
-        let obj = serde_json::json!({ "id": id, "status": "definition_updated" });
-        output::render_object(cli, &obj, "status");
-    } else {
-        output::render_object(cli, &data, "id");
-    }
-    Ok(())
+        client,
+        "user-data-function",
+        "userDataFunctions",
+        "Contributor",
+        "definition.json",
+        workspace,
+        id,
+        file,
+        content,
+    )
+    .await
 }
 
 /// Build the JSON request body for a function invocation. Pure — unit-tested.

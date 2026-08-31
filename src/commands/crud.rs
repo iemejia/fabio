@@ -132,3 +132,62 @@ pub async fn get_definition(
     }
     Ok(())
 }
+
+/// Replace an item's definition via `POST .../{id}/updateDefinition`.
+///
+/// Reads the payload from `file` or inline `content`, wraps it in a single
+/// definition part named `part_filename` (e.g. `"map.json"`,
+/// `"notebook-content.py"`), and posts it. Dry-run guarded.
+#[allow(clippy::too_many_arguments)]
+pub async fn update_definition(
+    cli: &Cli,
+    client: &FabricClient,
+    group: &str,
+    collection: &str,
+    role: &str,
+    part_filename: &str,
+    workspace: &str,
+    id: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let op = format!("{group} update-definition");
+    let script = match (file, content) {
+        (Some(path), _) => std::fs::read_to_string(path)
+            .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?,
+        (_, Some(c)) => c.to_string(),
+        (None, None) => {
+            return Err(crate::errors::FabioError::with_hint(
+                crate::errors::ErrorCode::InvalidInput,
+                "Either --file or --content must be provided".to_string(),
+                format!(
+                    "Example: fabio {group} update-definition --workspace <WS> --id <ID> --file definition.json"
+                ),
+            )
+            .into());
+        }
+    };
+    let body = crate::definition_spec::build_update_definition_body(&script, part_filename);
+    if output::dry_run_guard(
+        cli,
+        &op,
+        &serde_json::json!({ "workspace": workspace, "id": id, "contentLength": script.len() }),
+    ) {
+        return Ok(());
+    }
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/{collection}/{id}/updateDefinition"),
+            &body,
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, &op, role))?;
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        let obj = serde_json::json!({ "id": id, "status": "definition_updated" });
+        output::render_object(cli, &obj, "status");
+    } else {
+        output::render_object(cli, &data, "id");
+    }
+    Ok(())
+}
