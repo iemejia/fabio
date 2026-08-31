@@ -166,6 +166,18 @@ src/commands/<command>/
 
 **Scope:** This rule applies only to `src/commands/` source files. E2E test files (`tests/e2e_*.rs`) are NOT subject to the 1500-line limit — a single test file per command group is the preferred structure.
 
+## Reusable Abstractions — Don't Duplicate (MANDATORY)
+
+fabio has ~80 command groups that share a small number of highly-repeated shapes. **Before hand-writing a handler body, use the shared helper.** Reintroducing a copy of one of these patterns is a review-blocking regression. Check for an existing abstraction first; if you find a NEW pattern repeated ≥3 times, extract a helper rather than copy-pasting.
+
+- **MCP clients → `src/mcp_client.rs` (`McpClient`) is the ONE transport.** Never hand-roll an MCP streamable-HTTP client (initialize / `tools/list` / `tools/call` / JSON-or-SSE parsing / `Mcp-Session-Id`). Consumers: `ontology`, `powerbi_mcp`, `sql_mcp`, `kql_database/mcp`, `reflex_mcp`, `dataagent/mcp`. Use `McpClient::connect`/`connect_with_timeout` (pass a timeout for calls that can run minutes), `list_tools`, `call_tool` → `ToolResult` (`.text()`, `.content`, `.is_error`, `.raw` = full result incl. `structuredContent`), and `primary_tool_argument(tool)` for the single-tool "bind a question to the tool's primary input property" pattern. `data-agent mcp-url`/`warehouse mcp-url`/etc. only PRINT a URL — they are not clients.
+- **Item-type CRUD → `src/commands/crud.rs`.** Definition-backed item modules (`map`, `plan`, `reflex`, `notebook`, …) delegate `list`/`show`/`create`/`update`/`delete`/`get_definition`/`update_definition` to `crud::*`, parameterized by op-name group, collection segment, role, and (for definitions) the part filename. A new pure definition-backed item type's handlers should be one-line delegations (see `map.rs` — fully delegated). Only write a bespoke handler when the type genuinely differs (extra create fields like `folderId`/`creationPayload`, cascade deletes, custom URL builders, per-type hints).
+- **List rendering → `output::render_item_list`.** It appends the `SENSITIVITY LABEL` and `TAGS` columns automatically when present. Never re-add the old 4-way `(has_labels, has_tags)` match.
+- **T-SQL statistics (warehouse ↔ sql-database) → `src/commands/tds_stats.rs`.** Pass a **lazy** `(server, database)` resolver closure (invoked only AFTER the dry-run guard, so `--dry-run` never opens a connection) + the backend label. Warehouse resolves via `warehouse::resolve_connection`; sql-database via `sql_database::query::resolve_sql_connection`.
+- **On-demand job run+poll+cancel → `src/commands/item_job.rs` (`run_and_wait` + `RunSpec`).** Used by `copy-job`/`data-pipeline`/`spark-job-definition` `run`. The `jobId`+custom-render variants (`notebook`/`data-build-tool-job`/`dataflow`) are not yet unified.
+
+**When you DO extract a new shared helper:** keep the dry-run guard BEFORE any network call (pass a lazy resolver/closure if resolution is needed), rebuild the canonical `"<group> <subcommand>"` op-name string INSIDE the helper (so the destructive dry-run marker + `agentNotice` still fire — see the guardrail section), and add `#[allow(clippy::too_many_arguments)]` (or a small config struct) rather than dropping parameters. File inventory of these helpers is in `.agents/RELEVANT-FILES.md`; the rationale is in `.agents/KEY-DECISIONS.md`.
+
 ## Pre-Commit Validation (MANDATORY)
 
 Before committing ANY change, you MUST run the following validation steps in order and ensure they all pass with zero errors and zero warnings:
