@@ -26,6 +26,9 @@ use crate::errors::{ErrorCode, FabioError};
 /// The MCP protocol version this client advertises on `initialize`.
 pub const MCP_PROTOCOL_VERSION: &str = "2025-06-18";
 
+/// Default per-request timeout when [`McpClient::connect`] is used.
+const DEFAULT_TIMEOUT: Duration = Duration::from_mins(5);
+
 /// A connected MCP client (streamable-HTTP transport).
 pub struct McpClient {
     http: reqwest::Client,
@@ -41,6 +44,10 @@ pub struct ToolResult {
     pub content: Vec<Value>,
     /// Whether the tool reported an error result.
     pub is_error: bool,
+    /// The complete `tools/call` result object (content + any
+    /// `structuredContent` and other server-provided fields), for callers that
+    /// need to surface or inspect the raw payload.
+    pub raw: Value,
 }
 
 impl ToolResult {
@@ -56,12 +63,57 @@ impl ToolResult {
     }
 }
 
+/// Pick the tool input property that carries the primary (question/query)
+/// argument, for the common "server exposes a single tool called with one
+/// string" pattern.
+///
+/// Prefers a conventionally-named property (question/query/prompt/input/text),
+/// then the first `required` property, then the first declared property. With
+/// `serde_json`'s `preserve_order` this matches an SDK's `next(iter(props))` for
+/// the single-property case while staying robust to multi-property schemas.
+/// Returns `None` if the tool declares no input properties. Pure for testing.
+#[must_use]
+pub fn primary_tool_argument(tool: &Value) -> Option<String> {
+    const PREFERRED: [&str; 5] = ["question", "query", "prompt", "input", "text"];
+
+    let schema = tool.get("inputSchema")?;
+    let props = schema.get("properties").and_then(Value::as_object)?;
+    if props.is_empty() {
+        return None;
+    }
+    for want in PREFERRED {
+        if let Some(key) = props.keys().find(|k| k.eq_ignore_ascii_case(want)) {
+            return Some(key.clone());
+        }
+    }
+    if let Some(first_required) = schema
+        .get("required")
+        .and_then(Value::as_array)
+        .and_then(|r| r.first())
+        .and_then(Value::as_str)
+    {
+        return Some(first_required.to_string());
+    }
+    props.keys().next().cloned()
+}
+
 impl McpClient {
+    /// Connect to an MCP server with the [`DEFAULT_TIMEOUT`] per-request timeout.
+    /// See [`McpClient::connect_with_timeout`].
+    pub async fn connect(endpoint: &str, auth_header: Option<String>) -> anyhow::Result<Self> {
+        Self::connect_with_timeout(endpoint, auth_header, DEFAULT_TIMEOUT).await
+    }
+
     /// Connect to an MCP server: validate the endpoint is HTTPS (loopback `http`
     /// is allowed for local servers), then perform the `initialize` handshake and
     /// send `notifications/initialized`. `auth_header` is the full `Authorization`
     /// header value (e.g. `"Bearer …"`), or `None` for unauthenticated servers.
-    pub async fn connect(endpoint: &str, auth_header: Option<String>) -> anyhow::Result<Self> {
+    /// `timeout` bounds each request (a tool call may run for minutes).
+    pub async fn connect_with_timeout(
+        endpoint: &str,
+        auth_header: Option<String>,
+        timeout: Duration,
+    ) -> anyhow::Result<Self> {
         if !is_secure_or_loopback(endpoint) {
             return Err(FabioError::with_hint(
                 ErrorCode::InvalidInput,
@@ -71,7 +123,7 @@ impl McpClient {
             .into());
         }
         let http = http_client_builder()
-            .timeout(Duration::from_mins(5))
+            .timeout(timeout)
             .build()
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
 
@@ -131,6 +183,7 @@ impl McpClient {
                 .get("isError")
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
+            raw: result,
         })
     }
 
@@ -308,8 +361,36 @@ mod tests {
                 json!({"type": "text", "text": "world"}),
             ],
             is_error: false,
+            raw: json!({}),
         };
         assert_eq!(r.text(), "hello\nworld");
+    }
+
+    #[test]
+    fn primary_tool_argument_prefers_conventional_name() {
+        let tool = json!({"inputSchema": {"properties": {"foo": {}, "question": {}, "bar": {}}}});
+        assert_eq!(primary_tool_argument(&tool).as_deref(), Some("question"));
+    }
+
+    #[test]
+    fn primary_tool_argument_is_case_insensitive() {
+        let tool = json!({"inputSchema": {"properties": {"Query": {}}}});
+        assert_eq!(primary_tool_argument(&tool).as_deref(), Some("Query"));
+    }
+
+    #[test]
+    fn primary_tool_argument_falls_back_to_required_then_first() {
+        let tool =
+            json!({"inputSchema": {"properties": {"alpha": {}, "beta": {}}, "required": ["beta"]}});
+        assert_eq!(primary_tool_argument(&tool).as_deref(), Some("beta"));
+        let tool = json!({"inputSchema": {"properties": {"alpha": {}, "beta": {}}}});
+        assert_eq!(primary_tool_argument(&tool).as_deref(), Some("alpha"));
+    }
+
+    #[test]
+    fn primary_tool_argument_none_when_empty() {
+        assert!(primary_tool_argument(&json!({"inputSchema": {"properties": {}}})).is_none());
+        assert!(primary_tool_argument(&json!({"inputSchema": {}})).is_none());
     }
 
     #[test]

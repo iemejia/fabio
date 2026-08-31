@@ -122,6 +122,7 @@ mod tests {
                 serde_json::json!({"type":"text","text":"{\"daxQuery\":\"EVALUATE X\"}"}),
             ],
             is_error: false,
+            raw: serde_json::json!({}),
         };
         assert_eq!(tool_text_as_json(&r)["daxQuery"], "EVALUATE X");
     }
@@ -131,6 +132,7 @@ mod tests {
         let r = ToolResult {
             content: vec![serde_json::json!({"type":"text","text":"plain message"})],
             is_error: false,
+            raw: serde_json::json!({}),
         };
         assert_eq!(tool_text_as_json(&r)["text"], "plain message");
     }
@@ -145,6 +147,7 @@ mod tests {
                 serde_json::json!({"type":"text","text":"{\"artifact_citation\":\"cite\"}"}),
             ],
             is_error: false,
+            raw: serde_json::json!({}),
         };
         let v = tool_text_as_json(&r);
         assert!(v.get("schema").is_some());
