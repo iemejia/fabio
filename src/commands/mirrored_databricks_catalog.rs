@@ -336,13 +336,14 @@ async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
 }
 
 async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
-    let data = client
-        .get(&format!(
-            "/workspaces/{workspace}/mirroredAzureDatabricksCatalogs/{id}"
-        ))
-        .await?;
-    output::render_object(cli, &data, "id");
-    Ok(())
+    crate::commands::crud::show(
+        cli,
+        client,
+        "mirroredAzureDatabricksCatalogs",
+        workspace,
+        id,
+    )
+    .await
 }
 
 /// Optional `creationPayload` fields for creating an actual mirror (all three of

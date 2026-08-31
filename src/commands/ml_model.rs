@@ -541,31 +541,17 @@ async fn delete(
     id: &str,
     hard_delete: bool,
 ) -> Result<()> {
-    if output::dry_run_guard(
+    crate::commands::crud::delete(
         cli,
-        "ml-model delete",
-        &serde_json::json!({
-            "workspace": workspace,
-            "id": id, "hardDelete": hard_delete
-        }),
-    ) {
-        return Ok(());
-    }
-
-    let url = if hard_delete {
-        format!("/workspaces/{workspace}/mlModels/{id}?hardDelete=true")
-    } else {
-        format!("/workspaces/{workspace}/mlModels/{id}")
-    };
-
-    client
-        .delete(&url)
-        .await
-        .map_err(|e| enrich_forbidden(e, "ml-model delete", "Member"))?;
-
-    let obj = serde_json::json!({ "id": id, "status": "deleted" });
-    output::render_object(cli, &obj, "status");
-    Ok(())
+        client,
+        "ml-model",
+        "mlModels",
+        "Member",
+        workspace,
+        id,
+        hard_delete,
+    )
+    .await
 }
 
 async fn get_endpoint(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {

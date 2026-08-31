@@ -302,13 +302,14 @@ async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
 }
 
 async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
-    let data = client
-        .get(&format!(
-            "/workspaces/{workspace}/mirroredGoogleLakehouseRuntimeCatalogs/{id}"
-        ))
-        .await?;
-    output::render_object(cli, &data, "id");
-    Ok(())
+    crate::commands::crud::show(
+        cli,
+        client,
+        "mirroredGoogleLakehouseRuntimeCatalogs",
+        workspace,
+        id,
+    )
+    .await
 }
 
 async fn create(
@@ -404,30 +405,17 @@ async fn delete(
     id: &str,
     hard_delete: bool,
 ) -> Result<()> {
-    if output::dry_run_guard(
+    crate::commands::crud::delete(
         cli,
-        "mirrored-google-lakehouse-catalog delete",
-        &serde_json::json!({ "workspace": workspace, "id": id, "hardDelete": hard_delete }),
-    ) {
-        return Ok(());
-    }
-
-    let url = if hard_delete {
-        format!(
-            "/workspaces/{workspace}/mirroredGoogleLakehouseRuntimeCatalogs/{id}?hardDelete=true"
-        )
-    } else {
-        format!("/workspaces/{workspace}/mirroredGoogleLakehouseRuntimeCatalogs/{id}")
-    };
-
-    client
-        .delete(&url)
-        .await
-        .map_err(|e| enrich_forbidden(e, "mirrored-google-lakehouse-catalog delete", "Member"))?;
-
-    let obj = serde_json::json!({ "id": id, "status": "deleted" });
-    output::render_object(cli, &obj, "status");
-    Ok(())
+        client,
+        "mirrored-google-lakehouse-catalog",
+        "mirroredGoogleLakehouseRuntimeCatalogs",
+        "Member",
+        workspace,
+        id,
+        hard_delete,
+    )
+    .await
 }
 
 // ─── Definitions ─────────────────────────────────────────────────────────────

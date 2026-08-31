@@ -122,13 +122,7 @@ async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
 }
 
 async fn show(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
-    let data = client
-        .get(&format!(
-            "/workspaces/{workspace}/managedPrivateEndpoints/{id}"
-        ))
-        .await?;
-    output::render_object(cli, &data, "id");
-    Ok(())
+    crate::commands::crud::show(cli, client, "managedPrivateEndpoints", workspace, id).await
 }
 
 async fn create(

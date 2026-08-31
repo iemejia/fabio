@@ -847,31 +847,17 @@ async fn delete(
     id: &str,
     hard_delete: bool,
 ) -> Result<()> {
-    if output::dry_run_guard(
+    crate::commands::crud::delete(
         cli,
-        "notebook delete",
-        &serde_json::json!({
-            "workspace": workspace,
-            "id": id, "hardDelete": hard_delete
-        }),
-    ) {
-        return Ok(());
-    }
-
-    let url = if hard_delete {
-        format!("/workspaces/{workspace}/items/{id}?hardDelete=true")
-    } else {
-        format!("/workspaces/{workspace}/items/{id}")
-    };
-
-    client
-        .delete(&url)
-        .await
-        .map_err(|e| enrich_forbidden(e, "notebook delete", "Member"))?;
-
-    let obj = serde_json::json!({ "id": id, "status": "deleted" });
-    output::render_object(cli, &obj, "status");
-    Ok(())
+        client,
+        "notebook",
+        "items",
+        "Member",
+        workspace,
+        id,
+        hard_delete,
+    )
+    .await
 }
 
 // ─── Job Instance & Livy Sessions ────────────────────────────────────────────

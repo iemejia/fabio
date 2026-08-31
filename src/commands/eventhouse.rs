@@ -301,31 +301,17 @@ async fn delete(
     id: &str,
     hard_delete: bool,
 ) -> Result<()> {
-    if output::dry_run_guard(
+    crate::commands::crud::delete(
         cli,
-        "eventhouse delete",
-        &serde_json::json!({
-            "workspace": workspace,
-            "id": id, "hardDelete": hard_delete
-        }),
-    ) {
-        return Ok(());
-    }
-
-    let url = if hard_delete {
-        format!("/workspaces/{workspace}/eventhouses/{id}?hardDelete=true")
-    } else {
-        format!("/workspaces/{workspace}/eventhouses/{id}")
-    };
-
-    client
-        .delete(&url)
-        .await
-        .map_err(|e| enrich_forbidden(e, "eventhouse delete", "Member"))?;
-
-    let obj = serde_json::json!({ "id": id, "status": "deleted" });
-    output::render_object(cli, &obj, "status");
-    Ok(())
+        client,
+        "eventhouse",
+        "eventhouses",
+        "Member",
+        workspace,
+        id,
+        hard_delete,
+    )
+    .await
 }
 
 // ─── Definitions ─────────────────────────────────────────────────────────────
