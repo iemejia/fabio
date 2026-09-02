@@ -2851,3 +2851,84 @@ tests:
       - type: llm-rubric
         value: "The response uses 'fabio cosmos-db-database delete-document' with --document-id p1 and --partition-key electronics (a point delete requires the partition key). Ideally it notes the delete is irreversible and/or suggests --dry-run to preview first."
         metric: cosmos-delete-document-routing
+
+  # ============================================================
+  # BRANCH-OUT REBIND & PR-READINESS (deploy)
+  # ============================================================
+
+  - description: "Branch-out: rebind local files to a feature workspace (offline)"
+    vars:
+      user_query: "I branched out a Git-synced feature workspace called feature-x. My local Fabric item files still have the dev workspace/lakehouse IDs. How do I rebind them to the feature workspace without causing drift? My items are in ./fabric-items with params.json."
+    assert:
+      - type: icontains
+        value: "deploy rebind"
+        metric: rebind-command
+      - type: icontains
+        value: "--from-env"
+        metric: rebind-from-env
+      - type: icontains
+        value: "--to-env"
+        metric: rebind-to-env
+      - type: llm-rubric
+        value: "The response uses 'fabio deploy rebind' (NOT 'deploy apply') to rewrite the local files offline from dev to the feature environment, and does NOT suggest running deploy apply against the Git-synced feature workspace (which would cause drift)."
+        metric: rebind-routing-no-apply
+
+  - description: "PR-readiness gate before merging back to dev"
+    vars:
+      user_query: "Before I open a PR from my feature branch back to dev, how do I verify my ./fabric-items are bound to dev and don't leak any feature-workspace IDs or stray value-set files?"
+    assert:
+      - type: icontains
+        value: "deploy validate"
+        metric: prready-validate
+      - type: icontains
+        value: "--pr-ready"
+        metric: prready-flag
+      - type: icontains
+        value: "--expect-env"
+        metric: prready-expect-env
+
+  # ============================================================
+  # EVENTHOUSE / KQL QUERY + CONTINUOUS --follow
+  # ============================================================
+
+  - description: "Query an eventhouse cluster directly with KQL"
+    vars:
+      user_query: "Run a KQL query to count rows in the SensorEvents table of my eventhouse eh-1"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('eventhouse query') || output.includes('kql-database query')
+        metric: eventhouse-query-command
+      - type: icontains
+        value: "--kql"
+        metric: eventhouse-query-kql
+
+  - description: "Continuous monitoring: tail live KQL data with --follow (bounded)"
+    vars:
+      user_query: "I want to continuously watch new error events as they arrive in my KQL database kdb-1 (table Errors, timestamp column ts). Keep it bounded so it doesn't run forever."
+    assert:
+      - type: icontains
+        value: "--follow"
+        metric: follow-flag
+      - type: javascript
+        value: |
+          output.includes('--max-duration') || output.includes('--limit')
+        metric: follow-is-bounded
+      - type: llm-rubric
+        value: "The response uses 'kql-database query' (or 'eventhouse query') with --follow for continuous monitoring and bounds it with --max-duration and/or --limit so it terminates. It does NOT claim Kusto has a server-push streaming query. Ideally it uses --dedup-column ts to emit only new rows."
+        metric: follow-routing-bounded
+
+  # ============================================================
+  # WAREHOUSE SNAPSHOT DATA PLANE
+  # ============================================================
+
+  - description: "Query a warehouse snapshot (read-only point-in-time)"
+    vars:
+      user_query: "Query my warehouse snapshot snap-1 to count rows in dbo.orders"
+    assert:
+      - type: icontains
+        value: "warehouse-snapshot query"
+        metric: snapshot-query-command
+      - type: icontains
+        value: "--sql"
+        metric: snapshot-query-sql

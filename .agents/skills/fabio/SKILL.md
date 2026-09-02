@@ -402,6 +402,9 @@ fabio warehouse query --workspace $WS --id $WH --via-mcp --sql "SELECT TOP 10 * 
 # Schema discovery over INFORMATION_SCHEMA (typed subcommands, no hand-written queries)
 fabio warehouse list-tables --workspace $WS --id $WH --schema dbo         # tables + views
 fabio warehouse describe-table --workspace $WS --id $WH --table dbo.orders  # columns, types, nullability
+# A warehouse SNAPSHOT is a read-only point-in-time T-SQL surface with the same data plane:
+fabio warehouse-snapshot query --workspace $WS --id $SNAP --sql "SELECT COUNT(*) FROM dbo.orders"
+# (also: warehouse-snapshot list-tables / describe-table / plan / connection-string)
 # Bulk-load files into an EXISTING table with COPY INTO (append-only; --dry-run previews the SQL, SAS secret redacted)
 fabio warehouse copy-into --workspace $WS --id $WH --table dbo.orders \
   --file-type PARQUET --source https://acct.dfs.core.windows.net/c/orders/*.parquet   # omit --sas-token for Entra ID passthrough
@@ -435,6 +438,16 @@ fabio warehouse statistics-delete --workspace $WS --id $WH --name stat_orders_cu
 fabio eventhouse create --workspace $WS --name "TelemetryHub"
 fabio kql-database create --workspace $WS --name "SensorDB" --eventhouse-id $EH   # requires --eventhouse-id
 fabio kql-database query --workspace $WS --id $KDB --kql "SensorEvents | take 10"
+# Query the eventhouse cluster directly (KQL / .-management / T-SQL). Defaults to the
+# sole KQL database; use --database when the cluster hosts more than one.
+fabio eventhouse query --workspace $WS --id $EH --kql "SensorEvents | count"
+fabio eventhouse query --workspace $WS --id $EH --kql "SensorEvents | count" --timeout 30   # bound a heavy query
+fabio eventhouse list-databases --workspace $WS --id $EH   # + eventhouse query-uri / eventhouse ingestion-uri
+# CONTINUOUS monitoring: Kusto queries always terminate (no server-push streaming), so
+# --follow POLLS and streams NDJSON, ALWAYS bounded by --max-duration / --limit / Ctrl-C.
+# Works on both `eventhouse query` and `kql-database query`.
+fabio kql-database query --workspace $WS --id $KDB --kql "Errors | order by ts asc" \
+  --follow --interval 5 --max-duration 60 --dedup-column ts   # incremental tail (only new rows)
 fabio kql-database list-entities --workspace $WS --id $KDB                         # schema discovery
 fabio kql-database ingest --workspace $WS --id $KDB --table Events --data "col1,col2\nval1,val2"
 # KQL management commands (create tables, mappings via .create-or-alter)
@@ -621,6 +634,12 @@ fabio deploy apply --source ./items/ --workspace $WS --parameters params.json --
 fabio deploy apply --config deploy.yaml --env staging                       # config file: per-env workspace mapping
 fabio deploy apply --source ./items/ --workspace $WS --env prod --post-run-item "ETL Pipeline"  # trigger data orchestration after deploy
 fabio deploy init-params --source ./fabric-items/ --out params.json         # scaffold parameter file
+# Branch-out workflow: after Fabric "Branch out" creates a GIT-SYNCED feature workspace,
+# do NOT use `deploy apply` on it (causes drift). Rewrite the local files OFFLINE instead:
+fabio deploy rebind --source ./fabric-items --parameters params.json --from-env dev --to-env feature-x
+# Before opening a PR back to dev, revert and gate it (offline, no API calls):
+fabio deploy rebind --source ./fabric-items --parameters params.json --from-env feature-x --to-env dev
+fabio deploy validate --source ./fabric-items --pr-ready --expect-env dev --allow-value-set Test,Prod
 ```
 **Deploy from a git repo** (any repo with Fabric Git Integration `.platform` format):
 ```bash
