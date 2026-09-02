@@ -251,7 +251,7 @@ pub enum EventstreamCommand {
         #[arg(long)]
         source_id: String,
     },
-    /// Get a source endpoint connection (`CustomEndpoint` for custom sources; `KafkaEndpoint` for Cribl/SAP Datasphere)
+    /// Get a source endpoint connection (`CustomEndpoint` for custom sources; `KafkaEndpoint` for Cribl/SAP Datasphere). The response contains credentials (access keys or connection strings) and must not be logged.
     #[command(display_order = 31)]
     GetSourceConnection {
         /// Workspace ID

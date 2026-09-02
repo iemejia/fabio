@@ -976,6 +976,14 @@ fn build_json_schema_params(
                         prop.insert("enum".to_owned(), values.clone());
                     }
                 }
+                "array" => {
+                    prop.insert("type".to_owned(), serde_json::json!("array"));
+                    let items = obj
+                        .get("items")
+                        .cloned()
+                        .unwrap_or_else(|| serde_json::json!({"type": "string"}));
+                    prop.insert("items".to_owned(), items);
+                }
                 _ => {
                     prop.insert("type".to_owned(), serde_json::json!("string"));
                 }
@@ -1473,6 +1481,31 @@ fn generate_flags(
             }
             clap::ArgAction::Count => {
                 flag_obj.insert("type".to_owned(), serde_json::json!("integer"));
+            }
+            clap::ArgAction::Append => {
+                let possible_values: Vec<String> = arg
+                    .get_possible_values()
+                    .iter()
+                    .filter_map(|pv| pv.get_name_and_aliases().next().map(String::from))
+                    .collect();
+
+                flag_obj.insert("type".to_owned(), serde_json::json!("array"));
+                let mut items = serde_json::Map::new();
+                if possible_values.is_empty() {
+                    let item_type = existing_sc
+                        .and_then(|s| s.get("flags"))
+                        .and_then(serde_json::Value::as_object)
+                        .and_then(|f| f.get(&flag_name))
+                        .and_then(|fv| fv.get("items"))
+                        .and_then(|i| i.get("type"))
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("string");
+                    items.insert("type".to_owned(), serde_json::json!(item_type));
+                } else {
+                    items.insert("type".to_owned(), serde_json::json!("string"));
+                    items.insert("enum".to_owned(), serde_json::json!(possible_values));
+                }
+                flag_obj.insert("items".to_owned(), serde_json::Value::Object(items));
             }
             _ => {
                 let possible_values: Vec<String> = arg

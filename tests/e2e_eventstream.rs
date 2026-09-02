@@ -720,6 +720,87 @@ fn eventstream_add_operator_join_accepts_reference_input() {
 }
 
 #[test]
+fn eventstream_add_operator_join_rejects_three_inputs() {
+    // Join has exactly two sides; a third --input-node must be rejected client-side.
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "eventstream",
+            "add-operator",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "EnrichOrders",
+            "--type",
+            "Join",
+            "--input-node",
+            "orders-stream",
+            "--input-node",
+            "customers-stream",
+            "--input-node",
+            "extra-stream",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("exactly two"));
+}
+
+#[test]
+fn eventstream_add_operator_filter_rejects_multiple_inputs() {
+    // Filter is a unary operator; more than one --input-node must be rejected client-side.
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "eventstream",
+            "add-operator",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "KeepMSFT",
+            "--type",
+            "Filter",
+            "--input-node",
+            "src-stream",
+            "--input-node",
+            "other-stream",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("exactly one"));
+}
+
+#[test]
+fn eventstream_add_operator_union_requires_two_inputs() {
+    // Union supports an arbitrary multi-input set but needs at least two.
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "eventstream",
+            "add-operator",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "MergedStream",
+            "--type",
+            "Union",
+            "--input-node",
+            "src-stream",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("at least two"));
+}
+
+#[test]
 fn eventstream_add_reference_lakehouse_source_dry_run() {
     let assert = fabio()
         .args([
@@ -767,6 +848,35 @@ fn eventstream_add_reference_lakehouse_source_rejects_mismatched_path() {
         .failure();
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     assert!(stderr.contains("must match"), "got: {stderr}");
+}
+
+#[test]
+fn eventstream_add_reference_lakehouse_source_rejects_extra_path_segments() {
+    // Exactly five path segments identify a Delta table; anything below a table
+    // (e.g. a Files/ path appended after the table name) must be rejected.
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "eventstream",
+            "add-source",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "customers",
+            "--source-type",
+            "ReferenceLakehouse",
+            "--properties",
+            r#"{"workspaceId":"cfafbeb1-8037-4d0c-896e-a46fb27ff229","itemId":"11111111-2222-3333-4444-555555555555","absoluteOneLakePath":"https://onelake.dfs.fabric.microsoft.com/cfafbeb1-8037-4d0c-896e-a46fb27ff229/11111111-2222-3333-4444-555555555555/Tables/dbo/customers/Files/x"}"#,
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("must identify a Delta table"),
+        "got: {stderr}"
+    );
 }
 
 #[test]
