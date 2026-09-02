@@ -1,0 +1,45 @@
+{
+  "topic": "item-tracking-categories",
+  "title": "Fabric Item Tracking Categories (Git-tracked vs Deployment-Pipeline-only vs Manual)",
+  "summary": "Not all Fabric item types can be managed the same way in CI/CD. From a lifecycle perspective they fall into three categories — Git-tracked (definition-backed, moved by fabio deploy export/plan/apply and Fabric Git integration), Deployment-Pipeline-only (promoted workspace-to-workspace via fabio deployment-pipeline deploy but NOT version-controllable in Git), and Manual (recreated by hand per environment). fabio's Git-based deploy only captures Git-tracked items; deploy export flags the rest with a tracking_note. Both official supported-items lists evolve, so always verify against Microsoft docs.",
+  "why_it_matters": "An agent must not assume that 'fabio deploy export' + 'deploy apply' fully replicated a workspace. Item types that do not support the item-definition API (getDefinition/updateDefinition) are NOT captured by the Git-based deploy — they are skipped on export and cannot be recreated by apply. Knowing an item's category tells the agent which promotion mechanism to use and when to warn the human that part of a workspace is not under Git-based CI/CD.",
+  "categories": {
+    "git_tracked": {
+      "definition": "Items supported by Fabric Git integration and fabric-cicd. Their definitions serialize to files (.platform + definition parts), enabling version control, branching, and code review.",
+      "fabio_handling": "Fully handled by 'fabio deploy export' (definition parts written), 'deploy plan' (content-hash diff), and 'deploy apply' (create/update via item-definition API). Shell-only data types (Warehouse, SQLDatabase, MLExperiment, MLModel) export as a .platform-only stub and apply recreates the empty container.",
+      "examples": ["Notebook", "SemanticModel", "Report", "DataPipeline", "Lakehouse (shell)", "Environment", "VariableLibrary", "Eventhouse", "KQLDatabase", "Ontology", "DataAgent"]
+    },
+    "deployment_pipeline_only": {
+      "definition": "Items NOT supported by Git integration / fabric-cicd but supported by Fabric Deployment Pipelines. They can be promoted workspace-to-workspace but cannot be version-controlled in Git.",
+      "fabio_handling": "'deploy export' cannot serialize these (they appear in the export's skipped list + tracking_note). Promote them between environments with 'fabio deployment-pipeline deploy --id <PIPELINE> --source-stage-id <S>' (selective deploy requires explicitly listing each item — the API has no 'select related').",
+      "note": "This category changes as Microsoft adds capabilities — always check the official Deployment Pipelines supported-items list."
+    },
+    "manual": {
+      "definition": "Items supported by neither Git integration nor Deployment Pipelines. They must be created and configured manually in each workspace.",
+      "fabio_handling": "Neither 'deploy export' nor 'deployment-pipeline deploy' captures these. Recreate them per environment with the relevant fabio command group (e.g. connection create, or the item-type's own create subcommand) or in the portal. Script the recreation so it is repeatable."
+    }
+  },
+  "how_fabio_surfaces_this": {
+    "export_tracking_note": "When 'fabio deploy export' encounters items whose type does not support getDefinition (or returns no definition parts), it lists them in `skipped`, adds a `tracking_note` (category: not-git-tracked, count, items, guidance), and a top-level `hint`. Read tracking_note before assuming the export is a complete snapshot.",
+    "detection_is_runtime": "fabio classifies at runtime from the actual export result rather than a hard-coded list, so it stays correct as Fabric adds getDefinition support to more types."
+  },
+  "hybrid_promotion_pattern": {
+    "concept": "When a workspace mixes Git-tracked and Deployment-Pipeline-only items, combine both mechanisms in one release (the 'sandwich' pattern).",
+    "steps": [
+      "1. Deploy Git-tracked items that do NOT depend on pipeline-only items: fabio deploy apply --source ./workspace --workspace <WS> --env <env>",
+      "2. Promote Deployment-Pipeline-only items: fabio deployment-pipeline deploy --id <PIPELINE> --source-stage-id <S> --items '[{\"itemId\":\"...\",\"itemType\":\"...\"}]'",
+      "3. Deploy Git-tracked items that DEPEND on the pipeline-only items (re-run apply, or a second scoped apply)."
+    ],
+    "future_state": "As item types gain fabric-cicd/Git support, drop the pipeline step and use a single 'deploy apply'."
+  },
+  "what_agents_should_do": [
+    "After 'fabio deploy export', check for a `tracking_note` / non-empty `skipped` — those items are NOT under Git-based CI/CD.",
+    "Promote not-git-tracked items with 'fabio deployment-pipeline deploy' when the type supports Deployment Pipelines; otherwise recreate them per environment and warn the human.",
+    "Never claim a workspace was fully replicated by export+apply without checking `skipped`/`tracking_note`.",
+    "Verify an item's category against the official Microsoft supported-items lists — both lists evolve; fabio's runtime detection reflects the current API, not a frozen table."
+  ],
+  "references": [
+    "Fabric Git integration supported items: https://learn.microsoft.com/en-us/fabric/cicd/git-integration/intro-to-git-integration#supported-items",
+    "Fabric Deployment Pipelines supported items: https://learn.microsoft.com/en-us/fabric/cicd/deployment-pipelines/intro-to-deployment-pipelines#supported-items"
+  ]
+}

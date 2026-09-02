@@ -317,6 +317,37 @@ fn is_auto_provisioned_type(item_type: &str) -> bool {
         .any(|t| t.eq_ignore_ascii_case(item_type))
 }
 
+/// Build a "tracking note" for items that could NOT be exported as Git-tracked
+/// definitions (their type does not support `getDefinition`, or returned no parts).
+///
+/// Such items fall outside fabio's Git-based deploy (export → plan → apply): the
+/// export does not capture them, so a subsequent `deploy apply` cannot recreate
+/// them. This surfaces the Fabric "item tracking categories" reality (Git-tracked
+/// vs Deployment-Pipeline-only vs Manual) at the exact moment it matters, so an
+/// agent does not wrongly assume the export fully replicated the workspace.
+///
+/// Returns `None` when nothing was skipped.
+pub(super) fn build_export_tracking_note(skipped: &[String]) -> Option<serde_json::Value> {
+    if skipped.is_empty() {
+        return None;
+    }
+    Some(serde_json::json!({
+        "category": "not-git-tracked",
+        "count": skipped.len(),
+        "message": format!(
+            "{} item(s) were not exported as Git-tracked definitions (their type does not \
+             support getDefinition). fabio's Git-based deploy (export/plan/apply) does NOT \
+             capture these items.",
+            skipped.len()
+        ),
+        "items": skipped,
+        "guidance": "Promote these between environments with 'fabio deployment-pipeline deploy' \
+                     if the type is supported by Fabric Deployment Pipelines; otherwise recreate \
+                     them manually per environment. See: fabio context best-practices \
+                     item-tracking-categories.",
+    }))
+}
+
 /// Extract definition parts from a `getDefinition` API response.
 fn extract_definition_parts(data: &Value) -> Vec<DefinitionPart> {
     let Some(parts) = data
@@ -1009,5 +1040,34 @@ mod tests {
         // Should not crash, just skip
         let gov_path = dir.path().join("MyNb.Notebook/governance.metadata.json");
         assert!(!gov_path.exists());
+    }
+
+    #[test]
+    fn tracking_note_none_when_nothing_skipped() {
+        assert!(build_export_tracking_note(&[]).is_none());
+    }
+
+    #[test]
+    fn tracking_note_reports_skipped_items() {
+        let skipped = vec![
+            "Dashboard \"Sales\" (getDefinition not supported)".to_owned(),
+            "SomeType \"X\" (no definition parts)".to_owned(),
+        ];
+        let note = build_export_tracking_note(&skipped).unwrap();
+        assert_eq!(note["category"], "not-git-tracked");
+        assert_eq!(note["count"], 2);
+        assert_eq!(note["items"].as_array().unwrap().len(), 2);
+        assert!(
+            note["guidance"]
+                .as_str()
+                .unwrap()
+                .contains("deployment-pipeline deploy")
+        );
+        assert!(
+            note["guidance"]
+                .as_str()
+                .unwrap()
+                .contains("item-tracking-categories")
+        );
     }
 }

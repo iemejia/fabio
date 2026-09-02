@@ -133,7 +133,7 @@
 - `src/commands/deploy/changeset.rs`: Change, ChangeAction (Create/Update/Rename/Delete/Skip), Changeset (with warnings/errors), DeployResult
 - `src/commands/deploy/ordering.rs`: DEPLOY_ORDER (45 types), deploy_priority, delete_priority, topological_sort
 - `src/commands/deploy/platform.rs`: parse_source_directory (creationPayload.json parsing), SourceItem, SourceWorkspace, PlatformMetadata
-- `src/commands/deploy/export.rs`: export_workspace (getDefinition LRO per item, write .platform + parts)
+- `src/commands/deploy/export.rs`: export_workspace (getDefinition LRO per item, write .platform + parts); build_export_tracking_note (flags not-Git-tracked skipped items — the "item tracking categories" surface)
 - `src/commands/deploy/config.rs`: DeployConfig struct (JSON+YAML parsing via serde_yaml), per-environment workspace/source/parameters resolution, FilterConfig, OptionsConfig
 - `src/commands/deploy/folders.rs`: Workspace folder management (discover from source directory, create/move/delete folders), SourceFolder, DeployedFolder, FolderPlan
 - `src/commands/deploy/git_diff.rs`: Git diff-based selective deployment (get_changed_items via `git diff --name-status`, GitDiffResult with changed/deleted sets)

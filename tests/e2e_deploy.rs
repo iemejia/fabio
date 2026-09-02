@@ -64,6 +64,59 @@ fn deploy_export_workspace_to_directory() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
+fn deploy_export_reports_tracking_note_for_not_git_tracked_items() {
+    let cfg = TestConfig::from_env();
+    let dir = tempfile::TempDir::new().unwrap();
+    let output_dir = dir.path().join("export_tracking");
+
+    let assert = fabio()
+        .args([
+            "deploy",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--dir",
+            output_dir.to_str().unwrap(),
+        ])
+        .timeout(Duration::from_mins(5))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "exported");
+
+    let skipped = data["skipped"].as_array().unwrap();
+    // The tracking_note must be present iff some items could not be exported as
+    // Git-tracked definitions. This encodes the "item tracking categories" reality.
+    if skipped.is_empty() {
+        assert!(
+            data.get("tracking_note").is_none(),
+            "tracking_note should be absent when nothing is skipped"
+        );
+    } else {
+        let note = &data["tracking_note"];
+        assert_eq!(note["category"], "not-git-tracked");
+        assert_eq!(note["count"], skipped.len() as u64);
+        assert_eq!(note["items"].as_array().unwrap().len(), skipped.len());
+        assert!(
+            note["guidance"]
+                .as_str()
+                .unwrap()
+                .contains("item-tracking-categories")
+        );
+        assert!(
+            data["hint"]
+                .as_str()
+                .unwrap()
+                .contains("deployment-pipeline deploy")
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn deploy_export_with_item_type_filter() {
     let cfg = TestConfig::from_env();
     let dir = tempfile::TempDir::new().unwrap();

@@ -1191,6 +1191,20 @@ async fn execute_export(
         "skipped": result.skipped,
     });
 
+    let mut output_data = output_data;
+    if let Some(note) = export::build_export_tracking_note(&result.skipped) {
+        let obj = output_data.as_object_mut().unwrap();
+        obj.insert("tracking_note".to_owned(), note);
+        obj.insert(
+            "hint".to_owned(),
+            json!(
+                "Some items were not captured as Git-tracked definitions. Git-based deploy will \
+                 not recreate them — see tracking_note. Promote such items via \
+                 'fabio deployment-pipeline deploy' or recreate them manually."
+            ),
+        );
+    }
+
     output::render_object(cli, &output_data, "status");
 
     Ok(())

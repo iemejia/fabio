@@ -47,6 +47,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 | Export from workspace | No | `deploy export` |
 | Local validation | No | `deploy validate` (no API calls needed) |
 | Branch-out ID rebinding | No (can't touch Git-synced feature workspaces) | `deploy rebind` rewrites env IDs in local files offline; `deploy validate --pr-ready` gates the PR |
+| Non-Git-tracked item awareness | Silently skips unsupported types | `deploy export` flags them in a `tracking_note` with promotion guidance (see `context best-practices item-tracking-categories`) |
 | Parameter scaffolding | No | `deploy init-params` (scans/diffs GUIDs automatically) |
 | Cross-item ID references on first deploy | Two-phase deploy required (`$items` queries the *live* workspace, which is empty on first deploy) | Single-pass — resolves `$items.Type.Name.id` mid-run as items are created (no two-phase hack) |
 | Variable library value sets | Auto-activate matching env | Same + `list-value-sets` + `activate-value-set` CLI |
