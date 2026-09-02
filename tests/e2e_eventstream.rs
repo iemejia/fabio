@@ -900,7 +900,10 @@ fn eventstream_add_reference_lakehouse_source_rejects_empty_segments() {
         .assert()
         .failure();
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
-    assert!(stderr.contains("must identify a Delta table"), "got: {stderr}");
+    assert!(
+        stderr.contains("must identify a Delta table"),
+        "got: {stderr}"
+    );
 }
 
 #[test]
