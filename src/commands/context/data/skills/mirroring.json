@@ -33,6 +33,7 @@
     "Deleting a mirrored database expecting the source to be affected (it only removes the Fabric replica)."
   ],
   "key_gotchas": [
+    "A Snowflake mirrored database (snowflake-database) replicates into OneLake Delta and exposes a read-only SQL analytics endpoint (properties.sqlEndpointProperties.connectionString), so its mirrored data is T-SQL-queryable via 'warehouse query --id <snowflakeDbId>' (the warehouse smart resolver now recognizes snowflakeDatabases alongside the other mirror types). Create requires a Snowflake connection payload (--connection-id); a shell create with just a name returns 'Invalid payload'. NOTE: a dedicated snowflake-database query/lifecycle group surface is not yet shipped — it awaits a live Snowflake fixture to validate; use 'warehouse query --id' meanwhile.",
     "Mirroring is continuous replication into OneLake Delta; the mirror is read-only in Fabric and queried via its SQL analytics endpoint.",
     "mirrored-warehouse is list-only in fabio (it is provisioned/managed by Fabric, not independently created).",
     "Catalog mirrors expose discovery + refresh-metadata; the source schema must be re-discovered after upstream DDL.",

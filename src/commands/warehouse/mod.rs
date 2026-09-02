@@ -966,7 +966,7 @@ pub async fn get_connection_string(
     // Item types whose SQL endpoint lives directly at `properties.connectionString`
     // (Warehouse, WarehouseSnapshot), and those that expose it under
     // `properties.sqlEndpointProperties.connectionString` (Lakehouse,
-    // MirroredAzureDatabricksCatalog, MirroredDatabase,
+    // MirroredAzureDatabricksCatalog, MirroredDatabase, SnowflakeDatabase,
     // MirroredGoogleLakehouseRuntimeCatalog). Each is tried in turn;
     // the first whose GET succeeds with a non-empty connection string wins.
     let direct = [
@@ -975,6 +975,7 @@ pub async fn get_connection_string(
         ("warehouseSnapshots", false),
         ("mirroredAzureDatabricksCatalogs", true),
         ("mirroredDatabases", true),
+        ("snowflakeDatabases", true),
         ("mirroredGoogleLakehouseRuntimeCatalogs", true),
     ];
     for (collection, via_sql_endpoint) in direct {
@@ -989,9 +990,9 @@ pub async fn get_connection_string(
 
     Err(FabioError {
         code: ErrorCode::NotFound,
-        message: "Could not determine SQL connection string. Verify the item is a warehouse, lakehouse, warehouse snapshot, or mirrored database with a SQL endpoint.".into(),
+        message: "Could not determine SQL connection string. Verify the item is a warehouse, lakehouse, warehouse snapshot, mirrored database, or Snowflake database with a SQL endpoint.".into(),
         hint: Some(
-            "Only Warehouse, Lakehouse, WarehouseSnapshot, MirroredAzureDatabricksCatalog, and MirroredDatabase items support SQL queries via this command.\n\
+            "Only Warehouse, Lakehouse, WarehouseSnapshot, MirroredAzureDatabricksCatalog, MirroredDatabase, and SnowflakeDatabase items support SQL queries via this command.\n\
              For SQL Databases, use: fabio sql-database query\n\
              For lakehouses, pass the lakehouse ID (not the SQL endpoint ID).\n\
              List items: fabio item list --workspace <WS> --type Warehouse"
