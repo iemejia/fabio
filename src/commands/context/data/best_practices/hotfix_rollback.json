@@ -1,0 +1,58 @@
+{
+  "topic": "hotfix-rollback",
+  "title": "Fabric CI/CD Hotfix and Rollback Playbook",
+  "summary": "How to ship an urgent production hotfix and how to roll a Fabric deployment back safely with fabio. Git is the source of truth, so both flows are Git operations plus a fabio re-deploy: a hotfix branch off main deploys forward and is cherry-picked back to lower branches; a rollback reverts the commit and re-deploys the known-good source. Covers the data dimension (definitions roll back, DATA does not) and a production validation checklist. Uses deploy plan/apply, --git-diff, --verify, deployment-pipeline deploy (for non-Git-tracked items), and warehouse-snapshot (pre-deploy data backup).",
+  "principles": [
+    "Git history IS the deployment record — every change reached prod through a reviewed commit, so a hotfix and a rollback are both ordinary, reviewed Git operations followed by a fabio re-deploy.",
+    "Definitions roll back cleanly; DATA does not. `git revert` restores item definitions, never the rows in a Lakehouse/Warehouse. Plan the data recovery separately.",
+    "Re-deploy the known-good SOURCE, don't hand-edit prod. Reverting the commit and re-running `deploy apply` keeps prod == Git."
+  ],
+  "hotfix_flow": {
+    "when": "An urgent fix must reach production without waiting for the normal dev -> test -> main promotion.",
+    "steps": [
+      "1. Cut a hotfix branch from the production branch: git checkout main && git checkout -b hotfix/<date-or-ticket>.",
+      "2. Reproduce and fix in isolation — branch out to a temporary workspace (fabio git branch-out) or edit the definitions locally; keep the change minimal and auditable.",
+      "3. Validate offline: fabio deploy validate --source <DIR> --parameters params.json --env prod.",
+      "4. Preview the blast radius: fabio deploy plan --source <DIR> --workspace <PROD_WS> --env prod --parameters params.json (review data.summary + data.destructive).",
+      "5. Open a PR into main; after review/merge, deploy: fabio deploy apply --source <DIR> --workspace <PROD_WS> --env prod --parameters params.json --verify.",
+      "6. Run post-deploy data jobs if needed (fabio deploy apply --post-run-item <PIPELINE|NOTEBOOK>, or fabio data-pipeline run ... --wait).",
+      "7. Back-merge to keep branches consistent: cherry-pick or merge the hotfix commit into the test and dev branches (git cherry-pick <sha>) so the fix isn't lost on the next promotion."
+    ],
+    "scope_tip": "Use --git-diff <ref> (e.g. --git-diff main~1) or --include-items to scope the hotfix deploy to only the changed items instead of the whole workspace."
+  },
+  "rollback_flow": {
+    "when": "A deployment introduced a regression and prod must return to the last known-good state.",
+    "git_tracked_items": [
+      "1. Identify the last known-good commit (git log on the prod branch).",
+      "2. Revert it: git revert <bad-sha> (preferred — keeps history and passes the same PR gates) or git reset to the good commit on a branch.",
+      "3. Re-deploy the reverted source: fabio deploy apply --source <DIR> --workspace <PROD_WS> --env prod --parameters params.json --verify.",
+      "4. Confirm convergence: --verify (converged:true) or re-run fabio deploy plan and expect every item as Skip."
+    ],
+    "non_git_tracked_items": "Items promoted via Deployment Pipelines (not Git-tracked — see the item-tracking-categories best-practice) are rolled back by re-promoting the previous stage's known-good version: fabio deployment-pipeline deploy --id <PIPELINE> --source-stage-id <PREV_STAGE> --items '[{\"itemId\":\"...\",\"itemType\":\"...\"}]'. Keep a known-good version in the earlier stage so you can re-deploy forward.",
+    "data_considerations": [
+      "Data is NOT versioned by Git. A definition rollback does not undo rows written by the bad release — plan the data recovery explicitly (reprocess ETL, restore seed/test data, or point-in-time restore).",
+      "Snapshot data-bearing items BEFORE a risky deploy: fabio warehouse-snapshot create ... captures a Warehouse point-in-time you can query/restore from; for Lakehouses use Delta time-travel / OneLake restore.",
+      "After rollback, run the post-deploy ETL (fabio deploy apply --post-run-item ..., or a direct pipeline/notebook run) to restore the expected data state.",
+      "Decide whether downstream consumers (reports, data agents, embedded apps) need a coordinated rollback or just the definition revert."
+    ]
+  },
+  "prod_validation_checklist": [
+    "Convergence: fabio deploy apply --verify reports converged:true (or fabio deploy plan shows all Skip).",
+    "Smoke tests: key reports open and refresh; top-level pipelines/notebooks run successfully.",
+    "Config: the correct Variable Library value set is active for prod (fabio variable-library list-value-sets) and deploy-time parameters resolved (no dev/test IDs leaked — fabio deploy validate --pr-ready --expect-env prod).",
+    "For any items promoted via Deployment Pipelines, deployment history/pairing looks correct (fabio deployment-pipeline list-operations)."
+  ],
+  "what_agents_should_do": [
+    "Treat hotfix and rollback as Git operations + a fabio re-deploy — never hand-edit the production workspace.",
+    "Always run fabio deploy plan (review destructive) before an apply, and fabio deploy apply --verify after, for both hotfix and rollback.",
+    "Warn the human that a definition rollback does NOT restore data; propose a data-recovery step (snapshot restore, ETL re-run) explicitly.",
+    "Cherry-pick a hotfix back into lower branches so it isn't overwritten on the next promotion.",
+    "For non-Git-tracked items, roll back by re-promoting the previous stage via deployment-pipeline deploy (git revert won't touch them)."
+  ],
+  "see_also": [
+    "fabio context best-practices item-tracking-categories",
+    "fabio context best-practices cicd-lifecycle",
+    "fabio context workflow deploy-rollback",
+    "fabio context workflow cicd-deploy"
+  ]
+}

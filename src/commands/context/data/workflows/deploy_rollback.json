@@ -1,0 +1,27 @@
+{
+  "name": "Deploy Rollback",
+  "description": "Roll a Fabric deployment back to the last known-good state with fabio. Git is the source of truth, so a rollback is: revert the bad commit, re-deploy the reverted source with content-hash convergence, and verify. Covers Git-tracked items (deploy apply) and non-Git-tracked items (deployment-pipeline re-promote), plus the data caveat.",
+  "prerequisites": [
+    "Authenticated via fabio auth login (or a CI service principal)",
+    "The source directory / repo whose Git history contains the last known-good commit",
+    "Target (production) workspace with capacity",
+    "parameters.json (if the deployment uses environment-specific values)"
+  ],
+  "steps": [
+    {"step_number": 1, "command": "git log --oneline -10", "description": "Identify the last known-good commit and the bad commit to revert.", "notes": "Prefer git revert over reset so the rollback goes through the same PR review/approval gates as any change."},
+    {"step_number": 2, "command": "git revert <bad-sha> && git checkout -b rollback/<date>", "description": "Revert the bad commit (restores the previous item definitions).", "notes": "git revert restores DEFINITIONS only — it does not restore data rows written by the bad release."},
+    {"step_number": 3, "command": "fabio deploy validate --source ./fabric-items --parameters params.json --env prod", "description": "Offline pre-flight on the reverted source (no API calls).", "notes": "Also gate environment hygiene: fabio deploy validate --source ./fabric-items --pr-ready --expect-env prod."},
+    {"step_number": 4, "command": "fabio deploy plan --source ./fabric-items --workspace \"Production\" --env prod --parameters params.json", "description": "Preview the rollback changeset (what returns to the known-good state).", "notes": "Review data.summary and data.destructive — a rollback can delete items that the bad release added (needs --delete-orphans; protected data types need --allow-delete-types)."},
+    {"step_number": 5, "command": "fabio deploy apply --source ./fabric-items --workspace \"Production\" --env prod --parameters params.json --verify", "description": "Re-deploy the reverted source; --verify audits convergence.", "notes": "Content-hash diffing means only the items that changed back are touched. --verify adds a 'verification' block (converged:true expected)."},
+    {"step_number": 6, "command": "fabio deploy plan --source ./fabric-items --workspace \"Production\" --env prod --parameters params.json --query 'summary'", "description": "Confirm convergence — every item should now be Skip.", "notes": "summary.create/update/delete == 0 means prod matches the known-good source."},
+    {"step_number": 7, "command": "fabio deployment-pipeline deploy --id <PIPELINE> --source-stage-id <PREV_STAGE> --items '[{\"itemId\":\"...\",\"itemType\":\"...\"}]'", "description": "(Only if the workspace has non-Git-tracked items) Re-promote the previous stage's known-good version.", "notes": "git revert does NOT touch Deployment-Pipeline-only items — see the item-tracking-categories best-practice."},
+    {"step_number": 8, "command": "fabio deploy apply --source ./fabric-items --workspace \"Production\" --env prod --post-run-item <ETL_PIPELINE>", "description": "(If needed) Restore data state — a definition rollback does not undo data changes.", "notes": "Re-run the ETL, or restore from a pre-deploy warehouse-snapshot / Lakehouse Delta time-travel."}
+  ],
+  "tips": [
+    "Snapshot data-bearing items BEFORE a risky deploy so a rollback has a data restore point: fabio warehouse-snapshot create ... (Warehouse); Lakehouses use Delta time-travel / OneLake restore.",
+    "A definition rollback (git revert + deploy apply) NEVER restores data rows — always plan the data recovery separately and warn the human.",
+    "Roll back only the affected items with --include-items or --git-diff instead of the whole workspace when the blast radius is known.",
+    "The rollback PR passes the same review/approval and branch-protection gates as any change — it is auditable like any other deployment.",
+    "See fabio context best-practices hotfix-rollback for the full playbook including the hotfix (forward-fix) flow and the production validation checklist."
+  ]
+}
