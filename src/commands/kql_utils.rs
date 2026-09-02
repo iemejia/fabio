@@ -9,6 +9,7 @@ use anyhow::Result;
 use reqwest::header::AUTHORIZATION;
 use serde_json::Value;
 
+use crate::cli::Cli;
 use crate::client::{self, FabricClient};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 
@@ -432,6 +433,195 @@ pub fn render_kql_results(cli: &crate::cli::Cli, rows: &[Value], columns: &[Stri
     }
 }
 
+// ─── One-shot vs. continuous (--follow) query runner ─────────────────────────
+
+/// Options controlling how a KQL query is executed: one-shot (bounded by an
+/// optional server timeout) or continuous `--follow` (client-side polling that
+/// streams NDJSON and always terminates).
+///
+/// Kusto queries are request/response and always terminate; there is no
+/// server-push streaming query. `--follow` therefore re-runs the query every
+/// `interval` and is ALWAYS bounded by `max_duration`, the global `--limit`, or
+/// Ctrl-C — safe for an agent/CI caller. Shared by `eventhouse query` and
+/// `kql-database query`.
+#[derive(Debug, Default, Clone)]
+pub struct QueryRunOptions {
+    /// Server-side query timeout in seconds (Kusto `servertimeout`, max 3600).
+    pub timeout: Option<u64>,
+    /// Continuously re-run the query, streaming NDJSON until bounded out.
+    pub follow: bool,
+    /// Seconds between polls in follow mode (default 5).
+    pub interval: Option<u64>,
+    /// Total seconds to follow before stopping (default 60) — the safety bound.
+    pub max_duration: Option<u64>,
+    /// Emit only rows whose value in this column exceeds the max seen (incremental tail).
+    pub dedup_column: Option<String>,
+}
+
+impl QueryRunOptions {
+    /// Reject follow-only flags when `--follow` is not set.
+    pub fn validate(&self) -> Result<()> {
+        if !self.follow
+            && (self.interval.is_some()
+                || self.max_duration.is_some()
+                || self.dedup_column.is_some())
+        {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "--interval, --max-duration, and --dedup-column require --follow".to_string(),
+                "Add --follow to stream the query on an interval, or drop those flags for a one-shot query.".to_string(),
+            )
+            .into());
+        }
+        Ok(())
+    }
+}
+
+/// Run a KQL/T-SQL/management query one-shot, or continuously with `--follow`.
+pub async fn run_query(
+    cli: &Cli,
+    client: &FabricClient,
+    kusto_uri: &str,
+    db_name: &str,
+    kql_text: &str,
+    opts: &QueryRunOptions,
+) -> Result<()> {
+    if opts.follow {
+        return follow_query(cli, client, kusto_uri, db_name, kql_text, opts).await;
+    }
+    let (rows, columns) =
+        execute_kql_with_timeout(client, kusto_uri, db_name, kql_text, opts.timeout).await?;
+    render_kql_results(cli, &rows, &columns);
+    Ok(())
+}
+
+/// Continuously poll the query, streaming one NDJSON object per cycle to stdout,
+/// bounded by `max_duration`, the global `--limit`, or Ctrl-C, then a final
+/// `follow_complete` summary line. Always terminates.
+async fn follow_query(
+    cli: &Cli,
+    client: &FabricClient,
+    kusto_uri: &str,
+    db_name: &str,
+    kql_text: &str,
+    opts: &QueryRunOptions,
+) -> Result<()> {
+    use std::io::Write;
+
+    let interval = std::time::Duration::from_secs(opts.interval.unwrap_or(5).max(1));
+    let deadline = tokio::time::Instant::now()
+        + std::time::Duration::from_secs(opts.max_duration.unwrap_or(60));
+    let row_limit = cli.limit;
+
+    let mut cycle: u64 = 0;
+    let mut total_emitted: usize = 0;
+    let mut last_max: Option<Value> = None;
+    let mut stop_reason = "max_duration";
+
+    loop {
+        cycle += 1;
+        let started = tokio::time::Instant::now();
+
+        let event = match execute_kql_with_timeout(
+            client,
+            kusto_uri,
+            db_name,
+            kql_text,
+            opts.timeout,
+        )
+        .await
+        {
+            Ok((rows, columns)) => {
+                let new_rows = match opts.dedup_column.as_deref() {
+                    Some(col) => filter_new_rows(&rows, col, &mut last_max),
+                    None => rows,
+                };
+                total_emitted += new_rows.len();
+                serde_json::json!({
+                    "cycle": cycle,
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                    "count": new_rows.len(),
+                    "columns": columns,
+                    "rows": new_rows,
+                })
+            }
+            Err(e) => serde_json::json!({
+                "cycle": cycle,
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+                "error": e.to_string(),
+            }),
+        };
+
+        if !cli.quiet {
+            let mut out = std::io::stdout();
+            let _ = writeln!(out, "{}", serde_json::to_string(&event).unwrap_or_default());
+            let _ = out.flush();
+        }
+
+        if row_limit.is_some_and(|lim| total_emitted >= lim) {
+            stop_reason = "limit";
+            break;
+        }
+
+        let next = started + interval;
+        tokio::select! {
+            () = tokio::time::sleep_until(next.min(deadline)) => {
+                if tokio::time::Instant::now() >= deadline {
+                    break; // stop_reason keeps its default "max_duration"
+                }
+            }
+            _ = tokio::signal::ctrl_c() => {
+                stop_reason = "interrupted";
+                break;
+            }
+        }
+    }
+
+    if !cli.quiet {
+        let summary = serde_json::json!({
+            "status": "follow_complete",
+            "reason": stop_reason,
+            "cycles": cycle,
+            "rows_emitted": total_emitted,
+        });
+        let mut out = std::io::stdout();
+        let _ = writeln!(
+            out,
+            "{}",
+            serde_json::to_string(&summary).unwrap_or_default()
+        );
+        let _ = out.flush();
+    }
+    Ok(())
+}
+
+/// Return the rows whose `column` value is strictly greater than `last_max`,
+/// updating `last_max` to the greatest value seen. Used for incremental tailing.
+fn filter_new_rows(rows: &[Value], column: &str, last_max: &mut Option<Value>) -> Vec<Value> {
+    let threshold = last_max.clone();
+    let mut cycle_max = threshold.clone();
+    let mut out = Vec::new();
+    for row in rows {
+        let Some(v) = row.get(column) else { continue };
+        if threshold.as_ref().is_none_or(|m| value_gt(v, m)) {
+            out.push(row.clone());
+        }
+        if cycle_max.as_ref().is_none_or(|m| value_gt(v, m)) {
+            cycle_max = Some(v.clone());
+        }
+    }
+    *last_max = cycle_max;
+    out
+}
+
+/// Order two JSON scalars: numerically when both are numbers, else by string.
+fn value_gt(a: &Value, b: &Value) -> bool {
+    match (a.as_f64(), b.as_f64()) {
+        (Some(x), Some(y)) => x > y,
+        _ => a.as_str().unwrap_or("") > b.as_str().unwrap_or(""),
+    }
+}
+
 // ─── Unit Tests ──────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -460,6 +650,57 @@ mod tests {
         assert_eq!(format_servertimeout(3600), "01:00:00");
         assert_eq!(format_servertimeout(0), "00:00:01"); // clamped up to 1s
         assert_eq!(format_servertimeout(99_999), "01:00:00"); // clamped to 1h max
+    }
+
+    #[test]
+    fn query_run_options_validate_requires_follow() {
+        let mut o = QueryRunOptions {
+            interval: Some(2),
+            ..Default::default()
+        };
+        assert!(o.validate().is_err());
+        o.follow = true;
+        assert!(o.validate().is_ok());
+        assert!(QueryRunOptions::default().validate().is_ok());
+    }
+
+    #[test]
+    fn value_gt_numeric_and_string() {
+        assert!(value_gt(&json!(5), &json!(3)));
+        assert!(!value_gt(&json!(3), &json!(5)));
+        assert!(value_gt(&json!("2026-01-02"), &json!("2026-01-01")));
+        assert!(!value_gt(&json!("a"), &json!("b")));
+    }
+
+    #[test]
+    fn filter_new_rows_emits_only_newer_and_advances_threshold() {
+        let rows = vec![
+            json!({"seq": 1, "v": "a"}),
+            json!({"seq": 3, "v": "b"}),
+            json!({"seq": 2, "v": "c"}),
+        ];
+        let mut last = None;
+        let out = filter_new_rows(&rows, "seq", &mut last);
+        assert_eq!(out.len(), 3);
+        assert_eq!(last, Some(json!(3)));
+
+        let out2 = filter_new_rows(&rows, "seq", &mut last);
+        assert!(out2.is_empty());
+
+        let more = vec![json!({"seq": 4}), json!({"seq": 3})];
+        let out3 = filter_new_rows(&more, "seq", &mut last);
+        assert_eq!(out3.len(), 1);
+        assert_eq!(out3[0]["seq"], json!(4));
+        assert_eq!(last, Some(json!(4)));
+    }
+
+    #[test]
+    fn filter_new_rows_skips_rows_missing_the_column() {
+        let rows = vec![json!({"other": 1}), json!({"seq": 10})];
+        let mut last = None;
+        let out = filter_new_rows(&rows, "seq", &mut last);
+        assert_eq!(out.len(), 1);
+        assert_eq!(last, Some(json!(10)));
     }
 
     #[test]

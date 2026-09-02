@@ -1566,3 +1566,32 @@ fn kql_database_schema_context_lifecycle() {
         .assert()
         .success();
 }
+
+#[test]
+fn kql_database_query_follow_flags_require_follow() {
+    // Offline: --follow-only flags are rejected before any network call.
+    let assert = fabio()
+        .args([
+            "kql-database",
+            "query",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--kql",
+            "T | count",
+            "--max-duration",
+            "10",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let json: serde_json::Value = serde_json::from_str(stderr.trim()).unwrap();
+    assert_eq!(json["error"]["code"], "INVALID_INPUT");
+    assert!(
+        json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("--follow")
+    );
+}

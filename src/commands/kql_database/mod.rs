@@ -93,7 +93,11 @@ pub enum KqlDatabaseCommand {
         hard_delete: bool,
     },
 
-    /// Execute a KQL query against a KQL database
+    /// Execute a KQL query against a KQL database.
+    ///
+    /// One-shot by default (add `--timeout` to bound a long query). For continuous
+    /// monitoring of live-ingesting data, use `--follow`: fabio polls on an interval
+    /// and streams NDJSON, always bounded by `--max-duration`, `--limit`, or Ctrl-C.
     #[command(display_order = 6)]
     Query {
         /// Workspace ID
@@ -111,6 +115,28 @@ pub enum KqlDatabaseCommand {
         /// Override the Kusto query URI (auto-discovered from database properties if omitted)
         #[arg(long)]
         query_uri: Option<String>,
+
+        /// Server-side query timeout in seconds (Kusto `servertimeout`, max 3600)
+        #[arg(long)]
+        timeout: Option<u64>,
+
+        /// Continuously re-run the query, streaming NDJSON until `--max-duration`,
+        /// `--limit`, or Ctrl-C (Kusto has no server-push streaming, so this polls)
+        #[arg(long)]
+        follow: bool,
+
+        /// Seconds between polls in `--follow` mode (default 5)
+        #[arg(long)]
+        interval: Option<u64>,
+
+        /// Total seconds to follow before stopping — the agent-safety bound (default 60)
+        #[arg(long)]
+        max_duration: Option<u64>,
+
+        /// In `--follow`, only emit rows whose value in this column exceeds the max
+        /// seen so far (incremental tail); without it each cycle re-emits the full result
+        #[arg(long)]
+        dedup_column: Option<String>,
     },
 
     // ── Schema Discovery ─────────────────────────────────────────────────
@@ -620,15 +646,28 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &KqlDatabaseComm
             id,
             kql,
             query_uri,
+            timeout,
+            follow,
+            interval,
+            max_duration,
+            dedup_column,
         } => {
-            intelligence::query(
+            let opts = crate::commands::kql_utils::QueryRunOptions {
+                timeout: *timeout,
+                follow: *follow,
+                interval: *interval,
+                max_duration: *max_duration,
+                dedup_column: dedup_column.clone(),
+            };
+            Box::pin(intelligence::query(
                 cli,
                 client,
                 workspace,
                 id,
                 kql.as_deref(),
                 query_uri.as_deref(),
-            )
+                &opts,
+            ))
             .await
         }
         KqlDatabaseCommand::ListEntities {

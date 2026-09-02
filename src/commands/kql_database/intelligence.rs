@@ -11,6 +11,7 @@ use crate::output;
 
 // ─── Query ───────────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn query(
     cli: &Cli,
     client: &FabricClient,
@@ -18,7 +19,10 @@ pub(super) async fn query(
     id: &str,
     kql: Option<&str>,
     query_uri_override: Option<&str>,
+    opts: &kql_utils::QueryRunOptions,
 ) -> Result<()> {
+    opts.validate()?;
+
     // Resolve KQL text: --kql flag, @file prefix, or stdin
     let kql_text = kql_utils::resolve_kql_input(kql)?;
 
@@ -26,13 +30,8 @@ pub(super) async fn query(
     let (kusto_uri, db_name) =
         kql_utils::resolve_query_uri(client, workspace, id, query_uri_override).await?;
 
-    // Execute KQL query
-    let (rows, columns) = kql_utils::execute_kql(client, &kusto_uri, &db_name, &kql_text).await?;
-
-    // Render output
-    kql_utils::render_kql_results(cli, &rows, &columns);
-
-    Ok(())
+    // Execute one-shot, or continuously with --follow (bounded NDJSON stream).
+    kql_utils::run_query(cli, client, &kusto_uri, &db_name, &kql_text, opts).await
 }
 
 // ─── Schema Discovery ────────────────────────────────────────────────────────

@@ -14139,6 +14139,26 @@
           "--query-uri": {
             "type": "string",
             "description": "Override the Kusto query URI (auto-discovered from database properties if omitted)"
+          },
+          "--timeout": {
+            "type": "string",
+            "description": "Server-side query timeout in seconds (Kusto `servertimeout`, max 3600)"
+          },
+          "--follow": {
+            "type": "bool",
+            "description": "Continuously re-run the query, streaming NDJSON until `--max-duration`, `--limit`, or Ctrl-C (Kusto has no server-push streaming, so this polls)"
+          },
+          "--interval": {
+            "type": "string",
+            "description": "Seconds between polls in `--follow` mode (default 5)"
+          },
+          "--max-duration": {
+            "type": "string",
+            "description": "Total seconds to follow before stopping — the agent-safety bound (default 60)"
+          },
+          "--dedup-column": {
+            "type": "string",
+            "description": "In `--follow`, only emit rows whose value in this column exceeds the max seen so far (incremental tail); without it each cycle re-emits the full result"
           }
         },
         "mutates": false,
