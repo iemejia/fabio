@@ -34,6 +34,7 @@
     "Ignoring cold-start latency on small capacity (first Spark run takes minutes)."
   ],
   "key_gotchas": [
+    "Watch a running job to completion with 'job-scheduler get-instance --follow': fabio polls the instance on --interval (default 5s), streams NDJSON per cycle, and STOPS EARLY when the status is terminal (Completed/Failed/Cancelled/Deduped) — or when --max-duration / Ctrl-C bounds it (reason 'complete' vs 'max_duration'). Use it to watch an already-running instance (from list-instances or a run-on-demand without --wait); run-on-demand --wait already blocks for jobs you start. Same terminal-aware bounded-follow works on 'operation get-state --follow' (LRO watching: Succeeded/Failed/Canceled/Undefined).",
     "Notebook source cells must be a list of strings in ipynb; fabio builds this for you from --file/--content.",
     "First Spark run on a small capacity is a 2-5 min cold start; LRO may report 430 TooManyRequestsForCapacity when the capacity is saturated.",
     "Environment library changes require a publish (staging/publish) before they take effect.",

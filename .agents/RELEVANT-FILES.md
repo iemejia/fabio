@@ -88,7 +88,7 @@
 - `src/commands/shortcut_target.rs`: Shared shortcut target-builder (`ShortcutTargetFlags`, `normalize_target_type`, `build_shortcut_target`) reused by lakehouse OneLake shortcuts and kql-database table shortcuts
 - `src/commands/kql_database/intelligence.rs`: query/list-entities/describe/describe-entity/sample/ingest/show-queryplan/diagnostics/deeplink
 - `src/commands/kql_utils.rs`: Shared KQL utilities (resolve_kql_input, resolve_query_uri, execute_kql, execute_kql_with_timeout, QueryRunOptions, run_query -> delegates follow to commands::follow, parse v1/v2 responses)
-- `src/commands/follow.rs`: Backend-agnostic bounded --follow streaming (follow_stream over an AsyncFnMut fetch closure; FollowOptions with validate; filter_new_rows/value_gt incremental tail). Used by KQL query (Kusto) and warehouse queries-running (TDS)
+- `src/commands/follow.rs`: Backend-agnostic bounded --follow streaming (follow_stream over an AsyncFnMut fetch + a stop_when terminal predicate; FollowOptions::validate; filter_new_rows/value_gt). Used by KQL query (Kusto), warehouse queries-running (TDS), job-scheduler get-instance + operation get-state (poll-until-terminal)
 - `src/commands/query_input.rs`: Shared query-text resolver (resolve_query_input) — inline / `@file` / stdin, used by graph-model and graphql-api; the uniform convention for all query commands
 - `src/commands/kql_queryset.rs`: CRUD + get-definition/update-definition + run (fetch definition, select tab, execute against Kusto REST API)
 - `src/commands/kql_dashboard.rs`: list/show/create/update/delete/get-definition/update-definition (RealTimeDashboard.json)

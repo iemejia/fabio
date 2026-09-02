@@ -54,10 +54,20 @@ impl FollowOptions {
 /// final `follow_complete` summary. Always terminates.
 ///
 /// `fetch` returns `(rows, columns)` for a cycle (an `Err` is reported as an
-/// `{cycle, error}` line and does not stop the stream).
-pub async fn follow_stream<F>(cli: &Cli, opts: &FollowOptions, mut fetch: F) -> Result<()>
+/// `{cycle, error}` line and does not stop the stream). `stop_when` is checked on
+/// each cycle's RAW rows (before `--dedup-column` filtering); returning `true`
+/// stops the stream early with reason `"complete"` — used to watch a job/operation
+/// until it reaches a terminal state. For an unbounded tail (query monitoring),
+/// pass `|_| false`.
+pub async fn follow_stream<F, S>(
+    cli: &Cli,
+    opts: &FollowOptions,
+    mut fetch: F,
+    stop_when: S,
+) -> Result<()>
 where
     F: AsyncFnMut() -> Result<(Vec<Value>, Vec<String>)>,
+    S: Fn(&[Value]) -> bool,
 {
     let interval = std::time::Duration::from_secs(opts.interval.unwrap_or(5).max(1));
     let deadline = tokio::time::Instant::now()
@@ -73,8 +83,10 @@ where
         cycle += 1;
         let started = tokio::time::Instant::now();
 
+        let mut reached_terminal = false;
         let event = match fetch().await {
             Ok((rows, columns)) => {
+                reached_terminal = stop_when(&rows);
                 let new_rows = match opts.dedup_column.as_deref() {
                     Some(col) => filter_new_rows(&rows, col, &mut last_max),
                     None => rows,
@@ -97,6 +109,10 @@ where
 
         emit(cli, &event);
 
+        if reached_terminal {
+            stop_reason = "complete";
+            break;
+        }
         if row_limit.is_some_and(|lim| total_emitted >= lim) {
             stop_reason = "limit";
             break;

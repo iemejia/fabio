@@ -24944,6 +24944,18 @@
             "type": "string",
             "required": true,
             "description": "Job instance ID"
+          },
+          "--follow": {
+            "type": "bool",
+            "description": "Continuously poll the instance, streaming NDJSON until it reaches a terminal state (Completed/Failed/Cancelled/Deduped) or `--max-duration` / Ctrl-C. Watches an already-running job to completion; always terminates"
+          },
+          "--interval": {
+            "type": "string",
+            "description": "Seconds between polls in `--follow` mode (default 5)"
+          },
+          "--max-duration": {
+            "type": "string",
+            "description": "Total seconds to follow before stopping — the agent-safety bound (default 60)"
           }
         },
         "mutates": false,
@@ -25596,12 +25608,24 @@
     "description": "Check long-running operation status and results",
     "subcommands": {
       "get-state": {
-        "description": "Get the state of a long-running operation",
+        "description": "Get the state of a long-running operation (add --follow to watch to completion)",
         "flags": {
           "--operation-id": {
             "type": "string",
             "required": true,
             "description": "Operation ID"
+          },
+          "--follow": {
+            "type": "bool",
+            "description": "Continuously poll the operation, streaming NDJSON until it reaches a terminal state (Succeeded/Failed/Canceled/Undefined) or `--max-duration` / Ctrl-C. Watches an async operation to completion; always terminates"
+          },
+          "--interval": {
+            "type": "string",
+            "description": "Seconds between polls in `--follow` mode (default 5)"
+          },
+          "--max-duration": {
+            "type": "string",
+            "description": "Total seconds to follow before stopping — the agent-safety bound (default 60)"
           }
         },
         "mutates": false,

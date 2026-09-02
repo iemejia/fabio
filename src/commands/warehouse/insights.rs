@@ -34,12 +34,17 @@ pub(super) async fn queries_running(
     // Watch mode: resolve the SQL connection once, then poll the DMV each cycle,
     // streaming NDJSON (bounded by --max-duration / --limit / Ctrl-C).
     let (server, database) = super::resolve_connection(client, workspace, id).await?;
-    crate::commands::follow::follow_stream(cli, follow_opts, async || {
-        // execute_sql_rows returns (columns, rows); follow_stream expects (rows, columns).
-        let (columns, rows) =
-            execute_sql_rows(client, &server, &database, RUNNING_QUERIES_SQL).await?;
-        Ok((rows, columns))
-    })
+    crate::commands::follow::follow_stream(
+        cli,
+        follow_opts,
+        async || {
+            // execute_sql_rows returns (columns, rows); follow_stream expects (rows, columns).
+            let (columns, rows) =
+                execute_sql_rows(client, &server, &database, RUNNING_QUERIES_SQL).await?;
+            Ok((rows, columns))
+        },
+        |_| false,
+    )
     .await
 }
 

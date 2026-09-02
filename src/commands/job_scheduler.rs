@@ -52,6 +52,20 @@ pub enum JobSchedulerCommand {
         /// Job instance ID
         #[arg(long)]
         job_instance_id: String,
+
+        /// Continuously poll the instance, streaming NDJSON until it reaches a
+        /// terminal state (Completed/Failed/Cancelled/Deduped) or `--max-duration`
+        /// / Ctrl-C. Watches an already-running job to completion; always terminates.
+        #[arg(long)]
+        follow: bool,
+
+        /// Seconds between polls in `--follow` mode (default 5)
+        #[arg(long)]
+        interval: Option<u64>,
+
+        /// Total seconds to follow before stopping — the agent-safety bound (default 60)
+        #[arg(long)]
+        max_duration: Option<u64>,
     },
     /// Run an on-demand job for an item
     #[command(display_order = 3)]
@@ -224,7 +238,22 @@ pub async fn execute(
             workspace,
             id,
             job_instance_id,
-        } => get_instance(cli, client, workspace, id, job_instance_id).await,
+            follow,
+            interval,
+            max_duration,
+        } => {
+            Box::pin(get_instance(
+                cli,
+                client,
+                workspace,
+                id,
+                job_instance_id,
+                *follow,
+                *interval,
+                *max_duration,
+            ))
+            .await
+        }
         JobSchedulerCommand::RunOnDemand {
             workspace,
             id,
@@ -328,20 +357,69 @@ async fn list_instances(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn get_instance(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
     item_id: &str,
     job_instance_id: &str,
+    follow: bool,
+    interval: Option<u64>,
+    max_duration: Option<u64>,
 ) -> Result<()> {
-    let data = client
-        .get(&format!(
-            "/workspaces/{workspace}/items/{item_id}/jobs/instances/{job_instance_id}"
-        ))
-        .await?;
-    output::render_object(cli, &data, "id");
-    Ok(())
+    let path = format!("/workspaces/{workspace}/items/{item_id}/jobs/instances/{job_instance_id}");
+
+    if !follow {
+        if interval.is_some() || max_duration.is_some() {
+            return Err(crate::errors::FabioError::with_hint(
+                crate::errors::ErrorCode::InvalidInput,
+                "--interval and --max-duration require --follow".to_string(),
+                "Add --follow to watch the instance until it completes.".to_string(),
+            )
+            .into());
+        }
+        let data = client.get(&path).await?;
+        output::render_object(cli, &data, "id");
+        return Ok(());
+    }
+
+    // Watch the instance until it reaches a terminal state (or bounded out).
+    let follow_opts = crate::commands::follow::FollowOptions {
+        interval,
+        max_duration,
+        dedup_column: None,
+    };
+    crate::commands::follow::follow_stream(
+        cli,
+        &follow_opts,
+        async || {
+            let data = client.get(&path).await?;
+            let cols = vec![
+                "status".to_string(),
+                "jobType".to_string(),
+                "startTimeUtc".to_string(),
+                "endTimeUtc".to_string(),
+            ];
+            Ok((vec![data], cols))
+        },
+        |rows| {
+            rows.first()
+                .and_then(|r| r.get("status"))
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(is_terminal_job_status)
+        },
+    )
+    .await
+}
+
+/// A Fabric job instance status is terminal (no further transitions) when it is
+/// Completed, Failed, Cancelled, or Deduped.
+fn is_terminal_job_status(status: &str) -> bool {
+    matches!(
+        status,
+        "Completed" | "Failed" | "Cancelled" | "Canceled" | "Deduped"
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -758,6 +836,16 @@ async fn delete_schedule(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terminal_job_status_detection() {
+        for s in ["Completed", "Failed", "Cancelled", "Canceled", "Deduped"] {
+            assert!(is_terminal_job_status(s), "{s} should be terminal");
+        }
+        for s in ["NotStarted", "InProgress", "", "Running"] {
+            assert!(!is_terminal_job_status(s), "{s} should NOT be terminal");
+        }
+    }
 
     #[test]
     fn schedule_config_bare_object_used_as_is() {

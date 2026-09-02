@@ -492,9 +492,14 @@ pub async fn run_query(
             max_duration: opts.max_duration,
             dedup_column: opts.dedup_column.clone(),
         };
-        return crate::commands::follow::follow_stream(cli, &fo, async || {
-            execute_kql_with_timeout(client, kusto_uri, db_name, kql_text, opts.timeout).await
-        })
+        return crate::commands::follow::follow_stream(
+            cli,
+            &fo,
+            async || {
+                execute_kql_with_timeout(client, kusto_uri, db_name, kql_text, opts.timeout).await
+            },
+            |_| false,
+        )
         .await;
     }
     let (rows, columns) =

@@ -349,3 +349,32 @@ fn job_scheduler_run_on_demand_with_wait() {
     assert_eq!(data["status"], "Completed");
     assert!(data["jobId"].is_string());
 }
+
+#[test]
+fn get_instance_follow_flags_require_follow() {
+    // Offline: --follow-only flags are rejected before any network call.
+    let assert = fabio()
+        .args([
+            "job-scheduler",
+            "get-instance",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--job-instance-id",
+            "00000000-0000-0000-0000-000000000000",
+            "--interval",
+            "5",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let json: serde_json::Value = serde_json::from_str(stderr.trim()).unwrap();
+    assert_eq!(json["error"]["code"], "INVALID_INPUT");
+    assert!(
+        json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("--follow")
+    );
+}
