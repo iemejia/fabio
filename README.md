@@ -518,7 +518,7 @@ Use `fabio context describe <group> <command>` for examples of any specific comm
 
 ## GitHub Actions
 
-Use fabio in CI/CD workflows to deploy Fabric artifacts automatically.
+Use fabio in CI/CD workflows to deploy Fabric artifacts automatically. For the full branch-per-environment pipeline (reusable workflow, environment protection, PR gates, rollback), see the [Deploy to Fabric from GitHub Actions](https://ismaelmejia.com/fabio/guides/github-actions-cicd/) guide.
 
 ### OIDC Federated Credentials (Recommended)
 
