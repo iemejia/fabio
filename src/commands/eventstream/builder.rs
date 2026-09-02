@@ -544,8 +544,35 @@ fn validate_capacity_operation_filters(props: &Value) -> Result<()> {
             continue;
         }
 
-        let expects_values =
-            operator_type.contains("In") || operator_type.eq_ignore_ascii_case("Between");
+        let value_kind = match operator_type {
+            "BoolEquals" | "BoolNotEquals" => "boolean",
+            "NumberEquals"
+            | "NumberNotEquals"
+            | "NumberGreaterThan"
+            | "NumberGreaterThanOrEquals"
+            | "NumberLessThan"
+            | "NumberLessThanOrEquals" => "number",
+            "StringEquals" | "StringNotEquals" => "string",
+            "StringIn"
+            | "StringNotIn"
+            | "StringBeginsWith"
+            | "StringEndsWith"
+            | "StringContains"
+            | "StringNotBeginsWith"
+            | "StringNotEndsWith"
+            | "StringNotContains" => "string-list",
+            "NumberInRange" | "NumberNotInRange" => "number-range",
+            _ => "scalar",
+        };
+        let expects_values = matches!(value_kind, "string-list" | "number-range");
+        let expected_type = match value_kind {
+            "string-list" => "strings",
+            "number-range" => "two-number ranges",
+            "boolean" => "a boolean",
+            "number" => "a number",
+            "string" => "a string",
+            _ => "a scalar",
+        };
         if expects_values && !has_values {
             return Err(FabioError::with_hint(
                 ErrorCode::InvalidInput,
@@ -563,17 +590,23 @@ fn validate_capacity_operation_filters(props: &Value) -> Result<()> {
             .into());
         }
 
-        if let Some(value) = filter_obj.get("value")
-            && (value.is_object() || value.is_array())
-        {
-            return Err(FabioError::with_hint(
-                ErrorCode::InvalidInput,
-                format!(
-                    "FabricCapacityOperationEvents filter '{key}' 'value' must be a scalar value"
-                ),
-                "Set 'value' to a string, number, or boolean, not an object or array.",
-            )
-            .into());
+        if let Some(value) = filter_obj.get("value") {
+            let valid = match value_kind {
+                "boolean" => value.is_boolean(),
+                "number" => value.is_number(),
+                "string" => value.is_string(),
+                _ => !value.is_object() && !value.is_array(),
+            };
+            if !valid {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!(
+                        "FabricCapacityOperationEvents filter '{key}' 'value' has the wrong type for operator type '{operator_type}'"
+                    ),
+                    format!("Set 'value' to {expected_type} for '{operator_type}'."),
+                )
+                .into());
+            }
         }
 
         if let Some(values) = filter_obj.get("values") {
@@ -584,15 +617,24 @@ fn validate_capacity_operation_filters(props: &Value) -> Result<()> {
                     "Use 'values' as an array of scalar values, for example [\"ScaleUp\", \"ScaleDown\"].",
                 )
             })?;
-            if values.is_empty()
-                || values
+            let valid = match value_kind {
+                "number-range" => values.iter().all(|entry| {
+                    entry
+                        .as_array()
+                        .is_some_and(|range| range.len() == 2 && range.iter().all(Value::is_number))
+                }),
+                "string-list" => values.iter().all(Value::is_string),
+                _ => values
                     .iter()
-                    .any(|entry| entry.is_array() || entry.is_object())
-            {
+                    .all(|entry| !entry.is_array() && !entry.is_object()),
+            };
+            if values.is_empty() || !valid {
                 return Err(FabioError::with_hint(
                     ErrorCode::InvalidInput,
-                    format!("FabricCapacityOperationEvents filter '{key}' 'values' must be a non-empty array of scalar values"),
-                    "Use 'values' as an array of strings, numbers, or booleans.",
+                    format!(
+                        "FabricCapacityOperationEvents filter '{key}' 'values' has the wrong type for operator type '{operator_type}'"
+                    ),
+                    format!("Set 'values' to a non-empty array of {expected_type} for '{operator_type}'."),
                 )
                 .into());
             }
@@ -1251,6 +1293,35 @@ mod tests {
             ]
         });
         assert!(validate_capacity_operation_filters(&props).is_ok());
+    }
+
+    #[test]
+    fn capacity_operation_filter_accepts_typed_string_and_number_operators() {
+        let props = json!({
+            "filters": [
+                {"operatorType": "StringContains", "key": "data.message", "values": ["error"]},
+                {"operatorType": "NumberInRange", "key": "data.value", "values": [[0, 10], [20, 30]]},
+                {"operatorType": "BoolEquals", "key": "data.enabled", "value": true}
+            ]
+        });
+        assert!(validate_capacity_operation_filters(&props).is_ok());
+    }
+
+    #[test]
+    fn capacity_operation_filter_rejects_wrong_typed_values() {
+        let err = validate_capacity_operation_filters(&json!({
+            "filters": [{"operatorType": "NumberGreaterThan", "key": "data.value", "value": null}]
+        }))
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("wrong type"), "got: {err}");
+
+        let err = validate_capacity_operation_filters(&json!({
+            "filters": [{"operatorType": "NumberInRange", "key": "data.value", "values": [[0, 10, 20]]}]
+        }))
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("wrong type"), "got: {err}");
     }
 
     #[test]
