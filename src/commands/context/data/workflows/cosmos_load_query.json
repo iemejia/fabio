@@ -1,0 +1,18 @@
+{
+  "name": "Cosmos DB NoSQL Load and Query",
+  "description": "Create a Cosmos DB database, add a container, bulk-import documents from JSONL, query them back with a NoSQL query, and export the container as clean JSONL.",
+  "prerequisites": ["Authenticated via fabio auth login", "Workspace on F4+ capacity (Cosmos DB requires F4+)", "A JSONL file with one JSON document per line whose field set includes the intended partition key"],
+  "steps": [
+    {"step_number": 1, "command": "fabio cosmos-db-database create --workspace $WS_ID --name \"AppData\"", "description": "Create the Cosmos DB database item (empty shell; no Azure Cosmos account needed).", "notes": "Create is a long-running op; the Cosmos database name equals this display name."},
+    {"step_number": 2, "command": "fabio cosmos-db-database create-container --workspace $WS_ID --id $COSMOS_ID --container products --partition-key /categoryId", "description": "Create a container. Fabric Cosmos is autoscale-only; fabio sends the autoscale max (--autoscale-max, default 1000 RU/s).", "notes": "Choose a partition-key path with high cardinality; a leading slash is added if omitted."},
+    {"step_number": 3, "command": "fabio cosmos-db-database import --workspace $WS_ID --id $COSMOS_ID --container products --source products.jsonl", "description": "Bulk-import documents (JSONL, JSON array, or stdin). UPSERT by default (idempotent, retry-safe).", "notes": "The partition-key value is auto-derived from each document via the container's partition-key path. Add --continue-on-error to skip malformed rows."},
+    {"step_number": 4, "command": "fabio cosmos-db-database query --workspace $WS_ID --id $COSMOS_ID --container products --query-text \"SELECT c.id, c.name, c.currentPrice FROM c WHERE c.currentPrice > @min\" --parameter min=100", "description": "Run a Cosmos NoSQL query. Cross-partition is automatic unless --partition-key is given; --parameter binds @params.", "notes": "Query text can also be @file or piped via stdin. Use --limit / --all for paging."},
+    {"step_number": 5, "command": "fabio cosmos-db-database export --workspace $WS_ID --id $COSMOS_ID --container products --output-file products_export.jsonl", "description": "Export the container as clean JSONL (Cosmos system fields _rid/_self/_etag/_attachments/_ts are stripped so export -> import roundtrips).", "notes": "Omit --output-file to stream raw JSONL to stdout for piping."}
+  ],
+  "tips": [
+    "Point-reads/deletes need the partition key: get-document/delete-document require --partition-key (Cosmos has no cross-partition point op).",
+    "create-document derives the partition key from the document unless --partition-key is given.",
+    "delete-container and delete-document are irreversible; preview with --dry-run first (agents get a destructive agentNotice).",
+    "Override the data-plane endpoint with --endpoint only if item-property resolution fails; the endpoint is the item's properties.serverFqdn."
+  ]
+}

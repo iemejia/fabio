@@ -220,6 +220,32 @@ fabio warehouse mcp-url --workspace <ws> --id <warehouse-id>
 
 That's it -- from sign-in to queryable Delta tables in 7 commands. Steps 8-14 add execution plans, live query monitoring, schema discovery, `COPY INTO` bulk load, remote-MCP execution, and the MCP server URL for external agents.
 
+### Cosmos DB NoSQL data plane
+
+Beyond item CRUD, `cosmos-db-database` speaks the Cosmos DB NoSQL data plane directly — create containers, bulk-import JSONL, run NoSQL queries, and export (no Azure Cosmos SDK required; auth is Entra ID on the `cosmos.azure.com` scope, endpoint resolved from the item):
+
+```bash
+# Create a container (Fabric Cosmos is autoscale-only; fabio sends the autoscale max)
+fabio cosmos-db-database create-container --workspace <ws> --id <cosmos-id> \
+  --container products --partition-key /categoryId
+
+# Bulk-import documents from JSONL (UPSERT by default; partition key auto-derived per doc)
+fabio cosmos-db-database import --workspace <ws> --id <cosmos-id> \
+  --container products --source products.jsonl
+
+# Run a NoSQL query (cross-partition by default; --parameter binds @params)
+fabio cosmos-db-database query --workspace <ws> --id <cosmos-id> --container products \
+  --query-text "SELECT c.id, c.name FROM c WHERE c.currentPrice > @min" --parameter min=100
+
+# Single-document CRUD + export to clean JSONL (strips Cosmos system fields)
+fabio cosmos-db-database get-document --workspace <ws> --id <cosmos-id> \
+  --container products --document-id p1 --partition-key electronics
+fabio cosmos-db-database export --workspace <ws> --id <cosmos-id> \
+  --container products --output-file products_export.jsonl
+```
+
+`delete-container` and `delete-document` are irreversible — preview with `--dry-run` first (agents receive a destructive `agentNotice`). Cosmos DB requires F4+ capacity.
+
 ## Output Formats
 
 ```bash

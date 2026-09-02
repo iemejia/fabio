@@ -212,7 +212,9 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 ## See also
 - fabio context persona app-developer
 - fabio context workflow data-agent-setup
+- fabio context workflow cosmos-load-query
 - fabio context examples data_agent query
+- fabio context examples cosmos_db_database import
 - fabio context disambiguate sql-endpoint
 - fabio context blueprint app-backend
 - fabio context blueprint conversational-analytics

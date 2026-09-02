@@ -2786,3 +2786,68 @@ tests:
       - type: llm-rubric
         value: "The response suggests 'fabio warehouse query --via-mcp' (or 'sql-endpoint query --via-mcp'), explaining it routes the T-SQL through the remote Fabric Data Warehouse MCP server using the Fabric token — so it avoids the separate database.windows.net SQL token and outbound TCP 1433. It may note values come back as strings (CSV) and that native TDS is richer (plans/insights)."
         metric: warehouse-via-mcp-routing
+
+  # ============================================================
+  # COSMOS DB — NoSQL DATA PLANE (issue #112)
+  # ============================================================
+
+  - description: "Cosmos: bulk import documents from JSONL"
+    vars:
+      user_query: "Bulk load the documents in products.jsonl into the products container of my Cosmos DB database cdb-1 in workspace ws-1"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('cosmos-db-database import')
+        metric: cosmos-import-command
+      - type: icontains
+        value: "--container"
+        metric: cosmos-import-container
+      - type: icontains
+        value: "--source"
+        metric: cosmos-import-source
+      - type: llm-rubric
+        value: "The response uses 'fabio cosmos-db-database import' with --container products and --source products.jsonl (or stdin). It does NOT invent a generic 'lakehouse load-table' or an Azure Cosmos SDK/az cosmosdb command for a Fabric Cosmos DB item."
+        metric: cosmos-import-routing
+
+  - description: "Cosmos: create a container with a partition key"
+    vars:
+      user_query: "Create a container named orders partitioned by customerId in my Fabric Cosmos DB database cdb-1"
+    assert:
+      - type: icontains
+        value: "cosmos-db-database create-container"
+        metric: cosmos-create-container-command
+      - type: icontains
+        value: "--partition-key"
+        metric: cosmos-create-container-pk
+      - type: llm-rubric
+        value: "The response uses 'fabio cosmos-db-database create-container' with --container orders and --partition-key customerId (a leading slash like /customerId is acceptable). It does not attempt to set a manual/fixed throughput, since Fabric Cosmos is autoscale-only."
+        metric: cosmos-create-container-routing
+
+  - description: "Cosmos: run a NoSQL query with a parameter"
+    vars:
+      user_query: "Query the products container in Cosmos DB database cdb-1 for items priced over 100"
+    assert:
+      - type: icontains
+        value: "cosmos-db-database query"
+        metric: cosmos-query-command
+      - type: javascript
+        value: |
+          output.includes('--query-text') && !output.includes('--query ')
+        metric: cosmos-query-uses-query-text-not-global-query
+      - type: llm-rubric
+        value: "The response uses 'fabio cosmos-db-database query' with --query-text carrying a Cosmos NoSQL SELECT (e.g. SELECT * FROM c WHERE c.price > 100 or a parameterized @min via --parameter). It uses --query-text, NOT the global --query (JMESPath) flag, for the NoSQL query."
+        metric: cosmos-query-routing
+
+  - description: "Cosmos: delete a document is irreversible"
+    vars:
+      user_query: "Delete document p1 (partition key electronics) from the products container in Cosmos DB database cdb-1"
+    assert:
+      - type: icontains
+        value: "cosmos-db-database delete-document"
+        metric: cosmos-delete-document-command
+      - type: icontains
+        value: "--partition-key"
+        metric: cosmos-delete-document-pk
+      - type: llm-rubric
+        value: "The response uses 'fabio cosmos-db-database delete-document' with --document-id p1 and --partition-key electronics (a point delete requires the partition key). Ideally it notes the delete is irreversible and/or suggests --dry-run to preview first."
+        metric: cosmos-delete-document-routing
