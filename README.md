@@ -81,21 +81,22 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 
 ### How fabio avoids the chicken-and-egg problem
 
-A Fabric item's definition often references *another* item's environment-specific GUID — e.g. a Semantic Model's Direct Lake connection or a Notebook's default lakehouse points at a Lakehouse ID that only exists once the Lakehouse is created in the target workspace. On a **first deploy to an empty workspace** that ID does not exist yet, so the reference cannot be filled in ahead of time. This is the classic "chicken-and-egg" problem of Fabric CI/CD.
+A Fabric item's definition often references *another* item — e.g. a Semantic Model's Direct Lake connection or a Notebook's default lakehouse points at a Lakehouse that only gets its real per-workspace GUID once it is created in the target workspace. On a **first deploy to an empty workspace** that GUID does not exist yet, so the reference cannot be filled in ahead of time. This is the classic "chicken-and-egg" problem of Fabric CI/CD.
 
-**How `fabric-cicd` handles it:** its `$items.<Type>.<Name>.$id` placeholder is resolved by querying the **live target workspace** *before* publishing. On a brand-new workspace that query returns nothing, so parameterization fails. The documented workaround is a **two-phase deploy** — a first run that creates only the dependency items (Lakehouse, Ontology, …), then a second run that resolves their now-existing IDs and deploys everything else. You have to split your pipeline into two calls and know which types to seed first.
+In the Fabric Git-integration format, such references are stored as the *referenced item's **logical ID*** (the stable, environment-independent `config.logicalId` in its `.platform`), not its per-workspace GUID. On deploy, each logical-ID reference must be rewritten to the deployed item's real GUID in the target workspace.
 
-**How fabio handles it:** fabio needs **no two-phase hack**. `deploy apply` orders creates/updates by a topological item-type priority (`DEPLOY_ORDER`, aligned 1:1 with fabric-cicd's serial publish order) and, as each item is created, records its freshly-assigned GUID in an in-run map. When a later item's `$items.Type.Name.id` is resolved, the dependency has already been created **in the same run**, so the reference resolves against the real target-workspace GUID — in a single pass, even against a completely empty workspace. The same map is seeded with the GUIDs of pre-existing items being updated/skipped, so cross-references also resolve on incremental re-deploys.
+**How `fabric-cicd` handles the raw-GUID case:** when a raw GUID must be injected (e.g. a Lakehouse GUID into a Variable Library value set), fabric-cicd's `parameter.yml` `$items.<Type>.<Name>.$id` placeholder is resolved by querying the **live target workspace** *before* publishing. On a brand-new workspace that query returns nothing, so it fails. The documented workaround is a **two-phase deploy** — a first run that creates only the dependency items (Lakehouse, Ontology, …), then a second run that resolves their now-existing GUIDs and deploys everything else. You have to split your pipeline into two calls and know which types to seed first.
+
+**How fabio handles it:** fabio needs **no two-phase hack**. `deploy apply` orders creates/updates by a topological item-type priority (`DEPLOY_ORDER`, aligned 1:1 with fabric-cicd's serial publish order) and, as each item is created, records its freshly-assigned GUID in an in-run `logicalId → deployed-GUID` map. When a later dependent item is deployed, `resolve_logical_ids_in_payload` rewrites its logical-ID references using the dependencies **already created in the same run** — so cross-item references resolve in a single pass, even against a completely empty workspace. The map is also seeded with the GUIDs of pre-existing items being updated/skipped, so references resolve on incremental re-deploys too.
 
 ```bash
 # One command. The Lakehouse is created first (topological order); its new GUID is
-# recorded and used to resolve the Semantic Model / Notebook / Variable Library
-# $items.Lakehouse.PatternsLakehouse.id references later in the SAME run.
-fabio deploy apply --source ./export --workspace "Production (empty)" \
-  --parameters ./parameters.json --env prod
+# recorded and used to rewrite the Semantic Model / Notebook / Variable Library
+# logical-ID references to it later in the SAME run.
+fabio deploy apply --source ./export --workspace "Production (empty)" --env prod
 ```
 
-> Only the `--strategy bulk` path (a single additive `bulkImportDefinitions` batch) cannot resolve `$items` mid-batch, because every item in the batch is created at once. The default per-item strategy — and therefore the general recommendation for first deploys with cross-item references — resolves them in one pass.
+> Only the `--strategy bulk` path (a single additive `bulkImportDefinitions` batch) cannot resolve these references mid-batch, because every item in the batch is created at once — so it rejects interdependent items with `DependenciesCouldNotBeResolved`. The default per-item strategy — and therefore the general recommendation for first deploys with cross-item references — resolves them in one pass. (fabric-cicd's `$items` *parameter* form is a separate construct; fabio resolves cross-item references via Fabric logical IDs.)
 
 ## Design Principles
 
