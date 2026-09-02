@@ -368,7 +368,7 @@ fn validate_reference_lakehouse_source(props: &Value) -> Result<()> {
         .into());
     }
     let segments: Vec<&str> = url.path_segments().into_iter().flatten().collect();
-    if segments.len() < 5 || segments[2] != "Tables" {
+    if segments.len() != 5 || segments[2] != "Tables" {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
             "ReferenceLakehouse absoluteOneLakePath must identify a Delta table",
@@ -653,20 +653,34 @@ pub(super) async fn add_operator(
                 format!("Valid operator types: {}", OPERATOR_TYPES.join(", ")),
             )
         })?;
-    if matches!(operator_type, "Join" | "Union") && input_nodes.len() < 2 {
-        return Err(FabioError::with_hint(
-            ErrorCode::InvalidInput,
-            format!("{operator_type} requires at least two --input-node values"),
-            format!(
-                "Repeat the flag, for example: --input-node streaming-input --input-node {}",
-                if operator_type == "Join" {
-                    "reference-input"
-                } else {
-                    "second-stream"
-                }
-            ),
-        )
-        .into());
+    match operator_type {
+        "Join" if input_nodes.len() != 2 => {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "Join requires exactly two --input-node values",
+                "Repeat the flag exactly twice, for example: --input-node streaming-input --input-node reference-input",
+            )
+            .into());
+        }
+        "Union" if input_nodes.len() < 2 => {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "Union requires at least two --input-node values",
+                "Repeat the flag, for example: --input-node streaming-input --input-node second-stream",
+            )
+            .into());
+        }
+        "Filter" | "ManageFields" | "Aggregate" | "GroupBy" | "Expand"
+            if input_nodes.len() != 1 =>
+        {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("{operator_type} requires exactly one --input-node value"),
+                "Pass a single --input-node, for example: --input-node streaming-input",
+            )
+            .into());
+        }
+        _ => {}
     }
 
     let props: Value = match properties {

@@ -360,6 +360,35 @@ fn agent_format_mcp_includes_required_params() {
 }
 
 #[test]
+fn agent_format_mcp_repeatable_flag_is_array_schema() {
+    // `eventstream add-operator --input-node` is repeatable (clap Vec<String> / Append
+    // action); MCP clients need an array-typed parameter to supply multiple input nodes
+    // (e.g. for Join/Union), not a scalar string.
+    let assert = fabio()
+        .args([
+            "context",
+            "agent",
+            "--format",
+            "mcp",
+            "--group",
+            "eventstream",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    let tools = json["data"]["tools"].as_array().unwrap();
+    let add_operator_tool = tools
+        .iter()
+        .find(|t| t["name"] == "fabio_eventstream_add_operator")
+        .expect("should have add-operator tool");
+    let input_node = &add_operator_tool["inputSchema"]["properties"]["input_node"];
+    assert_eq!(input_node["type"], "array");
+    assert_eq!(input_node["items"]["type"], "string");
+}
+
+#[test]
 fn agent_format_openai_emits_functions_array() {
     let assert = fabio()
         .args([

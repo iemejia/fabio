@@ -107,7 +107,10 @@
         "description": "Bulk-create tags",
         "flags": {
           "--name": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Tag display name (repeatable). Convenience for the common case — builds the `{\"createTagsRequest\":[{\"displayName\":...}]}` body for you"
           },
           "--file": {
@@ -539,7 +542,10 @@
             "description": "Domain ID"
           },
           "--workspace-ids": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Workspace IDs (comma-separated)"
           }
         },
@@ -555,7 +561,10 @@
             "description": "Domain ID"
           },
           "--workspace-ids": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Workspace IDs (comma-separated)"
           }
         },
@@ -651,7 +660,10 @@
             "description": "Domain ID"
           },
           "--capacity-ids": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Capacity IDs (comma-separated)"
           }
         },
@@ -667,7 +679,10 @@
             "description": "Domain ID"
           },
           "--principal-ids": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Principal IDs (comma-separated)"
           },
           "--principal-type": {
@@ -903,7 +918,10 @@
             "description": "Destination workspace ID or name"
           },
           "--item-types": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Only clone specific item types (comma-separated, e.g., \"Notebook,DataPipeline\")"
           },
           "--allow-pairing-by-name": {
@@ -1207,7 +1225,10 @@
             "description": "Workspace ID"
           },
           "--tag-ids": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Comma-separated tag IDs"
           }
         },
@@ -1226,7 +1247,10 @@
             "description": "Workspace ID"
           },
           "--tag-ids": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Comma-separated tag IDs"
           }
         },
@@ -2151,7 +2175,10 @@
             "description": "Item ID"
           },
           "--tag-ids": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Comma-separated tag IDs"
           }
         },
@@ -2172,7 +2199,10 @@
             "description": "Item ID"
           },
           "--tag-ids": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Comma-separated tag IDs"
           }
         },
@@ -2271,7 +2301,10 @@
             "description": "Workspace ID"
           },
           "--ids": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Comma-separated item IDs to delete"
           }
         },
@@ -2310,7 +2343,10 @@
             "description": "Item ID"
           },
           "--paths": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Comma-separated paths to share (must start with `Files/` or `Tables/`)"
           },
           "--recipient-type": {
@@ -3911,7 +3947,10 @@
             "default": "true"
           },
           "--zorder": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Columns for Z-Order clustering (comma-separated)"
           }
         },
@@ -4651,7 +4690,10 @@
         "description": "Scan your Fabric tenant — build a relationship graph from workspace(s)",
         "flags": {
           "--workspace": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Workspace ID(s) or name(s) to scan (repeatable)"
           },
           "--deep": {
@@ -5511,7 +5553,10 @@
             "description": "Warehouse ID"
           },
           "--actions": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Comma-separated list of audit actions and groups"
           }
         },
@@ -6237,7 +6282,10 @@
             "description": "Retention days (0 = indefinite)"
           },
           "--audit-actions": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Audit actions and groups (comma-separated)"
           },
           "--predicate-expression": {
@@ -6814,7 +6862,10 @@
             "description": "Retention days (0 = indefinite)"
           },
           "--audit-actions": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Audit actions and groups (comma-separated)"
           },
           "--predicate-expression": {
@@ -6839,7 +6890,10 @@
             "description": "SQL endpoint ID"
           },
           "--actions": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Audit actions and groups (comma-separated)"
           }
         },
@@ -8392,11 +8446,17 @@
             "description": "Entity type name (e.g. `Product`)"
           },
           "--property": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "A typed property as `name:type` (repeatable). Types: String, Long, `BigInt`, Double, Decimal, Boolean, `DateTime`, Any (aliases accepted)"
           },
           "--key": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Mark a property (by name) as an identifier / key (repeatable)"
           }
         },
@@ -9024,7 +9084,10 @@
             "description": "Spark runtime version to set (e.g. \"1.3\" for Spark 3.5 [current default], \"2.0\" for Spark 4.1 / Delta 4.2 — GA but opt-in until it becomes the default ~late Sep 2026). Merged into the existing staging compute (other fields preserved)"
           },
           "--spark-property": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Spark configuration property to set as KEY=VALUE (repeatable). Merged into existing sparkProperties. E.g. --spark-property spark.native.enabled=true"
           }
         },
@@ -9561,7 +9624,10 @@
             "description": "Reset all copy job entities (mutually exclusive with --entity-ids)"
           },
           "--entity-ids": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Comma-separated list of entity IDs to reset (mutually exclusive with --all-entities)"
           }
         },
@@ -10304,7 +10370,10 @@
             "description": "Category / axis / legend field (Table.Column)"
           },
           "--measure": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Value field(s), repeatable: Table.Column (auto-Sum), Sum(Table.Column), Avg/Min/Max/Count/CountNonNull(…), or Measure(Table.Name)"
           },
           "--x": {
@@ -10717,12 +10786,18 @@
             "description": "Semantic model ID"
           },
           "--measure": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "required": true,
             "description": "Measure name to evaluate (repeatable)"
           },
           "--group-by": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Group-by column as `Table.Column` (repeatable; omit for a single-row total)"
           },
           "--top": {
@@ -11925,7 +12000,10 @@
             "description": "Hierarchy name (must be unique in the table)"
           },
           "--level": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "required": true,
             "description": "A level, top-to-bottom. Repeat for each level. Forms: \"Column\", \"LevelName=Column\", or \"LevelName:Column\""
           }
@@ -13524,7 +13602,7 @@
         "returns": "object"
       },
       "get-source-connection": {
-        "description": "Get a source endpoint connection (`CustomEndpoint` for custom sources; `KafkaEndpoint` for Cribl/SAP Datasphere)",
+        "description": "Get a source endpoint connection (`CustomEndpoint` for custom sources; `KafkaEndpoint` for Cribl/SAP Datasphere). The response contains credentials (access keys or connection strings) and must not be logged",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -13762,7 +13840,10 @@
             "description": "Operator type: `Filter`, `ManageFields`, `Aggregate`, `GroupBy`, `Join`, `Union`, `Expand`"
           },
           "--input-node": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "required": true,
             "description": "Input node name; repeat for multi-input operators such as Join and Union"
           },
@@ -15556,7 +15637,10 @@
             "description": "Action to trigger: email or teams (typed mode)"
           },
           "--recipients": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Recipient email(s), comma-separated (typed mode)"
           },
           "--subject": {
@@ -18538,7 +18622,10 @@
             "description": "Public function URL (from the portal; must be an *.fabric.microsoft.com HTTPS URL)"
           },
           "--parameter": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Function input as name=value (repeatable). Values are sent as JSON strings"
           },
           "--body": {
@@ -20733,7 +20820,10 @@
             "description": "Destination file path to write the exported report to"
           },
           "--parameter": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Report parameter as name=value (repeatable)"
           },
           "--timeout": {
@@ -22727,7 +22817,10 @@
             "description": "Commit all pending changes"
           },
           "--items": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Selective commit: comma-separated item object IDs"
           },
           "--workspace-head": {
@@ -23352,7 +23445,10 @@
             "description": "Optional description"
           },
           "--stage": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "A pipeline stage (repeatable, ordered). Each value is a stage display name, optionally suffixed with `:public` to make it a public stage (e.g. `--stage Development --stage Test --stage Production:public`)"
           },
           "--stages-json": {
@@ -23732,7 +23828,10 @@
             "description": "Domain ID"
           },
           "--workspaces": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Workspace IDs to assign (comma-separated or repeated)"
           }
         },
@@ -23751,7 +23850,10 @@
             "description": "Domain ID"
           },
           "--workspaces": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Workspace IDs to unassign (comma-separated or repeated)"
           }
         },
@@ -23767,7 +23869,10 @@
             "description": "Domain ID"
           },
           "--capacities": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Capacity IDs whose workspaces should be assigned (comma-separated)"
           }
         },
@@ -23783,7 +23888,10 @@
             "description": "Domain ID"
           },
           "--principals": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Principal IDs whose workspaces should be assigned (comma-separated)"
           },
           "--principal-type": {
@@ -23818,7 +23926,10 @@
             "description": "Target workspace ID or name"
           },
           "--item-types": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Only deploy specific item types (comma-separated)"
           },
           "--delete-orphans": {
@@ -23858,19 +23969,31 @@
             "description": "Exclude items whose display name matches this regex"
           },
           "--include-items": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Only include specific items (format: \"Name.Type\", comma-separated)"
           },
           "--include-folders": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Only include items in these folder paths (comma-separated, e.g., \"/ETL,/Reports\")"
           },
           "--exclude-folders": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Exclude items in these folder paths (comma-separated)"
           },
           "--allow-delete-types": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Item types permitted for deletion (comma-separated; protects Lakehouse, Warehouse, etc.)"
           },
           "--no-folders": {
@@ -23912,7 +24035,10 @@
             "description": "Apply a previously saved plan file"
           },
           "--item-types": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Only deploy specific item types (comma-separated)"
           },
           "--delete-orphans": {
@@ -23961,19 +24087,31 @@
             "description": "Exclude items whose display name matches this regex"
           },
           "--include-items": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Only include specific items (format: \"Name.Type\", comma-separated)"
           },
           "--include-folders": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Only include items in these folder paths (comma-separated)"
           },
           "--exclude-folders": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Exclude items in these folder paths (comma-separated)"
           },
           "--allow-delete-types": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Item types permitted for deletion (comma-separated)"
           },
           "--no-folders": {
@@ -24038,7 +24176,10 @@
             "description": "Output directory to write .platform items"
           },
           "--item-types": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Only export specific item types (comma-separated)"
           },
           "--overwrite": {
@@ -24933,7 +25074,10 @@
             "description": "Expose mutation tools (create, update, delete, run, etc.). Without this flag, only read-only tools are visible"
           },
           "--allow-tool": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "description": "Only expose tools matching these patterns (comma-separated). Patterns match tool name prefixes: \"workspace\" matches all workspace tools. Without this flag, all tools (subject to --allow-write) are exposed"
           },
           "--list-tools": {

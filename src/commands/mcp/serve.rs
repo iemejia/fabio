@@ -521,6 +521,14 @@ fn build_json_schema_params(cmd_val: &Value) -> (Map<String, Value>, Vec<String>
                         prop.insert("enum".to_owned(), values.clone());
                     }
                 }
+                "array" => {
+                    prop.insert("type".to_owned(), json!("array"));
+                    let items = obj
+                        .get("items")
+                        .cloned()
+                        .unwrap_or_else(|| json!({"type": "string"}));
+                    prop.insert("items".to_owned(), items);
+                }
                 _ => {
                     prop.insert("type".to_owned(), json!("string"));
                 }

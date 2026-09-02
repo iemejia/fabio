@@ -118,7 +118,7 @@ Manage eventstreams (real-time data ingestion)
 | `fabio eventstream get-destination` | no | Get details of a destination |
 | `fabio eventstream get-destination-connection` | no | Get a destination endpoint connection (`CustomEndpoint` or future endpoint shape) |
 | `fabio eventstream get-source` | no | Get details of a source |
-| `fabio eventstream get-source-connection` | no | Get a source endpoint connection (`CustomEndpoint` for custom sources; `KafkaEndpoint` for Cribl/SAP Datasphere) |
+| `fabio eventstream get-source-connection` | no | Get a source endpoint connection (`CustomEndpoint` for custom sources; `KafkaEndpoint` for Cribl/SAP Datasphere). The response contains credentials (access keys or connection strings) and must not be logged |
 | `fabio eventstream get-topology` | no | Get the topology of an eventstream |
 | `fabio eventstream list` | no | List eventstreams in a workspace |
 | `fabio eventstream list-components` | no | List available eventstream component types (sources, destinations, operators) |
