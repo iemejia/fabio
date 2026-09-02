@@ -24616,6 +24616,21 @@
           "--env": {
             "type": "string",
             "description": "Environment name to validate parameter lookups against"
+          },
+          "--pr-ready": {
+            "type": "bool",
+            "description": "Run environment-hygiene / PR-readiness checks (offline): assert definitions are bound to --expect-env and contain no other environment's IDs, and no stray variable-library value-set files remain. Replaces a hand-written \"check-pr-ready\" CI script"
+          },
+          "--expect-env": {
+            "type": "string",
+            "description": "(with --pr-ready) The environment the repo is expected to be bound to (e.g., \"dev\"). Every rule's value for this env must be present; every OTHER env's value must be absent"
+          },
+          "--allow-value-set": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "(with --pr-ready) Variable-library value-set file stems allowed to remain (comma-separated, e.g., \"Test,Prod\"). Any other valueSets/*.json is flagged"
           }
         },
         "mutates": false,
@@ -24623,6 +24638,33 @@
         "examples": [
           "fabio deploy validate --source ./fabric-items/"
         ]
+      },
+      "rebind": {
+        "description": "Rewrite environment-specific IDs in local definition files, in place (offline)",
+        "flags": {
+          "--source": {
+            "type": "string",
+            "required": true,
+            "description": "Source directory containing Fabric item definitions with .platform files"
+          },
+          "--parameters": {
+            "type": "string",
+            "required": true,
+            "description": "Parameter file with environment-keyed values (same format as deploy apply)"
+          },
+          "--from-env": {
+            "type": "string",
+            "required": true,
+            "description": "Environment the files are currently bound to (whose values are replaced)"
+          },
+          "--to-env": {
+            "type": "string",
+            "required": true,
+            "description": "Environment to rebind the files to (whose values are written in)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
       }
     }
   },

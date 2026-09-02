@@ -1286,7 +1286,7 @@ fn get_spark_pool_config<'a>(
 ///
 /// fabric-cicd semantics: the full match is preserved, but the content of
 /// group 1 is replaced with the new value.
-fn replace_capture_group(re: &Regex, text: &str, replacement: &str) -> String {
+pub(super) fn replace_capture_group(re: &Regex, text: &str, replacement: &str) -> String {
     let mut result = String::with_capacity(text.len());
     let mut last_end = 0;
 

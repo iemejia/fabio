@@ -46,7 +46,9 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 | Dry-run mode | No | `--dry-run` on all mutations |
 | Export from workspace | No | `deploy export` |
 | Local validation | No | `deploy validate` (no API calls needed) |
+| Branch-out ID rebinding | No (can't touch Git-synced feature workspaces) | `deploy rebind` rewrites env IDs in local files offline; `deploy validate --pr-ready` gates the PR |
 | Parameter scaffolding | No | `deploy init-params` (scans/diffs GUIDs automatically) |
+| Cross-item ID references on first deploy | Two-phase deploy required (`$items` queries the *live* workspace, which is empty on first deploy) | Single-pass — resolves `$items.Type.Name.id` mid-run as items are created (no two-phase hack) |
 | Variable library value sets | Auto-activate matching env | Same + `list-value-sets` + `activate-value-set` CLI |
 | Schedule export/apply | No | `deploy export` includes `.schedules`; `apply` creates them |
 | Workspace clone (bulk) | No | `workspace clone --source → --dest` (bulk APIs) |
@@ -65,6 +67,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 - **Self-correcting error hints** — every error includes a `hint` field with the exact corrected command, valid enum values, or the logical next step so agents can retry without consulting docs
 - **Self-improving** — when new Fabric REST APIs are detected, fabio auto-implements support for new commands and item types
 - **Terraform-like convergence** — re-running `deploy apply` on a synced workspace produces zero API calls
+- **Single-pass cross-item resolution** — `$items.Type.Name.id` references resolve *during* a single `deploy apply`, even to a brand-new empty workspace, because fabio records each item's freshly-created GUID as it goes (no two-phase deploy — see [How fabio avoids the chicken-and-egg problem](#how-fabio-avoids-the-chicken-and-egg-problem))
 - **Saved deployment plans** — `--out plan.json` then `apply --plan plan.json` (with staleness detection)
 - **Workspace folder management** — infers folder hierarchy, creates/moves/deletes automatically
 - **Workspace recycle-bin lifecycle** — list retained soft-deleted items, recover item trees, or permanently delete recoverable items with destructive dry-run signals
@@ -74,6 +77,24 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 - **Data orchestration** — `--post-run-item` triggers a pipeline or notebook after deployment to populate lakehouses
 - **Parallel execution** — bounded-concurrency async deployment (default 8 parallel ops per type)
 - **Profile management** — named profiles store default workspace, capacity, output format, and private link settings; switch contexts with `fabio profile use`
+
+### How fabio avoids the chicken-and-egg problem
+
+A Fabric item's definition often references *another* item's environment-specific GUID — e.g. a Semantic Model's Direct Lake connection or a Notebook's default lakehouse points at a Lakehouse ID that only exists once the Lakehouse is created in the target workspace. On a **first deploy to an empty workspace** that ID does not exist yet, so the reference cannot be filled in ahead of time. This is the classic "chicken-and-egg" problem of Fabric CI/CD.
+
+**How `fabric-cicd` handles it:** its `$items.<Type>.<Name>.$id` placeholder is resolved by querying the **live target workspace** *before* publishing. On a brand-new workspace that query returns nothing, so parameterization fails. The documented workaround is a **two-phase deploy** — a first run that creates only the dependency items (Lakehouse, Ontology, …), then a second run that resolves their now-existing IDs and deploys everything else. You have to split your pipeline into two calls and know which types to seed first.
+
+**How fabio handles it:** fabio needs **no two-phase hack**. `deploy apply` orders creates/updates by a topological item-type priority (`DEPLOY_ORDER`, aligned 1:1 with fabric-cicd's serial publish order) and, as each item is created, records its freshly-assigned GUID in an in-run map. When a later item's `$items.Type.Name.id` is resolved, the dependency has already been created **in the same run**, so the reference resolves against the real target-workspace GUID — in a single pass, even against a completely empty workspace. The same map is seeded with the GUIDs of pre-existing items being updated/skipped, so cross-references also resolve on incremental re-deploys.
+
+```bash
+# One command. The Lakehouse is created first (topological order); its new GUID is
+# recorded and used to resolve the Semantic Model / Notebook / Variable Library
+# $items.Lakehouse.PatternsLakehouse.id references later in the SAME run.
+fabio deploy apply --source ./export --workspace "Production (empty)" \
+  --parameters ./parameters.json --env prod
+```
+
+> Only the `--strategy bulk` path (a single additive `bulkImportDefinitions` batch) cannot resolve `$items` mid-batch, because every item in the batch is created at once. The default per-item strategy — and therefore the general recommendation for first deploys with cross-item references — resolves them in one pass.
 
 ## Design Principles
 

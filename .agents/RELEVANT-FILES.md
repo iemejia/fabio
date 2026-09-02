@@ -124,7 +124,8 @@
 - `src/commands/snowflake_database.rs`: list/show/create/update/delete/get-definition/update-definition (requires connection payload)
 - `src/commands/sql_endpoint.rs`: list/show/connection-string/query/plan/refresh-metadata/get-audit-settings/update-audit-settings/set-audit-actions + insights (queries-running/frequent/long-running/history)
 - `src/commands/anomaly_detector.rs`: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
-- `src/commands/deploy/mod.rs`: DeployCommand enum (plan/apply/export/init-params/validate); execute dispatch; workspace name resolution
+- `src/commands/deploy/mod.rs`: DeployCommand enum (plan/apply/export/init-params/validate/rebind); execute dispatch; workspace name resolution
+- `src/commands/deploy/rebind.rs`: `deploy rebind` (offline in-place env ID rewrite of local .platform files for Git-synced Branch-out workspaces) + `deploy validate --pr-ready` environment-hygiene checks (run_pr_ready_checks: foreign-env ID detection + stray value-set-file guard)
 - `src/commands/deploy/apply.rs`: execute_changeset, execute_post_hooks, Rename handling (PATCH + updateDefinition), build_resolution_map, resolve_logical_ids_in_payload
 - `src/commands/deploy/plan.rs`: build_changeset (two-pass with rename), validate_references, fetch_deployed_logical_id, compute_workspace_fingerprint
 - `src/commands/deploy/params.rs`: Parameter substitution: find_replace, key_value_replace, spark_pool, semantic_model_binding
@@ -222,6 +223,7 @@
 - `tests/e2e_managed_private_endpoint.rs`: Managed private endpoint tests
 - `tests/e2e_admin.rs`: Admin API tests (63 tests: listing, tag lifecycle, domain lifecycle, dry-run validations, sharing links, labels, external data shares)
 - `tests/e2e_deploy.rs`: Deploy plan/apply/export/validate tests (42 tests: create, update, rename, creationPayload, parameters, staleness, logical ID resolution, post-hooks, init-params, validate)
+- `tests/e2e_deploy_rebind.rs`: Offline (no-tenant) tests for `deploy rebind` (dry-run no-write, rewrite+reverse, same-env failure, dynamic-value skip) and `deploy validate --pr-ready` (foreign-env/stray-value-set failure, clean pass)
 - `tests/e2e_fabric_cicd_compat.rs`: fabric-cicd compatibility tests (11 tests: validate source directory, nested folders, workspace ID replacement, parameter substitution, selective filtering, config file YAML, init-params scan)
 - `tests/e2e_gateway.rs`: Gateway CRUD + role assignment + lifecycle tests
 - `tests/e2e_apache_airflow_job.rs`: Apache Airflow job CRUD + environment + file ops tests

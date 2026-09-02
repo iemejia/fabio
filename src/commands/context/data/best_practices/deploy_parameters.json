@@ -57,7 +57,8 @@
     "all_fallback": "_ALL_ (case-insensitive) acts as universal default when the specific environment name is not found",
     "creation_payload": "Parameter substitution also applies to creationPayload.json (creation-time config), not just definition parts",
     "hash_recomputation": "After substitution, content hashes are recomputed. This ensures idempotent skip detection uses the substituted values.",
-    "error_on_missing_env": "If $ENV:VAR_NAME references an unset variable, the deploy fails immediately with INVALID_INPUT error and a hint showing which variable to set"
+    "error_on_missing_env": "If $ENV:VAR_NAME references an unset variable, the deploy fails immediately with INVALID_INPUT error and a hint showing which variable to set",
+    "single_pass_item_resolution": "$items.Type.Name.id resolves in a SINGLE deploy apply pass, even to an empty workspace. Unlike fabric-cicd (which queries the live workspace before publish and needs a two-phase deploy on first run), fabio creates items in topological DEPLOY_ORDER and records each new GUID in an in-run map, so a Lakehouse created earlier resolves for a Semantic Model/Notebook/Variable Library later in the same run. The map is also seeded with existing items' GUIDs for incremental re-deploys. Exception: --strategy bulk cannot resolve $items mid-batch (all items are created at once); use the default per-item strategy for first deploys with cross-item references."
   },
   "what_agents_should_do": [
     "Use fabio deploy init-params to scaffold the parameters file — never write it from scratch",
@@ -66,6 +67,7 @@
     "Use $items.Type.Name.id when one item's definition references another item's deployed GUID",
     "Use _ALL_ as fallback when a value is the same across all environments",
     "Scope rules with item_type/item_name/file_path to avoid unintended replacements in large deployments",
-    "Run --dry-run first to verify substitutions produce the expected changeset"
+    "Run --dry-run first to verify substitutions produce the expected changeset",
+    "For Git-synced Branch-out feature workspaces (where 'deploy apply' must NOT be used), rewrite the same per-env values in the LOCAL files offline with 'deploy rebind --from-env <a> --to-env <b>', and gate the PR back to the shared branch with 'deploy validate --pr-ready --expect-env <shared>'"
   ]
 }

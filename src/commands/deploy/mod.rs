@@ -9,6 +9,7 @@ pub mod ordering;
 pub mod params;
 pub mod plan;
 pub mod platform;
+pub mod rebind;
 
 use std::path::{Path, PathBuf};
 
@@ -325,6 +326,50 @@ pub enum DeployCommand {
         /// Environment name to validate parameter lookups against
         #[arg(long, value_name = "NAME")]
         env: Option<String>,
+
+        /// Run environment-hygiene / PR-readiness checks (offline): assert definitions
+        /// are bound to --expect-env and contain no other environment's IDs, and no
+        /// stray variable-library value-set files remain. Replaces a hand-written
+        /// "check-pr-ready" CI script.
+        #[arg(long)]
+        pr_ready: bool,
+
+        /// (with --pr-ready) The environment the repo is expected to be bound to
+        /// (e.g., "dev"). Every rule's value for this env must be present; every OTHER
+        /// env's value must be absent.
+        #[arg(long, value_name = "NAME")]
+        expect_env: Option<String>,
+
+        /// (with --pr-ready) Variable-library value-set file stems allowed to remain
+        /// (comma-separated, e.g., "Test,Prod"). Any other valueSets/*.json is flagged.
+        #[arg(long, value_delimiter = ',', value_name = "NAMES")]
+        allow_value_set: Option<Vec<String>>,
+    },
+
+    /// Rewrite environment-specific IDs in local definition files, in place (offline).
+    ///
+    /// The offline counterpart to `deploy apply`'s parameter substitution. Use after
+    /// Fabric "Branch out" to rebind a Git-synced feature workspace's files (which must
+    /// NOT be pushed to via `deploy apply`). Swaps every `find_replace` rule's `--from-env`
+    /// literal value to its `--to-env` value. Reverse the two before opening a PR, then
+    /// verify with `deploy validate --pr-ready`.
+    #[command(display_order = 6)]
+    Rebind {
+        /// Source directory containing Fabric item definitions with .platform files
+        #[arg(long)]
+        source: PathBuf,
+
+        /// Parameter file with environment-keyed values (same format as deploy apply)
+        #[arg(long, value_name = "FILE")]
+        parameters: PathBuf,
+
+        /// Environment the files are currently bound to (whose values are replaced)
+        #[arg(long, value_name = "NAME")]
+        from_env: String,
+
+        /// Environment to rebind the files to (whose values are written in)
+        #[arg(long, value_name = "NAME")]
+        to_env: String,
     },
 }
 
@@ -504,7 +549,28 @@ pub async fn execute(cli: &Cli, client: &FabricClient, cmd: &DeployCommand) -> R
             source,
             parameters,
             env,
-        } => execute_validate(cli, source, parameters.as_deref(), env.as_deref()),
+            pr_ready,
+            expect_env,
+            allow_value_set,
+        } => {
+            if *pr_ready {
+                let (errors, warnings, checks) = rebind::run_pr_ready_checks(
+                    source,
+                    parameters.as_deref(),
+                    expect_env.as_deref(),
+                    allow_value_set.as_deref().unwrap_or(&[]),
+                )?;
+                rebind::render_pr_ready(cli, source, &errors, &warnings, &checks)
+            } else {
+                execute_validate(cli, source, parameters.as_deref(), env.as_deref())
+            }
+        }
+        DeployCommand::Rebind {
+            source,
+            parameters,
+            from_env,
+            to_env,
+        } => rebind::execute_rebind(cli, source, parameters, from_env, to_env),
     }
 }
 

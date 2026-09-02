@@ -68,6 +68,7 @@ Deploy item definitions from a local directory to a workspace
 | `fabio deploy export` | no | Export workspace item definitions to a local directory |
 | `fabio deploy init-params` | no | Generate a parameters.json scaffold by scanning or diffing exported definitions |
 | `fabio deploy plan` | no | Preview what would be deployed (create/update/delete/skip) |
+| `fabio deploy rebind` | yes | Rewrite environment-specific IDs in local definition files, in place (offline) |
 | `fabio deploy validate` | no | Validate source directory locally (no API calls). Checks .platform files, item types, duplicate names/logical IDs, cross-references, and parameters |
 
 ## Must / Prefer / Avoid

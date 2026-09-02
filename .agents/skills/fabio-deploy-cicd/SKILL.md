@@ -18,6 +18,8 @@ license: MIT
 - Managing base/branch workspace relations as an independent resource (git relation list/create/delete), separate from the branch-out flow.
 - Managing deployment pipelines (dev/test/prod stages).
 - Managing variable libraries and activating environment value sets.
+- Branch-out development: after Fabric 'Branch out' creates a Git-synced feature workspace, rebind the local definition files from dev IDs to the feature workspace's IDs with 'deploy rebind' (NOT 'deploy apply' — that would drift a Git-synced workspace).
+- Gating a PR back to the shared branch: 'deploy validate --pr-ready' asserts the repo is rebound to the expected env and carries no foreign-env IDs or stray value-set files.
 
 ## When NOT to use (route elsewhere)
 - Porting from Synapse/Databricks/HDInsight -> use the migration-engineer persona + migration workflows.
@@ -36,6 +38,7 @@ Deploy item definitions from a local directory to a workspace
 | `fabio deploy export` | no | Export workspace item definitions to a local directory |
 | `fabio deploy init-params` | no | Generate a parameters.json scaffold by scanning or diffing exported definitions |
 | `fabio deploy plan` | no | Preview what would be deployed (create/update/delete/skip) |
+| `fabio deploy rebind` | yes | Rewrite environment-specific IDs in local definition files, in place (offline) |
 | `fabio deploy validate` | no | Validate source directory locally (no API calls). Checks .platform files, item types, duplicate names/logical IDs, cross-references, and parameters |
 
 ### fabio git
@@ -117,6 +120,8 @@ Manage variable libraries (shared variables)
 - --strategy: default (per-item, content-hash skip) | bulk (fast initial deploy to an empty, non-Git workspace) | sequential (debugging).
 - git relation (WorkspaceRelations, preview) manages base/branch links between workspaces as a standalone resource — distinct from 'git branch-out', which creates+connects a feature workspace in one flow.
 - Raw Power BI Desktop PBIP folders deploy directly: a '<name>.Report' / '<name>.SemanticModel' folder with NO '.platform' sidecar is discovered by folder-name suffix (Report needs definition.pbir, SemanticModel needs definition.pbism). Such items have no logicalId, so rename tracking is off (plan warns 'no logicalId') and they match deployed items by (type, name); a v2-PBIR report still rebinds to its model by name.
+- 'deploy apply' resolves cross-item $items.Type.Name.id references in a SINGLE pass even to an EMPTY workspace (it creates items in topological order and records each new GUID mid-run) — unlike fabric-cicd, which queries the live workspace before publish and needs a two-phase deploy on first run. Exception: --strategy bulk creates all items at once and cannot resolve $items mid-batch; use the default per-item strategy for first deploys with cross-item references.
+- 'deploy rebind' is OFFLINE (no API calls): it rewrites the from-env literal values to the to-env values directly in the on-disk .platform files. It only handles LITERAL / $ENV: values; deploy-time dynamics ($workspace.id, $items.Type.Name.id) are skipped with a warning (those are resolved by 'deploy apply' against the live workspace). Reverse from/to before opening a PR.
 
 ## Troubleshooting
 | Symptom | Fix |
@@ -125,6 +130,8 @@ Manage variable libraries (shared variables)
 | Re-running apply keeps changing the same items (or --verify reports 'definition content differs') | The .platform part is excluded from the content hash; a real convergent deploy should show 0 changes. Causes: (1) portal edits since deploy, or (2) the API NORMALIZES hand-authored content on first ingest (notebooks especially) so the source hash != deployed hash. Fix (2) by re-exporting after the first deploy ('deploy export') and deploying the canonical form — it then converges. Verify with 'deploy apply --verify'. |
 | bulk strategy fails on a Git-connected workspace | Bulk import requires no Git integration; use --strategy default. |
 | Connections resolve to TODO in params | Run deploy init-params --resolve-connections and fill in the correct connection IDs before apply. |
+| PR to dev blocked / feature workspace GUIDs leaked into the shared branch | Run 'deploy rebind --from-env <feature> --to-env dev' to restore dev IDs, delete any feature value-set files, then confirm with 'deploy validate --pr-ready --expect-env dev --allow-value-set Test,Prod'. |
+| Semantic model / notebook in a branched-out workspace still points at the dev lakehouse | 'deploy apply' cannot target a Git-synced Branch-out workspace (causes drift). Rewrite the local files instead: 'deploy rebind --from-env dev --to-env <feature>', commit, then sync via 'git pull' (Update from Git). |
 
 ## Safety
 - --force-all overwrites ALL matched items regardless of content changes — irreversible; run 'deploy plan' first.

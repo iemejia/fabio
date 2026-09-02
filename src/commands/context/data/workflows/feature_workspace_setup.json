@@ -19,6 +19,8 @@
     "Use fabio git checkout --workspace <WS> --branch <new-branch> to switch an existing workspace to a different branch.",
     "For recycled workspaces: use 'fabio git checkout' to switch branches instead of creating new workspaces.",
     "Post-sync automation: if items need rebinding after Update from Git, script it with fabio commands (e.g., activate value sets, configure default lakehouses).",
+    "Branch-out rebinding: after Fabric 'Branch out' (a Git-synced feature workspace), hardcoded dev workspace/lakehouse GUIDs remain in the local files (Semantic Model Direct Lake URL, Notebook default_lakehouse). Rewrite them offline with 'fabio deploy rebind --source <DIR> --parameters params.json --from-env dev --to-env <feature>' — do NOT use 'deploy apply' on a Git-synced workspace (it causes drift).",
+    "Before opening a PR back to dev, revert the rebind ('fabio deploy rebind ... --from-env <feature> --to-env dev') and gate it with 'fabio deploy validate --source <DIR> --pr-ready --parameters params.json --expect-env dev --allow-value-set Test,Prod' — it fails if any feature-env GUID or stray value-set file remains.",
     "For multi-workspace solutions: connect all workspaces to the same branch with different --directory values (e.g., /workspace/staging, /workspace/presentation).",
     "Azure DevOps example: fabio git connect --workspace $WS --provider azure-devops --org myorg --project myproject --repo myrepo --branch feature/xyz --directory /workspace"
   ]
