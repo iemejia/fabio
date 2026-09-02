@@ -1928,3 +1928,30 @@ fn warehouse_update_audit_settings_predicate_dry_run() {
         "database_principal_name <> 'dbo'"
     );
 }
+
+#[test]
+fn warehouse_queries_running_follow_flags_require_follow() {
+    // Offline: the --follow-only flags are rejected before any network call.
+    let assert = fabio()
+        .args([
+            "warehouse",
+            "queries-running",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--interval",
+            "3",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let json: serde_json::Value = serde_json::from_str(stderr.trim()).unwrap();
+    assert_eq!(json["error"]["code"], "INVALID_INPUT");
+    assert!(
+        json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("--follow")
+    );
+}

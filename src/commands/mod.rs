@@ -27,6 +27,7 @@ pub mod event_schema_set;
 pub mod eventhouse;
 pub mod eventstream;
 pub mod feedback;
+pub mod follow;
 pub mod gateway;
 pub mod git;
 pub mod graph_model;

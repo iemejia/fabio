@@ -55,7 +55,7 @@ Manage warehouses and run SQL queries
 | `fabio warehouse queries-history` | no | List completed query history (from `queryinsights.exec_requests_history`) |
 | `fabio warehouse queries-kill` | yes | Kill a running query session by session ID |
 | `fabio warehouse queries-long-running` | no | List long-running queries (from `queryinsights.long_running_queries`) |
-| `fabio warehouse queries-running` | no | List currently running queries on a warehouse |
+| `fabio warehouse queries-running` | no | List currently running queries on a warehouse (add --follow to watch live) |
 | `fabio warehouse query` | yes | Execute a SQL query against a warehouse or SQL endpoint |
 | `fabio warehouse restore-to-point` | yes | Restore a warehouse to a restore point |
 | `fabio warehouse set-audit-actions` | yes | Set audit actions and groups for a warehouse |
@@ -162,6 +162,7 @@ Manage warehouse snapshots
 - Assuming query monitoring DMVs behave identically to SQL Server (several columns/views differ on Fabric — see gotchas).
 
 ## Key gotchas
+- Watch active T-SQL queries LIVE with 'warehouse queries-running --follow': fabio polls sys.dm_exec_requests on --interval (default 5s) and streams NDJSON (one snapshot per cycle), ALWAYS bounded by --max-duration (default 60s), the global --limit, or Ctrl-C, so it never hangs an agent/CI. --dedup-column <col> (e.g. session_id) emits only rows new since the last cycle. Pair with 'queries-kill' to spot and stop a runaway. Same agent-safe bounded-follow model as 'eventhouse'/'kql-database query --follow' (there is no server-push stream — it's client-side polling that always terminates).
 - A warehouse snapshot is a read-only point-in-time T-SQL surface with its OWN data plane: 'warehouse-snapshot query/list-tables/describe-table/plan/connection-string' run against the snapshot's SQL endpoint (same TDS path as warehouse, resolved via the snapshot's properties.connectionString). A snapshot query can NEVER mutate (it's read-only), so it is safe under --readonly. Equivalent to 'warehouse query --id <snapshotId>' (the smart resolver also handles snapshots), but discoverable on the snapshot's own group.
 - sys.dm_exec_requests has no login_name column on Fabric (it lives in sys.dm_exec_sessions).
 - sys.dm_db_stats_properties is NOT supported on Lakehouse SQL endpoints.

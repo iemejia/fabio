@@ -5711,7 +5711,7 @@
         "destructive": true
       },
       "queries-running": {
-        "description": "List currently running queries on a warehouse",
+        "description": "List currently running queries on a warehouse (add --follow to watch live)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -5722,10 +5722,26 @@
             "type": "string",
             "required": true,
             "description": "Warehouse or Lakehouse ID"
+          },
+          "--follow": {
+            "type": "bool",
+            "description": "Continuously poll and stream NDJSON until `--max-duration`, `--limit`, or Ctrl-C (watch active queries live). The command always terminates"
+          },
+          "--interval": {
+            "type": "string",
+            "description": "Seconds between polls in `--follow` mode (default 5)"
+          },
+          "--max-duration": {
+            "type": "string",
+            "description": "Total seconds to follow before stopping — the agent-safety bound (default 60)"
+          },
+          "--dedup-column": {
+            "type": "string",
+            "description": "In `--follow`, only emit queries whose value in this column exceeds the max seen so far (e.g. `session_id`); without it each cycle re-emits the full snapshot (watch semantics)"
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "list"
       },
       "queries-frequent": {
         "description": "List frequently-run queries (from `queryinsights.frequently_run_queries`)",

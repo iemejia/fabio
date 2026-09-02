@@ -423,7 +423,7 @@ pub enum WarehouseCommand {
     },
 
     // ── Query Insights ───────────────────────────────────────────────────
-    /// List currently running queries on a warehouse
+    /// List currently running queries on a warehouse (add --follow to watch live)
     #[command(display_order = 40)]
     QueriesRunning {
         /// Workspace ID
@@ -433,6 +433,25 @@ pub enum WarehouseCommand {
         /// Warehouse or Lakehouse ID
         #[arg(long)]
         id: String,
+
+        /// Continuously poll and stream NDJSON until `--max-duration`, `--limit`,
+        /// or Ctrl-C (watch active queries live). The command always terminates.
+        #[arg(long)]
+        follow: bool,
+
+        /// Seconds between polls in `--follow` mode (default 5)
+        #[arg(long)]
+        interval: Option<u64>,
+
+        /// Total seconds to follow before stopping — the agent-safety bound (default 60)
+        #[arg(long)]
+        max_duration: Option<u64>,
+
+        /// In `--follow`, only emit queries whose value in this column exceeds the
+        /// max seen so far (e.g. `session_id`); without it each cycle re-emits the
+        /// full snapshot (watch semantics)
+        #[arg(long)]
+        dedup_column: Option<String>,
     },
     /// List frequently-run queries (from `queryinsights.frequently_run_queries`)
     #[command(display_order = 41)]
@@ -859,8 +878,28 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
             id,
             restore_point_id,
         } => restore_points::restore_to_point(cli, client, workspace, id, restore_point_id).await,
-        WarehouseCommand::QueriesRunning { workspace, id } => {
-            Box::pin(insights::queries_running(cli, client, workspace, id)).await
+        WarehouseCommand::QueriesRunning {
+            workspace,
+            id,
+            follow,
+            interval,
+            max_duration,
+            dedup_column,
+        } => {
+            let follow_opts = crate::commands::follow::FollowOptions {
+                interval: *interval,
+                max_duration: *max_duration,
+                dedup_column: dedup_column.clone(),
+            };
+            Box::pin(insights::queries_running(
+                cli,
+                client,
+                workspace,
+                id,
+                *follow,
+                &follow_opts,
+            ))
+            .await
         }
         WarehouseCommand::QueriesFrequent { workspace, id, top } => {
             Box::pin(insights::queries_frequent(cli, client, workspace, id, *top)).await
