@@ -78,7 +78,7 @@
  - `src/commands/semantic_model/expressions.rs`: `add-expression`/`update-expression`/`delete-expression`/`list-expressions` (named M expressions + Power Query parameters in `definition/expressions.tmdl`); pure `build_parameter_m`/`resolve_m`/`render_expression_block`/`expression_span`/`parse_expressions` + `model.bim` variants + unit tests
  - `src/commands/semantic_model/functions.rs`: `add-function`/`update-function`/`delete-function`/`list-functions` (DAX UDFs in `definition/functions.tmdl`; bumps compatibilityLevel to 1702); pure `render_function_block`/`ensure_compat_level`/`function_span`/`parse_functions` + `model.bim` variants + unit tests
  - `src/commands/semantic_model/perspectives.rs`: `add-perspective`/`delete-perspective`/`add-perspective-member`/`remove-perspective-member`/`list-perspectives` (filtered model views in `definition/perspectives/<name>.tmdl` + `ref perspective` in model.tmdl); pure `parse_perspective`/`render_perspective`/`remove_member` + `model.bim` variants + unit tests
-- `src/commands/eventhouse.rs`: list/show/create/update/delete
+- `src/commands/eventhouse.rs`: list/show/create/update/delete/get-definition/update-definition + data plane (query with one-shot + `--follow` NDJSON streaming, list-databases, query-uri, ingestion-uri)
 - `src/commands/eventstream/mod.rs`: list/show/create/update/delete/get-definition/update-definition/get-topology/pause/resume/sources/destinations
 - `src/commands/eventstream/builder.rs`: add-source/add-destination/add-sample-source/add-derived-stream/validate/list-components
 - `src/commands/context/data/examples/eventstream_get_source_connection.json`: Kafka/custom endpoint connection union output example
@@ -87,7 +87,7 @@
 - `src/commands/kql_database/mod.rs`: list/show/create/update/delete/get-definition/update-definition/table-shortcuts (list/create/get/delete-shortcut; typed target flags via shared `shortcut_target`)
 - `src/commands/shortcut_target.rs`: Shared shortcut target-builder (`ShortcutTargetFlags`, `normalize_target_type`, `build_shortcut_target`) reused by lakehouse OneLake shortcuts and kql-database table shortcuts
 - `src/commands/kql_database/intelligence.rs`: query/list-entities/describe/describe-entity/sample/ingest/show-queryplan/diagnostics/deeplink
-- `src/commands/kql_utils.rs`: Shared KQL utilities (resolve_kql_input, resolve_query_uri, execute_kql, parse v1/v2 responses, render results)
+- `src/commands/kql_utils.rs`: Shared KQL utilities (resolve_kql_input, resolve_query_uri, execute_kql, execute_kql_with_timeout (Kusto servertimeout), parse v1/v2 responses, render results)
 - `src/commands/query_input.rs`: Shared query-text resolver (resolve_query_input) — inline / `@file` / stdin, used by graph-model and graphql-api; the uniform convention for all query commands
 - `src/commands/kql_queryset.rs`: CRUD + get-definition/update-definition + run (fetch definition, select tab, execute against Kusto REST API)
 - `src/commands/kql_dashboard.rs`: list/show/create/update/delete/get-definition/update-definition (RealTimeDashboard.json)
@@ -198,7 +198,7 @@
 - `tests/e2e_connection.rs`: Connection CRUD + list-supported-types tests
 - `tests/e2e_environment.rs`: Environment CRUD tests
 - `tests/e2e_data_pipeline.rs`: Data pipeline CRUD + run + schedule/instance tests
-- `tests/e2e_eventhouse.rs`: Eventhouse CRUD tests
+- `tests/e2e_eventhouse.rs`: Eventhouse CRUD tests + query lifecycle (one-shot/follow) + offline follow-flag guard
 - `tests/e2e_eventstream.rs`: Eventstream CRUD tests
 - `tests/e2e_kql_database.rs`: KQL database tests
 - `tests/e2e_kql_queryset.rs`: KQL queryset tests

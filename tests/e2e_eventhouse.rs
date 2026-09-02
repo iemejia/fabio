@@ -280,3 +280,178 @@ fn eventhouse_definition_roundtrips() {
         .assert()
         .success();
 }
+
+#[test]
+fn eventhouse_query_follow_flags_require_follow() {
+    // Offline: the --follow-only flags are rejected before any network call, so
+    // this runs without a tenant.
+    let assert = fabio()
+        .args([
+            "eventhouse",
+            "query",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--kql",
+            "Probe | count",
+            "--interval",
+            "2",
+        ])
+        .assert()
+        .failure();
+    // The error envelope is written to stderr.
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let json: serde_json::Value = serde_json::from_str(stderr.trim()).unwrap();
+    assert_eq!(json["error"]["code"], "INVALID_INPUT");
+    assert!(
+        json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("--follow")
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn eventhouse_query_oneshot_and_follow_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("eh_q");
+
+    // Create eventhouse (auto-provisions a same-named KQL database).
+    let assert = fabio()
+        .args([
+            "eventhouse",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_mins(3))
+        .assert()
+        .success();
+    let eh_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // query-uri returns the cluster URI.
+    let assert = fabio()
+        .args([
+            "eventhouse",
+            "query-uri",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &eh_id,
+        ])
+        .assert()
+        .success();
+    assert!(
+        extract_data(&parse_json(&assert))["queryUri"]
+            .as_str()
+            .unwrap()
+            .starts_with("https://")
+    );
+
+    // list-databases includes the auto-created database.
+    let assert = fabio()
+        .args([
+            "eventhouse",
+            "list-databases",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &eh_id,
+        ])
+        .assert()
+        .success();
+    assert!(extract_data(&parse_json(&assert)).is_array());
+
+    // Create a table + ingest 3 rows (management commands via the query endpoint).
+    fabio()
+        .args([
+            "eventhouse",
+            "query",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &eh_id,
+            "--kql",
+            ".create table Probe (ts:datetime, seq:long, msg:string)",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    fabio()
+        .args([
+            "eventhouse", "query", "--workspace", &cfg.dest_workspace, "--id", &eh_id,
+            "--kql", ".ingest inline into table Probe <| 2026-01-01T00:00:01Z,1,a\n2026-01-01T00:00:02Z,2,b\n2026-01-01T00:00:03Z,3,c",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    std::thread::sleep(std::time::Duration::from_secs(5));
+
+    // One-shot query with --timeout.
+    let assert = fabio()
+        .args([
+            "eventhouse",
+            "query",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &eh_id,
+            "--kql",
+            "Probe | count",
+            "--timeout",
+            "30",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data[0]["Count"], 3);
+
+    // Follow: NDJSON stream, bounded by --max-duration; final line is follow_complete.
+    let assert = fabio()
+        .args([
+            "eventhouse",
+            "query",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &eh_id,
+            "--kql",
+            "Probe | count",
+            "--follow",
+            "--interval",
+            "2",
+            "--max-duration",
+            "5",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let last = stdout.lines().last().unwrap();
+    let summary: serde_json::Value = serde_json::from_str(last).unwrap();
+    assert_eq!(summary["status"], "follow_complete");
+    assert!(summary["cycles"].as_u64().unwrap() >= 1);
+
+    // Cleanup.
+    fabio()
+        .args([
+            "eventhouse",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &eh_id,
+        ])
+        .assert()
+        .success();
+}

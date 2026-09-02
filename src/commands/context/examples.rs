@@ -413,6 +413,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/kql_database_query.json"),
     ),
     (
+        "eventhouse/query",
+        include_str!("data/examples/eventhouse_query.json"),
+    ),
+    (
         "eventstream/get-topology",
         include_str!("data/examples/eventstream_get_topology.json"),
     ),

@@ -13265,6 +13265,106 @@
         "mutates": true,
         "returns": "void",
         "async": true
+      },
+      "query": {
+        "description": "Run a KQL (or `.`-management, or T-SQL) query against the eventhouse cluster",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Eventhouse ID"
+          },
+          "--kql": {
+            "type": "string",
+            "description": "KQL/T-SQL/management text (inline, `@file`, or piped via stdin)"
+          },
+          "--database": {
+            "type": "string",
+            "description": "KQL database name to run against (default: the eventhouse's sole database; required when the eventhouse has more than one)"
+          },
+          "--query-uri": {
+            "type": "string",
+            "description": "Override the cluster query URI (must be a trusted Kusto endpoint)"
+          },
+          "--timeout": {
+            "type": "string",
+            "description": "Server-side query timeout in seconds (Kusto `servertimeout`, max 3600). Bounds a long-running query so it can never hang the caller"
+          },
+          "--follow": {
+            "type": "bool",
+            "description": "Continuously re-run the query, streaming NDJSON until `--max-duration`, `--limit`, or Ctrl-C. Kusto has no server-push streaming, so this polls"
+          },
+          "--interval": {
+            "type": "string",
+            "description": "Seconds between polls in `--follow` mode (default 5)"
+          },
+          "--max-duration": {
+            "type": "string",
+            "description": "Total seconds to follow before stopping — the agent-safety bound (default 60). Even in `--follow` the command always terminates"
+          },
+          "--dedup-column": {
+            "type": "string",
+            "description": "In `--follow`, only emit rows whose value in this column is greater than the max seen so far (incremental tail). Without it, each cycle re-emits the full result (watch semantics)"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "list-databases": {
+        "description": "List the KQL databases hosted in the eventhouse cluster",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Eventhouse ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "query-uri": {
+        "description": "Print the eventhouse cluster query URI (deterministic; agents cannot guess it)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Eventhouse ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "ingestion-uri": {
+        "description": "Print the eventhouse cluster ingestion URI",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Eventhouse ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
       }
     }
   },

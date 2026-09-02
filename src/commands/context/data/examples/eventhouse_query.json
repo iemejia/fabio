@@ -1,0 +1,26 @@
+{
+  "command": "fabio eventhouse query --workspace <WS> --id <EH> --kql \"...\" [--follow]",
+  "description": "Run KQL/T-SQL/management against an eventhouse cluster. One-shot by default (bounded by --timeout); --follow streams NDJSON for continuous monitoring, always bounded so it terminates.",
+  "response": {
+    "data": [
+      { "Count": 3 }
+    ],
+    "count": 1
+  },
+  "notes": "One-shot query (default) returns the normal {data,count} envelope — a bounded result set. Kusto queries are request/response and always terminate; add --timeout <seconds> (Kusto servertimeout, max 3600) to cap a long-running query. The query runs against the eventhouse's sole KQL database by default; pass --database <name> when the cluster hosts more than one (see 'eventhouse list-databases'). A leading '.' runs a management command (e.g. .create table / .ingest / .show), a leading SELECT runs T-SQL, otherwise KQL.",
+  "query_examples": [
+    "fabio eventhouse query -w <WS> --id <EH> --kql \"Logs | where Level == 'Error' | take 100\"",
+    "fabio eventhouse query -w <WS> --id <EH> --kql \".show tables\"",
+    "fabio eventhouse query -w <WS> --id <EH> --kql \"Logs | count\" --timeout 30"
+  ],
+  "follow_mode": {
+    "description": "--follow polls the query every --interval seconds and streams ONE NDJSON object per cycle to stdout, then a final follow_complete summary. It ALWAYS terminates — bounded by --max-duration (default 60s), the global --limit (total rows), or Ctrl-C — so it is safe for an agent/CI caller. Since Kusto has no server-push streaming, 'continuous' is client-side polling. --dedup-column <col> emits only rows whose value in <col> exceeds the max seen so far (incremental tail); without it each cycle re-emits the full result (watch semantics).",
+    "command": "fabio eventhouse query -w <WS> --id <EH> --kql \"Errors | order by ts asc\" --follow --interval 2 --max-duration 30 --dedup-column ts",
+    "ndjson_stream": [
+      { "cycle": 1, "timestamp": "2026-01-01T00:00:00Z", "count": 2, "columns": ["ts", "msg"], "rows": [{ "ts": "...", "msg": "a" }, { "ts": "...", "msg": "b" }] },
+      { "cycle": 2, "timestamp": "2026-01-01T00:00:02Z", "count": 0, "columns": ["ts", "msg"], "rows": [] },
+      { "status": "follow_complete", "reason": "max_duration", "cycles": 2, "rows_emitted": 2 }
+    ],
+    "reason_values": ["max_duration", "limit", "interrupted"]
+  }
+}

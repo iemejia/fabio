@@ -138,6 +138,27 @@ pub async fn execute_kql(
     db_name: &str,
     kql_text: &str,
 ) -> Result<(Vec<Value>, Vec<String>)> {
+    execute_kql_with_timeout(client, kusto_uri, db_name, kql_text, None).await
+}
+
+/// Format a whole-second duration as a Kusto `servertimeout` timespan (`hh:mm:ss`).
+/// Kusto caps the server-side query timeout at 1 hour, so the value is clamped.
+fn format_servertimeout(secs: u64) -> String {
+    let secs = secs.clamp(1, 3600);
+    let (h, m, s) = (secs / 3600, (secs % 3600) / 60, secs % 60);
+    format!("{h:02}:{m:02}:{s:02}")
+}
+
+/// Execute a KQL/T-SQL/mgmt query, optionally setting the Kusto server-side query
+/// timeout (`servertimeout` request option, in whole seconds, clamped to 1h). A
+/// timeout bounds a long-running query so it can never hang an agent/CI caller.
+pub async fn execute_kql_with_timeout(
+    client: &FabricClient,
+    kusto_uri: &str,
+    db_name: &str,
+    kql_text: &str,
+    timeout_secs: Option<u64>,
+) -> Result<(Vec<Value>, Vec<String>)> {
     // Acquire token scoped to the Kusto query URI
     let scope = format!("{kusto_uri}/.default");
     let token = client.require_token_for_scope(&scope).await?;
@@ -158,9 +179,20 @@ pub async fn execute_kql(
         "db": db_name,
         "csl": kql_text,
     });
+    // Assemble request options: SQL dialect for T-SQL, server timeout if requested.
+    let mut options = serde_json::Map::new();
     if is_tsql {
         // Kusto executes T-SQL only when told the query language is SQL.
-        body["properties"] = serde_json::json!({ "Options": { "query_language": "Sql" } });
+        options.insert("query_language".to_string(), Value::from("Sql"));
+    }
+    if let Some(secs) = timeout_secs {
+        options.insert(
+            "servertimeout".to_string(),
+            Value::from(format_servertimeout(secs)),
+        );
+    }
+    if !options.is_empty() {
+        body["properties"] = serde_json::json!({ "Options": Value::Object(options) });
     }
 
     let resp = client
@@ -419,6 +451,15 @@ mod tests {
         assert!(!is_tsql_query(".show tables"));
         // An identifier that merely starts with the letters "select" is NOT T-SQL.
         assert!(!is_tsql_query("SelectedRows | count"));
+    }
+
+    #[test]
+    fn servertimeout_formats_and_clamps() {
+        assert_eq!(format_servertimeout(90), "00:01:30");
+        assert_eq!(format_servertimeout(3599), "00:59:59");
+        assert_eq!(format_servertimeout(3600), "01:00:00");
+        assert_eq!(format_servertimeout(0), "00:00:01"); // clamped up to 1s
+        assert_eq!(format_servertimeout(99_999), "01:00:00"); // clamped to 1h max
     }
 
     #[test]

@@ -15,6 +15,7 @@
   ],
   "when_to_use": [
     "Creating an eventhouse and KQL databases inside it.",
+    "Running KQL directly against an eventhouse cluster (`eventhouse query`) — one-shot (bounded by `--timeout`) or continuous monitoring (`eventhouse query --follow`, streaming NDJSON bounded by `--max-duration`/`--limit`/Ctrl-C).",
     "KQL schema discovery (list-entities), ingestion, querying, and query monitoring (running/journal/completed).",
     "Building eventstream topologies (sources, destinations, connection strings).",
     "Creating reflex/activator triggers for event-driven alerts.",
@@ -27,6 +28,8 @@
     "'materialized view' in a lakehouse context -> that is a Materialized Lake View (fabio-lakehouse), not a KQL materialized view — see 'fabio context disambiguate materialized-view'."
   ],
   "key_gotchas": [
+    "Eventhouse queries are request/response and always terminate — there is no server-push streaming query. `eventhouse query` runs a bounded KQL/`.`-mgmt/T-SQL query against the cluster; add `--timeout <s>` (Kusto servertimeout, max 3600) to bound a heavy query. For CONTINUOUS monitoring of live-ingesting data, use `eventhouse query --follow`: fabio polls on `--interval` (default 5s) and streams NDJSON (one JSON object per cycle), ALWAYS bounded by `--max-duration` (default 60s), the global `--limit`, or Ctrl-C, so it never hangs an agent/CI. `--dedup-column <col>` emits only rows newer than the max seen (incremental tail) vs re-watching the full result each cycle. Server-side 'continuous' constructs (continuous-export, materialized views) are `.create` MANAGEMENT commands, not client-streamed — run them via `eventhouse query --kql '.create ...'`.",
+    "`eventhouse query` needs a database context: it defaults to the eventhouse's sole KQL database (an eventhouse auto-provisions one named after itself), and requires `--database <name>` when the cluster hosts more than one. `eventhouse list-databases` enumerates them; `eventhouse query-uri` / `ingestion-uri` print the deterministic cluster endpoints (agents cannot guess them).",
     "KQL Queryset definitions use RealTimeQueryset.json (NOT RawQueryset.kql).",
     "KQL queries use a separate auth scope ({kusto_uri}/.default), not the standard Fabric scope (fabio handles this).",
     "Operations agents have no dedicated start/stop endpoint: activation is the shouldRun flag inside Configurations.json. Use operations-agent start/stop/status (fabio flips the flag for you) instead of hand-editing the definition.",
