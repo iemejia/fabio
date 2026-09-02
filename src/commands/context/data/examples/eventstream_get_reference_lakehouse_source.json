@@ -1,0 +1,26 @@
+{
+  "command": "fabio eventstream get-source --workspace $WS --id $ES --source-id $SOURCE",
+  "description": "Shows a Reference Lakehouse source used as point-in-time enrichment data.",
+  "response": {
+    "data": {
+      "id": "f2886002-d696-4c05-969c-51361365cc25",
+      "name": "ReferenceLakehouseSource",
+      "type": "ReferenceLakehouse",
+      "properties": {
+        "workspaceId": "cfafbeb1-8037-4d0c-896e-a46fb27ff229",
+        "itemId": "11111111-2222-3333-4444-555555555555",
+        "absoluteOneLakePath": "https://onelake.dfs.fabric.microsoft.com/cfafbeb1-8037-4d0c-896e-a46fb27ff229/11111111-2222-3333-4444-555555555555/Tables/dbo/customers",
+        "referencedColumns": ["id", "name", "email"],
+        "refreshRate": "00:05:00"
+      },
+      "status": "Running",
+      "error": null
+    }
+  },
+  "notes": "workspaceId and itemId must match the first two path segments in absoluteOneLakePath. Omit refreshRate or use 00:00:00 for a static snapshot; a non-zero rate causes separately billed OneLake refresh operations.",
+  "query_examples": [
+    {"query": "properties.absoluteOneLakePath", "description": "Extract the referenced Delta table path."},
+    {"query": "properties.referencedColumns", "description": "List the projected reference columns."},
+    {"query": "properties.refreshRate", "description": "Inspect the snapshot refresh cadence."}
+  ]
+}

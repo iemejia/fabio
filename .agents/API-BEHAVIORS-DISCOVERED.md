@@ -3116,6 +3116,33 @@ implemented or confirmed to require no code change.
   (showing all four new node types plus the new HTTP pagination fields in a live topology response)
   was cross-checked and confirms `eventstream get-topology`'s raw-passthrough rendering already
   displays these fields correctly.
+- **Eventstream Reference Lakehouse, capacity-operation events, and endpoint connection unions
+  (spec commit `4dc2abd`, Sep 2026)**: `SourceType` gained `Cribl`,
+  `FabricCapacityOperationEvents`, `ReferenceLakehouse`, and `SAPDatasphere`. A Reference Lakehouse
+  source is a point-in-time Delta-table snapshot: its `properties` carry `workspaceId`, `itemId`,
+  `absoluteOneLakePath`, optional `referencedColumns`, and optional `.NET TimeSpan` `refreshRate`
+  (`hh:mm:ss`, `00:00:00`/omitted means static, non-zero refresh incurs separate OneLake cost). The
+  IDs must match the first two OneLake URL path segments. It may feed only a Join (or SQL when
+  reference input is enabled); the other input is streaming, `joinOn` needs at least one key with
+  streaming on the left/reference on the right, `duration` is unused, and `LeftOuter` preserves the
+  streaming side. `FabricCapacityOperationEvents.properties` requires `eventScope`
+  (`Tenant|Capacity|Workspace|Item|SubItem`) and optionally accepts `capacityId`,
+  `includedEventTypes` (currently operation started/completed), and Azure Event Grid advanced
+  `filters`. The source/destination connection response is now discriminated by required `type`:
+  `CustomEndpoint` carries Event Hub namespace/name, optional consumer group, and access keys;
+  `KafkaEndpoint` (Cribl/SAP Datasphere) carries bootstrap server, topic, security protocol
+  (`SASL_PLAINTEXT|PLAINTEXT|SASL_SSL|SSL`), and `authentications[]` discriminated by
+  `saslMechanism` (`OAuthBearer` with required scope; `Plain` with required primary and optional
+  secondary connection string/JAAS config). The connection API contains credentials and its output
+  must not be persisted or logged. `add-source` remains the generic `--properties` authoring path
+  but now validates these non-obvious shapes offline; `add-operator --input-node` is repeatable so
+  reference joins can be authored; `list-components` now mirrors all 37 current source enum values.
+- **Core Platform/LRO throttling quotas (spec commit `4dc2abd`, Sep 2026)**: workspace create/list/
+  show/update/delete and item list/create/show/update/delete now document both the unified Platform
+  API quota and endpoint API limit as **200 calls/min**. Get Operation State and Get Operation Result
+  similarly document a unified Long-Running Operations quota and endpoint API limit of
+  **200 calls/min**. This changes no HTTP contract: fabio's existing `Retry-After` handling, bounded
+  concurrency, list/bulk preference, and 2-second LRO polling already respect the operational model.
 - **`GitConnectionType` (`Full`/`Selective`) read-only field on `GitSyncDetails`**: New enum field
   `gitConnectionType` was added to the Git connection status shape returned by
   `GET /workspaces/{workspaceId}/git/connection`. `fabio git connect show` (`connection_show()` in

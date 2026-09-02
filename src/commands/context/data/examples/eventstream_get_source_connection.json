@@ -1,0 +1,30 @@
+{
+  "command": "fabio eventstream get-source-connection --workspace $WS --id $ES --source-id $SOURCE",
+  "description": "Shows the discriminated endpoint connection returned for a Cribl or SAP Datasphere source.",
+  "response": {
+    "data": {
+      "type": "KafkaEndpoint",
+      "bootstrapServer": "namespace.servicebus.windows.net:9093",
+      "topicName": "eventhub",
+      "securityProtocol": "SASL_SSL",
+      "authentications": [
+        {
+          "saslMechanism": "OAuthBearer",
+          "scope": "https://namespace.servicebus.windows.net/.default"
+        },
+        {
+          "saslMechanism": "Plain",
+          "primaryConnectionString": "<redacted>",
+          "secondaryConnectionString": "<redacted>",
+          "saslJaasConfig": "<redacted>"
+        }
+      ]
+    }
+  },
+  "notes": "The response is type-discriminated. Cribl and SAP Datasphere return type=KafkaEndpoint; custom endpoint sources return type=CustomEndpoint with fullyQualifiedNamespace, eventHubName, optional consumerGroupName, and accessKeys. Connection responses contain credentials: do not log or persist them.",
+  "query_examples": [
+    {"query": "type", "description": "Identify the endpoint connection shape."},
+    {"query": "authentications[].saslMechanism", "description": "List available Kafka SASL mechanisms."},
+    {"query": "bootstrapServer", "description": "Extract the Kafka bootstrap server."}
+  ]
+}

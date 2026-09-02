@@ -222,6 +222,18 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/eventstream_list_components.json"),
     ),
     (
+        "eventstream/get-source-connection",
+        include_str!("data/examples/eventstream_get_source_connection.json"),
+    ),
+    (
+        "eventstream/get-destination-connection",
+        include_str!("data/examples/eventstream_get_destination_connection.json"),
+    ),
+    (
+        "eventstream/get-source",
+        include_str!("data/examples/eventstream_get_reference_lakehouse_source.json"),
+    ),
+    (
         "reflex/create-trigger",
         include_str!("data/examples/reflex_create_trigger.json"),
     ),

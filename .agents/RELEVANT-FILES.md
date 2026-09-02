@@ -81,6 +81,9 @@
 - `src/commands/eventhouse.rs`: list/show/create/update/delete
 - `src/commands/eventstream/mod.rs`: list/show/create/update/delete/get-definition/update-definition/get-topology/pause/resume/sources/destinations
 - `src/commands/eventstream/builder.rs`: add-source/add-destination/add-sample-source/add-derived-stream/validate/list-components
+- `src/commands/context/data/examples/eventstream_get_source_connection.json`: Kafka/custom endpoint connection union output example
+- `src/commands/context/data/examples/eventstream_get_destination_connection.json`: Custom endpoint destination connection output example
+- `src/commands/context/data/examples/eventstream_get_reference_lakehouse_source.json`: Reference Lakehouse source output example
 - `src/commands/kql_database/mod.rs`: list/show/create/update/delete/get-definition/update-definition/table-shortcuts (list/create/get/delete-shortcut; typed target flags via shared `shortcut_target`)
 - `src/commands/shortcut_target.rs`: Shared shortcut target-builder (`ShortcutTargetFlags`, `normalize_target_type`, `build_shortcut_target`) reused by lakehouse OneLake shortcuts and kql-database table shortcuts
 - `src/commands/kql_database/intelligence.rs`: query/list-entities/describe/describe-entity/sample/ingest/show-queryplan/diagnostics/deeplink

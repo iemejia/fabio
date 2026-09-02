@@ -3,6 +3,8 @@
   "title": "How fabio handles API throttling",
   "summary": "fabio transparently handles 429 (Too Many Requests) and gateway errors. Agents do NOT need to implement retry logic.",
   "fabio_behavior": {
+    "platform_quota": "Core workspace/item APIs now document both a unified Platform API quota and an API-specific limit of 200 calls/min.",
+    "lro_quota": "Get Operation State and Get Operation Result each document a unified Long-Running Operations quota and API-specific limit of 200 calls/min.",
     "rate_limit_429": "fabio retries automatically using the Retry-After header value (capped at 60s). Parallel operations (upload, sync, copy) use bounded concurrency with rate-limit retry.",
     "gateway_errors_502_503_504": "Automatic retry with linear backoff (1s, 2s, 3s) for up to 3 attempts.",
     "capacity_throttle_430": "Spark operations on small capacity may return 430 (TooManyRequestsForCapacity). fabio reports this as RATE_LIMITED error."
@@ -11,7 +13,8 @@
     "Nothing — fabio handles all retries transparently",
     "If you get RATE_LIMITED error, the operation already exhausted retries. Wait and try again later.",
     "Use --verbose to see HTTP response codes and retry behavior on stderr",
-    "For bulk operations, fabio uses bounded parallelism (default 8 concurrent) with automatic backoff"
+    "For bulk operations, fabio uses bounded parallelism (default 8 concurrent) with automatic backoff",
+    "Treat the documented 200 calls/min quotas as shared budgets: prefer list/bulk APIs and avoid tight manual polling loops."
   ],
   "relevant_flags": {
     "--verbose": "Shows HTTP status codes and retry attempts on stderr",
