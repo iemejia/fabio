@@ -472,6 +472,7 @@ fn validate_capacity_operation_source(props: &Value) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 fn validate_capacity_operation_filters(props: &Value) -> Result<()> {
     let Some(filters) = props.get("filters") else {
         return Ok(());
@@ -501,7 +502,7 @@ fn validate_capacity_operation_filters(props: &Value) -> Result<()> {
                 FabioError::with_hint(
                     ErrorCode::InvalidInput,
                     format!("FabricCapacityOperationEvents filter at index {index} requires a non-empty 'operatorType'"),
-                    "Use a valid filter operator such as 'StringIn', 'Equals', or 'GreaterThan'.",
+                    "Use a valid filter operator such as 'StringIn', 'BoolEquals', or 'NumberGreaterThan'.",
                 )
             })?;
 
@@ -528,7 +529,8 @@ fn validate_capacity_operation_filters(props: &Value) -> Result<()> {
             .into());
         }
 
-        let expects_values = operator_type.contains("In") || operator_type.eq_ignore_ascii_case("Between");
+        let expects_values =
+            operator_type.contains("In") || operator_type.eq_ignore_ascii_case("Between");
         if expects_values && !has_values {
             return Err(FabioError::with_hint(
                 ErrorCode::InvalidInput,
@@ -541,20 +543,22 @@ fn validate_capacity_operation_filters(props: &Value) -> Result<()> {
             return Err(FabioError::with_hint(
                 ErrorCode::InvalidInput,
                 format!("FabricCapacityOperationEvents filter '{key}' requires 'value' for operator type '{operator_type}'"),
-                "Use 'value' for scalar comparisons such as 'Equals' or 'GreaterThan'.",
+                "Use 'value' for scalar comparisons such as 'BoolEquals' or 'NumberGreaterThan'.",
             )
             .into());
         }
 
-        if let Some(value) = filter_obj.get("value") {
-            if value.is_object() || value.is_array() {
-                return Err(FabioError::with_hint(
-                    ErrorCode::InvalidInput,
-                    format!("FabricCapacityOperationEvents filter '{key}' 'value' must be a scalar value"),
-                    "Set 'value' to a string, number, or boolean, not an object or array.",
-                )
-                .into());
-            }
+        if let Some(value) = filter_obj.get("value")
+            && (value.is_object() || value.is_array())
+        {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!(
+                    "FabricCapacityOperationEvents filter '{key}' 'value' must be a scalar value"
+                ),
+                "Set 'value' to a string, number, or boolean, not an object or array.",
+            )
+            .into());
         }
 
         if let Some(values) = filter_obj.get("values") {
@@ -562,10 +566,14 @@ fn validate_capacity_operation_filters(props: &Value) -> Result<()> {
                 FabioError::with_hint(
                     ErrorCode::InvalidInput,
                     format!("FabricCapacityOperationEvents filter '{key}' 'values' must be a non-empty array"),
-                    "Use 'values' as an array of scalar values, for example ['ScaleUp', 'ScaleDown'].",
+                    "Use 'values' as an array of scalar values, for example [\"ScaleUp\", \"ScaleDown\"].",
                 )
             })?;
-            if values.is_empty() || values.iter().any(|entry| entry.is_array() || entry.is_object()) {
+            if values.is_empty()
+                || values
+                    .iter()
+                    .any(|entry| entry.is_array() || entry.is_object())
+            {
                 return Err(FabioError::with_hint(
                     ErrorCode::InvalidInput,
                     format!("FabricCapacityOperationEvents filter '{key}' 'values' must be a non-empty array of scalar values"),
@@ -1060,8 +1068,8 @@ pub(super) fn list_components(cli: &Cli, category: &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        OPERATOR_TYPES, normalize_sample_type, validate_eventhouse_destination,
-        validate_source_properties,
+        OPERATOR_TYPES, normalize_sample_type, validate_capacity_operation_filters,
+        validate_eventhouse_destination, validate_source_properties,
     };
     use serde_json::json;
 
@@ -1217,5 +1225,35 @@ mod tests {
             }]
         });
         assert!(validate_source_properties("FabricCapacityOperationEvents", &props).is_ok());
+    }
+
+    #[test]
+    fn capacity_operation_filter_hints_use_valid_json_and_operator_types() {
+        let scalar_error = validate_capacity_operation_filters(&json!({
+            "filters": [{"operatorType": "BoolEquals", "key": "data.enabled"}]
+        }))
+        .unwrap_err();
+        let scalar_hint = scalar_error
+            .downcast_ref::<crate::errors::FabioError>()
+            .and_then(|error| error.hint.as_deref())
+            .expect("error should include a hint");
+        assert!(scalar_hint.contains("BoolEquals"), "got: {scalar_hint}");
+        assert!(
+            scalar_hint.contains("NumberGreaterThan"),
+            "got: {scalar_hint}"
+        );
+
+        let array_error = validate_capacity_operation_filters(&json!({
+            "filters": [{"operatorType": "StringIn", "key": "data.operationType", "values": "ScaleUp"}]
+        }))
+        .unwrap_err();
+        let array_hint = array_error
+            .downcast_ref::<crate::errors::FabioError>()
+            .and_then(|error| error.hint.as_deref())
+            .expect("error should include a hint");
+        assert!(
+            array_hint.contains(r#"["ScaleUp", "ScaleDown"]"#),
+            "got: {array_hint}"
+        );
     }
 }
