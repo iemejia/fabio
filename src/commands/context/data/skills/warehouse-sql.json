@@ -19,6 +19,7 @@
     "DAX over a semantic model -> use the bi-developer persona (semantic-model query)."
   ],
   "key_gotchas": [
+    "A warehouse snapshot is a read-only point-in-time T-SQL surface with its OWN data plane: 'warehouse-snapshot query/list-tables/describe-table/plan/connection-string' run against the snapshot's SQL endpoint (same TDS path as warehouse, resolved via the snapshot's properties.connectionString). A snapshot query can NEVER mutate (it's read-only), so it is safe under --readonly. Equivalent to 'warehouse query --id <snapshotId>' (the smart resolver also handles snapshots), but discoverable on the snapshot's own group.",
     "sys.dm_exec_requests has no login_name column on Fabric (it lives in sys.dm_exec_sessions).",
     "sys.dm_db_stats_properties is NOT supported on Lakehouse SQL endpoints.",
     "'warehouse query --id <X>' resolves the SQL analytics endpoint of a Warehouse, a WarehouseSnapshot, a MirroredDatabase (open/CDC mirror), a MirroredAzureDatabricksCatalog, AND a Lakehouse — use it to T-SQL query mirrored/snapshot data, not just warehouses.",

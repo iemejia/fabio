@@ -21081,6 +21081,108 @@
         "mutates": true,
         "returns": "void",
         "destructive": true
+      },
+      "query": {
+        "description": "Run a read-only T-SQL query against the snapshot's SQL endpoint",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse snapshot ID"
+          },
+          "--sql": {
+            "type": "string",
+            "description": "T-SQL query text (inline, `@file`, or piped via stdin)"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "list-tables": {
+        "description": "List tables in the snapshot (schema-qualified)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse snapshot ID"
+          },
+          "--schema": {
+            "type": "string",
+            "description": "Filter to a specific schema (default: all)"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "describe-table": {
+        "description": "Describe a table's columns in the snapshot",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse snapshot ID"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Table name (optionally schema-qualified: `schema.table`)"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "plan": {
+        "description": "Capture the estimated execution plan (`SHOWPLAN_XML`) for a query",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse snapshot ID"
+          },
+          "--sql": {
+            "type": "string",
+            "description": "T-SQL query text (inline, `@file`, or piped via stdin)"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "connection-string": {
+        "description": "Print the snapshot's SQL connection string (server + database)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse snapshot ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
       }
     }
   },

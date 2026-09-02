@@ -15,7 +15,7 @@ use crate::errors::enrich_forbidden;
 use super::execute_insights_query;
 
 /// List tables and views in a warehouse (optionally scoped to one schema).
-pub(super) async fn list_tables(
+pub async fn list_tables(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
@@ -29,7 +29,7 @@ pub(super) async fn list_tables(
 }
 
 /// Describe the columns of a single table (`--table [schema.]table`).
-pub(super) async fn describe_table(
+pub async fn describe_table(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,

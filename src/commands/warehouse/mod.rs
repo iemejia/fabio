@@ -12,10 +12,10 @@ mod authoring;
 mod crud;
 mod insights;
 mod mcp;
-mod query;
+pub mod query;
 mod restore_points;
 mod retention;
-mod schema;
+pub mod schema;
 mod statistics;
 
 #[derive(Debug, Subcommand)]
@@ -958,7 +958,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
 
 /// Get SQL connection string from warehouse or lakehouse metadata.
 /// Returns (`server_hostname`, `database_name`).
-pub(super) async fn get_connection_string(
+pub async fn get_connection_string(
     client: &FabricClient,
     workspace: &str,
     id: &str,

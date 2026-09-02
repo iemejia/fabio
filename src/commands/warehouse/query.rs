@@ -11,7 +11,7 @@ use crate::output;
 use super::get_connection_string;
 
 #[allow(clippy::too_many_lines)]
-pub(super) async fn query(
+pub async fn query(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
@@ -32,7 +32,7 @@ pub(super) async fn query(
     execute_and_render_sql(cli, client, &server, &database, &sql_text).await
 }
 
-pub(super) async fn plan(
+pub async fn plan(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,

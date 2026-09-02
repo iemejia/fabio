@@ -91,6 +91,83 @@ pub enum WarehouseSnapshotCommand {
         #[arg(long)]
         hard_delete: bool,
     },
+
+    // ── Data plane (read-only T-SQL over the point-in-time snapshot) ──────
+    /// Run a read-only T-SQL query against the snapshot's SQL endpoint
+    #[command(display_order = 6)]
+    Query {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Warehouse snapshot ID
+        #[arg(long)]
+        id: String,
+
+        /// T-SQL query text (inline, `@file`, or piped via stdin)
+        #[arg(long)]
+        sql: Option<String>,
+    },
+
+    /// List tables in the snapshot (schema-qualified)
+    #[command(name = "list-tables", display_order = 7)]
+    ListTables {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Warehouse snapshot ID
+        #[arg(long)]
+        id: String,
+
+        /// Filter to a specific schema (default: all)
+        #[arg(long)]
+        schema: Option<String>,
+    },
+
+    /// Describe a table's columns in the snapshot
+    #[command(name = "describe-table", display_order = 8)]
+    DescribeTable {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Warehouse snapshot ID
+        #[arg(long)]
+        id: String,
+
+        /// Table name (optionally schema-qualified: `schema.table`)
+        #[arg(long)]
+        table: String,
+    },
+
+    /// Capture the estimated execution plan (`SHOWPLAN_XML`) for a query
+    #[command(display_order = 9)]
+    Plan {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Warehouse snapshot ID
+        #[arg(long)]
+        id: String,
+
+        /// T-SQL query text (inline, `@file`, or piped via stdin)
+        #[arg(long)]
+        sql: Option<String>,
+    },
+
+    /// Print the snapshot's SQL connection string (server + database)
+    #[command(name = "connection-string", display_order = 10)]
+    ConnectionString {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Warehouse snapshot ID
+        #[arg(long)]
+        id: String,
+    },
 }
 
 pub async fn execute(
@@ -142,7 +219,73 @@ pub async fn execute(
             id,
             hard_delete,
         } => delete(cli, client, workspace, id, *hard_delete).await,
+        WarehouseSnapshotCommand::Query { workspace, id, sql } => {
+            Box::pin(crate::commands::warehouse::query::query(
+                cli,
+                client,
+                workspace,
+                id,
+                sql.as_deref(),
+            ))
+            .await
+        }
+        WarehouseSnapshotCommand::ListTables {
+            workspace,
+            id,
+            schema,
+        } => {
+            Box::pin(crate::commands::warehouse::schema::list_tables(
+                cli,
+                client,
+                workspace,
+                id,
+                schema.as_deref(),
+            ))
+            .await
+        }
+        WarehouseSnapshotCommand::DescribeTable {
+            workspace,
+            id,
+            table,
+        } => {
+            Box::pin(crate::commands::warehouse::schema::describe_table(
+                cli, client, workspace, id, table,
+            ))
+            .await
+        }
+        WarehouseSnapshotCommand::Plan { workspace, id, sql } => {
+            Box::pin(crate::commands::warehouse::query::plan(
+                cli,
+                client,
+                workspace,
+                id,
+                sql.as_deref(),
+            ))
+            .await
+        }
+        WarehouseSnapshotCommand::ConnectionString { workspace, id } => {
+            connection_string(cli, client, workspace, id).await
+        }
     }
+}
+
+/// Print the snapshot's SQL connection string (server + database), resolved from
+/// the warehouse smart resolver (which handles `warehouseSnapshots`).
+async fn connection_string(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let (connection_string, name) =
+        crate::commands::warehouse::get_connection_string(client, workspace, id).await?;
+    let obj = serde_json::json!({
+        "id": id,
+        "name": name,
+        "connectionString": connection_string,
+    });
+    output::render_object(cli, &obj, "connectionString");
+    Ok(())
 }
 
 async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {

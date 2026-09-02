@@ -93,3 +93,108 @@ fn warehouse_snapshot_is_tsql_queryable() {
     assert!(json.get("data").is_some());
     assert_eq!(json["data"][0]["test"], 1);
 }
+
+/// Self-contained: create a snapshot of the loaded warehouse fixture, exercise the
+/// warehouse-snapshot data-plane commands (connection-string, list-tables, query),
+/// then delete it. Gated on `FABIO_TEST_LOADED_WAREHOUSE` (a warehouse with tables).
+#[test]
+#[ignore = "requires live Fabric tenant with a loaded warehouse"]
+#[serial]
+fn warehouse_snapshot_data_plane_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let Ok(warehouse_id) = std::env::var("FABIO_TEST_LOADED_WAREHOUSE") else {
+        return; // skip when not configured
+    };
+    let name = format!(
+        "fabio_snap_e2e_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    );
+
+    // Create the snapshot.
+    let assert = fabio()
+        .args([
+            "warehouse-snapshot",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+            "--warehouse-id",
+            &warehouse_id,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let snap_id = json["data"]["id"].as_str().unwrap().to_string();
+
+    // connection-string resolves the snapshot's read-only SQL endpoint.
+    let assert = fabio()
+        .args([
+            "warehouse-snapshot",
+            "connection-string",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &snap_id,
+        ])
+        .assert()
+        .success();
+    let json: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&assert.get_output().stdout)).unwrap();
+    assert!(
+        json["data"]["connectionString"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty())
+    );
+
+    // list-tables returns a result set.
+    fabio()
+        .args([
+            "warehouse-snapshot",
+            "list-tables",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &snap_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+
+    // query executes read-only T-SQL against the snapshot.
+    let assert = fabio()
+        .args([
+            "warehouse-snapshot",
+            "query",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &snap_id,
+            "--sql",
+            "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.TABLES",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+    let json: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&assert.get_output().stdout)).unwrap();
+    assert!(json["data"][0]["n"].as_i64().unwrap() >= 0);
+
+    // Cleanup.
+    fabio()
+        .args([
+            "warehouse-snapshot",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &snap_id,
+        ])
+        .assert()
+        .success();
+}

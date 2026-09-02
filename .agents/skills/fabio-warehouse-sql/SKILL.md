@@ -131,9 +131,14 @@ Manage warehouse snapshots
 
 | Command | Mutates | Description |
 |---|---|---|
+| `fabio warehouse-snapshot connection-string` | no | Print the snapshot's SQL connection string (server + database) |
 | `fabio warehouse-snapshot create` | yes | Create a new warehouse snapshot |
 | `fabio warehouse-snapshot delete` | yes | Delete a warehouse snapshot |
+| `fabio warehouse-snapshot describe-table` | no | Describe a table's columns in the snapshot |
 | `fabio warehouse-snapshot list` | no | List warehouse snapshots in a workspace |
+| `fabio warehouse-snapshot list-tables` | no | List tables in the snapshot (schema-qualified) |
+| `fabio warehouse-snapshot plan` | no | Capture the estimated execution plan (`SHOWPLAN_XML`) for a query |
+| `fabio warehouse-snapshot query` | no | Run a read-only T-SQL query against the snapshot's SQL endpoint |
 | `fabio warehouse-snapshot show` | no | Show details of a warehouse snapshot |
 | `fabio warehouse-snapshot update` | yes | Update warehouse snapshot properties (name and/or description) |
 
@@ -157,6 +162,7 @@ Manage warehouse snapshots
 - Assuming query monitoring DMVs behave identically to SQL Server (several columns/views differ on Fabric — see gotchas).
 
 ## Key gotchas
+- A warehouse snapshot is a read-only point-in-time T-SQL surface with its OWN data plane: 'warehouse-snapshot query/list-tables/describe-table/plan/connection-string' run against the snapshot's SQL endpoint (same TDS path as warehouse, resolved via the snapshot's properties.connectionString). A snapshot query can NEVER mutate (it's read-only), so it is safe under --readonly. Equivalent to 'warehouse query --id <snapshotId>' (the smart resolver also handles snapshots), but discoverable on the snapshot's own group.
 - sys.dm_exec_requests has no login_name column on Fabric (it lives in sys.dm_exec_sessions).
 - sys.dm_db_stats_properties is NOT supported on Lakehouse SQL endpoints.
 - 'warehouse query --id <X>' resolves the SQL analytics endpoint of a Warehouse, a WarehouseSnapshot, a MirroredDatabase (open/CDC mirror), a MirroredAzureDatabricksCatalog, AND a Lakehouse — use it to T-SQL query mirrored/snapshot data, not just warehouses.

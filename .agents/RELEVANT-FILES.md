@@ -145,7 +145,7 @@
 - `src/commands/mirrored_databricks_catalog.rs`: CRUD + definition + discover/refresh/status
 - `src/commands/mirrored_google_lakehouse_catalog.rs`: CRUD + definition + refresh/status + list-scopes/list-tables (Google BigLake/Iceberg mirroring)
 - `src/commands/mirrored_warehouse.rs`: list only (tenant feature flag blocks mutations)
-- `src/commands/warehouse_snapshot.rs`: list/show/create/update/delete
+- `src/commands/warehouse_snapshot.rs`: warehouse snapshot CRUD + read-only data plane (query/list-tables/describe-table/plan/connection-string) delegating to the shared warehouse TDS handlers (now pub)
 - `src/commands/graph_model.rs`: CRUD + definition + refresh-graph/execute-query/get-queryable-graph-type
 - `src/commands/graph_query_set.rs`: CRUD + get-definition/update-definition (read-only export)
 - `src/commands/catalog.rs`: search (tenant-level)
