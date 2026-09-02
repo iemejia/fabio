@@ -691,6 +691,8 @@ fabio releases frequently. When an AI agent is detected, a successful JSON respo
 
 The check is passive: it reads a local 24h cache (`~/.fabio/version-check.json`) and refreshes it in a detached background process — never a network call on the command's own path, and never blocking. The 24h interval is enforced even when a refresh fails (offline or GitHub rate-limited), so fabio makes at most one release-API request per day rather than one per command. The field is additive (present only when an update exists). Disable entirely with `FABIO_NO_VERSION_CHECK=1`, or keep the cached notice but suppress the background refresher with `FABIO_NO_BACKGROUND_REFRESH=1`.
 
+**Opt-in auto-upgrade.** Set `FABIO_AUTO_UPGRADE=1` and fabio will *self-update* when the cached check finds a newer release: it spawns a detached `fabio upgrade` in the background so the current command is unaffected and the new binary takes effect on the **next** invocation. The notice then carries `"autoUpgrade": "launched"` so the agent knows the upgrade is already in flight. It is off by default (silently swapping a binary under a running agent/CI is risky), applies only to **standalone** installs (cargo users update with `cargo install --force`, docker with `docker pull`), is throttled to at most one attempt per hour (a persistently-failing upgrade never loops), works whether or not the caller is an agent, and is disabled by `FABIO_NO_VERSION_CHECK` / `FABIO_NO_BACKGROUND_REFRESH`.
+
 ### MCP Server Safety
 
 The MCP server is **read-only by default** — mutation tools are hidden unless opted in:

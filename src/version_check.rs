@@ -30,6 +30,17 @@
 //! Opt-out: set `FABIO_NO_VERSION_CHECK` to any value to disable the feature
 //! entirely. Set `FABIO_NO_BACKGROUND_REFRESH` to keep the passive cached
 //! notice but never spawn the network refresher (air-gapped / hermetic runs).
+//!
+//! Opt-in auto-upgrade: set `FABIO_AUTO_UPGRADE` (to a truthy value) so that when
+//! the cached check finds a newer release, fabio spawns a detached
+//! `fabio upgrade` in the background — the current command is unaffected and the
+//! new binary takes effect on the *next* invocation. This is the true
+//! "self-updating" behaviour, off by default because silently swapping a binary
+//! under a running agent/CI is risky. It applies only to **standalone** installs
+//! (the install method `fabio upgrade` owns; cargo/docker users update via their
+//! package manager), is throttled to at most one attempt per
+//! [`AUTO_UPGRADE_RETRY_INTERVAL_HOURS`] (so a persistently-failing upgrade never
+//! hammers), and is disabled by `FABIO_NO_VERSION_CHECK` / `FABIO_NO_BACKGROUND_REFRESH`.
 
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -44,6 +55,12 @@ const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// How old the cache may be before a background refresh is triggered.
 const REFRESH_INTERVAL_HOURS: i64 = 24;
+
+/// Minimum time between opt-in auto-upgrade attempts. Without this throttle, once
+/// the cache knows a newer version EVERY subsequent command (until the binary is
+/// replaced) — or every command while an upgrade keeps failing (offline,
+/// read-only install dir) — would spawn another `fabio upgrade`.
+const AUTO_UPGRADE_RETRY_INTERVAL_HOURS: i64 = 1;
 
 /// Notice built during [`prime`], consumed once by [`take_notice`] so that only
 /// the first JSON envelope in a process carries it (avoids duplication in
@@ -73,20 +90,41 @@ fn cache_path() -> Option<PathBuf> {
     home::home_dir().map(|home| home.join(".fabio").join("version-check.json"))
 }
 
+/// Path to the auto-upgrade attempt marker (`~/.fabio/auto-upgrade-attempt`).
+/// Holds a single RFC 3339 timestamp — the throttle for opt-in auto-upgrade.
+fn auto_upgrade_marker_path() -> Option<PathBuf> {
+    home::home_dir().map(|home| home.join(".fabio").join("auto-upgrade-attempt"))
+}
+
 /// Prime the version-check for this invocation.
 ///
 /// Cheap: reads one small local file (and, at most once per
 /// [`REFRESH_INTERVAL_HOURS`], writes back a small timestamp and spawns a
 /// detached refresher). No network I/O on this path.
 pub fn prime(cli: &Cli) {
-    if !should_check(cli) {
+    let agent_gated = should_check(cli);
+    let auto_upgrade = auto_upgrade_requested(cli);
+    // Run the (cheap, cached) check if EITHER surface needs it: the agent-gated
+    // passive notice, or opt-in auto-upgrade (which is not agent-gated — a user
+    // who sets FABIO_AUTO_UPGRADE wants a current binary regardless).
+    if !agent_gated && !auto_upgrade {
         return;
     }
     if let Some(cache) = read_cache() {
         if crate::commands::upgrade::is_version_newer(&cache.latest_version, CURRENT_VERSION) {
-            let notice = build_notice(CURRENT_VERSION, &cache.latest_version);
-            if let Ok(mut guard) = PENDING_NOTICE.lock() {
-                *guard = Some(notice);
+            // Opt-in: launch a background upgrade (standalone installs only,
+            // throttled). Do this BEFORE building the notice so the notice can
+            // report that an auto-upgrade is already in flight.
+            let auto_upgrade_launched = auto_upgrade && maybe_spawn_auto_upgrade();
+            if agent_gated {
+                let notice = build_notice(
+                    CURRENT_VERSION,
+                    &cache.latest_version,
+                    auto_upgrade_launched,
+                );
+                if let Ok(mut guard) = PENDING_NOTICE.lock() {
+                    *guard = Some(notice);
+                }
             }
         }
         if is_stale(&cache) {
@@ -141,6 +179,120 @@ fn should_check(cli: &Cli) -> bool {
 /// runs only when it is not suppressed and an AI agent is the caller.
 const fn should_check_core(suppressed: bool, agent_detected: bool) -> bool {
     !suppressed && agent_detected
+}
+
+/// Whether opt-in auto-upgrade is requested for this invocation.
+///
+/// Enabled by a truthy `FABIO_AUTO_UPGRADE`, but never inside the `upgrade`
+/// command itself (that IS the upgrade — and it is what the background child
+/// runs, so this prevents recursion) and never when the whole feature is opted
+/// out via `FABIO_NO_VERSION_CHECK`. Not agent-gated: an explicit opt-in should
+/// keep the binary current whether or not the caller is an agent.
+fn auto_upgrade_requested(cli: &Cli) -> bool {
+    env_flag_enabled("FABIO_AUTO_UPGRADE")
+        && std::env::var_os("FABIO_NO_VERSION_CHECK").is_none()
+        && !matches!(cli.command, Command::Upgrade { .. })
+}
+
+/// Whether an environment variable is set to a truthy value. Absent, empty, and
+/// the usual falsey spellings (`0`, `false`, `no`, `off`) are all disabled; any
+/// other value enables. Case-insensitive.
+fn env_flag_enabled(var: &str) -> bool {
+    std::env::var(var).is_ok_and(|v| is_truthy(&v))
+}
+
+/// Pure truthiness classifier for [`env_flag_enabled`].
+fn is_truthy(value: &str) -> bool {
+    !matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "" | "0" | "false" | "no" | "off"
+    )
+}
+
+/// If a background auto-upgrade should run now, record the attempt and spawn it.
+/// Returns `true` when a `fabio upgrade` child was launched.
+///
+/// Gated to **standalone** installs (the method `fabio upgrade` owns; a cargo
+/// binary should be updated via `cargo install --force`, a docker image via
+/// `docker pull`), and throttled to at most one attempt per
+/// [`AUTO_UPGRADE_RETRY_INTERVAL_HOURS`] via a marker file written BEFORE the
+/// spawn — so concurrent invocations and a persistently-failing upgrade cannot
+/// launch a storm of upgrade processes.
+fn maybe_spawn_auto_upgrade() -> bool {
+    if detect_install_method() != InstallMethod::Standalone {
+        return false;
+    }
+    if !auto_upgrade_throttle_allows(chrono::Utc::now()) {
+        return false;
+    }
+    // Record the attempt first; only spawn if it persisted (an un-throttleable
+    // attempt on a read-only home must not run, mirroring the refresh throttle).
+    if !record_auto_upgrade_attempt() {
+        return false;
+    }
+    spawn_background_upgrade()
+}
+
+/// Whether the auto-upgrade throttle permits an attempt now (no marker, or the
+/// last attempt is older than [`AUTO_UPGRADE_RETRY_INTERVAL_HOURS`]).
+fn auto_upgrade_throttle_allows(now: chrono::DateTime<chrono::Utc>) -> bool {
+    let Some(path) = auto_upgrade_marker_path() else {
+        return false; // no home dir → cannot throttle → do not spawn
+    };
+    let Ok(contents) = std::fs::read_to_string(&path) else {
+        return true; // no marker yet → allowed
+    };
+    auto_upgrade_due_at(contents.trim(), now)
+}
+
+/// Pure throttle decision for testing: a missing/malformed timestamp is "due",
+/// otherwise due once the interval has elapsed.
+fn auto_upgrade_due_at(last_attempt: &str, now: chrono::DateTime<chrono::Utc>) -> bool {
+    chrono::DateTime::parse_from_rfc3339(last_attempt).map_or(true, |then| {
+        now.signed_duration_since(then.with_timezone(&chrono::Utc))
+            .num_hours()
+            >= AUTO_UPGRADE_RETRY_INTERVAL_HOURS
+    })
+}
+
+/// Persist the auto-upgrade attempt timestamp. Returns `true` if written.
+fn record_auto_upgrade_attempt() -> bool {
+    let Some(path) = auto_upgrade_marker_path() else {
+        return false;
+    };
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let tmp = path.with_extension("tmp");
+    if std::fs::write(&tmp, chrono::Utc::now().to_rfc3339()).is_ok() {
+        return std::fs::rename(&tmp, &path).is_ok();
+    }
+    false
+}
+
+/// Spawn a detached `fabio upgrade` to replace the binary for the next
+/// invocation. Fire-and-forget: the current command never waits and is
+/// unaffected if it fails. Guards on the child prevent any recursion (the child
+/// runs `upgrade`, which suppresses the check, and the env vars belt-and-suspender
+/// it). Returns `true` if the child was spawned.
+///
+/// Disabled by `FABIO_NO_BACKGROUND_REFRESH` — the same air-gap escape hatch that
+/// stops the network refresher also stops the (network) auto-upgrade.
+fn spawn_background_upgrade() -> bool {
+    if std::env::var_os("FABIO_NO_BACKGROUND_REFRESH").is_some() {
+        return false;
+    }
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("fabio"));
+    std::process::Command::new(exe)
+        .arg("upgrade")
+        .env("FABIO_NO_VERSION_CHECK", "1")
+        .env("FABIO_NO_BACKGROUND_REFRESH", "1")
+        .env("FABIO_AUTO_UPGRADE", "0")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .is_ok()
 }
 
 /// Read and parse the cache file, or `None` if missing/unreadable/corrupt.
@@ -218,13 +370,14 @@ fn spawn_background_refresh() {
 }
 
 /// Build the `updateAvailable` envelope object for a known-newer release.
-fn build_notice(current: &str, latest: &str) -> Value {
+fn build_notice(current: &str, latest: &str, auto_upgrade_launched: bool) -> Value {
     let method = detect_install_method();
     notice_value(
         current,
         latest,
         method,
         crate::agent::version_update_notice(latest),
+        auto_upgrade_launched,
     )
 }
 
@@ -234,6 +387,7 @@ fn notice_value(
     latest: &str,
     method: InstallMethod,
     agent_notice: Option<String>,
+    auto_upgrade_launched: bool,
 ) -> Value {
     let mut obj = json!({
         "current": current,
@@ -241,6 +395,12 @@ fn notice_value(
         "installMethod": method_name(method),
         "upgradeCommand": upgrade_command(method),
     });
+    if auto_upgrade_launched {
+        // FABIO_AUTO_UPGRADE is on and a background `fabio upgrade` was launched;
+        // it takes effect on the next invocation. Signals the agent that it does
+        // NOT need to tell the user to run the upgrade command manually.
+        obj["autoUpgrade"] = Value::String("launched".to_string());
+    }
     if let Some(notice) = agent_notice {
         obj["agentNotice"] = Value::String(notice);
     }
@@ -383,6 +543,7 @@ mod tests {
             "0.63.0",
             InstallMethod::Cargo,
             Some("hello agent".to_string()),
+            false,
         );
         assert_eq!(v["current"], "0.60.0");
         assert_eq!(v["latest"], "0.63.0");
@@ -394,13 +555,49 @@ mod tests {
                 .contains("cargo install")
         );
         assert_eq!(v["agentNotice"], "hello agent");
+        assert!(v.get("autoUpgrade").is_none());
     }
 
     #[test]
     fn notice_value_omits_agent_notice_when_absent() {
-        let v = notice_value("0.60.0", "0.63.0", InstallMethod::Standalone, None);
+        let v = notice_value("0.60.0", "0.63.0", InstallMethod::Standalone, None, false);
         assert!(v.get("agentNotice").is_none());
         assert_eq!(v["upgradeCommand"], "fabio upgrade");
+    }
+
+    #[test]
+    fn notice_value_flags_auto_upgrade_when_launched() {
+        let v = notice_value("0.60.0", "0.63.0", InstallMethod::Standalone, None, true);
+        assert_eq!(v["autoUpgrade"], "launched");
+    }
+
+    #[test]
+    fn env_flag_truthiness() {
+        assert!(is_truthy("1"));
+        assert!(is_truthy("true"));
+        assert!(is_truthy("yes"));
+        assert!(is_truthy("ON"));
+        assert!(is_truthy("anything-else"));
+        assert!(!is_truthy(""));
+        assert!(!is_truthy("0"));
+        assert!(!is_truthy("false"));
+        assert!(!is_truthy("No"));
+        assert!(!is_truthy(" off "));
+    }
+
+    #[test]
+    fn auto_upgrade_throttle_boundary() {
+        let now = chrono::Utc::now();
+        let recent = (now - chrono::Duration::minutes(30)).to_rfc3339();
+        let old =
+            (now - chrono::Duration::hours(AUTO_UPGRADE_RETRY_INTERVAL_HOURS + 1)).to_rfc3339();
+        let exactly =
+            (now - chrono::Duration::hours(AUTO_UPGRADE_RETRY_INTERVAL_HOURS)).to_rfc3339();
+        assert!(!auto_upgrade_due_at(&recent, now)); // throttled
+        assert!(auto_upgrade_due_at(&old, now)); // due
+        assert!(auto_upgrade_due_at(&exactly, now)); // due at the boundary
+        assert!(auto_upgrade_due_at("not-a-timestamp", now)); // malformed → due
+        assert!(auto_upgrade_due_at("", now));
     }
 
     #[test]

@@ -64,5 +64,6 @@ The check is passive and cheap: it reads a locally cached result (`~/.fabio/vers
 | --- | --- |
 | `FABIO_NO_VERSION_CHECK` | Set to any value to disable the update check entirely (no cache read, no background refresh, no `updateAvailable` field). |
 | `FABIO_NO_BACKGROUND_REFRESH` | Set to any value to keep the passive cached notice but never spawn the background refresher (air-gapped environments). |
+| `FABIO_AUTO_UPGRADE` | Set to a truthy value to self-update: when the cached check finds a newer release, spawn a detached `fabio upgrade` so the new binary takes effect on the next invocation (the notice then carries `"autoUpgrade": "launched"`). Off by default; standalone installs only; throttled to one attempt per hour; disabled by the two variables above. |
 
 Run `fabio --help` for the flags supported by your installed version.
