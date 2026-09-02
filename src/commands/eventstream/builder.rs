@@ -529,10 +529,7 @@ fn validate_capacity_operation_filters(props: &Value) -> Result<()> {
             .into());
         }
 
-        let valueless_operator = matches!(
-            operator_type,
-            "IsNullOrUndefined" | "IsNotNull"
-        );
+        let valueless_operator = matches!(operator_type, "IsNullOrUndefined" | "IsNotNull");
         if valueless_operator {
             if has_value || has_values {
                 return Err(FabioError::with_hint(
