@@ -386,6 +386,7 @@ fn agent_format_mcp_repeatable_flag_is_array_schema() {
     let input_node = &add_operator_tool["inputSchema"]["properties"]["input_node"];
     assert_eq!(input_node["type"], "array");
     assert_eq!(input_node["items"]["type"], "string");
+    assert_eq!(input_node["minItems"], 1);
 }
 
 #[test]

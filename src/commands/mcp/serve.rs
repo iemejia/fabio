@@ -541,6 +541,9 @@ fn build_json_schema_params(cmd_val: &Value) -> (Map<String, Value>, Vec<String>
             }
             if obj.get("required").and_then(Value::as_bool) == Some(true) {
                 required.push(param_name.clone());
+                if fabio_type == "array" {
+                    prop.insert("minItems".to_owned(), json!(1));
+                }
             }
         } else {
             prop.insert("type".to_owned(), json!("string"));

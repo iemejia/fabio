@@ -880,6 +880,54 @@ fn eventstream_add_reference_lakehouse_source_rejects_extra_path_segments() {
 }
 
 #[test]
+fn eventstream_add_reference_lakehouse_source_rejects_empty_segments() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "eventstream",
+            "add-source",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "customers",
+            "--source-type",
+            "ReferenceLakehouse",
+            "--properties",
+            r#"{"workspaceId":"cfafbeb1-8037-4d0c-896e-a46fb27ff229","itemId":"11111111-2222-3333-4444-555555555555","absoluteOneLakePath":"https://onelake.dfs.fabric.microsoft.com/cfafbeb1-8037-4d0c-896e-a46fb27ff229/11111111-2222-3333-4444-555555555555/Tables/dbo/"}"#,
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("must identify a Delta table"), "got: {stderr}");
+}
+
+#[test]
+fn eventstream_add_capacity_operation_source_rejects_invalid_filter_values() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "eventstream",
+            "add-source",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "capacity-operations",
+            "--source-type",
+            "FabricCapacityOperationEvents",
+            "--properties",
+            r#"{"eventScope":"Capacity","filters":[{"operatorType":"StringIn","key":"data.operationType","value":"ScaleUp"}]}"#,
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("requires 'values'"), "got: {stderr}");
+}
+
+#[test]
 fn eventstream_add_capacity_operation_source_dry_run() {
     let assert = fabio()
         .args([

@@ -368,7 +368,10 @@ fn validate_reference_lakehouse_source(props: &Value) -> Result<()> {
         .into());
     }
     let segments: Vec<&str> = url.path_segments().into_iter().flatten().collect();
-    if segments.len() != 5 || segments[2] != "Tables" {
+    if segments.len() != 5
+        || segments[2] != "Tables"
+        || segments.iter().any(|segment| segment.is_empty())
+    {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
             "ReferenceLakehouse absoluteOneLakePath must identify a Delta table",
@@ -465,7 +468,113 @@ fn validate_capacity_operation_source(props: &Value) -> Result<()> {
         validate_uuid(capacity_id, "FabricCapacityOperationEvents capacityId")?;
     }
     validate_optional_array(props, "includedEventTypes", Value::is_string)?;
-    validate_optional_array(props, "filters", Value::is_object)?;
+    validate_capacity_operation_filters(props)?;
+    Ok(())
+}
+
+fn validate_capacity_operation_filters(props: &Value) -> Result<()> {
+    let Some(filters) = props.get("filters") else {
+        return Ok(());
+    };
+    let filters = filters.as_array().ok_or_else(|| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "FabricCapacityOperationEvents filters must be an array of filter objects",
+            "Provide 'filters' as a JSON array, for example: [{\"operatorType\":\"StringIn\",\"key\":\"data.operationType\",\"values\":[\"ScaleUp\"]}]",
+        )
+    })?;
+
+    for (index, filter) in filters.iter().enumerate() {
+        let filter_obj = filter.as_object().ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("FabricCapacityOperationEvents filter at index {index} must be an object"),
+                "Use an object with 'operatorType', 'key', and either 'value' or 'values'.",
+            )
+        })?;
+
+        let operator_type = filter_obj
+            .get("operatorType")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!("FabricCapacityOperationEvents filter at index {index} requires a non-empty 'operatorType'"),
+                    "Use a valid filter operator such as 'StringIn', 'Equals', or 'GreaterThan'.",
+                )
+            })?;
+
+        let key = filter_obj
+            .get("key")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!("FabricCapacityOperationEvents filter at index {index} requires a non-empty 'key'"),
+                    "Provide the event property name in 'key', for example 'data.operationType'.",
+                )
+            })?;
+
+        let has_value = filter_obj.contains_key("value");
+        let has_values = filter_obj.contains_key("values");
+        if has_value && has_values {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("FabricCapacityOperationEvents filter '{key}' cannot set both 'value' and 'values'"),
+                "Use one discriminator: 'value' for scalar comparisons or 'values' for list-based operators like 'StringIn'.",
+            )
+            .into());
+        }
+
+        let expects_values = operator_type.contains("In") || operator_type.eq_ignore_ascii_case("Between");
+        if expects_values && !has_values {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("FabricCapacityOperationEvents filter '{key}' requires 'values' for operator type '{operator_type}'"),
+                "Use 'values' for list-based operators such as 'StringIn'.",
+            )
+            .into());
+        }
+        if !expects_values && !has_value {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("FabricCapacityOperationEvents filter '{key}' requires 'value' for operator type '{operator_type}'"),
+                "Use 'value' for scalar comparisons such as 'Equals' or 'GreaterThan'.",
+            )
+            .into());
+        }
+
+        if let Some(value) = filter_obj.get("value") {
+            if value.is_object() || value.is_array() {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!("FabricCapacityOperationEvents filter '{key}' 'value' must be a scalar value"),
+                    "Set 'value' to a string, number, or boolean, not an object or array.",
+                )
+                .into());
+            }
+        }
+
+        if let Some(values) = filter_obj.get("values") {
+            let values = values.as_array().ok_or_else(|| {
+                FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!("FabricCapacityOperationEvents filter '{key}' 'values' must be a non-empty array"),
+                    "Use 'values' as an array of scalar values, for example ['ScaleUp', 'ScaleDown'].",
+                )
+            })?;
+            if values.is_empty() || values.iter().any(|entry| entry.is_array() || entry.is_object()) {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!("FabricCapacityOperationEvents filter '{key}' 'values' must be a non-empty array of scalar values"),
+                    "Use 'values' as an array of strings, numbers, or booleans.",
+                )
+                .into());
+            }
+        }
+    }
     Ok(())
 }
 
