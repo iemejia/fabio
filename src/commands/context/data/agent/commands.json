@@ -17404,6 +17404,184 @@
         "mutates": true,
         "returns": "void",
         "async": true
+      },
+      "list-containers": {
+        "description": "List containers in a Cosmos DB database (data-plane)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Cosmos DB database ID"
+          },
+          "--endpoint": {
+            "type": "string",
+            "description": "Override the Cosmos DB data-plane endpoint (default: resolved from item properties)"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "create-container": {
+        "description": "Create a container in a Cosmos DB database (data-plane)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Cosmos DB database ID"
+          },
+          "--container": {
+            "type": "string",
+            "required": true,
+            "description": "Container name"
+          },
+          "--partition-key": {
+            "type": "string",
+            "required": true,
+            "description": "Partition key path (e.g. /categoryId). A leading slash is added if omitted"
+          },
+          "--autoscale-max": {
+            "type": "string",
+            "description": "Autoscale maximum throughput (RU/s). Fabric Cosmos is autoscale-only"
+          },
+          "--ttl": {
+            "type": "string",
+            "description": "Default time-to-live for documents, in seconds (-1 = on, no expiry)"
+          },
+          "--endpoint": {
+            "type": "string",
+            "description": "Override the Cosmos DB data-plane endpoint (default: resolved from item properties)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "delete-container": {
+        "description": "Delete a container and all its documents (data-plane, irreversible)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Cosmos DB database ID"
+          },
+          "--container": {
+            "type": "string",
+            "required": true,
+            "description": "Container name"
+          },
+          "--endpoint": {
+            "type": "string",
+            "description": "Override the Cosmos DB data-plane endpoint (default: resolved from item properties)"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "query": {
+        "description": "Run a query against a container (Cosmos DB data-plane)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Cosmos DB database ID"
+          },
+          "--container": {
+            "type": "string",
+            "required": true,
+            "description": "Container name"
+          },
+          "--query-text": {
+            "type": "string",
+            "description": "Query text (inline, @file, or piped via stdin)"
+          },
+          "--parameter": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Bind a query parameter as name=value (repeatable). Values are typed when numeric/boolean, else string"
+          },
+          "--partition-key": {
+            "type": "string",
+            "description": "Scope the query to a single partition-key value (else cross-partition)"
+          },
+          "--max-item-count": {
+            "type": "string",
+            "description": "Max documents per page request (x-ms-max-item-count)"
+          },
+          "--endpoint": {
+            "type": "string",
+            "description": "Override the Cosmos DB data-plane endpoint (default: resolved from item properties)"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "import": {
+        "description": "Bulk import documents from JSONL/JSON into a container (data-plane, upsert by default)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Cosmos DB database ID"
+          },
+          "--container": {
+            "type": "string",
+            "required": true,
+            "description": "Target container name"
+          },
+          "--source": {
+            "type": "string",
+            "description": "Source file path (JSONL or JSON array). Reads stdin when omitted"
+          },
+          "--format": {
+            "type": "string",
+            "description": "Input format: jsonl, json-array, or auto"
+          },
+          "--mode": {
+            "type": "string",
+            "description": "Write mode: upsert (default, idempotent) or insert"
+          },
+          "--concurrency": {
+            "type": "string",
+            "description": "Max concurrent writes (default: auto)"
+          },
+          "--continue-on-error": {
+            "type": "bool",
+            "description": "Skip invalid documents instead of aborting the import"
+          },
+          "--endpoint": {
+            "type": "string",
+            "description": "Override the Cosmos DB data-plane endpoint (default: resolved from item properties)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
       }
     }
   },

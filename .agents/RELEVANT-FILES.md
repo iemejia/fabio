@@ -116,7 +116,11 @@
 - `src/commands/operations_agent.rs`: list/show/create/update/delete/get-definition/update-definition (Configurations.json)
 - `src/commands/digital_twin_builder.rs`: list/show/create/update/delete/get-definition/update-definition + show-lakehouse (resolve linked `dtdm` lakehouse) + query (T-SQL over the twin's `dom`/`dbo` SQL endpoint) + delete `--delete-lakehouse` cascade
 - `src/commands/digital_twin_builder_flow.rs`: list/show/create/update/delete/get-definition/update-definition (requires parent DTB)
-- `src/commands/cosmos_db_database.rs`: list/show/create/update/delete/get-definition/update-definition (definition.json)
+- `src/commands/cosmos_db_database/mod.rs`: `cosmos-db-database` group — enum + execute dispatch (control-plane CRUD + data-plane containers/documents)
+- `src/commands/cosmos_db_database/crud.rs`: control-plane item CRUD (list/show/create/update/delete/get-definition/update-definition, definition.json)
+- `src/commands/cosmos_db_database/data_plane.rs`: Cosmos NoSQL REST transport (AAD `type=aad&ver=1.0&sig=` header, RFC1123 date, RU/continuation parsing, autoscale container create, upsert, query)
+- `src/commands/cosmos_db_database/containers.rs`: list-containers / create-container / delete-container (+ partition-key normalization, blast-radius guard)
+- `src/commands/cosmos_db_database/documents.rs`: query + import (JSONL/JSON-array parse, partition-key extraction, parallel upsert)
 - `src/commands/snowflake_database.rs`: list/show/create/update/delete/get-definition/update-definition (requires connection payload)
 - `src/commands/sql_endpoint.rs`: list/show/connection-string/query/plan/refresh-metadata/get-audit-settings/update-audit-settings/set-audit-actions + insights (queries-running/frequent/long-running/history)
 - `src/commands/anomaly_detector.rs`: list/show/create/update/delete/get-definition/update-definition (Configurations.json)

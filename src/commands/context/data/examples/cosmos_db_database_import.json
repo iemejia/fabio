@@ -1,0 +1,16 @@
+{
+  "command": "fabio cosmos-db-database import --workspace $WS --id $COSMOS_ID --container products --source products.jsonl",
+  "description": "Bulk import documents into a Cosmos DB container. Reads JSONL (one JSON object per line), a JSON array, or stdin. UPSERT by default (idempotent, safe to retry). The partition-key value is derived automatically from each document using the container's partition-key path.",
+  "response": {
+    "data": {
+      "documentsImported": 4,
+      "mode": "upserted",
+      "status": "imported"
+    }
+  },
+  "notes": "On partial failure the envelope becomes {documentsImported, documentsFailed, failures:[{item,error,code}], status:'partial_failure'} and the exit code is non-zero. Pass --continue-on-error to skip documents missing the partition-key field. Use --mode insert for create-only (fails on duplicate id). Fabric Cosmos is autoscale-only, so create the container first with 'create-container --partition-key /categoryId'. Query the data back with 'cosmos-db-database query --container products --query-text \"SELECT * FROM c\"' (cross-partition is automatic unless --partition-key is given).",
+  "query_examples": [
+    {"query": "documentsImported", "description": "How many documents were written."},
+    {"query": "status", "description": "'imported' on full success, 'partial_failure' otherwise."}
+  ]
+}

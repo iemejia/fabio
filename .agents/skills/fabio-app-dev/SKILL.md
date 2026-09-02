@@ -110,9 +110,14 @@ Manage Cosmos DB databases (mirrored from Azure Cosmos DB)
 | Command | Mutates | Description |
 |---|---|---|
 | `fabio cosmos-db-database create` | yes | Create a new Cosmos DB database |
+| `fabio cosmos-db-database create-container` | yes | Create a container in a Cosmos DB database (data-plane) |
 | `fabio cosmos-db-database delete` | yes | Delete a Cosmos DB database |
+| `fabio cosmos-db-database delete-container` | yes | Delete a container and all its documents (data-plane, irreversible) |
 | `fabio cosmos-db-database get-definition` | no | Get the definition of a Cosmos DB database |
+| `fabio cosmos-db-database import` | yes | Bulk import documents from JSONL/JSON into a container (data-plane, upsert by default) |
 | `fabio cosmos-db-database list` | no | List Cosmos DB databases in a workspace |
+| `fabio cosmos-db-database list-containers` | no | List containers in a Cosmos DB database (data-plane) |
+| `fabio cosmos-db-database query` | no | Run a query against a container (Cosmos DB data-plane) |
 | `fabio cosmos-db-database show` | no | Show details of a Cosmos DB database |
 | `fabio cosmos-db-database update` | yes | Update Cosmos DB database properties |
 | `fabio cosmos-db-database update-definition` | yes | Update the definition of a Cosmos DB database |
@@ -166,6 +171,7 @@ Manage org app audiences (audience definitions for org apps)
 - The MCP consumption surface returns the answer text only. Per-step SQL/DAX/KQL introspection, multi-turn threads, answer-file downloads, and chart-spec extraction are NOT available — those were artifacts of the retired Assistants API. Use 'data-agent query --raw' to inspect the full MCP tool result.
 - 'user-data-function invoke' needs a PUBLISHED function with public access enabled in the portal; fabio SSRF-guards the URL (HTTPS + trusted Microsoft host) and attaches the Fabric bearer token.
 - Cosmos DB and SQL Database backends require F4+ capacity.
+- Cosmos DB has a DATA-PLANE surface beyond item CRUD: 'list-containers', 'create-container' (autoscale-only — Fabric rejects manual/no throughput; fabio always sends the autoscale max, default 1000 RU/s), 'delete-container' (irreversible — drops all documents), 'query' (Cosmos NoSQL via --query-text/@file/stdin; cross-partition is automatic unless --partition-key is given; --parameter name=value binds @params; RU cost in verbose), and 'import' (bulk JSONL/JSON-array, UPSERT by default = idempotent, partition key auto-derived from the container's partitionKey path — pass --continue-on-error to skip bad rows). The Cosmos database name == the item display name; the endpoint is resolved from the item's properties.serverFqdn (override with --endpoint). Auth uses the https://cosmos.azure.com/.default scope.
 - app-backend has aliases (rayfin-app, data-app); org-app distribution pairs org-app with org-app-audience.
 - Data agent query languages are chosen by the DATA SOURCE type, and the agent generates the query itself: Lakehouse/Warehouse/SQLDatabase/MirroredDatabase -> NL2SQL, KQLDatabase -> NL2KQL, SemanticModel -> NL2DAX (Power BI datasets), Ontology/GraphModel -> graph. To do NL2DAX, `add-datasource --artifact-type SemanticModel`. CRITICAL: `add-datasource` does NOT auto-select a semantic model's TABLES (only columns) — you MUST `select-tables` for the source or the agent hallucinates instead of generating DAX. Re-`publish` after changing sources/selection (published config is a snapshot).
 
@@ -177,6 +183,9 @@ Manage org app audiences (audience definitions for org apps)
 | Data Agent gives wrong answers | Add few-shots (add-fewshot), tighten instructions (update-config), and validate with 'data-agent evaluate' / 'validate-fewshots' (add --llm-* for a judge model). |
 | user-data-function invoke fails | Ensure the function is published with public access; pass the exact portal-copied --url (HTTPS *.fabric.microsoft.com). fabio rejects non-trusted/non-HTTPS URLs. |
 | SQL Database / Cosmos DB create fails on small capacity | These need F4+ capacity; resume/scale the capacity first. |
+| cosmos-db-database create-container fails 'Offer Type is restricted to Autoscale for your account.' | Fabric Cosmos DB is autoscale-only. fabio always sends the autoscale throughput header, so use 'create-container --autoscale-max <RU>' (default 1000, the autoscale minimum); do not expect manual/fixed throughput. |
+| cosmos-db-database query fails 'Cross partition query is required but disabled' | The query spans partitions. Omit --partition-key (fabio then enables cross-partition automatically), or pass --partition-key <value> to scope the query to one partition. |
+| cosmos-db-database import reports documents skipped/failed with 'missing partition-key path' | Every document must contain the container's partition-key field (the container's partitionKey path). Fix the source rows, or pass --continue-on-error to skip invalid rows and import the rest. |
 | data-agent add-datasource fails 'Failed to fetch schema' for an OPEN (push/GenericMirror) MirroredDatabase, even though 'warehouse query' reads it fine | This is a Fabric data-agent server limitation, not a fabio bug: an open mirror deterministically fails NL2SQL schema fetch (a Warehouse added to the same agent/session/token succeeds). Use a connection-based mirror (Snowflake/CosmosDB/Azure SQL) or a Warehouse/Lakehouse/SQLDatabase source for the data-agent NL2SQL case. |
 | data-agent query/evaluate fails with 'The Data Agent run failed before producing a result.' | The orchestrator never ran. This is a LIKELY symptom of the 'AllowStoreAOAIDataInOtherRegions' tenant setting being disabled (the conversational runtime must store history via Azure OpenAI, gated for capacities outside the EU data boundary and the US) — ask an admin to enable it (fabio admin update-tenant-setting). It can also be a transient failure or a paused capacity, so retry once and confirm the capacity is running before escalating. |
 

@@ -97,6 +97,10 @@ pub(super) const fn example_entries() -> &'static [(&'static str, &'static str)]
 
 const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
+        "cosmos-db-database/import",
+        include_str!("data/examples/cosmos_db_database_import.json"),
+    ),
+    (
         "semantic-model/generate-dax",
         include_str!("data/examples/semantic_model_generate_dax.json"),
     ),

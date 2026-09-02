@@ -111,6 +111,7 @@ const HTTPS_REQUIRED_ENV_VARS: &[&str] = &[
     "FABIO_SQL_SCOPE",
     "FABIO_ARM_SCOPE",
     "FABIO_GRAPH_SCOPE",
+    "FABIO_COSMOS_SCOPE",
 ];
 
 /// Validate that every set endpoint/scope override env var uses HTTPS.
@@ -206,6 +207,16 @@ static ARM_SCOPE: LazyLock<String> =
 
 static GRAPH_SCOPE: LazyLock<String> =
     LazyLock::new(|| env_or_default("FABIO_GRAPH_SCOPE", "https://graph.microsoft.com/.default"));
+
+static COSMOS_SCOPE: LazyLock<String> =
+    LazyLock::new(|| env_or_default("FABIO_COSMOS_SCOPE", "https://cosmos.azure.com/.default"));
+
+/// The resolved Cosmos DB data-plane token scope (default
+/// `https://cosmos.azure.com/.default`). Honors `FABIO_COSMOS_SCOPE`.
+#[must_use]
+pub fn cosmos_scope() -> &'static str {
+    &COSMOS_SCOPE
+}
 const LRO_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const LRO_MAX_WAIT: Duration = Duration::from_mins(2);
 
@@ -361,6 +372,14 @@ impl FabricClient {
     pub const fn with_readonly(mut self, readonly: bool) -> Self {
         self.readonly = readonly;
         self
+    }
+
+    /// Whether readonly mode is active. Data-plane transports that dispatch
+    /// through the raw [`http`](Self::http) client (bypassing the built-in
+    /// `guard_readonly`) must consult this before issuing a mutating request.
+    #[must_use]
+    pub const fn is_readonly(&self) -> bool {
+        self.readonly
     }
 
     /// Guard: reject mutating requests when readonly mode is active.
@@ -3243,6 +3262,8 @@ fn scoped_token_env_var(scope: &str) -> Option<&'static str> {
         Some("FABIO_ARM_ACCESS_TOKEN")
     } else if scope == *GRAPH_SCOPE {
         Some("FABIO_GRAPH_ACCESS_TOKEN")
+    } else if scope == *COSMOS_SCOPE {
+        Some("FABIO_COSMOS_ACCESS_TOKEN")
     } else {
         None
     }
