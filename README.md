@@ -557,6 +557,27 @@ jobs:
           fabio deploy apply --source ./fabric-items/ --workspace "Production"
 ```
 
+**Native OIDC (no Azure CLI):** pass GitHub's OIDC token straight to fabio via `auth login --federated-token` — no `azure/login`/az dependency in the runner. Configure a [federated credential](https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation) (audience `api://AzureADTokenExchange`) on the app registration:
+
+```yaml
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: curl -fsSL https://raw.githubusercontent.com/iemejia/fabio/main/install.sh | bash
+      - name: Sign in to Fabric with GitHub OIDC
+        run: |
+          OIDC_TOKEN=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange" | jq -r '.value')
+          fabio auth login --tenant "${{ secrets.AZURE_TENANT_ID }}" \
+            --client-id "${{ secrets.AZURE_CLIENT_ID }}" --federated-token "$OIDC_TOKEN"
+      - run: fabio deploy apply --source ./fabric-items/ --workspace "Production" --env prod
+```
+
 ### Service Principal with Client Secret
 
 Simplest setup -- just set environment variables:

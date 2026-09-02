@@ -62,6 +62,26 @@ pub enum AuthCommand {
     Status,
 }
 
+/// Whether an `auth login` invocation should use the service-principal flow.
+///
+/// True when `--service-principal` is set OR any actual service-principal credential
+/// (client secret, certificate, or federated/OIDC token) is provided. `--client-id`
+/// alone does NOT imply service-principal — it may be a public-client id for an
+/// interactive (device-code/WAM) login.
+const fn implies_service_principal(
+    service_principal: bool,
+    client_secret: Option<&str>,
+    certificate: Option<&str>,
+    federated_token: Option<&str>,
+    federated_token_file: Option<&str>,
+) -> bool {
+    service_principal
+        || client_secret.is_some()
+        || certificate.is_some()
+        || federated_token.is_some()
+        || federated_token_file.is_some()
+}
+
 pub async fn execute(cli: &Cli, command: &AuthCommand) -> Result<()> {
     match command {
         AuthCommand::Login {
@@ -77,7 +97,18 @@ pub async fn execute(cli: &Cli, command: &AuthCommand) -> Result<()> {
             federated_token,
             federated_token_file,
         } => {
-            if *service_principal {
+            // A service-principal credential flag implies service-principal mode even
+            // without the explicit --service-principal flag, so a natural CI invocation
+            // like `auth login --tenant .. --client-id .. --federated-token ..` works
+            // instead of silently falling back to interactive device-code login.
+            let use_service_principal = implies_service_principal(
+                *service_principal,
+                client_secret.as_deref(),
+                certificate.as_deref(),
+                federated_token.as_deref(),
+                federated_token_file.as_deref(),
+            );
+            if use_service_principal {
                 login_service_principal(
                     cli,
                     tenant.as_deref(),
@@ -365,4 +396,55 @@ async fn status(cli: &Cli) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::implies_service_principal;
+
+    #[test]
+    fn explicit_flag_implies_sp() {
+        assert!(implies_service_principal(true, None, None, None, None));
+    }
+
+    #[test]
+    fn credential_flags_imply_sp_without_explicit_flag() {
+        // A natural CI invocation (federated/OIDC token, secret, or cert) routes to
+        // the service-principal flow even without --service-principal.
+        assert!(implies_service_principal(
+            false,
+            Some("secret"),
+            None,
+            None,
+            None
+        ));
+        assert!(implies_service_principal(
+            false,
+            None,
+            Some("cert.pem"),
+            None,
+            None
+        ));
+        assert!(implies_service_principal(
+            false,
+            None,
+            None,
+            Some("oidc.jwt"),
+            None
+        ));
+        assert!(implies_service_principal(
+            false,
+            None,
+            None,
+            None,
+            Some("/tok")
+        ));
+    }
+
+    #[test]
+    fn no_credential_stays_interactive() {
+        // Plain `auth login` (and --client-id alone, which is not passed here) stays
+        // on the interactive/device-code path.
+        assert!(!implies_service_principal(false, None, None, None, None));
+    }
 }

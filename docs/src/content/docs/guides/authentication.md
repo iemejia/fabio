@@ -40,6 +40,36 @@ fabio auth login --service-principal \
 
 Prefer environment variables or your CI secret store over command-line secrets. Fabio also supports certificate and federated-token authentication; run `fabio auth login --help` for the exact flags.
 
+## Workload identity federation (GitHub Actions OIDC)
+
+Avoid storing a client secret entirely by exchanging a short-lived GitHub OIDC token for a Fabric token (Microsoft's [recommended](https://learn.microsoft.com/en-us/azure/well-architected/security/identity-access) secretless pattern). Configure a [federated credential](https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation) on your app registration (audience `api://AzureADTokenExchange`), then pass the GitHub OIDC token straight to Fabio — no Azure CLI required in the runner:
+
+```yaml
+permissions:
+  id-token: write   # allow the job to request a GitHub OIDC token
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install fabio
+        run: curl -fsSL https://raw.githubusercontent.com/iemejia/fabio/main/install.sh | bash
+      - name: Sign in to Fabric with GitHub OIDC
+        run: |
+          OIDC_TOKEN=$(curl -sS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange" | jq -r '.value')
+          fabio auth login \
+            --tenant "${{ secrets.AZURE_TENANT_ID }}" \
+            --client-id "${{ secrets.AZURE_CLIENT_ID }}" \
+            --federated-token "$OIDC_TOKEN"
+      - run: fabio deploy apply --source ./fabric-items --workspace "Production" --env prod
+```
+
+Alternatively, run `azure/login@v3` with OIDC first — Fabio's credential chain then picks up the Azure CLI session automatically (no `fabio auth login` step needed). The native `--federated-token` flow above avoids the Azure CLI dependency and binds the exchange directly to your app registration.
+
 ## Credential precedence
 
 Fabio checks an explicit `FABIO_ACCESS_TOKEN`, its encrypted login cache, Azure environment credentials, managed identity, Azure CLI, and Azure Developer CLI. A command may require a separate audience for Fabric, OneLake storage, SQL, ARM, Kusto, or Microsoft Graph.
