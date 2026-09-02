@@ -1,6 +1,7 @@
-//! Cosmos DB data-plane: document operations (query + bulk import).
+//! Cosmos DB data-plane: document operations (query, bulk import, single-document
+//! CRUD, and export).
 
-use std::io::Read;
+use std::io::{Read, Write};
 
 use anyhow::Result;
 use serde_json::Value;
@@ -226,6 +227,196 @@ fn render_import_result(cli: &Cli, summary: &BatchSummary, verb: &str) -> Result
     }
 }
 
+// ── Single-document CRUD ─────────────────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn get_document(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    container: &str,
+    document_id: &str,
+    partition_key: &str,
+    endpoint: Option<&str>,
+) -> Result<()> {
+    let pk = cli_partition_value(partition_key);
+    let cosmos = CosmosClient::connect(client, workspace, id, endpoint).await?;
+    let resp = cosmos.read_document(container, document_id, &pk).await?;
+    output::render_object(cli, &resp.body, "id");
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn create_document(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    container: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+    partition_key: Option<&str>,
+    mode: &str,
+    endpoint: Option<&str>,
+) -> Result<()> {
+    let upsert = normalize_mode(mode)?;
+    let document = read_single_document(file, content)?;
+
+    if output::dry_run_guard(
+        cli,
+        "cosmos-db-database create-document",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "container": container,
+            "documentId": document.get("id"),
+            "mode": if upsert { "upsert" } else { "insert" },
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let cosmos = CosmosClient::connect(client, workspace, id, endpoint).await?;
+
+    // Resolve the partition-key value: explicit --partition-key wins, else derive
+    // it from the document using the container's partition-key path.
+    let pk = if let Some(raw) = partition_key {
+        cli_partition_value(raw)
+    } else {
+        let pk_path = resolve_partition_key_path(&cosmos, container).await?;
+        extract_partition_key(&document, &pk_path).ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!(
+                    "Document is missing partition-key path '{pk_path}' required by container '{container}'."
+                ),
+                "Include the partition-key field in the document, or pass --partition-key explicitly.",
+            )
+        })?
+    };
+
+    let resp = cosmos
+        .write_document(container, &document, &pk, upsert)
+        .await?;
+    output::render_object(cli, &resp.body, "id");
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn delete_document(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    container: &str,
+    document_id: &str,
+    partition_key: &str,
+    endpoint: Option<&str>,
+) -> Result<()> {
+    if document_id.trim().is_empty() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Document id must not be empty for deletion.".to_string(),
+            "Provide the exact document id. Example: fabio cosmos-db-database delete-document --container products --document-id p1 --partition-key electronics",
+        )
+        .into());
+    }
+    if output::dry_run_guard(
+        cli,
+        "cosmos-db-database delete-document",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "container": container,
+            "documentId": document_id,
+            "partitionKey": partition_key,
+        }),
+    ) {
+        return Ok(());
+    }
+    let pk = cli_partition_value(partition_key);
+    let cosmos = CosmosClient::connect(client, workspace, id, endpoint).await?;
+    cosmos.delete_document(container, document_id, &pk).await?;
+    let obj = serde_json::json!({ "documentId": document_id, "status": "deleted" });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+// ── Export ───────────────────────────────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn export(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    container: &str,
+    query_text: Option<&str>,
+    output_file: Option<&str>,
+    endpoint: Option<&str>,
+) -> Result<()> {
+    let text = query_text.unwrap_or("SELECT * FROM c").to_string();
+    let cosmos = CosmosClient::connect(client, workspace, id, endpoint).await?;
+
+    // Page through the full result set (export is unbounded by design; --limit
+    // still caps it for previews).
+    let mut documents: Vec<Value> = Vec::new();
+    let mut continuation: Option<String> = None;
+    loop {
+        let resp = cosmos
+            .query(container, &text, &[], None, None, continuation.as_deref())
+            .await?;
+        if let Some(arr) = resp.body.get("Documents").and_then(Value::as_array) {
+            documents.extend(arr.iter().cloned());
+        }
+        continuation = resp.continuation;
+        let reached_limit = cli.limit.is_some_and(|l| documents.len() >= l);
+        if continuation.is_none() || reached_limit {
+            break;
+        }
+    }
+    if let Some(limit) = cli.limit {
+        documents.truncate(limit);
+    }
+
+    // Serialize as JSONL (one JSON object per line). Cosmos system metadata
+    // fields (_rid/_self/_etag/_attachments/_ts) are stripped so the export is
+    // clean, re-importable user data.
+    let mut jsonl = String::new();
+    for doc in &documents {
+        jsonl.push_str(&serde_json::to_string(&strip_system_fields(doc))?);
+        jsonl.push('\n');
+    }
+
+    if let Some(path) = output_file {
+        let mut f = std::fs::File::create(path).map_err(|e| {
+            FabioError::new(
+                ErrorCode::ApiError,
+                format!("Failed to create export file '{path}': {e}"),
+            )
+        })?;
+        f.write_all(jsonl.as_bytes()).map_err(|e| {
+            FabioError::new(
+                ErrorCode::ApiError,
+                format!("Failed to write '{path}': {e}"),
+            )
+        })?;
+        let obj = serde_json::json!({
+            "documentsExported": documents.len(),
+            "file": path,
+            "status": "exported",
+        });
+        output::render_object(cli, &obj, "status");
+    } else {
+        // Stream JSONL to stdout for piping (two-way I/O). Bypass the envelope so
+        // the output is directly consumable by `fabio ... import --source -` style
+        // pipelines and jq.
+        print!("{jsonl}");
+    }
+    Ok(())
+}
+
 // ── Pure helpers ────────────────────────────────────────────────────────────
 
 /// Read the import source: a file path, or stdin when `None`.
@@ -241,6 +432,32 @@ fn read_source(source: Option<&str>) -> Result<String> {
         })?;
         Ok(buf)
     }
+}
+
+/// Read a single JSON document from `--file`, inline `--content`, or stdin.
+fn read_single_document(file: Option<&str>, content: Option<&str>) -> Result<Value> {
+    let raw = match (file, content) {
+        (Some(path), _) => std::fs::read_to_string(path)
+            .map_err(|e| FabioError::not_found(format!("Document file not found: {path}: {e}")))?,
+        (_, Some(c)) => c.to_string(),
+        (None, None) => read_source(None)?,
+    };
+    let value: Value = serde_json::from_str(raw.trim()).map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid JSON document: {e}"),
+            "Provide a single JSON object via --file, --content, or stdin.",
+        )
+    })?;
+    if !value.is_object() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "A Cosmos document must be a JSON object.".to_string(),
+            "Wrap the value in an object, e.g. {\"id\":\"1\",\"pk\":\"x\"}.",
+        )
+        .into());
+    }
+    Ok(value)
 }
 
 /// Parse import content into documents. `format` is `jsonl`, `json-array`, or
@@ -306,6 +523,22 @@ pub(super) fn extract_partition_key(doc: &Value, pk_path: &str) -> Option<Value>
         current = current.get(segment)?;
     }
     Some(current.clone())
+}
+
+/// Strip Cosmos server-generated system metadata fields from a document so an
+/// export is clean, re-importable user data. Leaves `id` and all user fields.
+fn strip_system_fields(doc: &Value) -> Value {
+    const SYSTEM_FIELDS: [&str; 5] = ["_rid", "_self", "_etag", "_attachments", "_ts"];
+    if let Value::Object(map) = doc {
+        let cleaned: serde_json::Map<String, Value> = map
+            .iter()
+            .filter(|(k, _)| !SYSTEM_FIELDS.contains(&k.as_str()))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        Value::Object(cleaned)
+    } else {
+        doc.clone()
+    }
 }
 
 /// Interpret a `--partition-key` CLI string: a bare number/bool/null is used as
@@ -443,6 +676,36 @@ mod tests {
         assert!(normalize_mode("upsert").unwrap());
         assert!(!normalize_mode("INSERT").unwrap());
         assert!(normalize_mode("replace").is_err());
+    }
+
+    #[test]
+    fn strip_system_fields_removes_cosmos_metadata() {
+        let doc = serde_json::json!({
+            "id": "p1", "sku": "A", "qty": 5,
+            "_rid": "x", "_self": "y", "_etag": "z", "_attachments": "a", "_ts": 1
+        });
+        let cleaned = strip_system_fields(&doc);
+        assert_eq!(cleaned, serde_json::json!({"id":"p1","sku":"A","qty":5}));
+    }
+
+    #[test]
+    fn strip_system_fields_passthrough_non_object() {
+        assert_eq!(strip_system_fields(&Value::from(5)), Value::from(5));
+    }
+
+    #[test]
+    fn read_single_document_rejects_non_object() {
+        let err = read_single_document(None, Some("[1,2,3]")).unwrap_err();
+        assert!(
+            err.to_string().contains("must be a JSON object"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn read_single_document_parses_inline_object() {
+        let doc = read_single_document(None, Some("{\"id\":\"a\",\"pk\":\"x\"}")).unwrap();
+        assert_eq!(doc["id"], "a");
     }
 
     #[test]

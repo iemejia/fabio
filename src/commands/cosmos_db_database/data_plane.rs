@@ -311,6 +311,53 @@ impl CosmosClient {
         )
         .await
     }
+
+    /// `GET /dbs/{db}/colls/{coll}/docs/{id}` — read a single document by id.
+    pub(super) async fn read_document(
+        &self,
+        container: &str,
+        document_id: &str,
+        partition_key: &Value,
+    ) -> Result<CosmosResponse> {
+        let path = format!(
+            "/dbs/{}/colls/{}/docs/{}",
+            enc(&self.database),
+            enc(container),
+            enc(document_id)
+        );
+        self.send(
+            Method::GET,
+            &path,
+            None,
+            &[("x-ms-documentdb-partitionkey", format!("[{partition_key}]"))],
+            None,
+        )
+        .await
+    }
+
+    /// `DELETE /dbs/{db}/colls/{coll}/docs/{id}` — delete a single document by id.
+    pub(super) async fn delete_document(
+        &self,
+        container: &str,
+        document_id: &str,
+        partition_key: &Value,
+    ) -> Result<CosmosResponse> {
+        self.guard_readonly("DELETE", &format!("colls/{container}/docs/{document_id}"))?;
+        let path = format!(
+            "/dbs/{}/colls/{}/docs/{}",
+            enc(&self.database),
+            enc(container),
+            enc(document_id)
+        );
+        self.send(
+            Method::DELETE,
+            &path,
+            None,
+            &[("x-ms-documentdb-partitionkey", format!("[{partition_key}]"))],
+            None,
+        )
+        .await
+    }
 }
 
 /// Build the Cosmos AAD authorization header value:

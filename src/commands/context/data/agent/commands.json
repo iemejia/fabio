@@ -17582,6 +17582,181 @@
         },
         "mutates": true,
         "returns": "object"
+      },
+      "show-container": {
+        "description": "Show a container's definition (partition key, indexing policy) (data-plane)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Cosmos DB database ID"
+          },
+          "--container": {
+            "type": "string",
+            "required": true,
+            "description": "Container name"
+          },
+          "--endpoint": {
+            "type": "string",
+            "description": "Override the Cosmos DB data-plane endpoint (default: resolved from item properties)"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "get-document": {
+        "description": "Read a single document by id (data-plane)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Cosmos DB database ID"
+          },
+          "--container": {
+            "type": "string",
+            "required": true,
+            "description": "Container name"
+          },
+          "--document-id": {
+            "type": "string",
+            "required": true,
+            "description": "Document id"
+          },
+          "--partition-key": {
+            "type": "string",
+            "required": true,
+            "description": "Partition-key value of the document (typed when numeric/boolean)"
+          },
+          "--endpoint": {
+            "type": "string",
+            "description": "Override the Cosmos DB data-plane endpoint (default: resolved from item properties)"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "create-document": {
+        "description": "Create or upsert a single document (data-plane, upsert by default)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Cosmos DB database ID"
+          },
+          "--container": {
+            "type": "string",
+            "required": true,
+            "description": "Container name"
+          },
+          "--file": {
+            "type": "string",
+            "description": "Path to a JSON document file"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline JSON document content"
+          },
+          "--partition-key": {
+            "type": "string",
+            "description": "Partition-key value (default: derived from the document's partition-key field)"
+          },
+          "--mode": {
+            "type": "string",
+            "description": "Write mode: upsert (default, idempotent) or insert"
+          },
+          "--endpoint": {
+            "type": "string",
+            "description": "Override the Cosmos DB data-plane endpoint (default: resolved from item properties)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "delete-document": {
+        "description": "Delete a single document by id (data-plane, irreversible)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Cosmos DB database ID"
+          },
+          "--container": {
+            "type": "string",
+            "required": true,
+            "description": "Container name"
+          },
+          "--document-id": {
+            "type": "string",
+            "required": true,
+            "description": "Document id"
+          },
+          "--partition-key": {
+            "type": "string",
+            "required": true,
+            "description": "Partition-key value of the document (typed when numeric/boolean)"
+          },
+          "--endpoint": {
+            "type": "string",
+            "description": "Override the Cosmos DB data-plane endpoint (default: resolved from item properties)"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "export": {
+        "description": "Export all documents from a container as JSONL to a file or stdout (data-plane)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Cosmos DB database ID"
+          },
+          "--container": {
+            "type": "string",
+            "required": true,
+            "description": "Container name"
+          },
+          "--query-text": {
+            "type": "string",
+            "description": "Optional filter query (default: SELECT * FROM c)"
+          },
+          "--output-file": {
+            "type": "string",
+            "description": "Write JSONL to this file (default: stdout)"
+          },
+          "--endpoint": {
+            "type": "string",
+            "description": "Override the Cosmos DB data-plane endpoint (default: resolved from item properties)"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
       }
     }
   },

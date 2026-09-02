@@ -111,14 +111,19 @@ Manage Cosmos DB databases (mirrored from Azure Cosmos DB)
 |---|---|---|
 | `fabio cosmos-db-database create` | yes | Create a new Cosmos DB database |
 | `fabio cosmos-db-database create-container` | yes | Create a container in a Cosmos DB database (data-plane) |
+| `fabio cosmos-db-database create-document` | yes | Create or upsert a single document (data-plane, upsert by default) |
 | `fabio cosmos-db-database delete` | yes | Delete a Cosmos DB database |
 | `fabio cosmos-db-database delete-container` | yes | Delete a container and all its documents (data-plane, irreversible) |
+| `fabio cosmos-db-database delete-document` | yes | Delete a single document by id (data-plane, irreversible) |
+| `fabio cosmos-db-database export` | no | Export all documents from a container as JSONL to a file or stdout (data-plane) |
 | `fabio cosmos-db-database get-definition` | no | Get the definition of a Cosmos DB database |
+| `fabio cosmos-db-database get-document` | no | Read a single document by id (data-plane) |
 | `fabio cosmos-db-database import` | yes | Bulk import documents from JSONL/JSON into a container (data-plane, upsert by default) |
 | `fabio cosmos-db-database list` | no | List Cosmos DB databases in a workspace |
 | `fabio cosmos-db-database list-containers` | no | List containers in a Cosmos DB database (data-plane) |
 | `fabio cosmos-db-database query` | no | Run a query against a container (Cosmos DB data-plane) |
 | `fabio cosmos-db-database show` | no | Show details of a Cosmos DB database |
+| `fabio cosmos-db-database show-container` | no | Show a container's definition (partition key, indexing policy) (data-plane) |
 | `fabio cosmos-db-database update` | yes | Update Cosmos DB database properties |
 | `fabio cosmos-db-database update-definition` | yes | Update the definition of a Cosmos DB database |
 
@@ -171,7 +176,7 @@ Manage org app audiences (audience definitions for org apps)
 - The MCP consumption surface returns the answer text only. Per-step SQL/DAX/KQL introspection, multi-turn threads, answer-file downloads, and chart-spec extraction are NOT available — those were artifacts of the retired Assistants API. Use 'data-agent query --raw' to inspect the full MCP tool result.
 - 'user-data-function invoke' needs a PUBLISHED function with public access enabled in the portal; fabio SSRF-guards the URL (HTTPS + trusted Microsoft host) and attaches the Fabric bearer token.
 - Cosmos DB and SQL Database backends require F4+ capacity.
-- Cosmos DB has a DATA-PLANE surface beyond item CRUD: 'list-containers', 'create-container' (autoscale-only — Fabric rejects manual/no throughput; fabio always sends the autoscale max, default 1000 RU/s), 'delete-container' (irreversible — drops all documents), 'query' (Cosmos NoSQL via --query-text/@file/stdin; cross-partition is automatic unless --partition-key is given; --parameter name=value binds @params; RU cost in verbose), and 'import' (bulk JSONL/JSON-array, UPSERT by default = idempotent, partition key auto-derived from the container's partitionKey path — pass --continue-on-error to skip bad rows). The Cosmos database name == the item display name; the endpoint is resolved from the item's properties.serverFqdn (override with --endpoint). Auth uses the https://cosmos.azure.com/.default scope.
+- Cosmos DB has a DATA-PLANE surface beyond item CRUD: 'list-containers'/'show-container', 'create-container' (autoscale-only — Fabric rejects manual/no throughput; fabio always sends the autoscale max, default 1000 RU/s), 'delete-container' (irreversible — drops all documents), 'query' (Cosmos NoSQL via --query-text/@file/stdin; cross-partition is automatic unless --partition-key is given; --parameter name=value binds @params; RU cost in verbose), 'import' (bulk JSONL/JSON-array, UPSERT by default = idempotent, partition key auto-derived from the container's partitionKey path — pass --continue-on-error to skip bad rows), single-document CRUD ('get-document'/'create-document'/'delete-document' — create derives the partition key from the doc unless --partition-key is given; get/delete require --partition-key), and 'export' (dumps a container as clean JSONL to a file or stdout, stripping Cosmos system fields _rid/_self/_etag/_attachments/_ts so export→import roundtrips cleanly). The Cosmos database name == the item display name; the endpoint is resolved from the item's properties.serverFqdn (override with --endpoint). Auth uses the https://cosmos.azure.com/.default scope.
 - app-backend has aliases (rayfin-app, data-app); org-app distribution pairs org-app with org-app-audience.
 - Data agent query languages are chosen by the DATA SOURCE type, and the agent generates the query itself: Lakehouse/Warehouse/SQLDatabase/MirroredDatabase -> NL2SQL, KQLDatabase -> NL2KQL, SemanticModel -> NL2DAX (Power BI datasets), Ontology/GraphModel -> graph. To do NL2DAX, `add-datasource --artifact-type SemanticModel`. CRITICAL: `add-datasource` does NOT auto-select a semantic model's TABLES (only columns) — you MUST `select-tables` for the source or the agent hallucinates instead of generating DAX. Re-`publish` after changing sources/selection (published config is a snapshot).
 

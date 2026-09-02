@@ -227,6 +227,116 @@ pub enum CosmosDbDatabaseCommand {
         #[arg(long)]
         endpoint: Option<String>,
     },
+    /// Show a container's definition (partition key, indexing policy) (data-plane)
+    #[command(display_order = 13)]
+    ShowContainer {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Cosmos DB database ID
+        #[arg(long)]
+        id: String,
+        /// Container name
+        #[arg(long)]
+        container: String,
+        /// Override the Cosmos DB data-plane endpoint (default: resolved from item properties)
+        #[arg(long)]
+        endpoint: Option<String>,
+    },
+    /// Read a single document by id (data-plane)
+    #[command(display_order = 14)]
+    GetDocument {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Cosmos DB database ID
+        #[arg(long)]
+        id: String,
+        /// Container name
+        #[arg(long)]
+        container: String,
+        /// Document id
+        #[arg(long)]
+        document_id: String,
+        /// Partition-key value of the document (typed when numeric/boolean)
+        #[arg(long)]
+        partition_key: String,
+        /// Override the Cosmos DB data-plane endpoint (default: resolved from item properties)
+        #[arg(long)]
+        endpoint: Option<String>,
+    },
+    /// Create or upsert a single document (data-plane, upsert by default)
+    #[command(display_order = 15)]
+    CreateDocument {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Cosmos DB database ID
+        #[arg(long)]
+        id: String,
+        /// Container name
+        #[arg(long)]
+        container: String,
+        /// Path to a JSON document file
+        #[arg(long)]
+        file: Option<String>,
+        /// Inline JSON document content
+        #[arg(long)]
+        content: Option<String>,
+        /// Partition-key value (default: derived from the document's partition-key field)
+        #[arg(long)]
+        partition_key: Option<String>,
+        /// Write mode: upsert (default, idempotent) or insert
+        #[arg(long, default_value = "upsert")]
+        mode: String,
+        /// Override the Cosmos DB data-plane endpoint (default: resolved from item properties)
+        #[arg(long)]
+        endpoint: Option<String>,
+    },
+    /// Delete a single document by id (data-plane, irreversible)
+    #[command(display_order = 16)]
+    DeleteDocument {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Cosmos DB database ID
+        #[arg(long)]
+        id: String,
+        /// Container name
+        #[arg(long)]
+        container: String,
+        /// Document id
+        #[arg(long)]
+        document_id: String,
+        /// Partition-key value of the document (typed when numeric/boolean)
+        #[arg(long)]
+        partition_key: String,
+        /// Override the Cosmos DB data-plane endpoint (default: resolved from item properties)
+        #[arg(long)]
+        endpoint: Option<String>,
+    },
+    /// Export all documents from a container as JSONL to a file or stdout (data-plane)
+    #[command(display_order = 17)]
+    Export {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Cosmos DB database ID
+        #[arg(long)]
+        id: String,
+        /// Container name
+        #[arg(long)]
+        container: String,
+        /// Optional filter query (default: SELECT * FROM c)
+        #[arg(long)]
+        query_text: Option<String>,
+        /// Write JSONL to this file (default: stdout)
+        #[arg(long)]
+        output_file: Option<String>,
+        /// Override the Cosmos DB data-plane endpoint (default: resolved from item properties)
+        #[arg(long)]
+        endpoint: Option<String>,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -380,6 +490,99 @@ pub async fn execute(
                 mode,
                 *concurrency,
                 *continue_on_error,
+                endpoint.as_deref(),
+            )
+            .await
+        }
+        CosmosDbDatabaseCommand::ShowContainer {
+            workspace,
+            id,
+            container,
+            endpoint,
+        } => {
+            containers::show_container(cli, client, workspace, id, container, endpoint.as_deref())
+                .await
+        }
+        CosmosDbDatabaseCommand::GetDocument {
+            workspace,
+            id,
+            container,
+            document_id,
+            partition_key,
+            endpoint,
+        } => {
+            documents::get_document(
+                cli,
+                client,
+                workspace,
+                id,
+                container,
+                document_id,
+                partition_key,
+                endpoint.as_deref(),
+            )
+            .await
+        }
+        CosmosDbDatabaseCommand::CreateDocument {
+            workspace,
+            id,
+            container,
+            file,
+            content,
+            partition_key,
+            mode,
+            endpoint,
+        } => {
+            documents::create_document(
+                cli,
+                client,
+                workspace,
+                id,
+                container,
+                file.as_deref(),
+                content.as_deref(),
+                partition_key.as_deref(),
+                mode,
+                endpoint.as_deref(),
+            )
+            .await
+        }
+        CosmosDbDatabaseCommand::DeleteDocument {
+            workspace,
+            id,
+            container,
+            document_id,
+            partition_key,
+            endpoint,
+        } => {
+            documents::delete_document(
+                cli,
+                client,
+                workspace,
+                id,
+                container,
+                document_id,
+                partition_key,
+                endpoint.as_deref(),
+            )
+            .await
+        }
+        CosmosDbDatabaseCommand::Export {
+            workspace,
+            id,
+            container,
+            query_text,
+            output_file,
+            endpoint,
+        } => {
+            documents::export(
+                cli,
+                client,
+                workspace,
+                id,
+                container,
+                query_text.as_deref(),
+                output_file.as_deref(),
                 endpoint.as_deref(),
             )
             .await

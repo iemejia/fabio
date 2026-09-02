@@ -35,6 +35,20 @@ pub(super) async fn list_containers(
     Ok(())
 }
 
+pub(super) async fn show_container(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    container: &str,
+    endpoint: Option<&str>,
+) -> Result<()> {
+    let cosmos = CosmosClient::connect(client, workspace, id, endpoint).await?;
+    let resp = cosmos.get_container(container).await?;
+    output::render_object(cli, &resp.body, "id");
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn create_container(
     cli: &Cli,

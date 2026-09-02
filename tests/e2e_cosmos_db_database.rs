@@ -169,6 +169,88 @@ fn cosmos_import_dry_run_counts_documents() {
 }
 
 #[test]
+fn cosmos_delete_document_dry_run_is_destructive() {
+    let json = parse(
+        &fabio()
+            .env("CLAUDECODE", "1")
+            .args([
+                "cosmos-db-database",
+                "delete-document",
+                "--workspace",
+                "00000000-0000-0000-0000-000000000000",
+                "--id",
+                "11111111-1111-1111-1111-111111111111",
+                "--container",
+                "products",
+                "--document-id",
+                "p1",
+                "--partition-key",
+                "electronics",
+                "--dry-run",
+            ])
+            .assert()
+            .success(),
+    );
+    assert_eq!(
+        json["data"]["would_execute"],
+        "cosmos-db-database delete-document"
+    );
+    assert_eq!(json["data"]["destructive"], true);
+    assert!(json["data"]["agentNotice"].is_string());
+}
+
+#[test]
+fn cosmos_delete_document_rejects_empty_id() {
+    let assert = fabio()
+        .args([
+            "cosmos-db-database",
+            "delete-document",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "11111111-1111-1111-1111-111111111111",
+            "--container",
+            "products",
+            "--document-id",
+            "",
+            "--partition-key",
+            "electronics",
+        ])
+        .assert()
+        .failure();
+    let json = parse_err(&assert);
+    assert_eq!(json["error"]["code"], "INVALID_INPUT");
+}
+
+#[test]
+fn cosmos_create_document_dry_run_previews() {
+    let json = parse(
+        &fabio()
+            .args([
+                "cosmos-db-database",
+                "create-document",
+                "--workspace",
+                "00000000-0000-0000-0000-000000000000",
+                "--id",
+                "11111111-1111-1111-1111-111111111111",
+                "--container",
+                "products",
+                "--content",
+                "{\"id\":\"p9\",\"categoryId\":\"x\"}",
+                "--dry-run",
+            ])
+            .assert()
+            .success(),
+    );
+    assert_eq!(
+        json["data"]["would_execute"],
+        "cosmos-db-database create-document"
+    );
+    assert_eq!(json["data"]["details"]["documentId"], "p9");
+    assert_eq!(json["data"]["details"]["mode"], "upsert");
+}
+
+#[test]
 fn cosmos_import_readonly_is_blocked() {
     let dir = std::env::temp_dir();
     let path = dir.join(format!("fabio_cosmos_ro_{}.jsonl", std::process::id()));
@@ -306,7 +388,106 @@ fn cosmos_data_plane_lifecycle() {
             .any(|c| c["id"] == container)
     );
 
-    // 5. delete-container (cleanup)
+    // 5. show-container reports the partition-key path
+    let sc = parse(
+        &fabio()
+            .args([
+                "cosmos-db-database",
+                "show-container",
+                "--workspace",
+                &cfg.source_workspace,
+                "--id",
+                &cosmos_id,
+                "--container",
+                &container,
+            ])
+            .assert()
+            .success(),
+    );
+    assert_eq!(sc["data"]["partitionKey"]["paths"][0], "/categoryId");
+
+    // 6. create-document (derive partition key from the doc), then get-document
+    fabio()
+        .args([
+            "cosmos-db-database",
+            "create-document",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cosmos_id,
+            "--container",
+            &container,
+            "--content",
+            "{\"id\":\"p3\",\"categoryId\":\"c\",\"price\":50}",
+        ])
+        .assert()
+        .success();
+    let got = parse(
+        &fabio()
+            .args([
+                "cosmos-db-database",
+                "get-document",
+                "--workspace",
+                &cfg.source_workspace,
+                "--id",
+                &cosmos_id,
+                "--container",
+                &container,
+                "--document-id",
+                "p3",
+                "--partition-key",
+                "c",
+            ])
+            .assert()
+            .success(),
+    );
+    assert_eq!(got["data"]["price"], 50);
+
+    // 7. export strips system fields (clean, re-importable JSONL)
+    let out = dir.join(format!("fabio_cosmos_export_{}.jsonl", std::process::id()));
+    fabio()
+        .args([
+            "cosmos-db-database",
+            "export",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cosmos_id,
+            "--container",
+            &container,
+            "--output-file",
+            out.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let exported = std::fs::read_to_string(&out).unwrap();
+    assert!(
+        !exported.contains("_rid") && !exported.contains("_etag"),
+        "export must strip Cosmos system metadata fields"
+    );
+    assert_eq!(exported.lines().count(), 3, "3 documents exported");
+    std::fs::remove_file(&out).ok();
+
+    // 8. delete-document, then confirm it is gone
+    fabio()
+        .args([
+            "cosmos-db-database",
+            "delete-document",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &cosmos_id,
+            "--container",
+            &container,
+            "--document-id",
+            "p3",
+            "--partition-key",
+            "c",
+        ])
+        .assert()
+        .success();
+
+    // 9. delete-container (cleanup)
     fabio()
         .args([
             "cosmos-db-database",
