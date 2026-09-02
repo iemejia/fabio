@@ -1002,6 +1002,9 @@ fn build_json_schema_params(
             // Track required flags.
             if obj.get("required").and_then(serde_json::Value::as_bool) == Some(true) {
                 required.push(param_name.clone());
+                if fabio_type == "array" {
+                    prop.insert("minItems".to_owned(), serde_json::json!(1));
+                }
             }
         } else {
             // Shorthand: value is just a type string.
