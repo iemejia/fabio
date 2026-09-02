@@ -390,6 +390,33 @@ fn agent_format_mcp_repeatable_flag_is_array_schema() {
 }
 
 #[test]
+fn mcp_serve_repeatable_flag_is_array_schema() {
+    let assert = fabio()
+        .args([
+            "mcp",
+            "serve",
+            "--allow-write",
+            "--list-tools",
+            "--allow-tool",
+            "eventstream.add-operator",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    let tools = json["data"]["tools"].as_array().unwrap();
+    let add_operator_tool = tools
+        .iter()
+        .find(|t| t["name"] == "fabio_eventstream_add_operator")
+        .expect("should have add-operator tool");
+    let input_node = &add_operator_tool["inputSchema"]["properties"]["input_node"];
+    assert_eq!(input_node["type"], "array");
+    assert_eq!(input_node["items"]["type"], "string");
+    assert_eq!(input_node["minItems"], 1);
+}
+
+#[test]
 fn agent_format_openai_emits_functions_array() {
     let assert = fabio()
         .args([
