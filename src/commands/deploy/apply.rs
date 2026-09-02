@@ -570,6 +570,31 @@ pub async fn execute_changeset(
     })
 }
 
+/// Map a known Bulk Import failure signature (error code or message substring) to an
+/// actionable hint. The bulk API creates every item in one batch and cannot sequence
+/// creation order or resolve cross-item logical-ID references mid-batch, so interdependent
+/// items — and definitions with duplicate/placeholder logical IDs — fail. The reliable
+/// fix is almost always the default per-item strategy, which resolves cross-item
+/// references in a single pass by creating dependencies first.
+pub(super) fn bulk_failure_hint(signature: &str) -> Option<&'static str> {
+    if signature.contains("DependenciesCouldNotBeResolved") {
+        return Some(
+            "Bulk import cannot sequence interdependent items (e.g. Report -> SemanticModel, \
+             KQLDatabase -> Eventhouse). Use --strategy default (per-item), which creates \
+             dependencies first and resolves cross-item logical-ID references in a single pass.",
+        );
+    }
+    if signature.contains("BadSystemFiles") {
+        return Some(
+            "Bulk import rejected the definition files — commonly duplicate or placeholder \
+             (00000000-0000-0000-0000-000000000000) logicalIds shared across items. Ensure each \
+             item has a unique, non-placeholder logicalId in its .platform, or use \
+             --strategy default.",
+        );
+    }
+    None
+}
+
 /// Execute a changeset using the Bulk Import Definitions API.
 ///
 /// Batches all creates/updates into a single `bulkImportDefinitions` call for speed.
@@ -735,9 +760,13 @@ pub async fn execute_changeset_bulk(
                                 .and_then(|v| v.get("errorCode"))
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("Unknown bulk import error");
+                            let full_err = bulk_failure_hint(err_msg).map_or_else(
+                                || err_msg.to_owned(),
+                                |hint| format!("{err_msg} — {hint}"),
+                            );
                             failed.push(DeployFailure {
                                 change: c,
-                                error: err_msg.to_owned(),
+                                error: full_err,
                                 code: "BULK_IMPORT_FAILED".to_owned(),
                             });
                             continue;
@@ -763,10 +792,13 @@ pub async fn execute_changeset_bulk(
                         });
                     }
                 } else {
+                    let hint = bulk_failure_hint(&err_msg);
                     for change in &bulk_items {
+                        let error =
+                            hint.map_or_else(|| err_msg.clone(), |h| format!("{err_msg} — {h}"));
                         failed.push(DeployFailure {
                             change: (*change).clone(),
-                            error: err_msg.clone(),
+                            error,
                             code: "BULK_IMPORT_FAILED".to_owned(),
                         });
                     }
@@ -2940,6 +2972,30 @@ mod tests {
 
     use super::super::changeset::ChangeAction;
     use super::super::platform::{DefinitionPart, SourceItem};
+
+    #[test]
+    fn bulk_failure_hint_maps_known_signatures() {
+        let dep = bulk_failure_hint("DependenciesCouldNotBeResolved").unwrap();
+        assert!(dep.contains("--strategy default"));
+        assert!(dep.contains("interdependent"));
+
+        let dep_in_msg =
+            bulk_failure_hint("Bulk import failed: DependenciesCouldNotBeResolved for Report")
+                .unwrap();
+        assert!(dep_in_msg.contains("--strategy default"));
+
+        let bad = bulk_failure_hint("BadSystemFiles").unwrap();
+        assert!(bad.contains("logicalId"));
+        assert!(bad.contains("--strategy default"));
+    }
+
+    #[test]
+    fn bulk_failure_hint_none_for_unknown() {
+        assert!(bulk_failure_hint("SomeOtherError").is_none());
+        assert!(bulk_failure_hint("").is_none());
+        // ActiveCiCdOperation is handled separately (Git-integration hint), not here.
+        assert!(bulk_failure_hint("ActiveCiCdOperationInProgress").is_none());
+    }
 
     fn change(action: ChangeAction, source_hash: Option<&str>) -> Change {
         Change {

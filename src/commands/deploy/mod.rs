@@ -1121,6 +1121,20 @@ async fn execute_apply(
         );
     }
 
+    // If a bulk deploy failed because the batch could not sequence interdependent
+    // items (or hit placeholder/duplicate logicalIds), point at the per-item strategy.
+    let has_bulk_dependency_error = result.failed.iter().any(|f| {
+        f.code == "BULK_IMPORT_FAILED"
+            && (f.error.contains("DependenciesCouldNotBeResolved")
+                || f.error.contains("BadSystemFiles"))
+    });
+    if has_bulk_dependency_error {
+        output_data.as_object_mut().unwrap().insert(
+            "hint".to_owned(),
+            json!("--strategy bulk cannot sequence interdependent items or resolve cross-item logical-ID references mid-batch. Re-run with --strategy default (per-item), which creates dependencies first and resolves references in a single pass."),
+        );
+    }
+
     if !hook_results.is_empty() {
         output_data
             .as_object_mut()
