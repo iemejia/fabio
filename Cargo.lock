@@ -772,7 +772,7 @@ dependencies = [
 
 [[package]]
 name = "fabio"
-version = "0.72.0"
+version = "0.73.0-dev"
 dependencies = [
  "anyhow",
  "assert_cmd",
