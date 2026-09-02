@@ -529,6 +529,24 @@ fn validate_capacity_operation_filters(props: &Value) -> Result<()> {
             .into());
         }
 
+        let valueless_operator = matches!(
+            operator_type,
+            "IsNullOrUndefined" | "IsNotNull"
+        );
+        if valueless_operator {
+            if has_value || has_values {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!(
+                        "FabricCapacityOperationEvents filter '{key}' for operator type '{operator_type}' must not set 'value' or 'values'"
+                    ),
+                    "Use only 'operatorType' and 'key' for 'IsNullOrUndefined' and 'IsNotNull'.",
+                )
+                .into());
+            }
+            continue;
+        }
+
         let expects_values =
             operator_type.contains("In") || operator_type.eq_ignore_ascii_case("Between");
         if expects_values && !has_values {
@@ -1225,6 +1243,17 @@ mod tests {
             }]
         });
         assert!(validate_source_properties("FabricCapacityOperationEvents", &props).is_ok());
+    }
+
+    #[test]
+    fn capacity_operation_filter_accepts_valueless_operators() {
+        let props = json!({
+            "filters": [
+                {"operatorType": "IsNullOrUndefined", "key": "data.missingField"},
+                {"operatorType": "IsNotNull", "key": "data.presentField"}
+            ]
+        });
+        assert!(validate_capacity_operation_filters(&props).is_ok());
     }
 
     #[test]

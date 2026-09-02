@@ -686,7 +686,7 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
         match event {
             Ok(Event::Eof) | Err(_) => break,
             Ok(Event::Start(ref e) | Event::Empty(ref e)) => {
-                let local_name = String::from_utf8_lossy(e.local_name().as_ref()).to_string();
+                let local_name = e.local_name().as_ref().to_string();
 
                 #[allow(clippy::collapsible_match)]
                 match local_name.as_str() {
@@ -780,7 +780,7 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
                 }
             }
             Ok(Event::Text(ref e)) => {
-                let text = String::from_utf8_lossy(e.as_ref()).to_string();
+                let text = e.as_ref().to_string();
                 if reading_label {
                     current_label = text;
                 } else if reading_prop_type {
@@ -794,7 +794,7 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
                 }
             }
             Ok(Event::End(ref e)) => {
-                let local_name = String::from_utf8_lossy(e.local_name().as_ref()).to_string();
+                let local_name = e.local_name().as_ref().to_string();
                 match local_name.as_str() {
                     "Class" => {
                         if in_class {
@@ -853,9 +853,9 @@ fn parse_rdf_xml(content: &str) -> OwlModel {
 
 fn extract_rdf_about(e: &quick_xml::events::BytesStart<'_>) -> String {
     for attr in e.attributes().flatten() {
-        let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
+        let key = attr.key.as_ref().to_string();
         if key.ends_with("about") || key == "rdf:about" {
-            return String::from_utf8_lossy(&attr.value).to_string();
+            return attr.value.to_string();
         }
     }
     String::new()
@@ -863,9 +863,9 @@ fn extract_rdf_about(e: &quick_xml::events::BytesStart<'_>) -> String {
 
 fn extract_rdf_resource(e: &quick_xml::events::BytesStart<'_>) -> String {
     for attr in e.attributes().flatten() {
-        let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
+        let key = attr.key.as_ref().to_string();
         if key.ends_with("resource") || key == "rdf:resource" {
-            return String::from_utf8_lossy(&attr.value).to_string();
+            return attr.value.to_string();
         }
     }
     String::new()
