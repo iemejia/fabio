@@ -181,7 +181,7 @@ pub enum EventstreamCommand {
         #[arg(long)]
         destination_id: String,
     },
-    /// Get the connection of a destination
+    /// Get a destination endpoint connection (`CustomEndpoint` or future endpoint shape)
     #[command(display_order = 21)]
     GetDestinationConnection {
         /// Workspace ID
@@ -251,7 +251,7 @@ pub enum EventstreamCommand {
         #[arg(long)]
         source_id: String,
     },
-    /// Get the connection of a source
+    /// Get a source endpoint connection (`CustomEndpoint` for custom sources; `KafkaEndpoint` for Cribl/SAP Datasphere)
     #[command(display_order = 31)]
     GetSourceConnection {
         /// Workspace ID
@@ -321,7 +321,7 @@ pub enum EventstreamCommand {
         #[arg(long)]
         name: String,
 
-        /// Source type (e.g., `CustomEndpoint`, `AzureEventHub`, `SampleData`)
+        /// Source type (for example `CustomEndpoint`, `Cribl`, `FabricCapacityOperationEvents`, `ReferenceLakehouse`, `SAPDatasphere`)
         #[arg(long, visible_alias = "type")]
         source_type: String,
 
@@ -421,9 +421,9 @@ pub enum EventstreamCommand {
         #[arg(long = "type")]
         operator_type: String,
 
-        /// Input node name (the source, stream, or operator to transform)
-        #[arg(long)]
-        input_node: String,
+        /// Input node name; repeat for multi-input operators such as Join and Union
+        #[arg(long, required = true)]
+        input_node: Vec<String>,
 
         /// Operator properties as JSON string (operator-specific, e.g. Filter → {"conditions":[…]})
         #[arg(long)]

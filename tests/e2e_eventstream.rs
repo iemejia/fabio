@@ -567,7 +567,19 @@ fn eventstream_list_components_filter_source() {
     let json = parse_json(&output);
     let data = extract_data(&json);
     let items = data.as_array().expect("should be array");
-    assert!(items.len() >= 14, "Should have all source types");
+    assert_eq!(items.len(), 37, "Should match the complete SourceType enum");
+    let types: Vec<&str> = items
+        .iter()
+        .filter_map(|item| item["type"].as_str())
+        .collect();
+    for new_type in [
+        "Cribl",
+        "FabricCapacityOperationEvents",
+        "ReferenceLakehouse",
+        "SAPDatasphere",
+    ] {
+        assert!(types.contains(&new_type), "missing source type {new_type}");
+    }
     for item in items {
         assert_eq!(item["category"], "source");
     }
@@ -675,6 +687,112 @@ fn eventstream_add_operator_dry_run_builds_node() {
     let op = &data["details"]["operator"];
     assert_eq!(op["type"], "Filter"); // case-normalized
     assert_eq!(op["inputNodes"][0]["name"], "src-stream");
+}
+
+#[test]
+fn eventstream_add_operator_join_accepts_reference_input() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "eventstream",
+            "add-operator",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "EnrichOrders",
+            "--type",
+            "Join",
+            "--input-node",
+            "orders-stream",
+            "--input-node",
+            "customers-stream",
+            "--properties",
+            r#"{"joinType":"LeftOuter","joinOn":[{"left":{"node":"orders-stream","columnName":"customerId","columnPath":[]},"right":{"node":"customers-stream","columnName":"id","columnPath":[]}}]}"#,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let inputs = &extract_data(&json)["details"]["operator"]["inputNodes"];
+    assert_eq!(inputs[0]["name"], "orders-stream");
+    assert_eq!(inputs[1]["name"], "customers-stream");
+}
+
+#[test]
+fn eventstream_add_reference_lakehouse_source_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "eventstream",
+            "add-source",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "customers",
+            "--source-type",
+            "ReferenceLakehouse",
+            "--properties",
+            r#"{"workspaceId":"cfafbeb1-8037-4d0c-896e-a46fb27ff229","itemId":"11111111-2222-3333-4444-555555555555","absoluteOneLakePath":"https://onelake.dfs.fabric.microsoft.com/cfafbeb1-8037-4d0c-896e-a46fb27ff229/11111111-2222-3333-4444-555555555555/Tables/dbo/customers","referencedColumns":["id","name"],"refreshRate":"00:05:00"}"#,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let source = &extract_data(&json)["details"]["source"];
+    assert_eq!(source["type"], "ReferenceLakehouse");
+    assert_eq!(source["properties"]["refreshRate"], "00:05:00");
+}
+
+#[test]
+fn eventstream_add_reference_lakehouse_source_rejects_mismatched_path() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "eventstream",
+            "add-source",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "customers",
+            "--source-type",
+            "ReferenceLakehouse",
+            "--properties",
+            r#"{"workspaceId":"cfafbeb1-8037-4d0c-896e-a46fb27ff229","itemId":"11111111-2222-3333-4444-555555555555","absoluteOneLakePath":"https://onelake.dfs.fabric.microsoft.com/cfafbeb1-8037-4d0c-896e-a46fb27ff229/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/Tables/dbo/customers"}"#,
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("must match"), "got: {stderr}");
+}
+
+#[test]
+fn eventstream_add_capacity_operation_source_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "eventstream",
+            "add-source",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "capacity-operations",
+            "--source-type",
+            "FabricCapacityOperationEvents",
+            "--properties",
+            r#"{"eventScope":"Capacity","capacityId":"0b6d8e27-0b7b-4e18-9e5b-2e6b9d9d7e3a","includedEventTypes":["Microsoft.Fabric.Capacity.OperationStarted","Microsoft.Fabric.Capacity.OperationCompleted"],"filters":[{"operatorType":"StringIn","key":"data.operationType","values":["ScaleUp","ScaleDown"]}]}"#,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let properties = &extract_data(&json)["details"]["source"]["properties"];
+    assert_eq!(properties["eventScope"], "Capacity");
+    assert_eq!(properties["filters"][0]["operatorType"], "StringIn");
 }
 
 #[test]

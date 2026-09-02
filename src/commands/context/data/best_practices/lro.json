@@ -3,7 +3,7 @@
   "title": "Long-Running Operations in fabio",
   "summary": "Many Fabric operations are async (return 202). fabio polls them automatically. Use --wait for job operations.",
   "fabio_behavior": {
-    "automatic_lro_polling": "Create, getDefinition, and updateDefinition operations return 202 + Location header. fabio polls every 2s (respects Retry-After, capped at 60s) until Succeeded/Failed, max 120s.",
+    "automatic_lro_polling": "Create, getDefinition, and updateDefinition operations return 202 + Location header. fabio polls every 2s (respects Retry-After, capped at 60s) until Succeeded/Failed, max 120s. Operation state/result APIs document a 200 calls/min unified LRO quota and API limit.",
     "job_operations_with_wait": "Notebook run, pipeline run, and job-scheduler run-on-demand return immediately by default. Add --wait to poll until completion.",
     "lro_timeout": "Default max LRO wait is 120s. Override with --lro-timeout <seconds>."
   },

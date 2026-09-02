@@ -13428,7 +13428,7 @@
         "returns": "object"
       },
       "get-destination-connection": {
-        "description": "Get the connection of a destination",
+        "description": "Get a destination endpoint connection (`CustomEndpoint` or future endpoint shape)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -13524,7 +13524,7 @@
         "returns": "object"
       },
       "get-source-connection": {
-        "description": "Get the connection of a source",
+        "description": "Get a source endpoint connection (`CustomEndpoint` for custom sources; `KafkaEndpoint` for Cribl/SAP Datasphere)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -13621,7 +13621,7 @@
           "--source-type": {
             "type": "string",
             "required": true,
-            "description": "Source type (e.g., `CustomEndpoint`, `AzureEventHub`, `SampleData`)"
+            "description": "Source type (for example `CustomEndpoint`, `Cribl`, `FabricCapacityOperationEvents`, `ReferenceLakehouse`, `SAPDatasphere`)"
           },
           "--properties": {
             "type": "string",
@@ -13631,7 +13631,9 @@
         "mutates": true,
         "returns": "object",
         "examples": [
-          "fabio eventstream add-source --workspace $WS --id $ES --name \"app-source\" --source-type CustomEndpoint"
+          "fabio eventstream add-source --workspace $WS --id $ES --name \"app-source\" --source-type CustomEndpoint",
+          "fabio eventstream add-source --workspace $WS --id $ES --name \"customers\" --source-type ReferenceLakehouse --properties '{\"workspaceId\":\"'$WS'\",\"itemId\":\"'$LAKEHOUSE'\",\"absoluteOneLakePath\":\"https://onelake.dfs.fabric.microsoft.com/'$WS'/'$LAKEHOUSE'/Tables/dbo/customers\",\"referencedColumns\":[\"id\",\"name\"],\"refreshRate\":\"00:05:00\"}'",
+          "fabio eventstream add-source --workspace $WS --id $ES --name \"capacity-operations\" --source-type FabricCapacityOperationEvents --properties '{\"eventScope\":\"Capacity\",\"capacityId\":\"'$CAPACITY'\",\"includedEventTypes\":[\"Microsoft.Fabric.Capacity.OperationStarted\",\"Microsoft.Fabric.Capacity.OperationCompleted\"]}'"
         ]
       },
       "add-destination": {
@@ -13762,7 +13764,7 @@
           "--input-node": {
             "type": "string",
             "required": true,
-            "description": "Input node name (the source, stream, or operator to transform)"
+            "description": "Input node name; repeat for multi-input operators such as Join and Union"
           },
           "--properties": {
             "type": "string",
@@ -13770,7 +13772,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio eventstream add-operator --workspace $WS --id $ES --name \"enrich-orders\" --type Join --input-node \"orders-stream\" --input-node \"customers-stream\" --properties '{\"joinType\":\"LeftOuter\",\"joinOn\":[{\"left\":{\"node\":\"orders-stream\",\"columnName\":\"customerId\",\"columnPath\":[]},\"right\":{\"node\":\"customers-stream\",\"columnName\":\"id\",\"columnPath\":[]}}]}'"
+        ]
       },
       "validate": {
         "description": "Validate an eventstream definition (client-side checks, no API call)",

@@ -7,7 +7,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::Value;
 
 use crate::cli::Cli;
-use crate::client::FabricClient;
+use crate::client::{FabricClient, validate_uuid};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
@@ -121,6 +121,7 @@ pub(super) async fn add_source(
         })?,
         None => serde_json::json!({}),
     };
+    validate_source_properties(source_type, &props)?;
 
     if output::dry_run_guard(
         cli,
@@ -315,6 +316,179 @@ pub(super) fn validate_eventhouse_destination(props: &Value) -> Result<()> {
     Ok(())
 }
 
+pub(super) fn validate_source_properties(source_type: &str, props: &Value) -> Result<()> {
+    if !props.is_object() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "--properties must be a JSON object",
+            "Example: --properties '{}'",
+        )
+        .into());
+    }
+
+    if source_type.eq_ignore_ascii_case("ReferenceLakehouse") {
+        validate_reference_lakehouse_source(props)?;
+    } else if source_type.eq_ignore_ascii_case("FabricCapacityOperationEvents") {
+        validate_capacity_operation_source(props)?;
+    }
+    Ok(())
+}
+
+fn required_string<'a>(props: &'a Value, field: &str, source_type: &str) -> Result<&'a str> {
+    props.get(field).and_then(Value::as_str).ok_or_else(|| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("{source_type} source requires string property '{field}'"),
+            format!("Provide '{field}' in --properties."),
+        )
+        .into()
+    })
+}
+
+fn validate_reference_lakehouse_source(props: &Value) -> Result<()> {
+    let workspace = required_string(props, "workspaceId", "ReferenceLakehouse")?;
+    let item = required_string(props, "itemId", "ReferenceLakehouse")?;
+    let path = required_string(props, "absoluteOneLakePath", "ReferenceLakehouse")?;
+    validate_uuid(workspace, "ReferenceLakehouse workspaceId")?;
+    validate_uuid(item, "ReferenceLakehouse itemId")?;
+
+    let url = reqwest::Url::parse(path).map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("ReferenceLakehouse absoluteOneLakePath is not a valid URL: {e}"),
+            "Use https://onelake.dfs.fabric.microsoft.com/{workspaceId}/{itemId}/Tables/{schema}/{table}",
+        )
+    })?;
+    if url.scheme() != "https" || url.host_str() != Some("onelake.dfs.fabric.microsoft.com") {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "ReferenceLakehouse absoluteOneLakePath must target the OneLake DFS HTTPS endpoint",
+            "Use https://onelake.dfs.fabric.microsoft.com/{workspaceId}/{itemId}/Tables/{schema}/{table}",
+        )
+        .into());
+    }
+    let segments: Vec<&str> = url.path_segments().into_iter().flatten().collect();
+    if segments.len() < 5 || segments[2] != "Tables" {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "ReferenceLakehouse absoluteOneLakePath must identify a Delta table",
+            "Expected path: /{workspaceId}/{itemId}/Tables/{schema}/{table}",
+        )
+        .into());
+    }
+    if !segments[0].eq_ignore_ascii_case(workspace) || !segments[1].eq_ignore_ascii_case(item) {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "ReferenceLakehouse workspaceId and itemId must match the first two absoluteOneLakePath segments",
+            "Use the same Lakehouse workspace and item UUIDs in the properties and OneLake URL.",
+        )
+        .into());
+    }
+
+    if let Some(columns) = props.get("referencedColumns")
+        && columns
+            .as_array()
+            .is_none_or(|values| values.iter().any(|value| !value.is_string()))
+    {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "ReferenceLakehouse referencedColumns must be an array of strings",
+            "Example: \"referencedColumns\":[\"id\",\"name\",\"email\"]",
+        )
+        .into());
+    }
+    if let Some(rate) = props.get("refreshRate") {
+        let Some(rate) = rate.as_str() else {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "ReferenceLakehouse refreshRate must be a .NET TimeSpan string",
+                "Use hh:mm:ss, for example \"00:05:00\"; omit it or use \"00:00:00\" for a static snapshot.",
+            )
+            .into());
+        };
+        validate_refresh_rate(rate)?;
+    }
+    Ok(())
+}
+
+fn validate_refresh_rate(rate: &str) -> Result<()> {
+    let parts: Vec<&str> = rate.split(':').collect();
+    let valid = parts.len() == 3
+        && parts[0].len() == 2
+        && parts[1].len() == 2
+        && parts[2].len() == 2
+        && parts
+            .iter()
+            .all(|part| part.chars().all(|character| character.is_ascii_digit()));
+    if !valid {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid ReferenceLakehouse refreshRate '{rate}'"),
+            "Use hh:mm:ss, for example \"00:05:00\"; omit it or use \"00:00:00\" for a static snapshot.",
+        )
+        .into());
+    }
+
+    let hours = parts[0].parse::<u8>().unwrap_or(u8::MAX);
+    let minutes = parts[1].parse::<u8>().unwrap_or(u8::MAX);
+    let seconds = parts[2].parse::<u8>().unwrap_or(u8::MAX);
+    if hours >= 24 || minutes >= 60 || seconds >= 60 {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "ReferenceLakehouse refreshRate must be at least 00:00:00 and less than 24 hours",
+            "Use hh:mm:ss with hours 00-23 and minutes/seconds 00-59.",
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn validate_capacity_operation_source(props: &Value) -> Result<()> {
+    let scope = required_string(props, "eventScope", "FabricCapacityOperationEvents")?;
+    let event_scopes = ["Tenant", "Capacity", "Workspace", "Item", "SubItem"];
+    if !event_scopes.contains(&scope) {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid FabricCapacityOperationEvents eventScope '{scope}'"),
+            format!("Valid PascalCase values: {}.", event_scopes.join(", ")),
+        )
+        .into());
+    }
+    if let Some(capacity_id) = props.get("capacityId") {
+        let capacity_id = capacity_id.as_str().ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "FabricCapacityOperationEvents capacityId must be a UUID string",
+                "Provide the capacity UUID as \"capacityId\":\"...\".",
+            )
+        })?;
+        validate_uuid(capacity_id, "FabricCapacityOperationEvents capacityId")?;
+    }
+    validate_optional_array(props, "includedEventTypes", Value::is_string)?;
+    validate_optional_array(props, "filters", Value::is_object)?;
+    Ok(())
+}
+
+fn validate_optional_array(
+    props: &Value,
+    field: &str,
+    predicate: impl Fn(&Value) -> bool,
+) -> Result<()> {
+    if let Some(value) = props.get(field)
+        && value
+            .as_array()
+            .is_none_or(|values| values.iter().any(|entry| !predicate(entry)))
+    {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("'{field}' has an invalid value type"),
+            format!("Provide '{field}' as a JSON array with the element type documented by the Fabric API."),
+        )
+        .into());
+    }
+    Ok(())
+}
+
 /// Normalize a sample-data type to its canonical `properties.type` value.
 /// Accepts common labels/casing ("yellow taxi", "stock-market", "bicycle").
 pub(super) fn normalize_sample_type(input: &str) -> &'static str {
@@ -455,7 +629,7 @@ const OPERATOR_TYPES: &[&str] = &[
 ];
 
 /// Add an event-processor operator (Filter/ManageFields/Aggregate/…) node to the
-/// eventstream's `operators` array, wired to `input_node`. The `properties` shape
+/// eventstream's `operators` array, wired to `input_nodes`. The `properties` shape
 /// is operator-specific (e.g. Filter → `{conditions:[…]}`).
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn add_operator(
@@ -465,7 +639,7 @@ pub(super) async fn add_operator(
     id: &str,
     name: &str,
     operator_type: &str,
-    input_node: &str,
+    input_nodes: &[String],
     properties: Option<&str>,
 ) -> Result<()> {
     let operator_type = OPERATOR_TYPES
@@ -479,6 +653,21 @@ pub(super) async fn add_operator(
                 format!("Valid operator types: {}", OPERATOR_TYPES.join(", ")),
             )
         })?;
+    if matches!(operator_type, "Join" | "Union") && input_nodes.len() < 2 {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("{operator_type} requires at least two --input-node values"),
+            format!(
+                "Repeat the flag, for example: --input-node streaming-input --input-node {}",
+                if operator_type == "Join" {
+                    "reference-input"
+                } else {
+                    "second-stream"
+                }
+            ),
+        )
+        .into());
+    }
 
     let props: Value = match properties {
         Some(p) => serde_json::from_str(p).map_err(|e| {
@@ -494,7 +683,7 @@ pub(super) async fn add_operator(
     let new_operator = serde_json::json!({
         "name": name,
         "type": operator_type,
-        "inputNodes": [{"name": input_node}],
+        "inputNodes": input_nodes.iter().map(|name| serde_json::json!({"name": name})).collect::<Vec<_>>(),
         "properties": props,
     });
 
@@ -594,11 +783,18 @@ pub(super) async fn validate(
             } else {
                 errors.push("Source missing 'name' field.".to_string());
             }
-            if src.get("type").and_then(Value::as_str).is_none() {
-                errors.push(format!(
+            match src.get("type").and_then(Value::as_str) {
+                Some(source_type) => {
+                    let empty_properties = serde_json::json!({});
+                    let properties = src.get("properties").unwrap_or(&empty_properties);
+                    if let Err(error) = validate_source_properties(source_type, properties) {
+                        errors.push(error.to_string());
+                    }
+                }
+                None => errors.push(format!(
                     "Source '{}' missing 'type' field.",
                     src.get("name").and_then(Value::as_str).unwrap_or("?")
-                ));
+                )),
             }
         }
 
@@ -657,24 +853,43 @@ pub(super) async fn validate(
 
 pub(super) fn list_components(cli: &Cli, category: &str) {
     let sources = serde_json::json!([
-        {"type": "CustomEndpoint", "category": "source", "description": "Custom app endpoint (Event Hub-compatible)"},
-        {"type": "AzureEventHub", "category": "source", "description": "Azure Event Hub"},
-        {"type": "AzureIoTHub", "category": "source", "description": "Azure IoT Hub"},
-        {"type": "AzureIoTHubExtended", "category": "source", "description": "Azure IoT Hub Extended"},
-        {"type": "SampleData", "category": "source", "description": "Built-in sample/simulated data"},
         {"type": "AmazonKinesis", "category": "source", "description": "Amazon Kinesis Data Streams"},
+        {"type": "AmazonMSKKafka", "category": "source", "description": "Amazon Managed Streaming for Apache Kafka"},
         {"type": "ApacheKafka", "category": "source", "description": "Apache Kafka cluster"},
+        {"type": "AzureBlobStorageEvents", "category": "source", "description": "Azure Blob Storage events"},
+        {"type": "AzureCosmosDBCDC", "category": "source", "description": "Azure Cosmos DB change data capture"},
+        {"type": "AzureDataExplorer", "category": "source", "description": "Azure Data Explorer"},
+        {"type": "AzureEventGridNamespace", "category": "source", "description": "Azure Event Grid namespace"},
+        {"type": "AzureEventHub", "category": "source", "description": "Azure Event Hub"},
+        {"type": "AzureEventHubExtended", "category": "source", "description": "Azure Event Hub extended connector"},
+        {"type": "AzureIoTHub", "category": "source", "description": "Azure IoT Hub"},
+        {"type": "AzureIoTHubExtended", "category": "source", "description": "Azure IoT Hub extended connector"},
+        {"type": "AzureSQLDBCDC", "category": "source", "description": "Azure SQL Database change data capture"},
+        {"type": "AzureSQLMIDBCDC", "category": "source", "description": "Azure SQL Managed Instance change data capture"},
+        {"type": "AzureServiceBus", "category": "source", "description": "Azure Service Bus"},
         {"type": "ConfluentCloud", "category": "source", "description": "Confluent Cloud Kafka"},
+        {"type": "Cribl", "category": "source", "description": "Cribl via a Kafka-compatible endpoint"},
+        {"type": "CustomEndpoint", "category": "source", "description": "Custom app endpoint (Event Hub-compatible)"},
+        {"type": "FabricAnomalyDetectionEvents", "category": "source", "description": "Fabric anomaly detection events"},
+        {"type": "FabricCapacityOperationEvents", "category": "source", "description": "Fabric capacity operation started/completed events"},
+        {"type": "FabricCapacityOverviewEvents", "category": "source", "description": "Fabric capacity overview events"},
+        {"type": "FabricJobEvents", "category": "source", "description": "Fabric job events"},
+        {"type": "FabricOneLakeEvents", "category": "source", "description": "Fabric OneLake events"},
+        {"type": "FabricWorkspaceItemEvents", "category": "source", "description": "Fabric workspace item events"},
         {"type": "GooglePubSub", "category": "source", "description": "Google Cloud Pub/Sub"},
-        {"type": "AzureSQLDBCDC", "category": "source", "description": "Azure SQL Database CDC"},
+        {"type": "Http", "category": "source", "description": "HTTP polling endpoint"},
         {"type": "MirroredDatabaseChangeFeed", "category": "source", "description": "Mirrored Database Change Feed"},
+        {"type": "MongoDBCDC", "category": "source", "description": "MongoDB change data capture"},
+        {"type": "Mqtt", "category": "source", "description": "MQTT broker"},
         {"type": "MySQLCDC", "category": "source", "description": "MySQL Change Data Capture"},
         {"type": "OracleDBCDC", "category": "source", "description": "Oracle DB Change Data Capture"},
         {"type": "PostgreSQLCDC", "category": "source", "description": "PostgreSQL Change Data Capture"},
-        {"type": "FabricWorkspaceItemEvents", "category": "source", "description": "Fabric workspace item events"},
-        {"type": "FabricJobEvents", "category": "source", "description": "Fabric job events"},
-        {"type": "FabricOneLakeEvents", "category": "source", "description": "Fabric OneLake events"},
-        {"type": "FabricAnomalyDetectionEvents", "category": "source", "description": "Fabric anomaly detection events"},
+        {"type": "RealTimeWeather", "category": "source", "description": "Real-time weather data"},
+        {"type": "ReferenceLakehouse", "category": "source", "description": "Point-in-time Lakehouse Delta table snapshot for enrichment joins"},
+        {"type": "SAPDatasphere", "category": "source", "description": "SAP Datasphere via a Kafka-compatible endpoint"},
+        {"type": "SQLServerOnVMDBCDC", "category": "source", "description": "SQL Server on Azure VM change data capture"},
+        {"type": "SampleData", "category": "source", "description": "Built-in sample/simulated data"},
+        {"type": "SolacePubSub", "category": "source", "description": "Solace PubSub+"},
     ]);
 
     let destinations = serde_json::json!([
@@ -721,7 +936,10 @@ pub(super) fn list_components(cli: &Cli, category: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{OPERATOR_TYPES, normalize_sample_type, validate_eventhouse_destination};
+    use super::{
+        OPERATOR_TYPES, normalize_sample_type, validate_eventhouse_destination,
+        validate_source_properties,
+    };
     use serde_json::json;
 
     #[test]
@@ -819,5 +1037,62 @@ mod tests {
             .to_string();
         assert!(err.contains("tableName"), "got: {err}");
         assert!(err.contains("inputSerialization"), "got: {err}");
+    }
+
+    #[test]
+    fn reference_lakehouse_properties_accept_spec_example() {
+        let props = json!({
+            "workspaceId": "cfafbeb1-8037-4d0c-896e-a46fb27ff229",
+            "itemId": "11111111-2222-3333-4444-555555555555",
+            "absoluteOneLakePath": "https://onelake.dfs.fabric.microsoft.com/cfafbeb1-8037-4d0c-896e-a46fb27ff229/11111111-2222-3333-4444-555555555555/Tables/dbo/customers",
+            "referencedColumns": ["id", "name", "email"],
+            "refreshRate": "00:05:00"
+        });
+        assert!(validate_source_properties("ReferenceLakehouse", &props).is_ok());
+    }
+
+    #[test]
+    fn reference_lakehouse_properties_require_matching_onelake_ids() {
+        let props = json!({
+            "workspaceId": "cfafbeb1-8037-4d0c-896e-a46fb27ff229",
+            "itemId": "11111111-2222-3333-4444-555555555555",
+            "absoluteOneLakePath": "https://onelake.dfs.fabric.microsoft.com/cfafbeb1-8037-4d0c-896e-a46fb27ff229/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/Tables/dbo/customers"
+        });
+        let err = validate_source_properties("ReferenceLakehouse", &props)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("must match"), "got: {err}");
+    }
+
+    #[test]
+    fn reference_lakehouse_properties_reject_invalid_refresh_rate() {
+        let props = json!({
+            "workspaceId": "cfafbeb1-8037-4d0c-896e-a46fb27ff229",
+            "itemId": "11111111-2222-3333-4444-555555555555",
+            "absoluteOneLakePath": "https://onelake.dfs.fabric.microsoft.com/cfafbeb1-8037-4d0c-896e-a46fb27ff229/11111111-2222-3333-4444-555555555555/Tables/dbo/customers",
+            "refreshRate": "24:00:00"
+        });
+        let err = validate_source_properties("ReferenceLakehouse", &props)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("less than 24 hours"), "got: {err}");
+    }
+
+    #[test]
+    fn capacity_operation_properties_cover_new_fields() {
+        let props = json!({
+            "eventScope": "Capacity",
+            "capacityId": "0b6d8e27-0b7b-4e18-9e5b-2e6b9d9d7e3a",
+            "includedEventTypes": [
+                "Microsoft.Fabric.Capacity.OperationStarted",
+                "Microsoft.Fabric.Capacity.OperationCompleted"
+            ],
+            "filters": [{
+                "operatorType": "StringIn",
+                "key": "data.operationType",
+                "values": ["ScaleUp", "ScaleDown"]
+            }]
+        });
+        assert!(validate_source_properties("FabricCapacityOperationEvents", &props).is_ok());
     }
 }

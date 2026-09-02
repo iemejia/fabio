@@ -1,0 +1,24 @@
+{
+  "command": "fabio eventstream get-destination-connection --workspace $WS --id $ES --destination-id $DESTINATION",
+  "description": "Shows the type-discriminated custom endpoint connection of an eventstream destination.",
+  "response": {
+    "data": {
+      "type": "CustomEndpoint",
+      "fullyQualifiedNamespace": "namespace.servicebus.windows.net",
+      "eventHubName": "eventhub",
+      "consumerGroupName": "$Default",
+      "accessKeys": {
+        "primaryConnectionString": "<redacted>",
+        "secondaryConnectionString": "<redacted>",
+        "primaryKey": "<redacted>",
+        "secondaryKey": "<redacted>"
+      }
+    }
+  },
+  "notes": "The required type discriminator is CustomEndpoint for the currently supported destination connection. Connection responses contain credentials: do not log or persist them.",
+  "query_examples": [
+    {"query": "type", "description": "Identify the endpoint connection shape."},
+    {"query": "fullyQualifiedNamespace", "description": "Extract the Event Hub namespace."},
+    {"query": "consumerGroupName", "description": "Extract the destination consumer group."}
+  ]
+}
