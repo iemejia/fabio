@@ -164,7 +164,7 @@ fn tmdl_set_description(
                 out.pop();
             }
             let prefix = "\t".repeat(indent);
-            for dl in description.split('\n') {
+            for dl in description.lines() {
                 out.push(format!("{prefix}/// {}", dl.trim_end()));
             }
             out.push(line.to_string());
@@ -531,12 +531,12 @@ fn render_measure_expr(expr: &str) -> String {
 fn add_measure_tmdl(content: &str, name: &str, expr: &str, fields: &MeasureFields) -> String {
     let mut mlines: Vec<String> = Vec::new();
     if let Some(d) = fields.description.filter(|x| !x.is_empty()) {
-        for dl in d.split('\n') {
+        for dl in d.lines() {
             mlines.push(format!("\t/// {}", dl.trim_end()));
         }
     }
     let decl = format!("\tmeasure '{name}'{}", render_measure_expr(expr));
-    for l in decl.trim_end().split('\n') {
+    for l in decl.trim_end().lines() {
         mlines.push(l.to_string());
     }
     for l in measure_property_lines(fields).lines() {
@@ -659,7 +659,7 @@ fn update_measure_tmdl(content: &str, measure: &str, fields: &MeasureFields) -> 
                 {
                     out.pop();
                 }
-                for dl in d.split('\n') {
+                for dl in d.lines() {
                     out.push(format!("\t/// {}", dl.trim_end()));
                 }
             }
@@ -928,10 +928,16 @@ mod tests {
 
     #[test]
     fn set_description_on_column_inserts_comment() {
-        let (out, changed) =
-            tmdl_set_description(&sales_tmdl(), "column", "Amount", 1, "The USD amount");
+        let (out, changed) = tmdl_set_description(
+            &sales_tmdl(),
+            "column",
+            "Amount",
+            1,
+            "The USD amount\r\nIn dollars",
+        );
         assert!(changed);
-        assert!(out.contains("\t/// The USD amount\n\tcolumn Amount"));
+        assert!(out.contains("\t/// The USD amount\n\t/// In dollars\n\tcolumn Amount"));
+        assert!(!out.contains('\r'));
     }
 
     #[test]
@@ -962,14 +968,17 @@ mod tests {
     fn add_measure_tmdl_inserts_block_after_table() {
         let f = MeasureFields {
             expression: Some("AVERAGE('Sales'[Amount])"),
-            description: Some("Average amount"),
+            description: Some("Average amount\r\nIn dollars"),
             format_string: Some("0.00"),
             display_folder: Some("Averages"),
         };
         let out = add_measure_tmdl(&sales_tmdl(), "Avg Amount", "AVERAGE('Sales'[Amount])", &f);
         assert!(
-            out.contains("\t/// Average amount\n\tmeasure 'Avg Amount' = AVERAGE('Sales'[Amount])")
+            out.contains(
+                "\t/// Average amount\n\t/// In dollars\n\tmeasure 'Avg Amount' = AVERAGE('Sales'[Amount])"
+            )
         );
+        assert!(!out.contains('\r'));
         assert!(out.contains("\t\tformatString: 0.00"));
         assert!(out.contains("\t\tdisplayFolder: Averages"));
     }
@@ -1025,13 +1034,14 @@ mod tests {
     fn update_measure_sets_format_string() {
         let f = MeasureFields {
             expression: None,
-            description: Some("New desc"),
+            description: Some("New desc\r\nSecond line"),
             format_string: Some("$#,0"),
             display_folder: None,
         };
         let (out, changed) = update_measure_tmdl(&sales_tmdl(), "Total", &f);
         assert!(changed);
-        assert!(out.contains("\t/// New desc\n\tmeasure 'Total'"));
+        assert!(out.contains("\t/// New desc\n\t/// Second line\n\tmeasure 'Total'"));
+        assert!(!out.contains('\r'));
         assert!(out.contains("\t\tformatString: $#,0"));
         assert!(!out.contains("formatString: 0.00"));
     }
