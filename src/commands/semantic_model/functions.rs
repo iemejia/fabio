@@ -109,7 +109,7 @@ fn render_function_block(name: &str, expr: &str, description: Option<&str>) -> S
     // TMDL descriptions are `///` comment lines IMMEDIATELY above the declaration
     // (no blank line between). Multi-line descriptions emit one `///` per line.
     if let Some(d) = description.filter(|x| !x.is_empty()) {
-        for dl in d.split('\n') {
+        for dl in d.lines() {
             let _ = writeln!(s, "/// {}", dl.trim_end());
         }
     }
@@ -498,7 +498,7 @@ mod tests {
         let block = render_function_block(
             "AddNum",
             "(x: NUMERIC = 1, y: NUMERIC = 2) => x + y",
-            Some("Adds two numbers.\nDefaults to 1 + 2."),
+            Some("Adds two numbers.\r\nDefaults to 1 + 2."),
         );
         // `///` lines come immediately above the declaration (no blank line).
         assert_eq!(

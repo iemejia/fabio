@@ -156,7 +156,7 @@ fn build_calculated_column_lines(
 ) -> Vec<String> {
     let mut block: Vec<String> = Vec::new();
     if let Some(d) = props.description.filter(|x| !x.is_empty()) {
-        for dl in d.split('\n') {
+        for dl in d.lines() {
             block.push(format!("\t/// {}", dl.trim_end()));
         }
     }
@@ -458,7 +458,7 @@ fn update_column_tmdl(
     let mut new_block: Vec<String> = Vec::new();
     // Description (replace leading `///` comments if a new one is given).
     if let Some(d) = props.description {
-        for dl in d.split('\n') {
+        for dl in d.lines() {
             new_block.push(format!("\t/// {}", dl.trim_end()));
         }
     } else {
@@ -690,6 +690,7 @@ mod tests {
         let props = ColumnProps {
             data_type: Some("string"),
             display_folder: Some("Calc"),
+            description: Some("Uppercase region\r\nFor grouping"),
             ..Default::default()
         };
         let block = build_calculated_column_lines(
@@ -701,6 +702,8 @@ mod tests {
         );
         let out = insert_table_child_lines(&table_tmdl(), &block);
         assert!(out.contains("\tcolumn 'Region Upper' = UPPER('Sales'[Region])"));
+        assert!(out.contains("\t/// Uppercase region\n\t/// For grouping"));
+        assert!(!out.contains('\r'));
         assert!(out.contains("\t\tdataType: string"));
         assert!(out.contains("\t\tdisplayFolder: Calc"));
         let lt = out.find("lineageTag: t1").unwrap();
@@ -738,11 +741,14 @@ mod tests {
         let props = ColumnProps {
             format_string: Some("0.00"),
             summarize_by: Some("sum"),
+            description: Some("Currency amount\r\nIn USD"),
             ..Default::default()
         };
         let (out, updated) = update_column_tmdl(&table_tmdl(), "Amount", None, Some("sum"), &props);
         assert!(updated);
         let seg = out.split("column Amount").nth(1).unwrap();
+        assert!(out.contains("\t/// Currency amount\n\t/// In USD\n\tcolumn Amount"));
+        assert!(!out.contains('\r'));
         assert!(seg.contains("formatString: 0.00"));
         assert!(seg.contains("summarizeBy: sum"));
         assert!(seg.contains("dataType: double")); // untouched prop preserved

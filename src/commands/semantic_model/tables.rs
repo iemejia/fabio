@@ -345,7 +345,7 @@ fn update_table_tmdl(content: &str, props: &TableProps<'_>) -> String {
     out.extend(lines[..desc_start].iter().map(|s| (*s).to_string()));
     // Re-emit the description (new, or the original comments if not overriding).
     if let Some(d) = props.description {
-        for dl in d.split('\n') {
+        for dl in d.lines() {
             out.push(format!("/// {}", dl.trim_end()));
         }
     } else {
@@ -497,10 +497,11 @@ mod tests {
         let props = TableProps {
             hidden: Some(true),
             data_category: Some("Time"),
-            description: Some("Date dimension"),
+            description: Some("Date dimension\r\nCalendar dates"),
         };
         let out = update_table_tmdl(content, &props);
-        assert!(out.starts_with("/// Date dimension\ntable Dates\n"));
+        assert!(out.starts_with("/// Date dimension\n/// Calendar dates\ntable Dates\n"));
+        assert!(!out.contains('\r'));
         assert!(out.contains("\tisHidden"));
         assert!(out.contains("\tdataCategory: Time"));
         assert!(out.contains("\tlineageTag: x")); // preserved
