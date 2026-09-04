@@ -308,6 +308,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/admin_list_workspaces.json"),
     ),
     (
+        "admin/list-network-policies",
+        include_str!("data/examples/admin_list_network_policies.json"),
+    ),
+    (
         "job-scheduler/run-on-demand",
         include_str!("data/examples/job_scheduler_run.json"),
     ),

@@ -2,7 +2,9 @@
   "family": "geospatial",
   "title": "Geospatial — Fabric maps",
   "description": "Intent-scoped fabio skill for Fabric geospatial maps: create, inspect, and update map items and their definitions. Use to manage location/geospatial visualizations backed by Fabric data. Triggers: \"map\", \"geospatial\", \"create map\", \"location visualization\", \"spatial data\", \"map definition\".",
-  "command_groups": ["map"],
+  "command_groups": [
+    "map"
+  ],
   "when_to_use": [
     "Creating/listing/inspecting map items in a workspace.",
     "Editing a map's definition (get-definition / update-definition).",
@@ -30,13 +32,24 @@
     "A map is a visualization layer — it renders data that lives in other Fabric items, which must exist and be populated."
   ],
   "troubleshooting": [
-    {"symptom": "Map changes don't persist", "fix": "Update the definition (map update-definition), not just metadata; metadata-only updates don't change map content."},
-    {"symptom": "Map renders empty", "fix": "Confirm the backing spatial dataset exists and is populated; the map only visualizes other items' data."}
+    {
+      "symptom": "Map changes don't persist",
+      "fix": "Update the definition (map update-definition), not just metadata; metadata-only updates don't change map content."
+    },
+    {
+      "symptom": "Map renders empty",
+      "fix": "Confirm the backing spatial dataset exists and is populated; the map only visualizes other items' data."
+    }
   ],
   "safety": [
     "Deleting a map removes its definition and configuration — confirm with the user."
   ],
-  "shared_references": ["throttling", "pagination", "lro"],
+  "shared_references": [
+    "throttling",
+    "pagination",
+    "lro",
+    "workspace-oap"
+  ],
   "see_also": [
     "fabio context persona bi-developer",
     "fabio context persona data-engineer"

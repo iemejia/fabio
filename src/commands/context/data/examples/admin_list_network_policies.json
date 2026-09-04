@@ -1,0 +1,60 @@
+{
+  "command": "fabio admin list-network-policies --filter \"outbound/publicAccessRules/defaultAction eq 'deny'\"",
+  "description": "Tenant-wide visibility (GA) into workspace networking / Outbound Access Protection (OAP) policies. Returns, per workspace, the inbound access protection (public-access default action + IP firewall rules) and outbound access protection (public access, cloud connection rules, gateway rules, Git policy, managed private endpoints). Admin-only (Tenant.Read.All). Read-only — for security auditing, compliance monitoring, and OAP-adoption reporting across the whole tenant.",
+  "response": {
+    "data": [
+      {
+        "workspaceId": "fa9ad228-3e6b-44d4-b5f4-e275f337afa9",
+        "workspaceName": "Finance Analytics",
+        "workspaceType": "Workspace",
+        "inbound": {
+          "publicAccessRules": { "defaultAction": "Deny" },
+          "firewall": {
+            "rules": [
+              { "displayName": "CorpNet", "value": "10.0.0.0-10.255.255.255" }
+            ]
+          }
+        },
+        "outbound": {
+          "publicAccessRules": { "defaultAction": "Deny" },
+          "connections": {
+            "defaultAction": "Deny",
+            "rules": [
+              {
+                "connectionType": "SQL",
+                "defaultAction": "Deny",
+                "allowedEndpoints": [ { "hostnamePattern": "*.microsoft.com" } ]
+              },
+              {
+                "connectionType": "lakehouse",
+                "defaultAction": "Deny",
+                "allowedWorkspaces": [ { "workspaceId": "91c5ae74-e82d-4dd3-bfeb-6b1814030123" } ]
+              }
+            ]
+          },
+          "gateways": {
+            "defaultAction": "Deny",
+            "allowedGateways": [ { "id": "17d8929d-ab32-46d1-858b-fdea74e93bf2" } ]
+          },
+          "git": { "defaultAction": "Deny" },
+          "managedPrivateEndpoints": [
+            {
+              "id": "f3d04593-28fe-409e-a568-ebffbea69f37",
+              "name": "SqlProdEndpoint",
+              "provisioningState": "Succeeded",
+              "connectionState": { "status": "Approved", "actionsRequired": "None" }
+            }
+          ]
+        }
+      }
+    ],
+    "count": 1
+  },
+  "notes": "GA endpoint: GET /admin/workspaces/networking/communicationpolicies. Paginated (--all follows the continuation token). --filter supports only inbound/outbound publicAccessRules defaultAction eq 'deny' (optionally combined with 'or'); an unsupported property returns InvalidFilterExpression. defaultAction is Allow or Deny — Deny on outbound.publicAccessRules means Outbound Access Protection is enabled for that workspace. The table view surfaces INBOUND PUBLIC / OUTBOUND PUBLIC default actions; use --output json for the full firewall/connection/gateway/Git/managed-private-endpoint detail. Read-only: use the per-workspace fabio workspace get/set-*-policy and get/set-outbound-* commands to change a specific workspace's configuration.",
+  "query_examples": [
+    {"query": "[?outbound.publicAccessRules.defaultAction=='Deny'].workspaceName", "description": "Workspaces with Outbound Access Protection (default-deny outbound) enabled."},
+    {"query": "[?inbound.publicAccessRules.defaultAction=='Deny'].{ws: workspaceName, firewall: inbound.firewall.rules[*].value}", "description": "Inbound-restricted workspaces and their allowed IP ranges."},
+    {"query": "[?length(outbound.managedPrivateEndpoints) > `0`].workspaceName", "description": "Workspaces that use managed private endpoints."},
+    {"query": "length([?inbound.publicAccessRules.defaultAction=='Allow'])", "description": "Count of workspaces still allowing public inbound access (audit signal)."}
+  ]
+}

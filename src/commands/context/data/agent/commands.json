@@ -292,7 +292,7 @@
         "returns": "void"
       },
       "list-network-policies": {
-        "description": "List network communication policies",
+        "description": "List network communication policies for all workspaces in the tenant. Returns per-workspace inbound access protection (public access default action + IP firewall rules) and outbound access protection (public access, cloud connection rules, gateway rules, Git policy, and managed private endpoints) — tenant-wide OAP/networking visibility for security auditing and compliance. Requires Fabric admin (Tenant.Read.All)",
         "flags": {
           "--filter": {
             "type": "string",

@@ -282,8 +282,20 @@ pub(super) async fn list_network_policies(
     output::render_list_with_token(
         cli,
         &resp.items,
-        &["workspaceId", "workspaceName", "workspaceType"],
-        &["WORKSPACE ID", "WORKSPACE NAME", "TYPE"],
+        &[
+            "workspaceId",
+            "workspaceName",
+            "workspaceType",
+            "inbound.publicAccessRules.defaultAction",
+            "outbound.publicAccessRules.defaultAction",
+        ],
+        &[
+            "WORKSPACE ID",
+            "WORKSPACE NAME",
+            "TYPE",
+            "INBOUND PUBLIC",
+            "OUTBOUND PUBLIC",
+        ],
         "workspaceId",
         resp.continuation_token.as_deref(),
     );

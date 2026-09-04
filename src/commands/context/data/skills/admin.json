@@ -2,7 +2,16 @@
   "family": "admin",
   "title": "Administration — workspaces, capacity, tenant governance, connectivity, labels",
   "description": "Intent-scoped fabio skill for Fabric administration and workspace management: workspace lifecycle/roles/folders/networking/encryption, capacity lifecycle, tenant-wide inventory and settings, domains, gateways, connections, managed private endpoints, and sensitivity labels. Use for governance, connectivity, capacity, and workspace-level administration. Triggers: \"workspace\", \"assign capacity\", \"workspace roles\", \"network policy\", \"capacity\", \"resume capacity\", \"suspend capacity\", \"tenant settings\", \"domain\", \"gateway\", \"connection\", \"private endpoint\", \"sensitivity label\".",
-  "command_groups": ["workspace", "admin", "capacity", "domain", "gateway", "connection", "managed-private-endpoint", "label"],
+  "command_groups": [
+    "workspace",
+    "admin",
+    "capacity",
+    "domain",
+    "gateway",
+    "connection",
+    "managed-private-endpoint",
+    "label"
+  ],
   "when_to_use": [
     "Workspace lifecycle and governance: create/assign-capacity, recover or permanently delete soft-deleted items, role assignments, folders, domains, networking/firewall/encryption policies, git outbound policy, OneLake settings.",
     "Capacity lifecycle: list, resume, suspend, create, delete (ARM-scoped).",
@@ -41,12 +50,33 @@
     "Bulk tenant-setting changes without confirming the scope with the user."
   ],
   "troubleshooting": [
-    {"symptom": "admin commands return FORBIDDEN", "fix": "You need the Fabric administrator role; these are tenant-scoped operations."},
-    {"symptom": "Operations fail with CAPACITY_INACTIVE", "fix": "Resume the capacity (fabio capacity resume --id $CAP) before running workloads on it."},
-    {"symptom": "label list shows UUIDs instead of names", "fix": "Name resolution needs M365 E5 + InformationProtection.Read via Microsoft Graph."},
-    {"symptom": "capacity suspend/resume fails", "fix": "These use the ARM scope (management.azure.com); ensure your identity has rights on the capacity resource."}
+    {
+      "symptom": "admin commands return FORBIDDEN",
+      "fix": "You need the Fabric administrator role; these are tenant-scoped operations."
+    },
+    {
+      "symptom": "Operations fail with CAPACITY_INACTIVE",
+      "fix": "Resume the capacity (fabio capacity resume --id $CAP) before running workloads on it."
+    },
+    {
+      "symptom": "label list shows UUIDs instead of names",
+      "fix": "Name resolution needs M365 E5 + InformationProtection.Read via Microsoft Graph."
+    },
+    {
+      "symptom": "capacity suspend/resume fails",
+      "fix": "These use the ARM scope (management.azure.com); ensure your identity has rights on the capacity resource."
+    }
   ],
-  "shared_references": ["admin-apis", "throttling", "pagination", "sensitivity-labels", "tags", "tenant-feature-gates"],
+  "shared_references": [
+    "admin-apis",
+    "throttling",
+    "pagination",
+    "sensitivity-labels",
+    "tags",
+    "tenant-feature-gates",
+    "workspace-oap",
+    "connection-hygiene"
+  ],
   "see_also": [
     "fabio context persona fabric-admin",
     "fabio context best-practices admin-apis",

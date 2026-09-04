@@ -1,0 +1,24 @@
+{
+  "topic": "workspace-oap",
+  "title": "Workspace Outbound Access Protection (OAP) for Operations Agent and Fabric Maps",
+  "summary": "Outbound Access Protection is a workspace 'default deny' model for outbound connections from workspace items. It now (preview) governs Operations Agent actions and Fabric Maps data sources (Lakehouse, KQL, Ontology, and external WMS/WMTS/WFS geospatial services). Configure allow-lists with fabio workspace set-outbound-* rules + connection create; audit tenant-wide with admin list-network-policies.",
+  "what_it_is": "When Workspace Outbound Access Protection (OAP) is enabled, outbound connections from a workspace's items are DENIED by default and only explicitly approved destinations (Data Connection Rules) are reachable. Enforcement is consistent across authoring, load, and runtime, and is fail-closed: if the policy service is unavailable, cross-workspace connections are denied.",
+  "new_this_week": {
+    "operations_agent": "OAP now governs Operations Agent outbound actions (preview). The agent still reasons, generates recommendations, evaluates rules, and collects telemetry, but its outbound actions (e.g. sending Teams notifications, cross-workspace actions) are subject to the workspace OAP policy. Blocked actions surface via in-product notifications, Teams messaging, and the Operations Agent Activity Log.",
+    "fabric_maps": "Fabric Maps now follows default-deny under OAP (preview). Referenced data sources are evaluated on save/load and at runtime (tiles, features, query results). Same-workspace Lakehouse/KQL/Ontology are allowed; cross-workspace Lakehouse can be allowed via Data Connection Rules; cross-workspace KQL and Ontology are currently blocked when OAP is on. External geospatial services (WMS/WMTS/WFS) are validated through DMTS and must be explicitly allow-listed."
+  },
+  "fabio_commands": {
+    "enable_and_inspect": "Enabling OAP itself is a workspace/tenant setting. Inspect a workspace's policy with 'fabio workspace get-network-policy' and the outbound rules with 'fabio workspace get-outbound-cloud-connection-rules', 'get-outbound-gateway-rules', and 'get-git-outbound-policy'.",
+    "set_allow_lists": "Set approved outbound destinations with 'fabio workspace set-outbound-cloud-connection-rules' (cloud connections), 'set-outbound-gateway-rules' (gateways), and 'set-git-outbound-policy' (Git). These require OAP to be enabled on the workspace.",
+    "geospatial_allow_list": "To allow an external WMS/WMTS/WFS map service, create a connection for it and reference it in the workspace's Data Connection Rules. Use 'fabio connection create --connectivity-type ShareableCloud --connection-type <GeospatialWebServicesType> --parameters '{...}' --credential-type <...>'. The connection type is a free-form value resolved from 'fabio connection list-supported-types' (creation method auto-resolves) — run list-supported-types to find the exact Geospatial Web Services type name in your tenant.",
+    "tenant_audit": "Audit OAP adoption across ALL workspaces (admin, read-only, GA) with 'fabio admin list-network-policies' — filter with \"outbound/publicAccessRules/defaultAction eq 'deny'\" to inventory workspaces that have outbound protection enabled. See the connection-hygiene and admin-apis best-practices."
+  },
+  "gotchas": [
+    "set-outbound-* rules require OAP already enabled on the workspace — the commands note this in their help; enabling OAP is a prerequisite, not something the rule commands do.",
+    "Default-deny is fail-closed: a policy-service outage denies cross-workspace connections, which can make maps/agents appear broken. Check the Operations Agent Activity Log / in-product notifications for blocked-action signals before assuming a bug.",
+    "Cross-workspace KQL and Ontology sources for Fabric Maps are blocked under OAP in the current preview (only cross-workspace Lakehouse can be allow-listed). Same-workspace sources always work.",
+    "External geospatial services are validated through DMTS as a policy enforcement layer — only explicitly allow-listed WMS/WMTS/WFS endpoints are reachable.",
+    "Power BI Semantic Models and Reports OAP support is announced as coming to GA soon — not yet covered."
+  ],
+  "see_also": ["admin-apis", "connection-hygiene", "shortcuts"]
+}

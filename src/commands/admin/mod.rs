@@ -217,7 +217,12 @@ pub enum AdminCommand {
         #[arg(long, env = "FABIO_CAPACITY")]
         capacity_id: String,
     },
-    /// List network communication policies
+    /// List network communication policies for all workspaces in the tenant.
+    /// Returns per-workspace inbound access protection (public access default
+    /// action + IP firewall rules) and outbound access protection (public
+    /// access, cloud connection rules, gateway rules, Git policy, and managed
+    /// private endpoints) — tenant-wide OAP/networking visibility for security
+    /// auditing and compliance. Requires Fabric admin (Tenant.Read.All).
     #[command(display_order = 37)]
     ListNetworkPolicies {
         /// Filter by policy direction (e.g. "inbound/publicAccessRules/defaultAction eq 'deny'",

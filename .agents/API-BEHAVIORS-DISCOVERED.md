@@ -3115,8 +3115,22 @@ implemented or confirmed to require no code change.
   `"Maria DB"` outbound connection-type rule being removed from the sample data (cosmetic example
   cleanup, not a schema change) and the pagination token values switching to URL-encoded form
   (`%3D` instead of raw `=` — an encoding-hygiene fix in the example only, `get_list`'s
-  `continuationToken` handling already treats the token as an opaque string so this needed no code
-  change).
+   `continuationToken` handling already treats the token as an opaque string so this needed no code
+   change).
+   **Update (Sep 2026 — GA):** `List Networking Communication Policies` reached GA (blog: "Get
+   tenant-wide visibility into workspace networking policies with the Admin API"). Confirmed the GA
+   schema matches what fabio already returns (per-workspace `inbound.{publicAccessRules.defaultAction,
+   firewall.rules[]}` + `outbound.{publicAccessRules.defaultAction, connections, gateways, git,
+   managedPrivateEndpoints[]}`; `defaultAction` ∈ `{Allow, Deny}`; `filter` supports only the
+   inbound/outbound `publicAccessRules/defaultAction eq 'deny'` expressions, optionally combined with
+   `or`; unsupported property → `InvalidFilterExpression`). Two docs-only enhancements this round: (1)
+   the `list-network-policies` table now surfaces `INBOUND PUBLIC` / `OUTBOUND PUBLIC` default actions
+   (dotted `inbound.publicAccessRules.defaultAction` / `outbound.publicAccessRules.defaultAction`
+   columns) for a governance-at-a-glance view — a `Deny` on outbound public access means OAP is
+   enabled for that workspace; (2) added the `admin/list-network-policies` output example and the
+   `workspace-oap` best-practice (OAP for Operations Agent + Fabric Maps, cross-linking the
+   per-workspace `workspace set-outbound-*` rule commands and the geospatial connection allow-list).
+   No code/behavior change was required — the command was already GA-compatible.
 - **Eventstream new source/destination types (generic passthrough, already covered)**:
   `eventstream/definitions/source.json` added `AzureIoTHubExtended`, `OracleDBCDC`, and
   `MirroredDatabaseChangeFeed` source types; `eventstream/definitions/destination.json` added a

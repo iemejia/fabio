@@ -120,7 +120,7 @@ Fabric tenant administration (settings, tags, workloads, users)
 | `fabio admin list-git-connections` | no | List git connections across workspaces |
 | `fabio admin list-item-users` | no | List users with access to an item (admin view) |
 | `fabio admin list-items` | no | List items (admin view) |
-| `fabio admin list-network-policies` | no | List network communication policies |
+| `fabio admin list-network-policies` | no | List network communication policies for all workspaces in the tenant. Returns per-workspace inbound access protection (public access default action + IP firewall rules) and outbound access protection (public access, cloud connection rules, gateway rules, Git policy, and managed private endpoints) — tenant-wide OAP/networking visibility for security auditing and compliance. Requires Fabric admin (Tenant.Read.All) |
 | `fabio admin list-tags` | no | List tags |
 | `fabio admin list-tenant-settings` | no | List all tenant settings |
 | `fabio admin list-user-access` | no | List access details for a user |
@@ -283,6 +283,8 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 | `fabio context best-practices sensitivity-labels` | Sensitivity labels from Microsoft Purview Information Protection are now returned inline by the Fabric Items API. Use them for governance automation, AI agent guardrails, and compliance inventory. |
 | `fabio context best-practices tags` | Fabric organizational tags enable multi-dimensional classification of workspaces and items. Tags are returned inline in item/workspace responses and can be used for governance, inventory, and agent-based filtering. |
 | `fabio context best-practices tenant-feature-gates` | Many Fabric features are gated by a tenant setting an admin can toggle. When a setting is disabled the API returns an opaque 403 FeatureNotAvailable; fabio turns this into an admin-aware teaching error that names the exact setting and (for admins) the command to enable it. Do NOT blindly retry a feature-disabled error. |
+| `fabio context best-practices workspace-oap` | Outbound Access Protection is a workspace 'default deny' model for outbound connections from workspace items. It now (preview) governs Operations Agent actions and Fabric Maps data sources (Lakehouse, KQL, Ontology, and external WMS/WMTS/WFS geospatial services). Configure allow-lists with fabio workspace set-outbound-* rules + connection create; audit tenant-wide with admin list-network-policies. |
+| `fabio context best-practices connection-hygiene` | Use the connection-recency signals (createdDateTime, lastBoundDateTime, lastCredentialUsedDateTime) exposed by 'connection list' plus the derived 'connection find-stale / find-duplicates / find-single-owner' commands to find and safely retire stale/duplicate connections and fix single-owner orphan risk. Gateways cap at 1,000 connections, so hygiene keeps you under the limit. |
 
 ## See also
 - fabio context persona fabric-admin
