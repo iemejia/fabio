@@ -2,7 +2,12 @@
   "family": "warehouse-sql",
   "title": "Warehouse & SQL — T-SQL query, execution plans, insights, statistics",
   "description": "Intent-scoped fabio skill for Fabric T-SQL surfaces: Warehouse (read-write analytics), SQL Database (OLTP), SQL analytics endpoint (read-only over a lakehouse), and warehouse snapshots. Use for running T-SQL, capturing execution plans, monitoring queries, and managing statistics. Triggers: \"warehouse query\", \"run SQL\", \"T-SQL\", \"execution plan\", \"showplan\", \"queries running\", \"kill session\", \"statistics\", \"sql database\", \"sql endpoint\".",
-  "command_groups": ["warehouse", "sql-database", "sql-endpoint", "warehouse-snapshot"],
+  "command_groups": [
+    "warehouse",
+    "sql-database",
+    "sql-endpoint",
+    "warehouse-snapshot"
+  ],
   "when_to_use": [
     "Executing T-SQL against a Warehouse, SQL Database, or SQL analytics endpoint (also lakehouse plan/query).",
     "Discovering schema: list-tables (tables + views, optional --schema) and describe-table (columns, types, nullability for one table) over INFORMATION_SCHEMA.",
@@ -33,7 +38,8 @@
     "Because the remote DW MCP server has NO schema tools, prefer fabio's typed 'list-tables' (tables+views, optional --schema) and 'describe-table --table [schema.]table' (columns/types/nullability) over hand-writing INFORMATION_SCHEMA.TABLES/COLUMNS queries via 'query --sql'. Both accept a Warehouse OR Lakehouse/SQL-endpoint id (schema discovery works on any TDS surface). describe-table returns the LIST envelope (one row per column); a count of 0 means the table/schema does not exist. --table accepts 'schema.table', '[schema].[table]', or a bare 'table' (unqualified matches the name across schemas).",
     "'warehouse copy-into' bulk-loads files into an EXISTING warehouse table via COPY INTO (the authoring loop: create table with 'query' -> copy-into -> validate with describe-table/COUNT(*)). It is append-only (never deletes/overwrites), so mutates:true but NOT destructive. --source must be an HTTPS Azure storage (*.dfs/blob.core.windows.net) or OneLake (onelake.dfs.fabric.microsoft.com) URL; --file-type is CSV or PARQUET; CSV-only flags (--field-terminator/--row-terminator/--first-row/--encoding) are rejected with PARQUET. Omit --sas-token to use the caller's Entra identity (works for OneLake and storage the signed-in user can read). --dry-run prints the generated COPY INTO SQL with the SAS secret REDACTED; --readonly blocks execution but still allows the dry-run preview. Create the table first — copy-into does not create it.",
     "'warehouse query --via-mcp' / 'sql-endpoint query --via-mcp' run the T-SQL through the remote Fabric DW MCP server's execute_query tool instead of a direct native-TDS (1433) connection. Use it to AVOID the separate database.windows.net-audience SQL token (FABIO_SQL_ACCESS_TOKEN): --via-mcp authenticates with the SAME Fabric token every other fabio command uses, and needs no outbound TCP 1433 (good for locked-down networks). Trade-offs vs the default TDS path: the MCP server returns results as CSV, so ALL values are strings (e.g. Amount is \"100\", not 100) — the list envelope shape is identical, but types are lost; and it has NO execution plans, query insights, or statistics. Prefer the default TDS path when you need typed values or 'plan'/'queries-*'; use --via-mcp when SQL-token setup or 1433 egress is the blocker.",
-    "SQL Audit predicate filtering is available on ALL THREE T-SQL surfaces: 'warehouse', 'sql-endpoint', and 'sql-database' update-audit-settings all accept '--predicate-expression' (a T-SQL WHERE-style filter, e.g. \"database_principal_name <> 'dbo'\", stored as top-level predicateExpression) to keep only the audit rows that matter. Pair it with '--state Enabled', '--retention-days', and '--audit-actions'. Writing audit settings needs Contributor+ AND an elevated audit scope — a correctly-formed request may still return FORBIDDEN/InsufficientScopes on a low-privilege token."
+    "SQL Audit predicate filtering is available on ALL THREE T-SQL surfaces: 'warehouse', 'sql-endpoint', and 'sql-database' update-audit-settings all accept '--predicate-expression' (a T-SQL WHERE-style filter, e.g. \"database_principal_name <> 'dbo'\", stored as top-level predicateExpression) to keep only the audit rows that matter. Pair it with '--state Enabled', '--retention-days', and '--audit-actions'. Writing audit settings needs Contributor+ AND an elevated audit scope — a correctly-formed request may still return FORBIDDEN/InsufficientScopes on a low-privilege token.",
+    "IDENTITY_INSERT is supported (GA): to insert explicit values into an IDENTITY column (e.g. to preserve keys when reloading/migrating a Fabric Warehouse table), wrap the load in SET IDENTITY_INSERT dbo.<table> ON; INSERT ... (<explicit id cols>) VALUES ...; SET IDENTITY_INSERT dbo.<table> OFF; via 'warehouse query'. Only ONE table can have IDENTITY_INSERT ON at a time in a session, the column list MUST be explicit in the INSERT, and you must have ALTER on the table. Without it, inserting an explicit value into an IDENTITY column fails. Applies to Fabric Warehouse T-SQL (arbitrary T-SQL runs through 'warehouse query', so no fabio flag is needed)."
   ],
   "safety": [
     "copy-into loads data into an existing table (append-only). It is a mutation (dry-run guarded, --readonly blocks it); confirm the target table and --source before running. --dry-run prints the COPY INTO SQL with the SAS secret redacted.",
@@ -61,13 +67,33 @@
     "Assuming query monitoring DMVs behave identically to SQL Server (several columns/views differ on Fabric — see gotchas)."
   ],
   "troubleshooting": [
-    {"symptom": "SQL Database create fails with 18456 State 240", "fix": "The workspace capacity is too small; SQL Database requires F4 or higher."},
-    {"symptom": "Query against a lakehouse endpoint returns stale/missing tables", "fix": "The SQL analytics endpoint syncs from Delta; ensure the lakehouse tables exist and metadata has refreshed."},
-    {"symptom": "'invalid column name login_name'", "fix": "Join sys.dm_exec_sessions for login_name; sys.dm_exec_requests does not have it on Fabric."},
-    {"symptom": "FORBIDDEN executing a query", "fix": "You need appropriate workspace role / SQL permissions on the item."},
-    {"symptom": "Selective refresh reports DeltaTableNotFound", "fix": "For schema-enabled parent items, use the table's actual schema. Non-schema-enabled items resolve under the default schema and cannot resolve tables under a non-default schema."}
+    {
+      "symptom": "SQL Database create fails with 18456 State 240",
+      "fix": "The workspace capacity is too small; SQL Database requires F4 or higher."
+    },
+    {
+      "symptom": "Query against a lakehouse endpoint returns stale/missing tables",
+      "fix": "The SQL analytics endpoint syncs from Delta; ensure the lakehouse tables exist and metadata has refreshed."
+    },
+    {
+      "symptom": "'invalid column name login_name'",
+      "fix": "Join sys.dm_exec_sessions for login_name; sys.dm_exec_requests does not have it on Fabric."
+    },
+    {
+      "symptom": "FORBIDDEN executing a query",
+      "fix": "You need appropriate workspace role / SQL permissions on the item."
+    },
+    {
+      "symptom": "Selective refresh reports DeltaTableNotFound",
+      "fix": "For schema-enabled parent items, use the table's actual schema. Non-schema-enabled items resolve under the default schema and cannot resolve tables under a non-default schema."
+    }
   ],
-  "shared_references": ["throttling", "pagination", "lro", "custom-sql-pools"],
+  "shared_references": [
+    "throttling",
+    "pagination",
+    "lro",
+    "custom-sql-pools"
+  ],
   "see_also": [
     "fabio context persona data-engineer",
     "fabio context disambiguate sql-endpoint",

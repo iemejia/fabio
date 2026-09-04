@@ -1,0 +1,27 @@
+{
+  "name": "Capacity Operation Events Monitoring Pipeline",
+  "description": "Stream near-real-time Fabric capacity operation-level telemetry (per-operation CU consumption, duration, throttling, workspace/item attribution) into Real-Time Intelligence for root-cause analysis and automated alerting. Wires the FabricCapacityOperationEvents eventstream source to an Eventhouse (KQL) destination for retention/analysis, then optionally a Reflex/Activator trigger for no-code throttling alerts. Answers 'which operations are causing capacity pressure?' beyond the high-level Overview events.",
+  "prerequisites": [
+    "Authenticated via fabio auth login",
+    "Capacity administrator (capacity operation events are admin-scoped)",
+    "A target workspace on capacity",
+    "The capacity UUID to monitor (fabio capacity list)"
+  ],
+  "steps": [
+    {"step_number": 1, "command": "fabio capacity list --query \"[].{name: displayName, id: id}\"", "description": "Find the capacity UUID you want to monitor.", "notes": "Capacity Operation Events answer 'which operations are causing it?'; Capacity Overview Events answer 'what is happening to my capacity?' — use both for full visibility."},
+    {"step_number": 2, "command": "fabio eventhouse create --workspace $WS --name capacity_monitor_eh", "description": "Create the Eventhouse (with its default KQL database) that will retain the operation telemetry for historical analysis and dashboards.", "notes": "Streaming into Eventhouse gives retention + KQL analytics over the raw operational signals."},
+    {"step_number": 3, "command": "fabio eventstream create --workspace $WS --name capacity_events_es", "description": "Create the eventstream that will carry the capacity operation events.", "notes": "One eventstream can fan out to multiple destinations (Eventhouse for analysis, Activator for alerts)."},
+    {"step_number": 4, "command": "fabio eventstream add-source --workspace $WS --id $ES_ID --name cap_ops --source-type FabricCapacityOperationEvents --properties '{\"eventScope\":\"Capacity\",\"capacityId\":\"<CAPACITY_UUID>\"}'", "description": "Add the capacity operation events source. eventScope is one of Tenant, Capacity, Workspace, Item, SubItem (PascalCase).", "notes": "Optional: narrow with \"includedEventTypes\" and \"filters\" (e.g. [{\"operatorType\":\"StringIn\",\"key\":\"data.operationType\",\"values\":[\"...\"]}]). Scope to a single capacity with capacityId, or Tenant for all."},
+    {"step_number": 5, "command": "fabio eventstream add-destination --workspace $WS --id $ES_ID --name to_eventhouse --destination-type Eventhouse --input-node cap_ops --properties '{...eventhouse/kql-db reference...}'", "description": "Route the source into the Eventhouse/KQL database for retention and KQL analysis.", "notes": "Use fabio eventstream list-components --category destination to see destination shapes. --input-node wires this destination to the cap_ops source node."},
+    {"step_number": 6, "command": "fabio eventstream get-topology --workspace $WS --id $ES_ID", "description": "Verify the source -> destination wiring before relying on it.", "notes": "Confirms the graph: FabricCapacityOperationEvents source feeding the Eventhouse destination."},
+    {"step_number": 7, "command": "fabio kql-database query --workspace $WS --id $KQL_DB_ID --query \"<Table> | where data.throttling... | summarize by data.workspaceId\"", "description": "Analyze operation telemetry in KQL: which refreshes consumed the most CU, which operations were throttled, which workspaces drive pressure.", "notes": "See the RTI/KQL skill for schema discovery (kql-database list-tables / describe-table)."},
+    {"step_number": 8, "command": "fabio reflex create --workspace $WS --name throttle_alert    # then define a rule on the capacity-events stream", "description": "Optional no-code alerting: create a Reflex (Activator) trigger to fire when high-cost operations exceed a threshold or throttling is detected, driving notification/remediation workflows.", "notes": "This mirrors the blog's 'Microsoft Activator for designing automated triggers with no code'."}
+  ],
+  "tips": [
+    "Capacity Operation Events are a PREVIEW Real-Time Hub source; pair them with Capacity Overview Events for both detailed and high-level views.",
+    "Each event carries workspace + item details, CU consumption, operation duration, start time, and smoothing-window attribution — ideal for per-operation root-cause analysis.",
+    "Stream into Eventhouse for historical retention; add an Activator/Reflex trigger for near-real-time alerts on throttling or high-cost operations.",
+    "Scope with eventScope + capacityId to avoid ingesting tenant-wide volume when you only care about one capacity.",
+    "Microsoft's Capacity Events Accelerator (fabric-toolbox) is a prebuilt starting point for the same pattern."
+  ]
+}

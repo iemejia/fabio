@@ -1,0 +1,25 @@
+{
+  "name": "dbt Job Medallion Patterns in Fabric",
+  "description": "Choose where dbt fits in a Fabric medallion (Bronze/Silver/Gold) architecture and orchestrate it. Covers the four documented patterns (Warehouse-only, Lakehouse landing + Warehouse transform, Lakehouse refine + Warehouse serve, Lakehouse-only) and the separate decision of native dbt scheduling vs orchestration inside a Fabric data pipeline. Uses fabio data-build-tool-job to create/run the dbt job and optionally data-pipeline to orchestrate it.",
+  "prerequisites": [
+    "Authenticated via fabio auth login",
+    "A target workspace on capacity",
+    "A Warehouse and/or Lakehouse for the medallion layers (fabio warehouse create / fabio lakehouse create)",
+    "A dbt project (the dbt job's definition) — data-build-tool-job is preview"
+  ],
+  "steps": [
+    {"step_number": 1, "command": "fabio warehouse create --workspace $WS --name analytics_dw    # and/or: fabio lakehouse create --workspace $WS --name raw_lh", "description": "Provision the medallion targets. The pattern decides which engine owns which layer.", "notes": "Pattern A Warehouse-only: Bronze+Silver+Gold in the Warehouse (SQL-first teams). Pattern B Lakehouse landing + Warehouse transform: land raw in a Lakehouse (OneLake), transform/serve in the Warehouse. Pattern C Lakehouse refine + Warehouse serve: engineering owns Lakehouse (Bronze/Silver), BI owns Warehouse (Gold) — distinct ownership boundaries. Pattern D Lakehouse-only: all layers in the Lakehouse with Spark execution (Delta-first)."},
+    {"step_number": 2, "command": "fabio data-build-tool-job create --workspace $WS --name dbt_transform --description \"dbt Silver/Gold models\"", "description": "Create the dbt job item that owns transformation logic, testing, dependencies, and materialization.", "notes": "dbt owns the transformation contract regardless of pattern; the pattern only changes which engine its models target (Warehouse T-SQL vs Lakehouse Spark)."},
+    {"step_number": 3, "command": "fabio data-build-tool-job update-definition --workspace $WS --id $DBT_ID --file ./dbt-project-definition.json", "description": "Upload the dbt project definition (models, profiles, sources).", "notes": "Point dbt's target at the layer(s) it should own — a common split is dbt owning Silver+Gold while ingestion (COPY INTO / pipeline / Spark) owns Bronze."},
+    {"step_number": 4, "command": "fabio data-build-tool-job run --workspace $WS --id $DBT_ID --wait --timeout 1800", "description": "Native scheduling path: run the dbt job on-demand (or on its own schedule) and wait for completion.", "notes": "Use this when dbt orchestration is sufficient — dbt manages model dependencies internally."},
+    {"step_number": 5, "command": "fabio data-pipeline create --workspace $WS --name medallion_orchestration    # then add a dbt-job activity + upstream ingestion/downstream refresh", "description": "Pipeline orchestration path (separate decision): wrap the dbt job in a Fabric data pipeline when you need end-to-end workflow dependencies (ingest Bronze -> run dbt Silver/Gold -> refresh a semantic model).", "notes": "Architecture (where data/transforms live) and orchestration (native dbt vs pipeline) are INDEPENDENT choices — pick the engine per layer first, then choose how to run it."},
+    {"step_number": 6, "command": "fabio data-build-tool-job run --workspace $WS --id $DBT_ID --wait --query 'status'    # or fabio job-scheduler get-instance --follow", "description": "Verify the run outcome and monitor to completion.", "notes": "Pair with the CI/CD deploy workflow to promote the dbt job + its targets between environments."}
+  ],
+  "tips": [
+    "There is no single right pattern — it depends on where data lands, which engine transforms it, and how curated data is consumed.",
+    "Keep dbt as the owner of transformation logic/testing/materialization in every pattern; change only the target engine.",
+    "Architecture vs orchestration are separate: choose the layer engines first, then native dbt scheduling vs a Fabric pipeline.",
+    "For SQL-first teams, Warehouse-only (Pattern A) minimizes engines; for Delta-first/Spark teams, Lakehouse-only (Pattern D) does.",
+    "See also: fabio context best-practices (deploy-parameters) to promote dbt jobs across environments, and the e2e medallion guidance."
+  ]
+}
