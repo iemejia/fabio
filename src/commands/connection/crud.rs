@@ -1,264 +1,15 @@
+//! CRUD handlers for `fabio connection` (list/show/create/update/delete and the
+//! supported-types catalog), plus the request-body builders they share.
+
 use anyhow::{Result, bail};
-use clap::Subcommand;
 use serde_json::{Value, json};
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
+use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
-#[derive(Debug, Subcommand)]
-#[command(
-    after_help = "Before using this command, run: fabio context examples connection\nReturns response shapes, required parameters, and JMESPath queries as JSON."
-)]
-pub enum ConnectionCommand {
-    /// List all connections you have permission to access
-    #[command(display_order = 1)]
-    List,
-    /// Show details of a specific connection
-    #[command(display_order = 2)]
-    Show {
-        /// Connection ID
-        #[arg(long)]
-        id: String,
-    },
-    /// Create a new connection
-    #[command(display_order = 3)]
-    Create {
-        /// Display name for the connection
-        #[arg(long)]
-        name: String,
-
-        /// Connectivity type
-        #[arg(long, value_name = "TYPE", value_parser = ["ShareableCloud", "OnPremises", "VirtualNetworkGateway", "StreamingVirtualNetworkGateway", "PersonalCloud"])]
-        connectivity_type: String,
-
-        /// Connection type path (e.g., Web, SQL, `GitHubSourceControl`)
-        #[arg(long, visible_alias = "type", value_name = "TYPE")]
-        connection_type: String,
-
-        /// Creation method (`connectionDetails.creationMethod`). If omitted, fabio auto-resolves it from the connection type via `supportedConnectionTypes` (most types differ, e.g. `SQL`→`Sql`, `EventHub`→`EventHub.Contents`). Specify explicitly only for types with multiple methods (e.g. `AzureDataExplorer`, `Spark`).
-        #[arg(long, value_name = "METHOD")]
-        creation_method: Option<String>,
-
-        /// Connection parameters as JSON (e.g., '{"server":"host","database":"db"}')
-        #[arg(long)]
-        parameters: String,
-
-        /// Gateway ID through which the connection is made (required when `--connectivity-type` is `VirtualNetworkGateway` or `StreamingVirtualNetworkGateway`)
-        #[arg(long, value_name = "GATEWAY_ID")]
-        gateway_id: Option<String>,
-
-        /// Credential type
-        #[arg(long, value_parser = ["Basic", "OAuth2", "Key", "Anonymous", "ServicePrincipal", "SharedAccessSignature", "WorkspaceIdentity", "KeyPair"])]
-        credential_type: String,
-
-        /// Credentials as JSON (format depends on credential type)
-        #[arg(long)]
-        credentials: Option<String>,
-
-        /// Privacy level
-        #[arg(long, default_value = "Organizational", value_parser = ["None", "Public", "Organizational", "Private"])]
-        privacy_level: String,
-
-        /// Skip connection test during creation
-        #[arg(long)]
-        skip_test_connection: bool,
-
-        /// Allow this connection to be used by code-first artifacts such as Notebooks (`allowUsageInUserControlledCode`). Can ONLY be set at creation time; cannot be changed later.
-        #[arg(long, visible_alias = "allow-usage-in-user-controlled-code")]
-        allow_code_first_artifacts: bool,
-
-        /// Allow this connection to be used with on-premises or virtual-network data gateways (`allowConnectionUsageInGateway`).
-        #[arg(long)]
-        allow_gateway_usage: bool,
-    },
-    /// Update a connection's name, credentials, or privacy level
-    #[command(display_order = 4)]
-    Update {
-        /// Connection ID
-        #[arg(long)]
-        id: String,
-
-        /// New display name
-        #[arg(long)]
-        name: Option<String>,
-
-        /// New privacy level
-        #[arg(long, value_parser = ["None", "Public", "Organizational", "Private"])]
-        privacy_level: Option<String>,
-
-        /// New credential type
-        #[arg(long, value_parser = ["Basic", "OAuth2", "Key", "Anonymous", "ServicePrincipal", "SharedAccessSignature", "WorkspaceIdentity", "KeyPair"])]
-        credential_type: Option<String>,
-
-        /// New credentials as JSON
-        #[arg(long)]
-        credentials: Option<String>,
-    },
-    /// Delete a connection
-    #[command(display_order = 5)]
-    Delete {
-        /// Connection ID
-        #[arg(long)]
-        id: String,
-    },
-    /// List supported connection types (gateway types catalog)
-    #[command(display_order = 10)]
-    ListSupportedTypes,
-    /// List role assignments for a connection
-    #[command(display_order = 20)]
-    ListRoleAssignments {
-        /// Connection ID
-        #[arg(long)]
-        id: String,
-    },
-    /// Add a role assignment to a connection
-    #[command(display_order = 21)]
-    AddRoleAssignment {
-        /// Connection ID
-        #[arg(long)]
-        id: String,
-
-        /// Principal ID (user, group, or service principal)
-        #[arg(long)]
-        principal_id: String,
-
-        /// Principal type
-        #[arg(long, value_parser = ["User", "Group", "ServicePrincipal"])]
-        principal_type: String,
-
-        /// Role to assign
-        #[arg(long, value_parser = ["Owner", "User", "UserWithReshare"])]
-        role: String,
-    },
-    /// Show a specific role assignment for a connection
-    #[command(display_order = 22)]
-    ShowRoleAssignment {
-        /// Connection ID
-        #[arg(long)]
-        id: String,
-
-        /// Role assignment ID
-        #[arg(long)]
-        assignment_id: String,
-    },
-    /// Update a role assignment for a connection
-    #[command(display_order = 23)]
-    UpdateRoleAssignment {
-        /// Connection ID
-        #[arg(long)]
-        id: String,
-
-        /// Role assignment ID
-        #[arg(long)]
-        assignment_id: String,
-
-        /// New role
-        #[arg(long, value_parser = ["Owner", "User", "UserWithReshare"])]
-        role: String,
-    },
-    /// Delete a role assignment from a connection
-    #[command(display_order = 24)]
-    DeleteRoleAssignment {
-        /// Connection ID
-        #[arg(long)]
-        id: String,
-
-        /// Role assignment ID
-        #[arg(long)]
-        assignment_id: String,
-    },
-    /// Test a connection (not supported for `StreamingVirtualNetworkGateway` connections)
-    #[command(display_order = 30)]
-    TestConnection {
-        /// Connection ID
-        #[arg(long)]
-        id: String,
-    },
-}
-
-pub async fn execute(cli: &Cli, client: &FabricClient, command: &ConnectionCommand) -> Result<()> {
-    match command {
-        ConnectionCommand::List => list(cli, client).await,
-        ConnectionCommand::Show { id } => show(cli, client, id).await,
-        ConnectionCommand::Create {
-            name,
-            connectivity_type,
-            connection_type,
-            creation_method,
-            parameters,
-            gateway_id,
-            credential_type,
-            credentials,
-            privacy_level,
-            skip_test_connection,
-            allow_code_first_artifacts,
-            allow_gateway_usage,
-        } => {
-            create(
-                cli,
-                client,
-                name,
-                connectivity_type,
-                connection_type,
-                creation_method.as_deref(),
-                parameters,
-                gateway_id.as_deref(),
-                credential_type,
-                credentials.as_deref(),
-                privacy_level,
-                *skip_test_connection,
-                *allow_code_first_artifacts,
-                *allow_gateway_usage,
-            )
-            .await
-        }
-        ConnectionCommand::Update {
-            id,
-            name,
-            privacy_level,
-            credential_type,
-            credentials,
-        } => {
-            update(
-                cli,
-                client,
-                id,
-                name.as_deref(),
-                privacy_level.as_deref(),
-                credential_type.as_deref(),
-                credentials.as_deref(),
-            )
-            .await
-        }
-        ConnectionCommand::Delete { id } => delete(cli, client, id).await,
-        ConnectionCommand::ListSupportedTypes => list_supported_types(cli, client).await,
-        ConnectionCommand::ListRoleAssignments { id } => {
-            list_role_assignments(cli, client, id).await
-        }
-        ConnectionCommand::AddRoleAssignment {
-            id,
-            principal_id,
-            principal_type,
-            role,
-        } => add_role_assignment(cli, client, id, principal_id, principal_type, role).await,
-        ConnectionCommand::ShowRoleAssignment { id, assignment_id } => {
-            show_role_assignment(cli, client, id, assignment_id).await
-        }
-        ConnectionCommand::UpdateRoleAssignment {
-            id,
-            assignment_id,
-            role,
-        } => update_role_assignment(cli, client, id, assignment_id, role).await,
-        ConnectionCommand::DeleteRoleAssignment { id, assignment_id } => {
-            delete_role_assignment(cli, client, id, assignment_id).await
-        }
-        ConnectionCommand::TestConnection { id } => test_connection(cli, client, id).await,
-    }
-}
-
-async fn list(cli: &Cli, client: &FabricClient) -> Result<()> {
+pub(super) async fn list(cli: &Cli, client: &FabricClient) -> Result<()> {
     let resp = client
         .get_list(
             "/connections",
@@ -272,35 +23,48 @@ async fn list(cli: &Cli, client: &FabricClient) -> Result<()> {
     output::render_list_with_token(
         cli,
         &resp.items,
-        columns,
-        headers,
+        &columns,
+        &headers,
         "id",
         resp.continuation_token.as_deref(),
     );
     Ok(())
 }
 
-fn list_table_columns(items: &[Value]) -> (&'static [&'static str], &'static [&'static str]) {
+/// Choose the table columns for `connection list`. The `GATEWAY ID` column is
+/// added only when at least one connection carries a non-empty `gatewayId`, and
+/// the recency columns (`LAST BOUND`, `LAST USED`) are added only when the API
+/// returned the `connectionRecency` object (it is absent for older connections
+/// and for connectivity types that do not report recency). The full recency
+/// detail (including `createdDateTime`) is always available in `--output json`.
+fn list_table_columns(items: &[Value]) -> (Vec<&'static str>, Vec<&'static str>) {
+    let mut columns = vec!["displayName", "id", "connectivityType"];
+    let mut headers = vec!["NAME", "ID", "CONNECTIVITY TYPE"];
+
     let has_gateway_id = items.iter().any(|item| {
         item.get("gatewayId")
             .and_then(Value::as_str)
             .is_some_and(|s| !s.is_empty())
     });
-
     if has_gateway_id {
-        (
-            &["displayName", "id", "connectivityType", "gatewayId"],
-            &["NAME", "ID", "CONNECTIVITY TYPE", "GATEWAY ID"],
-        )
-    } else {
-        (
-            &["displayName", "id", "connectivityType"],
-            &["NAME", "ID", "CONNECTIVITY TYPE"],
-        )
+        columns.push("gatewayId");
+        headers.push("GATEWAY ID");
     }
+
+    let has_recency = items
+        .iter()
+        .any(|item| item.get("connectionRecency").is_some_and(|v| !v.is_null()));
+    if has_recency {
+        columns.push("connectionRecency.lastBoundDateTime");
+        headers.push("LAST BOUND");
+        columns.push("connectionRecency.lastCredentialUsedDateTime");
+        headers.push("LAST USED");
+    }
+
+    (columns, headers)
 }
 
-async fn show(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
+pub(super) async fn show(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
     let data = client.get(&format!("/connections/{id}")).await?;
     output::render_object(cli, &data, "id");
     Ok(())
@@ -315,7 +79,7 @@ fn connectivity_type_requires_gateway_id(connectivity_type: &str) -> bool {
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn create(
+pub(super) async fn create(
     cli: &Cli,
     client: &FabricClient,
     name: &str,
@@ -566,7 +330,7 @@ fn build_connection_body(
     body
 }
 
-async fn delete(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
+pub(super) async fn delete(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
     if output::dry_run_guard(cli, "connection delete", &json!({ "id": id })) {
         return Ok(());
     }
@@ -582,7 +346,7 @@ async fn delete(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn update(
+pub(super) async fn update(
     cli: &Cli,
     client: &FabricClient,
     id: &str,
@@ -681,7 +445,7 @@ fn build_connection_update_body(
     Ok(body)
 }
 
-async fn list_supported_types(cli: &Cli, client: &FabricClient) -> Result<()> {
+pub(super) async fn list_supported_types(cli: &Cli, client: &FabricClient) -> Result<()> {
     let resp = client
         .get_list(
             "/connections/supportedConnectionTypes",
@@ -699,153 +463,6 @@ async fn list_supported_types(cli: &Cli, client: &FabricClient) -> Result<()> {
         "name",
         resp.continuation_token.as_deref(),
     );
-    Ok(())
-}
-
-async fn list_role_assignments(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
-    let resp = client
-        .get_list(
-            &format!("/connections/{id}/roleAssignments"),
-            "value",
-            cli.all,
-            cli.continuation_token.as_deref(),
-        )
-        .await?;
-
-    output::render_list_with_token(
-        cli,
-        &resp.items,
-        &["id", "role", "principal.id", "principal.type"],
-        &["ID", "ROLE", "PRINCIPAL ID", "PRINCIPAL TYPE"],
-        "id",
-        resp.continuation_token.as_deref(),
-    );
-    Ok(())
-}
-
-async fn add_role_assignment(
-    cli: &Cli,
-    client: &FabricClient,
-    id: &str,
-    principal_id: &str,
-    principal_type: &str,
-    role: &str,
-) -> Result<()> {
-    if cli.dry_run {
-        let preview = json!({
-            "status": "dry_run",
-            "message": format!("Would add role assignment '{role}' for principal '{principal_id}' on connection '{id}'"),
-        });
-        output::render_object(cli, &preview, "status");
-        return Ok(());
-    }
-
-    let body = json!({
-        "principal": {
-            "id": principal_id,
-            "type": principal_type,
-        },
-        "role": role,
-    });
-
-    let data = client
-        .post(&format!("/connections/{id}/roleAssignments"), &body, false)
-        .await
-        .map_err(|e| enrich_forbidden(e, "connection add-role-assignment", "Owner"))?;
-    output::render_object(cli, &data, "id");
-    Ok(())
-}
-
-async fn show_role_assignment(
-    cli: &Cli,
-    client: &FabricClient,
-    id: &str,
-    assignment_id: &str,
-) -> Result<()> {
-    let data = client
-        .get(&format!(
-            "/connections/{id}/roleAssignments/{assignment_id}"
-        ))
-        .await?;
-    output::render_object(cli, &data, "id");
-    Ok(())
-}
-
-async fn update_role_assignment(
-    cli: &Cli,
-    client: &FabricClient,
-    id: &str,
-    assignment_id: &str,
-    role: &str,
-) -> Result<()> {
-    if cli.dry_run {
-        let preview = json!({
-            "status": "dry_run",
-            "message": format!("Would update role assignment '{assignment_id}' to role '{role}' on connection '{id}'"),
-        });
-        output::render_object(cli, &preview, "status");
-        return Ok(());
-    }
-
-    let body = json!({ "role": role });
-
-    let data = client
-        .patch(
-            &format!("/connections/{id}/roleAssignments/{assignment_id}"),
-            &body,
-        )
-        .await
-        .map_err(|e| enrich_forbidden(e, "connection update-role-assignment", "Owner"))?;
-    output::render_object(cli, &data, "id");
-    Ok(())
-}
-
-async fn delete_role_assignment(
-    cli: &Cli,
-    client: &FabricClient,
-    id: &str,
-    assignment_id: &str,
-) -> Result<()> {
-    if output::dry_run_guard(
-        cli,
-        "connection delete-role-assignment",
-        &json!({ "id": id, "assignmentId": assignment_id }),
-    ) {
-        return Ok(());
-    }
-
-    client
-        .delete(&format!(
-            "/connections/{id}/roleAssignments/{assignment_id}"
-        ))
-        .await
-        .map_err(|e| enrich_forbidden(e, "connection delete-role-assignment", "Owner"))?;
-
-    let result = json!({
-        "status": "deleted",
-        "id": assignment_id,
-        "connectionId": id,
-    });
-    output::render_object(cli, &result, "id");
-    Ok(())
-}
-
-async fn test_connection(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
-    if cli.dry_run {
-        let preview = json!({
-            "status": "dry_run",
-            "message": format!("Would test connection '{id}'"),
-        });
-        output::render_object(cli, &preview, "status");
-        return Ok(());
-    }
-
-    let body = json!({});
-    let data = client
-        .post(&format!("/connections/{id}/testConnection"), &body, false)
-        .await
-        .map_err(|e| enrich_forbidden(e, "connection test-connection", "User"))?;
-    output::render_object(cli, &data, "status");
     Ok(())
 }
 
@@ -964,6 +581,46 @@ mod tests {
         let (columns, headers) = list_table_columns(&items);
         assert_eq!(columns, ["displayName", "id", "connectivityType"]);
         assert_eq!(headers, ["NAME", "ID", "CONNECTIVITY TYPE"]);
+    }
+
+    #[test]
+    fn list_table_columns_adds_recency_columns_when_present() {
+        let items = vec![json!({
+            "id": "conn-1",
+            "displayName": "Conn",
+            "connectivityType": "ShareableCloud",
+            "connectionRecency": {
+                "createdDateTime": "2026-06-01T00:00:00Z",
+                "lastBoundDateTime": "2026-06-02T00:00:00Z",
+                "lastCredentialUsedDateTime": "2026-06-03T00:00:00Z"
+            }
+        })];
+        let (columns, headers) = list_table_columns(&items);
+        assert_eq!(
+            columns,
+            [
+                "displayName",
+                "id",
+                "connectivityType",
+                "connectionRecency.lastBoundDateTime",
+                "connectionRecency.lastCredentialUsedDateTime"
+            ]
+        );
+        assert_eq!(
+            headers,
+            ["NAME", "ID", "CONNECTIVITY TYPE", "LAST BOUND", "LAST USED"]
+        );
+    }
+
+    #[test]
+    fn list_table_columns_omits_recency_when_absent() {
+        let items = vec![json!({
+            "id": "conn-1",
+            "displayName": "Conn",
+            "connectivityType": "ShareableCloud"
+        })];
+        let (columns, _headers) = list_table_columns(&items);
+        assert_eq!(columns, ["displayName", "id", "connectivityType"]);
     }
 
     #[test]

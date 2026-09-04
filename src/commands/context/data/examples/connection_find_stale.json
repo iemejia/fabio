@@ -1,0 +1,37 @@
+{
+  "command": "fabio connection find-stale --unused-days 90",
+  "description": "Reports connections that are candidates for cleanup — never bound to any Fabric item, bound but never used, or whose credentials have not been used within the --unused-days window. READ-ONLY: it reports candidates for human review, it never deletes. Built on the connectionRecency signals returned by the List Connections API.",
+  "response": {
+    "data": [
+      {
+        "id": "e5f6a7b8-0000-0000-0000-000000000002",
+        "displayName": "Azure SQL Prod (unused)",
+        "connectivityType": "ShareableCloud",
+        "reason": "never-bound",
+        "connectionRecency": {
+          "createdDateTime": "2026-06-05T09:00:00Z",
+          "lastBoundDateTime": null,
+          "lastCredentialUsedDateTime": null
+        }
+      },
+      {
+        "id": "e5f6a7b8-0000-0000-0000-000000000007",
+        "displayName": "Old ADLS staging",
+        "connectivityType": "ShareableCloud",
+        "reason": "credentials-unused",
+        "connectionRecency": {
+          "createdDateTime": "2026-05-10T00:00:00Z",
+          "lastBoundDateTime": "2026-05-11T00:00:00Z",
+          "lastCredentialUsedDateTime": "2026-05-20T00:00:00Z"
+        }
+      }
+    ],
+    "count": 2
+  },
+  "notes": "reason is one of: never-bound (never linked to an item), never-used (bound but credentials never used), credentials-unused (not used since the --unused-days threshold). By default only connections created on/after 2026-05-01 (--created-after) are assessed, because connections predating connection-recency GA (~March 2026) report NULL recency even when actively used — assessing them would produce false positives. Review candidates before acting: some connections are legitimately seasonal (year-end/holiday runs). Pipe IDs into deletion after review: fabio connection find-stale -o json --query '[].id' then fabio connection delete --id <ID>. See also find-duplicates and find-single-owner and the connection-hygiene best-practice.",
+  "query_examples": [
+    {"query": "[?reason=='never-bound'].id", "description": "IDs of connections never bound to any item."},
+    {"query": "[].{name: displayName, reason: reason, lastUsed: connectionRecency.lastCredentialUsedDateTime}", "description": "Compact triage view of stale candidates."},
+    {"query": "length([])", "description": "Count of stale candidates."}
+  ]
+}

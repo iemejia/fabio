@@ -502,6 +502,211 @@ fn connection_list_table_shows_gateway_id_column_when_connections_have_gateway_i
     );
 }
 
+/// Verifies that `connection list --output table` shows the recency columns
+/// (`LAST BOUND`, `LAST USED`) when the API returns the `connectionRecency`
+/// object, and omits them otherwise.
+#[test]
+fn connection_list_table_shows_recency_columns_when_present() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let (server_uri, _server) = rt.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/connections"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [
+                    {
+                        "id": "conn-1",
+                        "displayName": "Recent Conn",
+                        "connectivityType": "ShareableCloud",
+                        "connectionRecency": {
+                            "createdDateTime": "2026-06-01T00:00:00Z",
+                            "lastBoundDateTime": "2026-06-02T00:00:00Z",
+                            "lastCredentialUsedDateTime": "2026-06-03T00:00:00Z"
+                        }
+                    }
+                ]
+            })))
+            .mount(&server)
+            .await;
+        let uri = server.uri();
+        (uri, server)
+    });
+
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args(["connection", "list", "--output", "table"])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        stdout.contains("LAST BOUND") && stdout.contains("LAST USED"),
+        "expected recency columns when connectionRecency is present, got:\n{stdout}"
+    );
+}
+
+/// `connection find-stale` flags never-bound connections created after the
+/// cutoff, and does NOT flag active connections or pre-cutoff connections.
+#[test]
+fn connection_find_stale_flags_never_bound_offline() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let (server_uri, _server) = rt.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/connections"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [
+                    {
+                        "id": "stale-1",
+                        "displayName": "NeverBound",
+                        "connectivityType": "ShareableCloud",
+                        "connectionRecency": { "createdDateTime": "2026-06-01T00:00:00Z" }
+                    },
+                    {
+                        "id": "active-1",
+                        "displayName": "Active",
+                        "connectivityType": "ShareableCloud",
+                        "connectionRecency": {
+                            "createdDateTime": "2026-06-01T00:00:00Z",
+                            "lastBoundDateTime": "2026-06-02T00:00:00Z",
+                            "lastCredentialUsedDateTime": "2999-01-01T00:00:00Z"
+                        }
+                    },
+                    {
+                        "id": "old-1",
+                        "displayName": "PreCutoff",
+                        "connectivityType": "ShareableCloud",
+                        "connectionRecency": { "createdDateTime": "2026-01-01T00:00:00Z" }
+                    }
+                ]
+            })))
+            .mount(&server)
+            .await;
+        let uri = server.uri();
+        (uri, server)
+    });
+
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args(["connection", "find-stale"])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = json["data"].as_array().expect("data array");
+    assert_eq!(data.len(), 1, "only the never-bound connection is flagged");
+    assert_eq!(data[0]["id"], "stale-1");
+    assert_eq!(data[0]["reason"], "never-bound");
+}
+
+/// `connection find-duplicates` keeps the most-recently-used connection and
+/// reports the others as consolidation candidates pointing at the keeper.
+#[test]
+fn connection_find_duplicates_offline() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let (server_uri, _server) = rt.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/connections"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [
+                    {
+                        "id": "dup-old",
+                        "displayName": "Old",
+                        "connectivityType": "ShareableCloud",
+                        "connectionDetails": { "type": "SQL", "path": "srv;db" },
+                        "connectionRecency": { "createdDateTime": "2026-06-01T00:00:00Z", "lastCredentialUsedDateTime": "2026-06-10T00:00:00Z" }
+                    },
+                    {
+                        "id": "dup-new",
+                        "displayName": "New",
+                        "connectivityType": "ShareableCloud",
+                        "connectionDetails": { "type": "SQL", "path": "srv;db" },
+                        "connectionRecency": { "createdDateTime": "2026-06-01T00:00:00Z", "lastCredentialUsedDateTime": "2026-08-10T00:00:00Z" }
+                    }
+                ]
+            })))
+            .mount(&server)
+            .await;
+        let uri = server.uri();
+        (uri, server)
+    });
+
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args(["connection", "find-duplicates"])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = json["data"].as_array().expect("data array");
+    assert_eq!(data.len(), 1);
+    assert_eq!(data[0]["id"], "dup-old");
+    assert_eq!(data[0]["keepId"], "dup-new");
+}
+
+/// `connection find-single-owner` flags a connection whose only Owner is an
+/// individual user (issuing a per-connection roleAssignments read).
+#[test]
+fn connection_find_single_owner_offline() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let (server_uri, _server) = rt.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/connections"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [
+                    { "id": "own-1", "displayName": "SingleOwner", "connectivityType": "ShareableCloud" }
+                ]
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/connections/own-1/roleAssignments"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [
+                    { "id": "ra-1", "role": "Owner", "principal": { "id": "user-abc", "type": "User" } }
+                ]
+            })))
+            .mount(&server)
+            .await;
+        let uri = server.uri();
+        (uri, server)
+    });
+
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args(["connection", "find-single-owner"])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = json["data"].as_array().expect("data array");
+    assert_eq!(data.len(), 1);
+    assert_eq!(data[0]["id"], "own-1");
+    assert_eq!(data[0]["ownerPrincipalId"], "user-abc");
+}
+
 /// Verifies that `connection list --output table` omits the `GATEWAY ID` column
 /// when no connection in the API response has a non-null/non-empty `gatewayId`.
 #[test]

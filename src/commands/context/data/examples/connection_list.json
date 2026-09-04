@@ -15,6 +15,11 @@
         "credentialDetails": {
           "credentialType": "Key",
           "singleSignOnType": "None"
+        },
+        "connectionRecency": {
+          "createdDateTime": "2026-06-01T16:22:20Z",
+          "lastBoundDateTime": "2026-08-30T10:05:00Z",
+          "lastCredentialUsedDateTime": "2026-08-31T02:14:00Z"
         }
       },
       {
@@ -29,15 +34,21 @@
         "credentialDetails": {
           "credentialType": "OAuth2",
           "singleSignOnType": "None"
+        },
+        "connectionRecency": {
+          "createdDateTime": "2026-06-05T09:00:00Z",
+          "lastBoundDateTime": null,
+          "lastCredentialUsedDateTime": null
         }
       }
     ],
     "count": 2
   },
-  "notes": "Connections are tenant-level (no workspace prefix). Connectivity types: ShareableCloud, OnPremises, VirtualNetworkGateway, PersonalCloud. Credential types: Basic, OAuth2, Key, Anonymous, ServicePrincipal, WorkspaceIdentity. Use the connection ID when creating shortcuts or data sources.",
+  "notes": "Connections are tenant-level (no workspace prefix). Connectivity types: ShareableCloud, OnPremises, VirtualNetworkGateway, PersonalCloud. Credential types: Basic, OAuth2, Key, Anonymous, ServicePrincipal, WorkspaceIdentity. Use the connection ID when creating shortcuts or data sources. The connectionRecency object (createdDateTime, lastBoundDateTime, lastCredentialUsedDateTime) supports connection governance — a null lastBoundDateTime on a recently-created connection means it is not linked to any item. For scale governance use the derived commands: connection find-stale, find-duplicates, find-single-owner (see the connection-hygiene best-practice).",
   "query_examples": [
     {"query": "[].{name: displayName, type: connectionDetails.type}", "description": "Names and types of all connections."},
     {"query": "[?connectionDetails.type=='AzureDataLakeStorage'].id", "description": "IDs of ADLS connections."},
-    {"query": "[?credentialDetails.credentialType=='OAuth2'].displayName", "description": "Connections using OAuth2."}
+    {"query": "[?credentialDetails.credentialType=='OAuth2'].displayName", "description": "Connections using OAuth2."},
+    {"query": "[?connectionRecency.lastBoundDateTime==null].{name: displayName, id: id}", "description": "Connections never bound to any item (candidates for review)."}
   ]
 }

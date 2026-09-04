@@ -316,6 +316,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/connection_create.json"),
     ),
     (
+        "connection/find-stale",
+        include_str!("data/examples/connection_find_stale.json"),
+    ),
+    (
         "workspace/create-folder",
         include_str!("data/examples/workspace_folders.json"),
     ),

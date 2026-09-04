@@ -1,0 +1,31 @@
+{
+  "topic": "connection-hygiene",
+  "title": "Connection governance at scale with connection recency",
+  "summary": "Use the connection-recency signals (createdDateTime, lastBoundDateTime, lastCredentialUsedDateTime) exposed by 'connection list' plus the derived 'connection find-stale / find-duplicates / find-single-owner' commands to find and safely retire stale/duplicate connections and fix single-owner orphan risk. Gateways cap at 1,000 connections, so hygiene keeps you under the limit.",
+  "why_it_matters": "Connections are shared infrastructure — pipelines, dataflows, semantic models, and notebooks reference them so credentials are not stored per item. Across a large tenant they grow exponentially: inconsistent names, departed owners, and multiple connections pointing at the same endpoint. On-premises/VNet gateways have a hard limit of 1,000 connections, so uncontrolled sprawl eventually blocks new connections. Recency data gives the signals to review and retire safely.",
+  "signals": {
+    "createdDateTime": "When the connection was created. Used to gate assessment: connections created before connection-recency GA (~March 2026) report NULL recency even when actively used.",
+    "lastBoundDateTime": "When any item was most recently linked to the connection. NULL (on a post-GA connection) means it is not bound to any Fabric item.",
+    "lastCredentialUsedDateTime": "When the credentials were most recently used by any workload. Can lag real time by up to ~30 minutes, so use it for governance/investigation, not live monitoring.",
+    "myLastBoundDateTime / myLastCredentialUsedDateTime": "The same two signals scoped to the calling user only."
+  },
+  "commands": {
+    "fabio connection find-stale": "Flags never-bound / never-used / credentials-unused connections. Defaults: --unused-days 90, --created-after 2026-05-01 (the safe post-GA cutoff). READ-ONLY.",
+    "fabio connection find-duplicates": "Groups connections that reach the same target (type + path + connectivity type + gateway) and reports the redundant ones, keeping the most-recently-used. Add --match-credential-type to treat different credential types as distinct. READ-ONLY.",
+    "fabio connection find-single-owner": "Flags connections whose ONLY Owner is an individual User (orphan risk when they leave). READ-ONLY."
+  },
+  "safe_workflow": [
+    "REVIEW, don't auto-delete: recency is the starting point, not a delete trigger. Some connections are legitimately seasonal (year-end/holiday runs) — widen --unused-days or spot-check before acting.",
+    "Retire stale: fabio connection find-stale -o json --query '[].id' | (review) | fabio connection delete --id <ID>.",
+    "Consolidate duplicates: keep the find-duplicates 'keepId', repoint items, then delete the redundant ones.",
+    "Fix ownership: for each find-single-owner result add a durable owner — prefer a Microsoft Entra group — with fabio connection add-role-assignment --id <ID> --principal-id <GROUP> --principal-type Group --role Owner. A group survives member turnover; a second individual owner is better than one but not durable."
+  ],
+  "gotchas": [
+    "Linking != usage: a connection can be bound but never used, or bound long ago yet still run daily. find-stale weighs both lastBoundDateTime and lastCredentialUsedDateTime.",
+    "NULL recency on old connections: pre-GA connections report NULL even when in use. find-stale skips connections created before --created-after (default 2026-05-01) to avoid false positives — lowering the cutoff re-introduces that risk.",
+    "Owner deletion myth: a connection does not fail merely because its owner account is deleted — it fails when the CREDENTIAL used for auth can no longer authenticate (e.g. an OAuth credential tied to the deleted user). A connection using an SPN and shared with others keeps working. Still, single individual ownership is an administration/continuity risk worth fixing.",
+    "Visibility scope: for cloud connections you see only the ones you own; a gateway admin sees all connections on that gateway. Run the sweep with the identity that owns/administers the connections you want to govern.",
+    "find-single-owner issues one roleAssignments read per connection (there is no bulk API); it skips connections whose role assignments it cannot read rather than aborting the whole sweep."
+  ],
+  "see_also": ["throttling", "admin-apis"]
+}

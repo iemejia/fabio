@@ -105,7 +105,7 @@
 - `src/commands/map.rs`: list/show/create/update/delete/get-definition/update-definition (geospatial Azure Maps)
 - `src/commands/plan.rs`: list/show/create/update/delete/get-definition/update-definition (connected-planning Plan item, PlanV1 / connectedPlanning/infobridge.json)
 - `src/commands/capacity.rs`: list/show (Fabric API) + suspend/resume/create/update/delete/list-skus/check-name (ARM API)
-- `src/commands/connection.rs`: list/show/create/update/delete/list-supported-types
+- `src/commands/connection/`: directory module (split from `connection.rs` when it crossed the 1500-line limit) — `mod.rs` (enum + execute dispatch), `crud.rs` (list/show/create/update/delete/list-supported-types + body builders + recency-aware `list_table_columns`), `roles.rs` (role assignments + test-connection), `hygiene.rs` (find-stale/find-duplicates/find-single-owner governance commands built on connection-recency signals — all read-only pure logic + unit tests)
 - `src/commands/deployment_pipeline.rs`: list/show/create/update/delete/list-stages/list-stage-items/assign-workspace/unassign-workspace/deploy
 - `src/commands/domain.rs`: list/show/create/update/delete/list-workspaces/assign-workspaces/unassign-workspaces/assign-by-capacity/assign-by-principal
 - `src/commands/job_scheduler.rs`: list-instances/get-instance/run-on-demand (with `--wait`/`--timeout`/`--cancel-on-timeout`), cancel-instance/list-schedules/get-schedule/create-schedule/update-schedule/delete-schedule

@@ -35,6 +35,9 @@ Manage connections (cloud, on-premises, virtual network)
 | `fabio connection create` | yes | Create a new connection |
 | `fabio connection delete` | yes | Delete a connection |
 | `fabio connection delete-role-assignment` | yes | Delete a role assignment from a connection |
+| `fabio connection find-duplicates` | no | Find duplicate connections — multiple connections that reach the same target (same type, path, connectivity type, and gateway). Reports the redundant connections (keeping the most-recently-used one) as candidates for consolidation. Read-only |
+| `fabio connection find-single-owner` | no | Find connections whose only Owner is a single individual user — an orphan risk if that user leaves the organization. Prefer adding a Microsoft Entra group as a second owner. Read-only |
+| `fabio connection find-stale` | no | Find stale connections (never bound to an item, or whose credentials haven't been used recently) — a governance aid for reducing connection sprawl. Read-only: reports candidates for review, does not delete |
 | `fabio connection list` | no | List all connections you have permission to access |
 | `fabio connection list-role-assignments` | no | List role assignments for a connection |
 | `fabio connection list-supported-types` | no | List supported connection types (gateway types catalog) |

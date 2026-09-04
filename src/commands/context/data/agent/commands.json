@@ -23999,6 +23999,37 @@
         },
         "mutates": false,
         "returns": "object"
+      },
+      "find-stale": {
+        "description": "Find stale connections (never bound to an item, or whose credentials haven't been used recently) — a governance aid for reducing connection sprawl. Read-only: reports candidates for review, does not delete",
+        "flags": {
+          "--unused-days": {
+            "type": "string",
+            "description": "Flag connections whose credentials have not been used in at least this many days (never-bound connections are always flagged)"
+          },
+          "--created-after": {
+            "type": "string",
+            "description": "Only assess connections created on or after this UTC date (YYYY-MM-DD). Connections created before connection-recency GA (~March 2026) report NULL recency even when actively used, so the default cutoff avoids false positives. Pass an earlier date only if you understand the NULL-recency caveat"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "find-duplicates": {
+        "description": "Find duplicate connections — multiple connections that reach the same target (same type, path, connectivity type, and gateway). Reports the redundant connections (keeping the most-recently-used one) as candidates for consolidation. Read-only",
+        "flags": {
+          "--match-credential-type": {
+            "type": "bool",
+            "description": "Also require the credential type to match when grouping duplicates (by default, connections that differ only in credential type are still considered duplicates of the same target)"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "find-single-owner": {
+        "description": "Find connections whose only Owner is a single individual user — an orphan risk if that user leaves the organization. Prefer adding a Microsoft Entra group as a second owner. Read-only",
+        "mutates": false,
+        "returns": "list"
       }
     }
   },

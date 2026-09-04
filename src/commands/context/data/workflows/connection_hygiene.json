@@ -1,0 +1,25 @@
+{
+  "name": "Connection Hygiene at Scale",
+  "description": "Govern Fabric connections across a large tenant using connection-recency signals: find and safely retire stale and duplicate connections, and remove single-owner orphan risk. Keeps you under the 1,000-connection-per-gateway limit. All discovery steps are read-only; act only after human review.",
+  "prerequisites": [
+    "Authenticated via fabio auth login",
+    "Run as the identity that owns/administers the connections (cloud connections show only ones you own; a gateway admin sees all connections on that gateway)",
+    "Connection.Read.All (discovery) and Connection.ReadWrite.All / Owner (to delete or add owners)"
+  ],
+  "steps": [
+    {"step_number": 1, "command": "fabio connection list -o json --query \"[].{name: displayName, bound: connectionRecency.lastBoundDateTime, used: connectionRecency.lastCredentialUsedDateTime}\"", "description": "Inspect the recency signals across all connections.", "notes": "lastCredentialUsedDateTime can lag ~30 min — use for governance, not live monitoring."},
+    {"step_number": 2, "command": "fabio connection find-stale --unused-days 90", "description": "List stale candidates: never-bound, never-used, or credentials-unused for 90+ days.", "notes": "Only connections created on/after --created-after (default 2026-05-01) are assessed, to avoid NULL-recency false positives on pre-GA connections."},
+    {"step_number": 3, "command": "fabio connection find-stale -o json --query \"[?reason=='never-bound'].id\"", "description": "Extract the safest subset (never bound to any item) for retirement.", "notes": "Review before deleting — some connections are seasonal (year-end/holiday runs)."},
+    {"step_number": 4, "command": "fabio connection delete --id <ID> --dry-run", "description": "Preview each deletion (dry-run guarded, destructive).", "notes": "Remove --dry-run to execute after review."},
+    {"step_number": 5, "command": "fabio connection find-duplicates", "description": "Find connections reaching the same target; the most-recently-used is kept (keepId), the rest are consolidation candidates.", "notes": "Add --match-credential-type to treat different credential types as distinct targets."},
+    {"step_number": 6, "command": "fabio connection find-single-owner", "description": "Find connections whose only Owner is an individual user — an orphan risk if they leave.", "notes": "Issues one roleAssignments read per connection; skips connections it cannot read."},
+    {"step_number": 7, "command": "fabio connection add-role-assignment --id <ID> --principal-id <ENTRA_GROUP_ID> --principal-type Group --role Owner", "description": "Add a durable group owner to each single-owner connection.", "notes": "A Microsoft Entra group survives member turnover; a second individual owner is better than one but not durable."}
+  ],
+  "tips": [
+    "Discovery commands are READ-ONLY — treat their output as a review list, not an automatic action list.",
+    "Gateways cap at 1,000 connections; regular hygiene keeps headroom.",
+    "A connection fails when its auth CREDENTIAL can no longer authenticate (e.g. OAuth tied to a deleted user), not merely because the owner account was deleted — SPN-based shared connections keep working.",
+    "Consolidate duplicates by repointing items to the keepId connection, then delete the redundant ones.",
+    "See: fabio context best-practices connection-hygiene."
+  ]
+}
