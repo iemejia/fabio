@@ -1,6 +1,6 @@
 {
-  "command": "fabio git commit --workspace $WS_ID --message \"Add ETL notebook and update lakehouse\" --items '[{\"objectId\":\"e5f6a7b8-c9d0-1234-ef01-34567890abcd\"}]'",
-  "description": "Commits workspace changes to the connected git repository.",
+  "command": "fabio git commit --workspace $WS_ID --message \"Commit notebook metadata\" --file-selection e5f6a7b8-c9d0-1234-ef01-34567890abcd=metadata.json --wait",
+  "description": "Commits selected files within workspace items to the connected Git repository.",
   "response": {
     "data": {
       "status": "Succeeded",
@@ -8,7 +8,7 @@
       "error": null
     }
   },
-  "notes": "Commit is LRO (returns 202, polls until Succeeded/Failed). The --items flag selects specific items; omit to commit all changes. workspaceHead is auto-fetched from git status. Use 'fabio git status' first to see pending changes. If no changes exist, API may return error.",
+  "notes": "Commit is an LRO. Use --commit-all for all changes, --items ID1,ID2 for object-ID item selection, or repeat --file-selection ITEM_ID=PATH for FileLevelSelective mode. Use --logical-file-selection for logical IDs. --all-files-for-item and --all-files-for-logical-item emit an empty selectedFiles array, which commits every file in that item. workspaceHead is auto-fetched.",
   "query_examples": [
     {"query": "status", "description": "Commit result (Succeeded/Failed)."},
     {"query": "percentComplete", "description": "Should be 100 on completion."},

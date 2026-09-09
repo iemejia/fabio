@@ -1,0 +1,21 @@
+{
+  "command": "fabio workspace get-onelake-settings --workspace $WS",
+  "description": "Inspect OneLake lifecycle settings, including file access-time tracking.",
+  "response": {
+    "data": {
+      "workspaceId": "cfafbeb1-8037-4d0c-896e-a46fb27ff227",
+      "lifecycle": {
+        "defaultTier": "Cool",
+        "policy": "Active",
+        "accessTimeTracking": "Enabled"
+      }
+    }
+  },
+  "notes": "When accessTimeTracking is Enabled, reads and writes update LastAccessTime. Metadata-only property, metadata, and tag operations do not.",
+  "query_examples": [
+    {
+      "query": "data.lifecycle.accessTimeTracking",
+      "description": "Read the current access-time tracking status."
+    }
+  ]
+}

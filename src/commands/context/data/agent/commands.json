@@ -1353,6 +1353,30 @@
         "mutates": true,
         "returns": "void"
       },
+      "modify-access-time-tracking": {
+        "description": "Enable or disable `OneLake` file access-time tracking",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--status": {
+            "type": "enum",
+            "values": [
+              "Enabled",
+              "Disabled"
+            ],
+            "required": true,
+            "description": "Desired status. Enabled updates `LastAccessTime` on file reads and writes"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio workspace modify-access-time-tracking --workspace $WS --status Enabled --dry-run",
+          "fabio workspace modify-access-time-tracking --workspace $WS --status Disabled"
+        ]
+      },
       "export-lifecycle-policy": {
         "description": "Export `OneLake` lifecycle policy",
         "flags": {
@@ -9089,11 +9113,11 @@
           },
           "--file": {
             "type": "string",
-            "description": "Path to JSON file with spark compute config (full body; conflicts with --runtime-version/--spark-property)"
+            "description": "Path to JSON file with Spark compute config (full body; conflicts with typed compute flags)"
           },
           "--content": {
             "type": "string",
-            "description": "Inline JSON content with spark compute config (full body; conflicts with --runtime-version/--spark-property)"
+            "description": "Inline JSON content with Spark compute config (full body; conflicts with typed compute flags)"
           },
           "--runtime-version": {
             "type": "string",
@@ -9105,10 +9129,38 @@
               "type": "string"
             },
             "description": "Spark configuration property to set as KEY=VALUE (repeatable). Merged into existing sparkProperties. E.g. --spark-property spark.native.enabled=true"
+          },
+          "--custom-live-pool-support": {
+            "type": "enum",
+            "values": [
+              "Enabled",
+              "Disabled"
+            ],
+            "description": "Enable or disable custom live-pool support. Disabling retains hydration settings"
+          },
+          "--max-clusters-to-hydrate": {
+            "type": "string",
+            "description": "Maximum clusters to pre-hydrate per activation cycle (minimum 1)"
+          },
+          "--cluster-idle-timeout": {
+            "type": "string",
+            "description": "Hydrated-cluster idle timeout as an ISO 8601 duration (PT20M through PT24H)"
+          },
+          "--custom-live-pool-lifespan": {
+            "type": "string",
+            "description": "Live-pool activation lifespan as an ISO 8601 duration (PT30M through PT24H)"
+          },
+          "--clear-custom-live-pool-settings": {
+            "type": "bool",
+            "description": "Remove custom live-pool hydration settings. Live-pool support is unchanged unless explicitly set"
           }
         },
         "mutates": true,
-        "returns": "void"
+        "returns": "object",
+        "examples": [
+          "fabio environment update-staging-spark-compute --workspace $WS --id $ENV --custom-live-pool-support Enabled --max-clusters-to-hydrate 4 --cluster-idle-timeout PT20M --custom-live-pool-lifespan PT1H",
+          "fabio environment update-staging-spark-compute --workspace $WS --id $ENV --custom-live-pool-support Disabled --clear-custom-live-pool-settings"
+        ]
       }
     }
   },
@@ -23042,15 +23094,15 @@
           },
           "--member-count": {
             "type": "string",
-            "description": "Fixed number of gateway members (1-9). Cannot be used together with --max-member-gateway-count/--min-member-gateway-count. Defaults to 1 when none of the member-count flags are provided"
+            "description": "Fixed number of gateway members (1-11). Cannot be used together with --max-member-gateway-count/--min-member-gateway-count. Defaults to 1 when none of the member-count flags are provided"
           },
           "--max-member-gateway-count": {
             "type": "string",
-            "description": "Maximum number of gateway members (1-9, value range). Requires --min-member-gateway-count; cannot be used with --member-count"
+            "description": "Maximum number of gateway members (1-11, value range). Requires --min-member-gateway-count; cannot be used with --member-count"
           },
           "--min-member-gateway-count": {
             "type": "string",
-            "description": "Minimum number of gateway members (1-9, value range). Requires --max-member-gateway-count; cannot be used with --member-count"
+            "description": "Minimum number of gateway members (1-11, value range). Requires --max-member-gateway-count; cannot be used with --member-count"
           }
         },
         "mutates": true,
@@ -23129,15 +23181,15 @@
           },
           "--member-count": {
             "type": "string",
-            "description": "Fixed number of gateway members (1-9, `VirtualNetwork` gateways only). Cannot be used together with --max-member-gateway-count/--min-member-gateway-count"
+            "description": "Fixed number of gateway members (1-11, `VirtualNetwork` gateways only). Cannot be used together with --max-member-gateway-count/--min-member-gateway-count"
           },
           "--max-member-gateway-count": {
             "type": "string",
-            "description": "Maximum number of gateway members (1-9, value range). Requires --min-member-gateway-count; cannot be used with --member-count"
+            "description": "Maximum number of gateway members (1-11, value range). Requires --min-member-gateway-count; cannot be used with --member-count"
           },
           "--min-member-gateway-count": {
             "type": "string",
-            "description": "Minimum number of gateway members (1-9, value range). Requires --max-member-gateway-count; cannot be used with --member-count"
+            "description": "Minimum number of gateway members (1-11, value range). Requires --max-member-gateway-count; cannot be used with --member-count"
           }
         },
         "mutates": true,
@@ -23383,12 +23435,16 @@
             "type": "string",
             "required": true,
             "description": "Workspace ID"
+          },
+          "--include-files-details": {
+            "type": "bool",
+            "description": "Include per-file changes for each changed item"
           }
         },
         "mutates": false,
         "returns": "object",
         "examples": [
-          "fabio git status --workspace $WS -o table"
+          "fabio git status --workspace $WS --include-files-details"
         ]
       },
       "commit": {
@@ -23414,6 +23470,34 @@
             },
             "description": "Selective commit: comma-separated item object IDs"
           },
+          "--file-selection": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Select a file to commit as `ITEM_ID=RELATIVE/PATH` (repeatable)"
+          },
+          "--all-files-for-item": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Commit all files for an item in file-level selective mode (repeatable)"
+          },
+          "--logical-file-selection": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Select a file by logical item ID as `LOGICAL_ID=RELATIVE/PATH` (repeatable)"
+          },
+          "--all-files-for-logical-item": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Commit all files for a logical item ID in file-level selective mode (repeatable)"
+          },
           "--workspace-head": {
             "type": "string",
             "description": "Override workspace head (auto-fetched from status if omitted)"
@@ -23431,7 +23515,9 @@
         "returns": "object",
         "async": true,
         "examples": [
-          "fabio git commit --workspace $WS --message \"feat: add sales pipeline\" --wait"
+          "fabio git commit --workspace $WS --commit-all --message \"feat: add sales pipeline\" --wait",
+          "fabio git commit --workspace $WS --file-selection $ITEM=metadata.json --file-selection $ITEM=config/settings.json --wait",
+          "fabio git commit --workspace $WS --all-files-for-item $ITEM --wait"
         ]
       },
       "pull": {

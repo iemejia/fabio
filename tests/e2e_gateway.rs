@@ -196,6 +196,35 @@ fn gateway_dry_run_create_with_fixed_member_count() {
 }
 
 #[test]
+fn gateway_dry_run_create_accepts_eleven_members() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "gateway",
+            "create",
+            "--name",
+            "test-gw-eleven",
+            "--capacity-id",
+            "00000000-0000-0000-0000-000000000001",
+            "--subscription-id",
+            "00000000-0000-0000-0000-000000000099",
+            "--resource-group",
+            "rg",
+            "--vnet-name",
+            "vnet",
+            "--subnet",
+            "default",
+            "--member-count",
+            "11",
+        ])
+        .assert()
+        .success();
+
+    let data = parse_json(&assert);
+    assert_eq!(data["data"]["details"]["numberOfMemberGateways"], 11);
+}
+
+#[test]
 fn gateway_dry_run_create_defaults_to_single_member() {
     let assert = fabio()
         .args([

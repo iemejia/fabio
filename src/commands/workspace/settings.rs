@@ -5,6 +5,7 @@ use crate::client::FabricClient;
 use crate::errors::enrich_forbidden;
 use crate::output;
 
+use super::AccessTimeTrackingStatus;
 use super::read_json_body;
 
 pub(super) async fn apply_tags(
@@ -170,6 +171,7 @@ pub(super) async fn modify_immutability_policy(
     if output::dry_run_guard(cli, "workspace modify-immutability-policy", &body) {
         return Ok(());
     }
+
     let data = client
         .post(
             &format!("/workspaces/{workspace}/onelake/settings/modifyImmutabilityPolicy"),
@@ -179,6 +181,40 @@ pub(super) async fn modify_immutability_policy(
         .await
         .map_err(|e| enrich_forbidden(e, "workspace modify-immutability-policy", "Admin"))?;
     output::render_object(cli, &data, "workspaceId");
+    Ok(())
+}
+
+pub(super) async fn modify_access_time_tracking(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    status: AccessTimeTrackingStatus,
+) -> Result<()> {
+    let body = serde_json::json!({ "status": status.as_str() });
+    if output::dry_run_guard(cli, "workspace modify-access-time-tracking", &body) {
+        return Ok(());
+    }
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/onelake/settings/modifyAccessTimeTracking"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace modify-access-time-tracking", "Admin"))?;
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        output::render_object(
+            cli,
+            &serde_json::json!({
+                "workspaceId": workspace,
+                "accessTimeTracking": status.as_str(),
+                "status": "updated",
+            }),
+            "status",
+        );
+    } else {
+        output::render_object(cli, &data, "workspaceId");
+    }
     Ok(())
 }
 

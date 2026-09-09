@@ -298,6 +298,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/data_pipeline_run.json"),
     ),
     ("git/status", include_str!("data/examples/git_status.json")),
+    (
+        "environment/get-staging-spark-settings",
+        include_str!("data/examples/environment_spark_compute.json"),
+    ),
     ("rest/call", include_str!("data/examples/rest_call.json")),
     (
         "capacity/list-skus",
@@ -388,6 +392,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/connection_list.json"),
     ),
     ("git/commit", include_str!("data/examples/git_commit.json")),
+    (
+        "workspace/get-onelake-settings",
+        include_str!("data/examples/workspace_onelake_settings.json"),
+    ),
     (
         "capacity/list",
         include_str!("data/examples/capacity_list.json"),

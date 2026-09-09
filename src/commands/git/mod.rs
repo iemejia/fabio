@@ -27,6 +27,10 @@ pub enum GitCommand {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
+
+        /// Include per-file changes for each changed item
+        #[arg(long)]
+        include_files_details: bool,
     },
     /// Commit workspace changes to the connected remote branch
     #[command(display_order = 2)]
@@ -40,12 +44,64 @@ pub enum GitCommand {
         message: Option<String>,
 
         /// Commit all pending changes
-        #[arg(long = "commit-all", visible_alias = "all", conflicts_with = "items")]
+        #[arg(
+            long = "commit-all",
+            visible_alias = "all",
+            conflicts_with_all = [
+                "items",
+                "file_selection",
+                "all_files_for_item",
+                "logical_file_selection",
+                "all_files_for_logical_item"
+            ]
+        )]
         all: bool,
 
         /// Selective commit: comma-separated item object IDs
-        #[arg(long, value_delimiter = ',', conflicts_with = "all")]
+        #[arg(
+            long,
+            value_delimiter = ',',
+            conflicts_with_all = [
+                "all",
+                "file_selection",
+                "all_files_for_item",
+                "logical_file_selection",
+                "all_files_for_logical_item"
+            ]
+        )]
         items: Option<Vec<String>>,
+
+        /// Select a file to commit as `ITEM_ID=RELATIVE/PATH` (repeatable)
+        #[arg(
+            long = "file-selection",
+            value_name = "ITEM_ID=PATH",
+            conflicts_with_all = ["all", "items"]
+        )]
+        file_selection: Vec<String>,
+
+        /// Commit all files for an item in file-level selective mode (repeatable)
+        #[arg(
+            long = "all-files-for-item",
+            value_name = "ITEM_ID",
+            conflicts_with_all = ["all", "items"]
+        )]
+        all_files_for_item: Vec<String>,
+
+        /// Select a file by logical item ID as `LOGICAL_ID=RELATIVE/PATH` (repeatable)
+        #[arg(
+            long = "logical-file-selection",
+            value_name = "LOGICAL_ID=PATH",
+            conflicts_with_all = ["all", "items"]
+        )]
+        logical_file_selection: Vec<String>,
+
+        /// Commit all files for a logical item ID in file-level selective mode (repeatable)
+        #[arg(
+            long = "all-files-for-logical-item",
+            value_name = "LOGICAL_ID",
+            conflicts_with_all = ["all", "items"]
+        )]
+        all_files_for_logical_item: Vec<String>,
 
         /// Override workspace head (auto-fetched from status if omitted)
         #[arg(long, hide = true)]
@@ -283,12 +339,19 @@ pub enum CredentialsCommand {
 #[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> Result<()> {
     match command {
-        GitCommand::Status { workspace } => sync::status(cli, client, workspace).await,
+        GitCommand::Status {
+            workspace,
+            include_files_details,
+        } => sync::status(cli, client, workspace, *include_files_details).await,
         GitCommand::Commit {
             workspace,
             message,
             all,
             items,
+            file_selection,
+            all_files_for_item,
+            logical_file_selection,
+            all_files_for_logical_item,
             workspace_head,
             wait,
             timeout,
@@ -299,6 +362,10 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
             message.as_deref(),
             *all,
             items.as_deref(),
+            file_selection,
+            all_files_for_item,
+            logical_file_selection,
+            all_files_for_logical_item,
             workspace_head.as_deref(),
             *wait,
             *timeout,

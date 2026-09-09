@@ -1057,6 +1057,97 @@ fn workspace_get_onelake_settings() {
     );
 }
 
+#[test]
+fn workspace_modify_access_time_tracking_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "modify-access-time-tracking",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--status",
+            "Enabled",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(
+        data["would_execute"],
+        "workspace modify-access-time-tracking"
+    );
+    assert_eq!(data["details"]["status"], "Enabled");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_modify_access_time_tracking_live_roundtrip() {
+    let cfg = TestConfig::from_env();
+    let settings = fabio()
+        .args([
+            "workspace",
+            "get-onelake-settings",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&settings);
+    let current = extract_data(&json)
+        .pointer("/lifecycle/accessTimeTracking")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("Disabled");
+    let changed = if current == "Enabled" {
+        "Disabled"
+    } else {
+        "Enabled"
+    };
+
+    fabio()
+        .args([
+            "workspace",
+            "modify-access-time-tracking",
+            "--workspace",
+            &cfg.source_workspace,
+            "--status",
+            changed,
+        ])
+        .assert()
+        .success();
+
+    let updated = fabio()
+        .args([
+            "workspace",
+            "get-onelake-settings",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&updated);
+    assert_eq!(
+        extract_data(&json)
+            .pointer("/lifecycle/accessTimeTracking")
+            .and_then(serde_json::Value::as_str),
+        Some(changed)
+    );
+
+    fabio()
+        .args([
+            "workspace",
+            "modify-access-time-tracking",
+            "--workspace",
+            &cfg.source_workspace,
+            "--status",
+            current,
+        ])
+        .assert()
+        .success();
+}
+
 // ===========================================================================
 // workspace get-network-policy
 // ===========================================================================
