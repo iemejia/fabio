@@ -176,7 +176,7 @@ tests:
           output.includes('git status') &&
           output.includes('--include-files-details') &&
           output.includes('git commit') &&
-          output.includes('--file-selection') &&
+          output.includes('--file-selection $ITEM=metadata.json') &&
           output.indexOf('git status') < output.indexOf('git commit')
         metric: file-level-git-flow
 

@@ -402,6 +402,26 @@ fn environment_update_staging_spark_compute_rejects_bad_property() {
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn environment_staging_spark_compute_runtime_and_properties_lifecycle() {
+    struct EnvironmentCleanup {
+        workspace: String,
+        id: String,
+    }
+
+    impl Drop for EnvironmentCleanup {
+        fn drop(&mut self) {
+            let _ = fabio()
+                .args([
+                    "environment",
+                    "delete",
+                    "--workspace",
+                    &self.workspace,
+                    "--id",
+                    &self.id,
+                ])
+                .assert();
+        }
+    }
+
     let cfg = TestConfig::from_env();
     let name = common::unique_name("env_spark_rt");
 
@@ -420,6 +440,10 @@ fn environment_staging_spark_compute_runtime_and_properties_lifecycle() {
         .success();
     let json = parse_json(&assert);
     let env_id = extract_data(&json)["id"].as_str().unwrap().to_string();
+    let _cleanup = EnvironmentCleanup {
+        workspace: cfg.source_workspace.clone(),
+        id: env_id.clone(),
+    };
 
     // Set runtime 2.0 + a spark property (read-merge-write).
     let assert = fabio()
@@ -537,19 +561,6 @@ fn environment_staging_spark_compute_runtime_and_properties_lifecycle() {
             "--clear-custom-live-pool-settings",
         ])
         .timeout(std::time::Duration::from_mins(2))
-        .assert()
-        .success();
-
-    // Clean up.
-    fabio()
-        .args([
-            "environment",
-            "delete",
-            "--workspace",
-            &cfg.source_workspace,
-            "--id",
-            &env_id,
-        ])
         .assert()
         .success();
 }
