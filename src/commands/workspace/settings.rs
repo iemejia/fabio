@@ -191,7 +191,11 @@ pub(super) async fn modify_access_time_tracking(
     status: AccessTimeTrackingStatus,
 ) -> Result<()> {
     let body = serde_json::json!({ "status": status.as_str() });
-    if output::dry_run_guard(cli, "workspace modify-access-time-tracking", &body) {
+    let preview = serde_json::json!({
+        "workspaceId": workspace,
+        "status": status.as_str(),
+    });
+    if output::dry_run_guard(cli, "workspace modify-access-time-tracking", &preview) {
         return Ok(());
     }
     let data = client

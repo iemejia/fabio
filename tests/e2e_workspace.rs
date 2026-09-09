@@ -1078,6 +1078,10 @@ fn workspace_modify_access_time_tracking_dry_run() {
         data["would_execute"],
         "workspace modify-access-time-tracking"
     );
+    assert_eq!(
+        data["details"]["workspaceId"],
+        "aaaaaaaa-1111-2222-3333-444444444444"
+    );
     assert_eq!(data["details"]["status"], "Enabled");
 }
 
@@ -1085,6 +1089,26 @@ fn workspace_modify_access_time_tracking_dry_run() {
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn workspace_modify_access_time_tracking_live_roundtrip() {
+    struct AccessTimeTrackingRestore {
+        workspace: String,
+        status: String,
+    }
+
+    impl Drop for AccessTimeTrackingRestore {
+        fn drop(&mut self) {
+            let _ = fabio()
+                .args([
+                    "workspace",
+                    "modify-access-time-tracking",
+                    "--workspace",
+                    &self.workspace,
+                    "--status",
+                    &self.status,
+                ])
+                .assert();
+        }
+    }
+
     let cfg = TestConfig::from_env();
     let settings = fabio()
         .args([
@@ -1104,6 +1128,10 @@ fn workspace_modify_access_time_tracking_live_roundtrip() {
         "Disabled"
     } else {
         "Enabled"
+    };
+    let _restore = AccessTimeTrackingRestore {
+        workspace: cfg.source_workspace.clone(),
+        status: current.to_string(),
     };
 
     fabio()
@@ -1134,18 +1162,6 @@ fn workspace_modify_access_time_tracking_live_roundtrip() {
             .and_then(serde_json::Value::as_str),
         Some(changed)
     );
-
-    fabio()
-        .args([
-            "workspace",
-            "modify-access-time-tracking",
-            "--workspace",
-            &cfg.source_workspace,
-            "--status",
-            current,
-        ])
-        .assert()
-        .success();
 }
 
 // ===========================================================================
