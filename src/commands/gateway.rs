@@ -54,23 +54,32 @@ pub enum GatewayCommand {
         #[arg(long, default_value = "120")]
         inactivity_minutes: i64,
 
-        /// Fixed number of gateway members (1-9). Cannot be used together with
+        /// Fixed number of gateway members (1-11). Cannot be used together with
         /// --max-member-gateway-count/--min-member-gateway-count. Defaults to 1
         /// when none of the member-count flags are provided.
         #[arg(
             long,
-            conflicts_with_all = ["max_member_gateway_count", "min_member_gateway_count"]
+            conflicts_with_all = ["max_member_gateway_count", "min_member_gateway_count"],
+            value_parser = clap::value_parser!(i64).range(1..=11)
         )]
         member_count: Option<i64>,
 
-        /// Maximum number of gateway members (1-9, value range). Requires
+        /// Maximum number of gateway members (1-11, value range). Requires
         /// --min-member-gateway-count; cannot be used with --member-count
-        #[arg(long, requires = "min_member_gateway_count")]
+        #[arg(
+            long,
+            requires = "min_member_gateway_count",
+            value_parser = clap::value_parser!(i64).range(1..=11)
+        )]
         max_member_gateway_count: Option<i64>,
 
-        /// Minimum number of gateway members (1-9, value range). Requires
+        /// Minimum number of gateway members (1-11, value range). Requires
         /// --max-member-gateway-count; cannot be used with --member-count
-        #[arg(long, requires = "max_member_gateway_count")]
+        #[arg(
+            long,
+            requires = "max_member_gateway_count",
+            value_parser = clap::value_parser!(i64).range(1..=11)
+        )]
         min_member_gateway_count: Option<i64>,
     },
     /// Create a new streaming virtual network gateway
@@ -119,22 +128,31 @@ pub enum GatewayCommand {
         #[arg(long)]
         load_balancing: Option<String>,
 
-        /// Fixed number of gateway members (1-9, `VirtualNetwork` gateways only).
+        /// Fixed number of gateway members (1-11, `VirtualNetwork` gateways only).
         /// Cannot be used together with --max-member-gateway-count/--min-member-gateway-count.
         #[arg(
             long,
-            conflicts_with_all = ["max_member_gateway_count", "min_member_gateway_count"]
+            conflicts_with_all = ["max_member_gateway_count", "min_member_gateway_count"],
+            value_parser = clap::value_parser!(i64).range(1..=11)
         )]
         member_count: Option<i64>,
 
-        /// Maximum number of gateway members (1-9, value range). Requires
+        /// Maximum number of gateway members (1-11, value range). Requires
         /// --min-member-gateway-count; cannot be used with --member-count
-        #[arg(long, requires = "min_member_gateway_count")]
+        #[arg(
+            long,
+            requires = "min_member_gateway_count",
+            value_parser = clap::value_parser!(i64).range(1..=11)
+        )]
         max_member_gateway_count: Option<i64>,
 
-        /// Minimum number of gateway members (1-9, value range). Requires
+        /// Minimum number of gateway members (1-11, value range). Requires
         /// --max-member-gateway-count; cannot be used with --member-count
-        #[arg(long, requires = "max_member_gateway_count")]
+        #[arg(
+            long,
+            requires = "max_member_gateway_count",
+            value_parser = clap::value_parser!(i64).range(1..=11)
+        )]
         min_member_gateway_count: Option<i64>,
     },
     /// Delete a gateway
@@ -455,6 +473,11 @@ async fn create(
     max_member_gateway_count: Option<i64>,
     min_member_gateway_count: Option<i64>,
 ) -> Result<()> {
+    validate_member_gateway_counts(
+        member_count,
+        max_member_gateway_count,
+        min_member_gateway_count,
+    )?;
     let mut body = serde_json::json!({
         "type": "VirtualNetwork",
         "displayName": name,
@@ -519,6 +542,41 @@ fn apply_member_gateway_count(
     }
 }
 
+fn validate_member_gateway_counts(
+    member_count: Option<i64>,
+    max_member_gateway_count: Option<i64>,
+    min_member_gateway_count: Option<i64>,
+) -> Result<()> {
+    for value in [
+        member_count,
+        max_member_gateway_count,
+        min_member_gateway_count,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if !(1..=11).contains(&value) {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Gateway member count {value} is outside the supported range 1-11"),
+                "Use a gateway member count from 1 through 11.",
+            )
+            .into());
+        }
+    }
+    if let (Some(max), Some(min)) = (max_member_gateway_count, min_member_gateway_count)
+        && max < min
+    {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Maximum gateway member count must be greater than or equal to the minimum",
+            "Set --max-member-gateway-count to a value greater than or equal to --min-member-gateway-count.",
+        )
+        .into());
+    }
+    Ok(())
+}
+
 async fn create_streaming(
     cli: &Cli,
     client: &FabricClient,
@@ -564,6 +622,11 @@ async fn update(
     max_member_gateway_count: Option<i64>,
     min_member_gateway_count: Option<i64>,
 ) -> Result<()> {
+    validate_member_gateway_counts(
+        member_count,
+        max_member_gateway_count,
+        min_member_gateway_count,
+    )?;
     if name.is_none()
         && allow_cloud_connection_refresh.is_none()
         && allow_custom_connectors.is_none()
@@ -990,5 +1053,17 @@ mod lifecycle_tests {
         assert!(body.get("numberOfMemberGateways").is_none());
         assert!(body.get("maxMemberGatewayCount").is_none());
         assert!(body.get("minMemberGatewayCount").is_none());
+    }
+
+    #[test]
+    fn member_gateway_count_accepts_new_upper_bound() {
+        assert!(validate_member_gateway_counts(Some(11), None, None).is_ok());
+        assert!(validate_member_gateway_counts(None, Some(11), Some(11)).is_ok());
+    }
+
+    #[test]
+    fn member_gateway_count_rejects_out_of_range_and_inverted_range() {
+        assert!(validate_member_gateway_counts(Some(12), None, None).is_err());
+        assert!(validate_member_gateway_counts(None, Some(4), Some(5)).is_err());
     }
 }

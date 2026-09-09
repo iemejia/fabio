@@ -150,6 +150,47 @@ tests:
       - type: contains
         value: "spark.native.enabled"
 
+  - description: "Environment: configure custom live-pool hydration"
+    vars:
+      user_query: "Enable the custom live pool for my Spark environment, pre-hydrate 4 clusters, release idle clusters after 20 minutes, and stop the activation after one hour"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('environment update-staging-spark-compute')
+        metric: live-pool-command
+      - type: contains
+        value: "--custom-live-pool-support Enabled"
+      - type: icontains
+        value: "--max-clusters-to-hydrate 4"
+      - type: contains
+        value: "--cluster-idle-timeout PT20M"
+      - type: contains
+        value: "--custom-live-pool-lifespan PT1H"
+
+  - description: "Git: inspect and commit one changed item file"
+    vars:
+      user_query: "Show file-level Git changes in my Fabric workspace, then commit only metadata.json from item $ITEM"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('git status') &&
+          output.includes('--include-files-details') &&
+          output.includes('git commit') &&
+          output.includes('--file-selection') &&
+          output.indexOf('git status') < output.indexOf('git commit')
+        metric: file-level-git-flow
+
+  - description: "Workspace: enable OneLake access-time tracking"
+    vars:
+      user_query: "Enable LastAccessTime tracking for files in my Fabric workspace"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('workspace modify-access-time-tracking')
+        metric: access-time-command
+      - type: contains
+        value: "--status Enabled"
+
   - description: "Workspace: set default Spark runtime to 2.0"
     vars:
       user_query: "Make Fabric Runtime 2.0 the default for all Spark workloads in my workspace"

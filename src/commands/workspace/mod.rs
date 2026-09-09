@@ -8,7 +8,7 @@ mod roles;
 mod settings;
 
 use anyhow::Result;
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 use serde_json::Value;
 
 use crate::cli::Cli;
@@ -25,6 +25,23 @@ pub(super) const KNOWN_PRINCIPAL_TYPES: &[&str] = &[
     "ServicePrincipal",
     "ServicePrincipalProfile",
 ];
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum AccessTimeTrackingStatus {
+    #[value(name = "Enabled")]
+    Enabled,
+    #[value(name = "Disabled")]
+    Disabled,
+}
+
+impl AccessTimeTrackingStatus {
+    pub(super) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Enabled => "Enabled",
+            Self::Disabled => "Disabled",
+        }
+    }
+}
 
 #[derive(Debug, Subcommand)]
 #[command(
@@ -373,14 +390,23 @@ pub enum WorkspaceCommand {
         #[arg(long)]
         content: Option<String>,
     },
-    /// Export `OneLake` lifecycle policy
+    /// Enable or disable `OneLake` file access-time tracking
     #[command(display_order = 59)]
+    ModifyAccessTimeTracking {
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Desired status. Enabled updates `LastAccessTime` on file reads and writes.
+        #[arg(long, value_enum)]
+        status: AccessTimeTrackingStatus,
+    },
+    /// Export `OneLake` lifecycle policy
+    #[command(display_order = 60)]
     ExportLifecyclePolicy {
         #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Import `OneLake` lifecycle policy
-    #[command(display_order = 60)]
+    #[command(display_order = 61)]
     ImportLifecyclePolicy {
         #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
@@ -390,7 +416,7 @@ pub enum WorkspaceCommand {
         content: Option<String>,
     },
     /// Reset `OneLake` shortcut cache for a workspace
-    #[command(display_order = 61)]
+    #[command(display_order = 62)]
     ResetShortcutCache {
         #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
@@ -771,6 +797,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceComman
                 content.as_deref(),
             )
             .await
+        }
+        WorkspaceCommand::ModifyAccessTimeTracking { workspace, status } => {
+            settings::modify_access_time_tracking(cli, client, workspace, *status).await
         }
         WorkspaceCommand::ExportLifecyclePolicy { workspace } => {
             settings::export_lifecycle_policy(cli, client, workspace).await

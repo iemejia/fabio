@@ -1,25 +1,44 @@
 {
-  "command": "fabio git status --workspace $WS",
-  "description": "Get the git sync status of a workspace. Shows pending changes between workspace and remote repository.",
+  "command": "fabio git status --workspace $WS --include-files-details",
+  "description": "Get item- and file-level Git sync status for a workspace.",
   "response": {
     "data": {
       "changes": [
         {
-          "itemId": "a1b2c3d4-0000-0000-0000-000000000001",
-          "itemType": "Notebook",
-          "displayName": "SalesAnalysis",
+          "itemMetadata": {
+            "itemIdentifier": {
+              "objectId": "a1b2c3d4-0000-0000-0000-000000000001"
+            },
+            "itemType": "Notebook",
+            "displayName": "SalesAnalysis"
+          },
           "workspaceChange": "Modified",
-          "remoteChange": null
+          "remoteChange": "Modified",
+          "conflictType": "Conflict",
+          "fileChanges": [
+            {
+              "path": "notebook-content.py",
+              "workspaceChange": "Modified",
+              "remoteChange": "Modified",
+              "conflictType": "Conflict"
+            },
+            {
+              "path": "metadata.json",
+              "workspaceChange": "Modified",
+              "conflictType": "None"
+            }
+          ]
         }
       ],
       "workspaceHead": "abc123def456",
       "remoteCommitHash": "abc123def456"
     }
   },
-  "notes": "This is an LRO endpoint. workspaceChange values: Added, Modified, Deleted, None. remoteChange is null when no remote changes exist. Use fabio git commit to push workspace changes to the remote. Use fabio git pull (updateFromGit) to pull remote changes into the workspace.",
+  "notes": "This is an LRO endpoint. --include-files-details adds fileChanges; paths are relative to the item root and use forward slashes. workspaceChange and remoteChange may be omitted when that side has no change.",
   "query_examples": [
     {"query": "changes | length(@)", "description": "Count of pending changes."},
-    {"query": "changes[?workspaceChange=='Modified'].displayName", "description": "Names of locally modified items."},
+    {"query": "changes[?workspaceChange=='Modified'].itemMetadata.displayName", "description": "Names of locally modified items."},
+    {"query": "changes[].fileChanges[].path", "description": "All changed file paths."},
     {"query": "workspaceHead", "description": "Current workspace commit SHA."}
   ]
 }

@@ -1,0 +1,32 @@
+{
+  "command": "fabio environment get-staging-spark-settings --workspace $WS --id $ENV_ID",
+  "description": "Inspect an environment's Spark compute and custom live-pool hydration settings.",
+  "response": {
+    "data": {
+      "instancePool": {
+        "name": "MyWorkspacePool",
+        "type": "Workspace",
+        "id": "78942136-106c-4f3e-80fc-7ff4eae11603",
+        "maxClustersToHydrateLimit": 10
+      },
+      "runtimeVersion": "2.0",
+      "customLivePoolSupport": "Enabled",
+      "customLivePoolSettings": {
+        "maxClustersToHydrate": 4,
+        "clusterIdleTimeout": "PT20M",
+        "customLivePoolLifespan": "PT1H"
+      }
+    }
+  },
+  "notes": "maxClustersToHydrateLimit is server-computed from capacity size. Disabling live-pool support retains settings; --clear-custom-live-pool-settings sends null to remove them.",
+  "query_examples": [
+    {
+      "query": "data.instancePool.maxClustersToHydrateLimit",
+      "description": "Read the capacity-dependent hydration limit."
+    },
+    {
+      "query": "data.customLivePoolSettings",
+      "description": "Extract all live-pool hydration settings."
+    }
+  ]
+}

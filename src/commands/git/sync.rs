@@ -1,5 +1,7 @@
 //! Git sync operations: status, commit, pull, and tracked-item listing.
 
+use std::collections::BTreeMap;
+
 use anyhow::{Result, bail};
 use serde_json::Value;
 
@@ -8,9 +10,22 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
-pub(super) async fn status(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
+fn status_path(workspace: &str, include_files_details: bool) -> String {
+    if include_files_details {
+        format!("/workspaces/{workspace}/git/status?includeFilesDetails=true")
+    } else {
+        format!("/workspaces/{workspace}/git/status")
+    }
+}
+
+pub(super) async fn status(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    include_files_details: bool,
+) -> Result<()> {
     let data = client
-        .get_with_lro(&format!("/workspaces/{workspace}/git/status"))
+        .get_with_lro(&status_path(workspace, include_files_details))
         .await?;
 
     let changes = data
@@ -19,7 +34,7 @@ pub(super) async fn status(cli: &Cli, client: &FabricClient, workspace: &str) ->
         .cloned()
         .unwrap_or_default();
 
-    if changes.is_empty() {
+    if changes.is_empty() || include_files_details {
         output::render_object(cli, &data, "status");
     } else {
         output::render_list(
@@ -47,15 +62,58 @@ pub(super) async fn commit(
     message: Option<&str>,
     all: bool,
     items: Option<&[String]>,
+    file_selection: &[String],
+    all_files_for_item: &[String],
+    logical_file_selection: &[String],
+    all_files_for_logical_item: &[String],
     workspace_head: Option<&str>,
     wait: bool,
     timeout: u64,
 ) -> Result<()> {
-    if !all && items.is_none() {
-        bail!("Specify --all to commit all changes, or --items for selective commit");
+    let items_with_file_selection = build_items_with_file_selection(
+        file_selection,
+        all_files_for_item,
+        logical_file_selection,
+        all_files_for_logical_item,
+    )?;
+    if !all && items.is_none() && items_with_file_selection.is_empty() {
+        bail!(
+            "Specify --all, --items, --file-selection, or --all-files-for-item to choose changes"
+        );
     }
 
-    // Auto-fetch workspace head if not provided
+    let mode = if all {
+        "All"
+    } else if items.is_some() {
+        "Selective"
+    } else {
+        "FileLevelSelective"
+    };
+    let selected_items: Vec<Value> = items
+        .unwrap_or_default()
+        .iter()
+        .map(|id| serde_json::json!({"objectId": id}))
+        .collect();
+    let mut preview = serde_json::json!({
+        "workspace": workspace,
+        "mode": mode,
+    });
+    if let Some(message) = message {
+        preview["comment"] = Value::from(message);
+    }
+    if !selected_items.is_empty() {
+        preview["items"] = Value::Array(selected_items.clone());
+    }
+    if !items_with_file_selection.is_empty() {
+        preview["itemsWithFileSelection"] = Value::Array(items_with_file_selection.clone());
+    }
+    if let Some(workspace_head) = workspace_head {
+        preview["workspaceHead"] = Value::from(workspace_head);
+    }
+    if output::dry_run_guard(cli, "git commit", &preview) {
+        return Ok(());
+    }
+
     let head = if let Some(h) = workspace_head {
         h.to_string()
     } else {
@@ -73,7 +131,6 @@ pub(super) async fn commit(
             .to_string()
     };
 
-    let mode = if all { "All" } else { "Selective" };
     let mut body = serde_json::json!({
         "mode": mode,
         "workspaceHead": head,
@@ -83,12 +140,11 @@ pub(super) async fn commit(
         body["comment"] = Value::from(msg);
     }
 
-    if let Some(item_ids) = items {
-        let item_objs: Vec<Value> = item_ids
-            .iter()
-            .map(|id| serde_json::json!({"objectId": id}))
-            .collect();
-        body["items"] = Value::Array(item_objs);
+    if !selected_items.is_empty() {
+        body["items"] = Value::Array(selected_items);
+    }
+    if !items_with_file_selection.is_empty() {
+        body["itemsWithFileSelection"] = Value::Array(items_with_file_selection);
     }
 
     let data = client
@@ -101,6 +157,98 @@ pub(super) async fn commit(
         .await?;
 
     output::render_object(cli, &data, "status");
+    Ok(())
+}
+
+fn build_items_with_file_selection(
+    file_selections: &[String],
+    all_files_for_item: &[String],
+    logical_file_selections: &[String],
+    all_files_for_logical_item: &[String],
+) -> Result<Vec<Value>> {
+    let mut selections = BTreeMap::<(String, String), Vec<String>>::new();
+    add_all_files(&mut selections, "objectId", all_files_for_item)?;
+    add_all_files(&mut selections, "logicalId", all_files_for_logical_item)?;
+    add_file_selections(&mut selections, "objectId", file_selections)?;
+    add_file_selections(&mut selections, "logicalId", logical_file_selections)?;
+    Ok(selections
+        .into_iter()
+        .map(|((identifier_field, identifier), selected_files)| {
+            serde_json::json!({
+                identifier_field: identifier,
+                "selectedFiles": selected_files,
+            })
+        })
+        .collect())
+}
+
+fn add_all_files(
+    selections: &mut BTreeMap<(String, String), Vec<String>>,
+    identifier_field: &str,
+    item_ids: &[String],
+) -> Result<()> {
+    for item_id in item_ids {
+        if item_id.trim().is_empty() {
+            bail!("The all-files item identifier cannot be empty");
+        }
+        selections
+            .entry((identifier_field.to_string(), item_id.clone()))
+            .or_default();
+    }
+    Ok(())
+}
+
+fn add_file_selections(
+    selections: &mut BTreeMap<(String, String), Vec<String>>,
+    identifier_field: &str,
+    file_selections: &[String],
+) -> Result<()> {
+    for selection in file_selections {
+        let (item_id, path) = selection.split_once('=').ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid --file-selection '{selection}'"),
+                "Use ITEM_ID=RELATIVE/PATH, for example --file-selection 00000000-0000-0000-0000-000000000000=metadata.json",
+            )
+        })?;
+        if item_id.trim().is_empty() {
+            bail!("--file-selection requires a non-empty item ID");
+        }
+        validate_git_file_path(path)?;
+        let key = (identifier_field.to_string(), item_id.to_string());
+        if selections.get(&key).is_some_and(Vec::is_empty) {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Item '{item_id}' selects both all files and an individual file"),
+                "Use either an all-files flag or file-selection flags for the same item, not both.",
+            )
+            .into());
+        }
+        selections.entry(key).or_default().push(path.to_string());
+    }
+    Ok(())
+}
+
+fn validate_git_file_path(path: &str) -> Result<()> {
+    if path.is_empty()
+        || path.starts_with('/')
+        || path.contains('\\')
+        || path.contains('*')
+        || path.contains('?')
+        || path.split('/').any(|segment| {
+            segment.is_empty()
+                || segment.trim() != segment
+                || segment.ends_with('.')
+                || segment.chars().last().is_some_and(char::is_whitespace)
+        })
+    {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid Git item-relative file path '{path}'"),
+            "Use a full relative file path with forward slashes, no leading slash, wildcards, empty segments, or segments ending in a dot or whitespace.",
+        )
+        .into());
+    }
     Ok(())
 }
 
@@ -415,6 +563,60 @@ mod tests {
         let hint = fe.hint.as_deref().expect("hint present");
         assert!(hint.contains("--allow-override"));
         assert!(agent::hint_suggests_dangerous_flag(hint));
+    }
+
+    #[test]
+    fn status_path_includes_file_details_only_when_requested() {
+        assert_eq!(status_path("ws", false), "/workspaces/ws/git/status");
+        assert_eq!(
+            status_path("ws", true),
+            "/workspaces/ws/git/status?includeFilesDetails=true"
+        );
+    }
+
+    #[test]
+    fn builds_file_level_selective_items() {
+        let selections = build_items_with_file_selection(
+            &[
+                "item-a=metadata.json".to_string(),
+                "item-a=config/settings.json".to_string(),
+            ],
+            &["item-b".to_string()],
+            &["logical-a=definition.pbir".to_string()],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(
+            selections,
+            vec![
+                serde_json::json!({
+                    "logicalId": "logical-a",
+                    "selectedFiles": ["definition.pbir"]
+                }),
+                serde_json::json!({
+                    "objectId": "item-a",
+                    "selectedFiles": ["metadata.json", "config/settings.json"]
+                }),
+                serde_json::json!({
+                    "objectId": "item-b",
+                    "selectedFiles": []
+                }),
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_file_level_selective_paths() {
+        for path in [
+            "/metadata.json",
+            "folder//file.json",
+            "folder\\file.json",
+            "*.json",
+            "folder./file.json",
+            " folder/file.json",
+        ] {
+            assert!(validate_git_file_path(path).is_err(), "{path} must fail");
+        }
     }
 
     #[test]

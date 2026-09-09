@@ -197,7 +197,7 @@
 - `tests/e2e_verbose.rs`: Verbose flag tests (16 tests: offline flag acceptance, HTTP/auth/LRO tracing, --quiet suppression, --dry-run interaction)
 - `tests/e2e_sync.rs`: Lakehouse sync tests (24 tests: basic copy, skip unchanged, delete, checksum, parallel, rename detection, dedup, include/exclude, size-only, no-overwrite, force, max-delete, existing, remove-source-files, local-to-remote sync)
 - `tests/e2e_connection.rs`: Connection CRUD + list-supported-types tests
-- `tests/e2e_environment.rs`: Environment CRUD tests
+- `tests/e2e_environment.rs`: Environment CRUD, staging Spark compute, runtime, Spark properties, and custom live-pool tests
 - `tests/e2e_data_pipeline.rs`: Data pipeline CRUD + run + schedule/instance tests
 - `tests/e2e_eventhouse.rs`: Eventhouse CRUD tests + query lifecycle (one-shot/follow) + offline follow-flag guard
 - `tests/e2e_eventstream.rs`: Eventstream CRUD tests

@@ -153,6 +153,71 @@ fn git_commit_unconnected_workspace_fails() {
         .failure();
 }
 
+#[test]
+fn git_file_level_selective_commit_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "git",
+            "commit",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--message",
+            "Commit metadata only",
+            "--file-selection",
+            "bbbbbbbb-1111-2222-3333-444444444444=metadata.json",
+            "--all-files-for-item",
+            "cccccccc-1111-2222-3333-444444444444",
+            "--logical-file-selection",
+            "dddddddd-1111-2222-3333-444444444444=definition.pbir",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "git commit");
+    assert_eq!(data["details"]["mode"], "FileLevelSelective");
+    assert!(data["details"].get("items").is_none());
+    let selections = data["details"]["itemsWithFileSelection"]
+        .as_array()
+        .expect("file selections");
+    let object_selection = selections
+        .iter()
+        .find(|selection| selection["objectId"] == "bbbbbbbb-1111-2222-3333-444444444444")
+        .expect("object selection");
+    assert_eq!(object_selection["selectedFiles"][0], "metadata.json");
+    let all_files_selection = selections
+        .iter()
+        .find(|selection| selection["objectId"] == "cccccccc-1111-2222-3333-444444444444")
+        .expect("all-files selection");
+    assert_eq!(all_files_selection["selectedFiles"], serde_json::json!([]));
+    let logical_selection = selections
+        .iter()
+        .find(|selection| selection["logicalId"] == "dddddddd-1111-2222-3333-444444444444")
+        .expect("logical selection");
+    assert_eq!(
+        logical_selection["logicalId"],
+        "dddddddd-1111-2222-3333-444444444444"
+    );
+}
+
+#[test]
+fn git_file_level_selective_commit_rejects_invalid_path() {
+    fabio()
+        .args([
+            "--dry-run",
+            "git",
+            "commit",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--file-selection",
+            "bbbbbbbb-1111-2222-3333-444444444444=/metadata.json",
+        ])
+        .assert()
+        .failure();
+}
+
 // ---------------------------------------------------------------------------
 // Pull on unconnected workspace fails
 // ---------------------------------------------------------------------------
@@ -281,7 +346,13 @@ fn git_connect_init_status_disconnect_lifecycle() {
     // Get status (should work now)
     let assert = retry_on_failure(|| {
         fabio()
-            .args(["git", "status", "--workspace", workspace])
+            .args([
+                "git",
+                "status",
+                "--workspace",
+                workspace,
+                "--include-files-details",
+            ])
             .timeout(std::time::Duration::from_mins(2))
             .assert()
     })
