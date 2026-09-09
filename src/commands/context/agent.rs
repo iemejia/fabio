@@ -970,6 +970,9 @@ fn build_json_schema_params(
                 "integer" | "u64" => {
                     prop.insert("type".to_owned(), serde_json::json!("integer"));
                 }
+                "number" => {
+                    prop.insert("type".to_owned(), serde_json::json!("number"));
+                }
                 "enum" => {
                     prop.insert("type".to_owned(), serde_json::json!("string"));
                     if let Some(values) = obj.get("values") {
@@ -1814,6 +1817,24 @@ mod tests {
             .and_then(serde_json::Value::as_object)
             .expect("flag should exist");
         assert_eq!(sample.get("type"), Some(&serde_json::json!("number")));
+    }
+
+    #[test]
+    fn tool_schema_preserves_number_flag_type() {
+        let cmd = serde_json::json!({
+            "flags": {
+                "--x": {
+                    "type": "number",
+                    "description": "X coordinate"
+                }
+            }
+        });
+        let (properties, required) = build_json_schema_params(&cmd);
+        assert!(required.is_empty());
+        assert_eq!(
+            properties.get("x").and_then(|prop| prop.get("type")),
+            Some(&serde_json::json!("number"))
+        );
     }
 
     /// Regenerate `commands.json` from clap metadata.

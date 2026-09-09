@@ -279,6 +279,11 @@ fn git_file_level_selective_commit_live_roundtrip() {
             .unwrap()
             .as_millis()
     );
+    let _cleanup = GitNotebookCleanup::new(
+        workspace,
+        notebook_name.clone(),
+        "cleanup: delete selective file commit notebook",
+    );
     fabio()
         .args([
             "notebook",
@@ -559,6 +564,11 @@ fn git_connect_init_status_disconnect_lifecycle() {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis()
+    );
+    let _cleanup = GitNotebookCleanup::new(
+        workspace,
+        file_details_notebook.clone(),
+        "cleanup: delete status file details notebook",
     );
     fabio()
         .args([
@@ -2188,6 +2198,78 @@ impl Drop for BranchCleanup {
                 "DELETE",
             ])
             .output();
+    }
+}
+
+/// RAII guard to delete a temporary notebook, commit cleanup, and disconnect Git on drop.
+struct GitNotebookCleanup {
+    workspace: String,
+    notebook_name: String,
+    commit_message: &'static str,
+}
+
+impl GitNotebookCleanup {
+    fn new(workspace: &str, notebook_name: String, commit_message: &'static str) -> Self {
+        Self {
+            workspace: workspace.to_string(),
+            notebook_name,
+            commit_message,
+        }
+    }
+}
+
+impl Drop for GitNotebookCleanup {
+    fn drop(&mut self) {
+        if let Ok(output) = fabio()
+            .args(["item", "list", "--workspace", &self.workspace, "-o", "json"])
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if let Ok(list_json) = serde_json::from_str::<serde_json::Value>(&stdout)
+                && let Some(notebook_id) = list_json["data"].as_array().and_then(|items| {
+                    items
+                        .iter()
+                        .find(|item| {
+                            item.get("displayName").and_then(serde_json::Value::as_str)
+                                == Some(self.notebook_name.as_str())
+                        })
+                        .and_then(|item| item.get("id"))
+                        .and_then(serde_json::Value::as_str)
+                })
+            {
+                let _ = fabio()
+                    .args([
+                        "item",
+                        "delete",
+                        "--workspace",
+                        &self.workspace,
+                        "--id",
+                        notebook_id,
+                    ])
+                    .timeout(std::time::Duration::from_mins(1))
+                    .assert();
+                let _ = retry_on_failure(|| {
+                    fabio()
+                        .args([
+                            "git",
+                            "commit",
+                            "--workspace",
+                            &self.workspace,
+                            "--commit-all",
+                            "--message",
+                            self.commit_message,
+                            "--wait",
+                        ])
+                        .timeout(std::time::Duration::from_mins(3))
+                        .assert()
+                });
+            }
+        }
+
+        let _ = fabio()
+            .args(["git", "disconnect", "--workspace", &self.workspace])
+            .timeout(std::time::Duration::from_mins(1))
+            .assert();
     }
 }
 

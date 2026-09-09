@@ -515,6 +515,9 @@ fn build_json_schema_params(cmd_val: &Value) -> (Map<String, Value>, Vec<String>
                 "integer" | "u64" => {
                     prop.insert("type".to_owned(), json!("integer"));
                 }
+                "number" => {
+                    prop.insert("type".to_owned(), json!("number"));
+                }
                 "enum" => {
                     prop.insert("type".to_owned(), json!("string"));
                     if let Some(values) = obj.get("values") {
@@ -553,4 +556,27 @@ fn build_json_schema_params(cmd_val: &Value) -> (Map<String, Value>, Vec<String>
     }
 
     (properties, required)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tool_schema_preserves_number_flag_type() {
+        let cmd = json!({
+            "flags": {
+                "--x": {
+                    "type": "number",
+                    "description": "X coordinate"
+                }
+            }
+        });
+        let (properties, required) = build_json_schema_params(&cmd);
+        assert!(required.is_empty());
+        assert_eq!(
+            properties.get("x").and_then(|prop| prop.get("type")),
+            Some(&json!("number"))
+        );
+    }
 }
