@@ -8,13 +8,26 @@ use crate::output;
 
 use super::CustomLivePoolSupport;
 
-const ONE_HOUR_SECONDS: u64 = 60 * 60;
-const ONE_MINUTE_SECONDS: u64 = 60;
-const ONE_DAY_SECONDS: u64 = 24 * ONE_HOUR_SECONDS;
-const ONE_WEEK_SECONDS: u64 = 7 * ONE_DAY_SECONDS;
-const TWENTY_MINUTES_SECONDS: u64 = 20 * ONE_MINUTE_SECONDS;
-const THIRTY_MINUTES_SECONDS: u64 = 30 * ONE_MINUTE_SECONDS;
-const TWENTY_FOUR_HOURS_SECONDS: u64 = ONE_DAY_SECONDS;
+const ONE_HOUR_SECONDS: u128 = 60 * 60;
+const ONE_MINUTE_SECONDS: u128 = 60;
+const ONE_DAY_SECONDS: u128 = 24 * ONE_HOUR_SECONDS;
+const ONE_WEEK_SECONDS: u128 = 7 * ONE_DAY_SECONDS;
+const NANOS_PER_SECOND: u128 = 1_000_000_000;
+const SUBSECOND_SCALES: [u128; 10] = [
+    1,
+    10,
+    100,
+    1_000,
+    10_000,
+    100_000,
+    1_000_000,
+    10_000_000,
+    100_000_000,
+    NANOS_PER_SECOND,
+];
+const TWENTY_MINUTES_SECONDS: u128 = 20 * ONE_MINUTE_SECONDS;
+const THIRTY_MINUTES_SECONDS: u128 = 30 * ONE_MINUTE_SECONDS;
+const TWENTY_FOUR_HOURS_SECONDS: u128 = ONE_DAY_SECONDS;
 
 // ─── Staging Spark Compute ───────────────────────────────────────────────────
 
@@ -62,16 +75,16 @@ pub(super) fn parse_custom_live_pool_lifespan(value: &str) -> std::result::Resul
 fn validate_iso8601_duration_in_range(
     flag_name: &str,
     value: &str,
-    min_seconds: u64,
-    max_seconds: u64,
-) -> std::result::Result<u64, String> {
-    let seconds = parse_iso8601_duration_seconds(value).map_err(|message| {
+    min_seconds: u128,
+    max_seconds: u128,
+) -> std::result::Result<u128, String> {
+    let nanoseconds = parse_iso8601_duration_nanoseconds(value).map_err(|message| {
         format!(
             "Invalid {flag_name} '{value}': {message}. Use an ISO 8601 duration such as PT20M, PT1H, PT1H30M, or P1D."
         )
     })?;
-    if (min_seconds..=max_seconds).contains(&seconds) {
-        return Ok(seconds);
+    if (min_seconds * NANOS_PER_SECOND..=max_seconds * NANOS_PER_SECOND).contains(&nanoseconds) {
+        return Ok(nanoseconds);
     }
 
     Err(format!(
@@ -81,7 +94,7 @@ fn validate_iso8601_duration_in_range(
     ))
 }
 
-fn parse_iso8601_duration_seconds(value: &str) -> std::result::Result<u64, String> {
+fn parse_iso8601_duration_nanoseconds(value: &str) -> std::result::Result<u128, String> {
     let Some(rest) = value.strip_prefix('P') else {
         return Err("must start with 'P'".to_string());
     };
@@ -90,103 +103,98 @@ fn parse_iso8601_duration_seconds(value: &str) -> std::result::Result<u64, Strin
     }
 
     if let Some(weeks) = rest.strip_suffix('W') {
-        return parse_week_duration_seconds(weeks);
+        return parse_week_duration_nanoseconds(weeks);
     }
 
-    let mut digits = String::new();
-    let mut total_seconds = 0_u64;
+    let mut number = String::new();
+    let mut total_nanoseconds = 0_u128;
     let mut found_component = false;
     let mut in_time = false;
     let mut found_time_component = false;
     let mut date_order = 0_u8;
     let mut time_order = 0_u8;
+    let mut fractional_component_seen = false;
 
     for ch in rest.chars() {
-        if ch.is_ascii_digit() {
-            digits.push(ch);
+        if ch.is_ascii_digit() || ch == '.' && !number.contains('.') {
+            if fractional_component_seen {
+                return Err("fractional duration component must be final".to_string());
+            }
+            number.push(ch);
             continue;
         }
         if ch == 'T' {
             if in_time {
                 return Err("duration contains more than one time designator".to_string());
             }
-            if !digits.is_empty() {
+            if !number.is_empty() {
                 return Err("duration component is missing its unit before 'T'".to_string());
             }
             in_time = true;
             continue;
         }
-        if digits.is_empty() {
+        if number.is_empty() {
             return Err("duration component is missing its numeric value".to_string());
         }
 
-        let n = digits
-            .parse::<u64>()
-            .map_err(|_| "duration value is too large".to_string())?;
-        digits.clear();
-
-        let component_seconds = parse_duration_component_seconds(
+        let component_nanoseconds = parse_duration_component_nanoseconds(
             in_time,
             ch,
-            n,
+            &number,
             &mut date_order,
             &mut time_order,
             &mut found_time_component,
         )?;
+        fractional_component_seen = number.contains('.');
+        number.clear();
 
-        total_seconds = total_seconds
-            .checked_add(component_seconds)
+        total_nanoseconds = total_nanoseconds
+            .checked_add(component_nanoseconds)
             .ok_or_else(|| "duration value is too large".to_string())?;
         found_component = true;
     }
 
-    if !digits.is_empty() {
+    if !number.is_empty() {
         return Err("duration is missing a trailing unit (H, M, or S)".to_string());
     }
     if in_time && !found_time_component {
         return Err("time designator 'T' must be followed by a time component".to_string());
     }
     if found_component {
-        Ok(total_seconds)
+        Ok(total_nanoseconds)
     } else {
         Err("must include at least one duration component".to_string())
     }
 }
 
-fn parse_week_duration_seconds(weeks: &str) -> std::result::Result<u64, String> {
-    if weeks.is_empty() || weeks.contains('T') || !weeks.chars().all(|ch| ch.is_ascii_digit()) {
+fn parse_week_duration_nanoseconds(weeks: &str) -> std::result::Result<u128, String> {
+    if weeks.is_empty() || weeks.contains('T') {
         return Err("week duration must use the form PnW".to_string());
     }
-    weeks
-        .parse::<u64>()
-        .map_err(|_| "duration value is too large".to_string())?
-        .checked_mul(ONE_WEEK_SECONDS)
-        .ok_or_else(|| "duration value is too large".to_string())
+    parse_duration_number_nanoseconds(weeks, ONE_WEEK_SECONDS)
 }
 
-fn parse_duration_component_seconds(
+fn parse_duration_component_nanoseconds(
     in_time: bool,
     unit: char,
-    value: u64,
+    value: &str,
     date_order: &mut u8,
     time_order: &mut u8,
     found_time_component: &mut bool,
-) -> std::result::Result<u64, String> {
+) -> std::result::Result<u128, String> {
     match (in_time, unit) {
         (false, 'Y') => zero_only_calendar_component(value, date_order, 1),
         (false, 'M') => zero_only_calendar_component(value, date_order, 2),
         (false, 'D') => {
             ensure_component_order(date_order, 3, "date")?;
-            value
-                .checked_mul(ONE_DAY_SECONDS)
-                .ok_or_else(|| "duration value is too large".to_string())
+            parse_duration_number_nanoseconds(value, ONE_DAY_SECONDS)
         }
         (true, 'H') => parse_time_component(value, time_order, 1, ONE_HOUR_SECONDS),
         (true, 'M') => parse_time_component(value, time_order, 2, ONE_MINUTE_SECONDS),
         (true, 'S') => {
             ensure_component_order(time_order, 3, "time")?;
             *found_time_component = true;
-            Ok(value)
+            parse_duration_number_nanoseconds(value, 1)
         }
         _ => Err("unsupported duration component".to_string()),
     }
@@ -198,12 +206,12 @@ fn parse_duration_component_seconds(
 }
 
 fn zero_only_calendar_component(
-    value: u64,
+    value: &str,
     date_order: &mut u8,
     current_order: u8,
-) -> std::result::Result<u64, String> {
+) -> std::result::Result<u128, String> {
     ensure_component_order(date_order, current_order, "date")?;
-    if value == 0 {
+    if parse_duration_number_nanoseconds(value, 1)? == 0 {
         Ok(0)
     } else {
         Err("calendar year and month components have variable elapsed time".to_string())
@@ -211,14 +219,58 @@ fn zero_only_calendar_component(
 }
 
 fn parse_time_component(
-    value: u64,
+    value: &str,
     time_order: &mut u8,
     current_order: u8,
-    multiplier: u64,
-) -> std::result::Result<u64, String> {
+    multiplier: u128,
+) -> std::result::Result<u128, String> {
     ensure_component_order(time_order, current_order, "time")?;
-    value
-        .checked_mul(multiplier)
+    parse_duration_number_nanoseconds(value, multiplier)
+}
+
+fn parse_duration_number_nanoseconds(
+    value: &str,
+    seconds_multiplier: u128,
+) -> std::result::Result<u128, String> {
+    let (whole, fraction) = value
+        .split_once('.')
+        .map_or((value, None), |(whole, fraction)| (whole, Some(fraction)));
+    if whole.is_empty()
+        || !whole.chars().all(|ch| ch.is_ascii_digit())
+        || fraction.is_some_and(|fraction| {
+            fraction.is_empty() || !fraction.chars().all(|ch| ch.is_ascii_digit())
+        })
+    {
+        return Err("duration component must be a decimal number".to_string());
+    }
+
+    let whole_nanoseconds = whole
+        .parse::<u128>()
+        .map_err(|_| "duration value is too large".to_string())?
+        .checked_mul(seconds_multiplier)
+        .and_then(|seconds| seconds.checked_mul(NANOS_PER_SECOND))
+        .ok_or_else(|| "duration value is too large".to_string())?;
+    let fractional_nanoseconds = fraction.map_or(Ok(0), |fraction| {
+        let (nanoseconds_text, remainder) = if fraction.len() > 9 {
+            fraction.split_at(9)
+        } else {
+            (fraction, "")
+        };
+        if remainder.chars().any(|ch| ch != '0') {
+            return Err("fractional precision exceeds nanoseconds".to_string());
+        }
+        nanoseconds_text
+            .parse::<u128>()
+            .map_err(|_| "duration value is too large".to_string())
+            .and_then(|nanoseconds| {
+                nanoseconds
+                    .checked_mul(SUBSECOND_SCALES[9 - nanoseconds_text.len()])
+                    .and_then(|nanoseconds| nanoseconds.checked_mul(seconds_multiplier))
+                    .ok_or_else(|| "duration value is too large".to_string())
+            })
+    })?;
+    whole_nanoseconds
+        .checked_add(fractional_nanoseconds)
         .ok_or_else(|| "duration value is too large".to_string())
 }
 
@@ -236,7 +288,7 @@ fn ensure_component_order(
     Ok(())
 }
 
-fn format_iso_duration(seconds: u64) -> String {
+fn format_iso_duration(seconds: u128) -> String {
     if seconds.is_multiple_of(ONE_HOUR_SECONDS) {
         return format!("PT{}H", seconds / ONE_HOUR_SECONDS);
     }
@@ -519,9 +571,12 @@ mod tests {
     #[test]
     fn parse_cluster_idle_timeout_enforces_iso_and_bounds() {
         assert!(parse_cluster_idle_timeout("PT20M").is_ok());
+        assert!(parse_cluster_idle_timeout("PT1200.5S").is_ok());
         assert!(parse_cluster_idle_timeout("PT24H").is_ok());
         assert!(parse_cluster_idle_timeout("P1D").is_ok());
+        assert!(parse_cluster_idle_timeout("PT1199.999999999S").is_err());
         assert!(parse_cluster_idle_timeout("PT19M").is_err());
+        assert!(parse_cluster_idle_timeout("PT86400.000000001S").is_err());
         assert!(parse_cluster_idle_timeout("PT24H1M").is_err());
         assert!(parse_cluster_idle_timeout("P1DT1S").is_err());
         assert!(parse_cluster_idle_timeout("foo").is_err());
@@ -539,14 +594,33 @@ mod tests {
     }
 
     #[test]
-    fn parse_iso8601_duration_seconds_supports_composite_values() {
-        assert_eq!(parse_iso8601_duration_seconds("PT1H30M"), Ok(5400));
-        assert_eq!(parse_iso8601_duration_seconds("PT45M15S"), Ok(2715));
-        assert_eq!(parse_iso8601_duration_seconds("P1D"), Ok(86400));
-        assert_eq!(parse_iso8601_duration_seconds("P1DT30M"), Ok(88200));
-        assert_eq!(parse_iso8601_duration_seconds("P2W"), Ok(1_209_600));
-        assert!(parse_iso8601_duration_seconds("PT1M1H").is_err());
-        assert!(parse_iso8601_duration_seconds("P1M").is_err());
+    fn parse_iso8601_duration_nanoseconds_supports_composite_and_fractional_values() {
+        assert_eq!(
+            parse_iso8601_duration_nanoseconds("PT1H30M"),
+            Ok(5_400 * NANOS_PER_SECOND)
+        );
+        assert_eq!(
+            parse_iso8601_duration_nanoseconds("PT45M15S"),
+            Ok(2_715 * NANOS_PER_SECOND)
+        );
+        assert_eq!(
+            parse_iso8601_duration_nanoseconds("P1D"),
+            Ok(86_400 * NANOS_PER_SECOND)
+        );
+        assert_eq!(
+            parse_iso8601_duration_nanoseconds("P1DT30M"),
+            Ok(88_200 * NANOS_PER_SECOND)
+        );
+        assert_eq!(
+            parse_iso8601_duration_nanoseconds("P2W"),
+            Ok(1_209_600 * NANOS_PER_SECOND)
+        );
+        assert_eq!(
+            parse_iso8601_duration_nanoseconds("PT1200.5S"),
+            Ok(1_200_500_000_000)
+        );
+        assert!(parse_iso8601_duration_nanoseconds("PT1M1H").is_err());
+        assert!(parse_iso8601_duration_nanoseconds("P1M").is_err());
     }
 
     #[test]
