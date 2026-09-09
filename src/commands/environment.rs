@@ -7,6 +7,12 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
+const ONE_HOUR_SECONDS: u64 = 60 * 60;
+const ONE_MINUTE_SECONDS: u64 = 60;
+const TWENTY_MINUTES_SECONDS: u64 = 20 * ONE_MINUTE_SECONDS;
+const THIRTY_MINUTES_SECONDS: u64 = 30 * ONE_MINUTE_SECONDS;
+const TWENTY_FOUR_HOURS_SECONDS: u64 = 24 * ONE_HOUR_SECONDS;
+
 #[derive(Clone, Copy, Debug, ValueEnum)]
 pub enum CustomLivePoolSupport {
     #[value(name = "Enabled")]
@@ -349,6 +355,7 @@ pub enum EnvironmentCommand {
         /// Hydrated-cluster idle timeout as an ISO 8601 duration (PT20M through PT24H).
         #[arg(
             long,
+            value_parser = parse_cluster_idle_timeout,
             conflicts_with_all = ["file", "content", "clear_custom_live_pool_settings"]
         )]
         cluster_idle_timeout: Option<String>,
@@ -356,6 +363,7 @@ pub enum EnvironmentCommand {
         /// Live-pool activation lifespan as an ISO 8601 duration (PT30M through PT24H).
         #[arg(
             long,
+            value_parser = parse_custom_live_pool_lifespan,
             conflicts_with_all = ["file", "content", "clear_custom_live_pool_settings"]
         )]
         custom_live_pool_lifespan: Option<String>,
@@ -989,6 +997,128 @@ fn parse_spark_property(s: &str) -> Result<(String, String)> {
     Ok((key.to_string(), value.to_string()))
 }
 
+fn parse_cluster_idle_timeout(value: &str) -> std::result::Result<String, String> {
+    validate_iso8601_duration_in_range(
+        "--cluster-idle-timeout",
+        value,
+        TWENTY_MINUTES_SECONDS,
+        TWENTY_FOUR_HOURS_SECONDS,
+    )
+    .map(|_| value.to_string())
+}
+
+fn parse_custom_live_pool_lifespan(value: &str) -> std::result::Result<String, String> {
+    validate_iso8601_duration_in_range(
+        "--custom-live-pool-lifespan",
+        value,
+        THIRTY_MINUTES_SECONDS,
+        TWENTY_FOUR_HOURS_SECONDS,
+    )
+    .map(|_| value.to_string())
+}
+
+fn validate_iso8601_duration_in_range(
+    flag_name: &str,
+    value: &str,
+    min_seconds: u64,
+    max_seconds: u64,
+) -> std::result::Result<u64, String> {
+    let seconds = parse_iso8601_duration_seconds(value).map_err(|message| {
+        format!(
+            "Invalid {flag_name} '{value}': {message}. Use an ISO 8601 duration such as PT20M, PT1H, or PT1H30M."
+        )
+    })?;
+    if (min_seconds..=max_seconds).contains(&seconds) {
+        return Ok(seconds);
+    }
+
+    Err(format!(
+        "Invalid {flag_name} '{value}': duration must be between {} and {}.",
+        format_iso_duration(min_seconds),
+        format_iso_duration(max_seconds),
+    ))
+}
+
+fn parse_iso8601_duration_seconds(value: &str) -> std::result::Result<u64, String> {
+    if !value.starts_with("PT") {
+        return Err("must start with 'PT'".to_string());
+    }
+
+    let mut digits = String::new();
+    let mut total_seconds = 0_u64;
+    let mut found_component = false;
+    let mut seen_hour = false;
+    let mut seen_minute = false;
+    let mut seen_second = false;
+
+    for ch in value["PT".len()..].chars() {
+        if ch.is_ascii_digit() {
+            digits.push(ch);
+            continue;
+        }
+        if digits.is_empty() {
+            return Err("duration component is missing its numeric value".to_string());
+        }
+
+        let n = digits
+            .parse::<u64>()
+            .map_err(|_| "duration value is too large".to_string())?;
+        digits.clear();
+
+        let component_seconds = match ch {
+            'H' if !seen_hour && !seen_minute && !seen_second => {
+                seen_hour = true;
+                n.checked_mul(ONE_HOUR_SECONDS)
+                    .ok_or_else(|| "duration value is too large".to_string())?
+            }
+            'M' if !seen_minute && !seen_second => {
+                seen_minute = true;
+                n.checked_mul(ONE_MINUTE_SECONDS)
+                    .ok_or_else(|| "duration value is too large".to_string())?
+            }
+            'S' if !seen_second => {
+                seen_second = true;
+                n
+            }
+            _ => return Err("unsupported or duplicate duration component".to_string()),
+        };
+
+        total_seconds = total_seconds
+            .checked_add(component_seconds)
+            .ok_or_else(|| "duration value is too large".to_string())?;
+        found_component = true;
+    }
+
+    if !digits.is_empty() {
+        return Err("duration is missing a trailing unit (H, M, or S)".to_string());
+    }
+    if found_component {
+        Ok(total_seconds)
+    } else {
+        Err("must include at least one duration component".to_string())
+    }
+}
+
+fn format_iso_duration(seconds: u64) -> String {
+    if seconds.is_multiple_of(ONE_HOUR_SECONDS) {
+        return format!("PT{}H", seconds / ONE_HOUR_SECONDS);
+    }
+    if seconds.is_multiple_of(ONE_MINUTE_SECONDS) {
+        return format!("PT{}M", seconds / ONE_MINUTE_SECONDS);
+    }
+    format!("PT{seconds}S")
+}
+
+fn sanitize_staging_spark_compute_body(body: &mut Value) {
+    if let Some(instance_pool) = body
+        .as_object_mut()
+        .and_then(|obj| obj.get_mut("instancePool"))
+        .and_then(Value::as_object_mut)
+    {
+        instance_pool.remove("maxClustersToHydrateLimit");
+    }
+}
+
 /// Apply typed runtime-version / spark-property overrides onto an existing
 /// staging sparkcompute object, preserving all other fields (and existing
 /// `sparkProperties` keys that are not overridden). Pure function for testing.
@@ -1185,7 +1315,7 @@ async fn update_staging_spark_compute(
         return Ok(());
     }
 
-    let body = if let Some((v, _)) = raw_body {
+    let mut body = if let Some((v, _)) = raw_body {
         v
     } else {
         // read-merge-write: fetch current staging compute, apply overrides.
@@ -1203,6 +1333,7 @@ async fn update_staging_spark_compute(
             clear_custom_live_pool_settings,
         )
     };
+    sanitize_staging_spark_compute_body(&mut body);
 
     let data = client.patch(&path, &body).await.map_err(|e| {
         enrich_forbidden(e, "environment update-staging-spark-compute", "Contributor")
@@ -1297,6 +1428,32 @@ mod tests {
     fn parse_spark_property_rejects_empty_key() {
         assert!(parse_spark_property("=true").is_err());
         assert!(parse_spark_property("   =true").is_err());
+    }
+
+    #[test]
+    fn parse_cluster_idle_timeout_enforces_iso_and_bounds() {
+        assert!(parse_cluster_idle_timeout("PT20M").is_ok());
+        assert!(parse_cluster_idle_timeout("PT24H").is_ok());
+        assert!(parse_cluster_idle_timeout("PT19M").is_err());
+        assert!(parse_cluster_idle_timeout("PT24H1M").is_err());
+        assert!(parse_cluster_idle_timeout("foo").is_err());
+    }
+
+    #[test]
+    fn parse_custom_live_pool_lifespan_enforces_iso_and_bounds() {
+        assert!(parse_custom_live_pool_lifespan("PT30M").is_ok());
+        assert!(parse_custom_live_pool_lifespan("PT24H").is_ok());
+        assert!(parse_custom_live_pool_lifespan("PT29M59S").is_err());
+        assert!(parse_custom_live_pool_lifespan("PT25H").is_err());
+        assert!(parse_custom_live_pool_lifespan("bar").is_err());
+    }
+
+    #[test]
+    fn parse_iso8601_duration_seconds_supports_composite_values() {
+        assert_eq!(parse_iso8601_duration_seconds("PT1H30M"), Ok(5400));
+        assert_eq!(parse_iso8601_duration_seconds("PT45M15S"), Ok(2715));
+        assert!(parse_iso8601_duration_seconds("P1D").is_err());
+        assert!(parse_iso8601_duration_seconds("PT1M1H").is_err());
     }
 
     #[test]
@@ -1418,5 +1575,22 @@ mod tests {
         );
         assert_eq!(out["customLivePoolSupport"], "Disabled");
         assert!(out["customLivePoolSettings"].is_null());
+    }
+
+    #[test]
+    fn sanitize_staging_spark_compute_body_removes_read_only_limit() {
+        let mut body = json!({
+            "instancePool": {
+                "id": "pool-id",
+                "maxClustersToHydrateLimit": 12
+            }
+        });
+        sanitize_staging_spark_compute_body(&mut body);
+        assert_eq!(body["instancePool"]["id"], "pool-id");
+        assert!(
+            body["instancePool"]
+                .get("maxClustersToHydrateLimit")
+                .is_none()
+        );
     }
 }

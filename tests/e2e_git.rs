@@ -218,6 +218,215 @@ fn git_file_level_selective_commit_rejects_invalid_path() {
         .failure();
 }
 
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn git_file_level_selective_commit_live_roundtrip() {
+    let cfg = TestConfig::from_env();
+    let workspace = &cfg.dest_workspace;
+
+    let Some(connection_id) = find_github_connection_id() else {
+        eprintln!("No GitHub connection found, skipping test.");
+        return;
+    };
+
+    let _ = fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert();
+
+    fabio()
+        .args([
+            "git",
+            "connect",
+            "--workspace",
+            workspace,
+            "--provider",
+            "github",
+            "--owner",
+            "iemejia",
+            "--repo",
+            "fabio-test-connection",
+            "--branch",
+            "main",
+            "--connection-id",
+            &connection_id,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    retry_on_failure(|| {
+        fabio()
+            .args([
+                "git",
+                "init",
+                "--workspace",
+                workspace,
+                "--strategy",
+                "prefer-workspace",
+                "--wait",
+            ])
+            .timeout(std::time::Duration::from_mins(2))
+            .assert()
+    })
+    .success();
+
+    let notebook_name = format!(
+        "git_file_selective_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+    );
+    fabio()
+        .args([
+            "notebook",
+            "create",
+            "--workspace",
+            workspace,
+            "--name",
+            &notebook_name,
+            "--content",
+            "# selective file commit test",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+
+    let status_assert = retry_on_failure(|| {
+        fabio()
+            .args([
+                "git",
+                "status",
+                "--workspace",
+                workspace,
+                "--include-files-details",
+            ])
+            .timeout(std::time::Duration::from_mins(2))
+            .assert()
+    })
+    .success();
+    let status_json = parse_json(&status_assert);
+    let status_data = extract_data(&status_json);
+    let changes = status_data.as_array().map_or_else(
+        || {
+            status_data
+                .get("changes")
+                .and_then(serde_json::Value::as_array)
+                .cloned()
+                .expect("expected status changes array")
+        },
+        std::clone::Clone::clone,
+    );
+    let notebook_change = changes
+        .iter()
+        .find(|change| {
+            change
+                .pointer("/itemMetadata/displayName")
+                .and_then(serde_json::Value::as_str)
+                == Some(notebook_name.as_str())
+        })
+        .expect("expected notebook change");
+    let object_id = notebook_change
+        .pointer("/itemMetadata/itemIdentifier/objectId")
+        .and_then(serde_json::Value::as_str)
+        .expect("notebook object id");
+    let selected_path = notebook_change["fileChanges"]
+        .as_array()
+        .and_then(|files| files.first())
+        .and_then(|file| file.get("path"))
+        .and_then(serde_json::Value::as_str)
+        .expect("expected at least one changed file");
+
+    let commit_assert = retry_on_failure(|| {
+        fabio()
+            .args([
+                "git",
+                "commit",
+                "--workspace",
+                workspace,
+                "--file-selection",
+                &format!("{object_id}={selected_path}"),
+                "--message",
+                &format!("Selective file commit for {notebook_name}"),
+                "--wait",
+            ])
+            .timeout(std::time::Duration::from_mins(3))
+            .assert()
+    })
+    .success();
+    let commit_json = parse_json(&commit_assert);
+    let commit_data = extract_data(&commit_json);
+    assert_eq!(commit_data["status"], "Succeeded");
+
+    // Cleanup any remaining changes, delete notebook, and disconnect.
+    let _ = retry_on_failure(|| {
+        fabio()
+            .args([
+                "git",
+                "commit",
+                "--workspace",
+                workspace,
+                "--commit-all",
+                "--message",
+                "cleanup: finalize selective file commit test",
+                "--wait",
+            ])
+            .timeout(std::time::Duration::from_mins(3))
+            .assert()
+    });
+    if let Ok(output) = fabio()
+        .args(["item", "list", "--workspace", workspace, "-o", "json"])
+        .output()
+    {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if let Ok(list_json) = serde_json::from_str::<serde_json::Value>(&stdout)
+            && let Some(notebook_id) = list_json["data"].as_array().and_then(|items| {
+                items
+                    .iter()
+                    .find(|item| {
+                        item.get("displayName").and_then(serde_json::Value::as_str)
+                            == Some(notebook_name.as_str())
+                    })
+                    .and_then(|item| item.get("id"))
+                    .and_then(serde_json::Value::as_str)
+            })
+        {
+            let _ = fabio()
+                .args([
+                    "item",
+                    "delete",
+                    "--workspace",
+                    workspace,
+                    "--id",
+                    notebook_id,
+                ])
+                .timeout(std::time::Duration::from_mins(1))
+                .assert();
+            let _ = retry_on_failure(|| {
+                fabio()
+                    .args([
+                        "git",
+                        "commit",
+                        "--workspace",
+                        workspace,
+                        "--commit-all",
+                        "--message",
+                        "cleanup: delete selective file commit notebook",
+                        "--wait",
+                    ])
+                    .timeout(std::time::Duration::from_mins(3))
+                    .assert()
+            });
+        }
+    }
+    let _ = fabio()
+        .args(["git", "disconnect", "--workspace", workspace])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert();
+}
+
 // ---------------------------------------------------------------------------
 // Pull on unconnected workspace fails
 // ---------------------------------------------------------------------------
@@ -343,7 +552,30 @@ fn git_connect_init_status_disconnect_lifecycle() {
     let data = extract_data(&json);
     assert_eq!(data["status"], "initialized");
 
-    // Get status (should work now)
+    // Create a notebook so status has file-level changes to report.
+    let file_details_notebook = format!(
+        "git_file_details_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+    );
+    fabio()
+        .args([
+            "notebook",
+            "create",
+            "--workspace",
+            workspace,
+            "--name",
+            &file_details_notebook,
+            "--content",
+            "# file details test",
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+
+    // Get status with file details and assert the expected file path is present.
     let assert = retry_on_failure(|| {
         fabio()
             .args([
@@ -360,11 +592,65 @@ fn git_connect_init_status_disconnect_lifecycle() {
 
     let json = parse_json(&assert);
     let data = extract_data(&json);
-    // Status renders as list (array of changes) or object (with workspaceHead)
-    assert!(
-        data.is_array() || data.get("workspaceHead").is_some() || data.get("changes").is_some(),
-        "Status should contain workspaceHead, changes, or be a changes array: {data}"
+    let changes = data.as_array().map_or_else(
+        || {
+            data.get("changes")
+                .and_then(serde_json::Value::as_array)
+                .cloned()
+                .expect("expected status changes array")
+        },
+        std::clone::Clone::clone,
     );
+    let notebook_change = changes
+        .iter()
+        .find(|change| {
+            change
+                .pointer("/itemMetadata/displayName")
+                .and_then(serde_json::Value::as_str)
+                == Some(file_details_notebook.as_str())
+        })
+        .expect("expected notebook change");
+    let file_changes = notebook_change["fileChanges"]
+        .as_array()
+        .expect("expected fileChanges array");
+    assert!(
+        file_changes
+            .iter()
+            .any(|f| f["path"] == serde_json::json!("notebook-content.py")),
+        "expected notebook-content.py in fileChanges: {file_changes:?}"
+    );
+
+    // Delete the temporary notebook before disconnecting.
+    let assert = fabio()
+        .args(["item", "list", "--workspace", workspace, "-o", "json"])
+        .assert()
+        .success();
+    let items = parse_json(&assert)["data"]
+        .as_array()
+        .expect("items array")
+        .clone();
+    if let Some(notebook_id) = items
+        .iter()
+        .find(|item| {
+            item.get("displayName").and_then(serde_json::Value::as_str)
+                == Some(file_details_notebook.as_str())
+        })
+        .and_then(|item| item.get("id"))
+        .and_then(serde_json::Value::as_str)
+    {
+        fabio()
+            .args([
+                "item",
+                "delete",
+                "--workspace",
+                workspace,
+                "--id",
+                notebook_id,
+            ])
+            .timeout(std::time::Duration::from_mins(1))
+            .assert()
+            .success();
+    }
 
     // Disconnect
     let assert = fabio()

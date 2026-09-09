@@ -2773,7 +2773,7 @@
             "description": "Lakehouse ID"
           },
           "--top": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum rows to return (default: 100)"
           }
         },
@@ -2794,7 +2794,7 @@
             "description": "Lakehouse ID"
           },
           "--top": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum rows to return (default: 100)"
           }
         },
@@ -2815,7 +2815,7 @@
             "description": "Lakehouse ID"
           },
           "--top": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum rows to return (default: 100)"
           },
           "--label": {
@@ -2840,7 +2840,7 @@
             "description": "Lakehouse ID"
           },
           "--top": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum rows to return (default: 100)"
           }
         },
@@ -4619,7 +4619,7 @@
             "description": "Schema output format: native (default), mcp (Model Context Protocol), openai (function calling)"
           },
           "--budget": {
-            "type": "string",
+            "type": "integer",
             "description": "Approximate token budget — returns the most compact useful subset that fits within this many tokens (4 chars/token estimate). Overrides --full"
           }
         },
@@ -5425,7 +5425,7 @@
             "description": "CSV row terminator (e.g. \\n)"
           },
           "--first-row": {
-            "type": "string",
+            "type": "integer",
             "description": "CSV first data row (e.g. 2 to skip a header row)"
           },
           "--encoding": {
@@ -5548,7 +5548,7 @@
             "description": "Audit state (e.g. Enabled, Disabled)"
           },
           "--retention-days": {
-            "type": "string",
+            "type": "integer",
             "description": "Retention period in days"
           },
           "--audit-actions": {
@@ -5752,11 +5752,11 @@
             "description": "Continuously poll and stream NDJSON until `--max-duration`, `--limit`, or Ctrl-C (watch active queries live). The command always terminates"
           },
           "--interval": {
-            "type": "string",
+            "type": "integer",
             "description": "Seconds between polls in `--follow` mode (default 5)"
           },
           "--max-duration": {
-            "type": "string",
+            "type": "integer",
             "description": "Total seconds to follow before stopping — the agent-safety bound (default 60)"
           },
           "--dedup-column": {
@@ -5781,7 +5781,7 @@
             "description": "Warehouse or Lakehouse ID"
           },
           "--top": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum rows to return (default: 100)"
           }
         },
@@ -5802,7 +5802,7 @@
             "description": "Warehouse or Lakehouse ID"
           },
           "--top": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum rows to return (default: 100)"
           }
         },
@@ -5823,7 +5823,7 @@
             "description": "Warehouse or Lakehouse ID"
           },
           "--top": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum rows to return (default: 100)"
           },
           "--label": {
@@ -5848,7 +5848,7 @@
             "description": "Warehouse or Lakehouse ID"
           },
           "--session-id": {
-            "type": "string",
+            "type": "integer",
             "required": true,
             "description": "Session ID to terminate"
           }
@@ -5871,7 +5871,7 @@
             "description": "Warehouse or Lakehouse ID"
           },
           "--top": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum rows to return (default: 100)"
           }
         },
@@ -6028,7 +6028,7 @@
             "description": "Warehouse ID"
           },
           "--days": {
-            "type": "string",
+            "type": "integer",
             "required": true,
             "description": "Retention period in days (1-120). Decreasing it is irreversible (older history is garbage-collected)"
           }
@@ -6094,7 +6094,7 @@
             "description": "Creation mode: `New`, `Restore`, or `RestoreDeletedDatabase`"
           },
           "--backup-retention-days": {
-            "type": "string",
+            "type": "integer",
             "description": "Backup retention period in days (1-35, for mode=New)"
           },
           "--collation": {
@@ -6318,7 +6318,7 @@
             "description": "Audit state: Enabled or Disabled"
           },
           "--retention-days": {
-            "type": "string",
+            "type": "integer",
             "description": "Retention days (0 = indefinite)"
           },
           "--audit-actions": {
@@ -6487,7 +6487,7 @@
             "description": "SQL database ID"
           },
           "--top": {
-            "type": "string",
+            "type": "integer",
             "description": "Number of rows to return"
           },
           "--label": {
@@ -6512,7 +6512,7 @@
             "description": "SQL database ID"
           },
           "--session-id": {
-            "type": "string",
+            "type": "integer",
             "required": true,
             "description": "Session ID to kill"
           }
@@ -6898,7 +6898,7 @@
             "description": "Audit state: Enabled or Disabled"
           },
           "--retention-days": {
-            "type": "string",
+            "type": "integer",
             "description": "Retention days (0 = indefinite)"
           },
           "--audit-actions": {
@@ -6971,7 +6971,7 @@
             "description": "SQL endpoint ID"
           },
           "--top": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum rows to return (default: 100)"
           }
         },
@@ -6992,7 +6992,7 @@
             "description": "SQL endpoint ID"
           },
           "--top": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum rows to return (default: 100)"
           }
         },
@@ -7013,7 +7013,7 @@
             "description": "SQL endpoint ID"
           },
           "--top": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum rows to return (default: 100)"
           },
           "--label": {
@@ -7038,7 +7038,7 @@
             "description": "SQL endpoint ID"
           },
           "--top": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum rows to return (default: 100)"
           }
         },
@@ -7224,7 +7224,7 @@
             "description": "MCP server URL to query directly (from the agent's Settings → Model Context Protocol tab)"
           },
           "--repeats": {
-            "type": "string",
+            "type": "integer",
             "description": "Number of times to run each question (default: 1)"
           },
           "--stage": {
@@ -7232,11 +7232,11 @@
             "description": "Agent stage to query: only `production` (published) is supported via the public API"
           },
           "--timeout": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum wait time in seconds per question run (default: 300)"
           },
           "--concurrency": {
-            "type": "string",
+            "type": "integer",
             "description": "Number of question runs to execute concurrently (default: 1 = sequential). Higher values speed up large sets but increase capacity load"
           },
           "--critic-prompt": {
@@ -9139,7 +9139,7 @@
             "description": "Enable or disable custom live-pool support. Disabling retains hydration settings"
           },
           "--max-clusters-to-hydrate": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum clusters to pre-hydrate per activation cycle (minimum 1)"
           },
           "--cluster-idle-timeout": {
@@ -9299,7 +9299,7 @@
             "description": "Wait for the pipeline run to complete (polls until finished)"
           },
           "--timeout": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum time to wait in seconds"
           },
           "--cancel-on-timeout": {
@@ -9747,7 +9747,7 @@
             "description": "Wait for the job to complete (poll the job instance)"
           },
           "--timeout": {
-            "type": "string",
+            "type": "integer",
             "description": "Max seconds to wait when --wait is set"
           },
           "--cancel-on-timeout": {
@@ -10000,7 +10000,7 @@
             "description": "Output file path (writes raw Apache Arrow IPC bytes). If not specified, reports metadata only"
           },
           "--arrow-version": {
-            "type": "string",
+            "type": "integer",
             "description": "Apache Arrow version for response format: 1 (default) or 2"
           }
         },
@@ -10445,19 +10445,19 @@
             "description": "Value field(s), repeatable: Table.Column (auto-Sum), Sum(Table.Column), Avg/Min/Max/Count/CountNonNull(…), or Measure(Table.Name)"
           },
           "--x": {
-            "type": "string",
+            "type": "number",
             "description": "X position (default 40)"
           },
           "--y": {
-            "type": "string",
+            "type": "number",
             "description": "Y position (default 40)"
           },
           "--width": {
-            "type": "string",
+            "type": "number",
             "description": "Width (default 400)"
           },
           "--height": {
-            "type": "string",
+            "type": "number",
             "description": "Height (default 300)"
           }
         },
@@ -10569,7 +10569,7 @@
             "description": "Destination file path to write the exported report to"
           },
           "--timeout": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum seconds to wait for the export job to complete"
           }
         },
@@ -10869,7 +10869,7 @@
             "description": "Group-by column as `Table.Column` (repeatable; omit for a single-row total)"
           },
           "--top": {
-            "type": "string",
+            "type": "integer",
             "description": "Return only the top N rows (sorted by the first measure, descending)"
           }
         },
@@ -10989,11 +10989,11 @@
             "description": "Enhanced refresh commit mode: transactional | partialBatch"
           },
           "--max-parallelism": {
-            "type": "string",
+            "type": "integer",
             "description": "Enhanced refresh: maximum number of parallel processing threads"
           },
           "--retry-count": {
-            "type": "string",
+            "type": "integer",
             "description": "Enhanced refresh: number of times to retry on transient failure"
           }
         },
@@ -12325,7 +12325,7 @@
             "description": "DAX expression, e.g. `CALCULATE(SELECTEDMEASURE(), DATESYTD('Date'[Date]))`"
           },
           "--ordinal": {
-            "type": "string",
+            "type": "integer",
             "description": "Optional ordinal (sort position)"
           }
         },
@@ -12390,7 +12390,7 @@
             "description": "New DAX expression"
           },
           "--ordinal": {
-            "type": "string",
+            "type": "integer",
             "description": "New ordinal (sort position)"
           }
         },
@@ -13225,7 +13225,7 @@
             "description": "Sensitivity label ID to apply on creation"
           },
           "--min-consumption-units": {
-            "type": "string",
+            "type": "number",
             "description": "Minimum consumption units to keep the eventhouse always-on (create-time only, `creationPayload.minimumConsumptionUnits`)"
           }
         },
@@ -13360,7 +13360,7 @@
             "description": "Override the cluster query URI (must be a trusted Kusto endpoint)"
           },
           "--timeout": {
-            "type": "string",
+            "type": "integer",
             "description": "Server-side query timeout in seconds (Kusto `servertimeout`, max 3600). Bounds a long-running query so it can never hang the caller"
           },
           "--follow": {
@@ -13368,11 +13368,11 @@
             "description": "Continuously re-run the query, streaming NDJSON until `--max-duration`, `--limit`, or Ctrl-C. Kusto has no server-push streaming, so this polls"
           },
           "--interval": {
-            "type": "string",
+            "type": "integer",
             "description": "Seconds between polls in `--follow` mode (default 5)"
           },
           "--max-duration": {
-            "type": "string",
+            "type": "integer",
             "description": "Total seconds to follow before stopping — the agent-safety bound (default 60). Even in `--follow` the command always terminates"
           },
           "--dedup-column": {
@@ -14209,7 +14209,7 @@
             "description": "Override the Kusto query URI (auto-discovered from database properties if omitted)"
           },
           "--timeout": {
-            "type": "string",
+            "type": "integer",
             "description": "Server-side query timeout in seconds (Kusto `servertimeout`, max 3600)"
           },
           "--follow": {
@@ -14217,11 +14217,11 @@
             "description": "Continuously re-run the query, streaming NDJSON until `--max-duration`, `--limit`, or Ctrl-C (Kusto has no server-push streaming, so this polls)"
           },
           "--interval": {
-            "type": "string",
+            "type": "integer",
             "description": "Seconds between polls in `--follow` mode (default 5)"
           },
           "--max-duration": {
-            "type": "string",
+            "type": "integer",
             "description": "Total seconds to follow before stopping — the agent-safety bound (default 60)"
           },
           "--dedup-column": {
@@ -15785,7 +15785,7 @@
             "description": "KQL query text defining the monitored stream (typed mode)"
           },
           "--interval": {
-            "type": "string",
+            "type": "integer",
             "description": "Query execution interval in seconds (typed mode)"
           },
           "--eventhouse-id": {
@@ -15998,7 +15998,7 @@
             "description": "End of the window (ISO 8601; default: now)"
           },
           "--max-results": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum activations to return (default 100, max 2000)"
           }
         },
@@ -16658,11 +16658,11 @@
             "description": "Enable auto-scale"
           },
           "--min-node-count": {
-            "type": "string",
+            "type": "integer",
             "description": "Minimum node count (when auto-scale is enabled)"
           },
           "--max-node-count": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum node count"
           },
           "--dynamic-executor-enabled": {
@@ -16670,11 +16670,11 @@
             "description": "Enable dynamic executor allocation"
           },
           "--min-executors": {
-            "type": "string",
+            "type": "integer",
             "description": "Minimum executors for dynamic allocation"
           },
           "--max-executors": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum executors for dynamic allocation"
           }
         },
@@ -17198,7 +17198,7 @@
             "description": "Wait for the job to complete (polls until finished)"
           },
           "--timeout": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum time to wait in seconds"
           },
           "--cancel-on-timeout": {
@@ -17638,11 +17638,11 @@
             "description": "Partition key path (e.g. /categoryId). A leading slash is added if omitted"
           },
           "--autoscale-max": {
-            "type": "string",
+            "type": "integer",
             "description": "Autoscale maximum throughput (RU/s). Fabric Cosmos is autoscale-only"
           },
           "--ttl": {
-            "type": "string",
+            "type": "integer",
             "description": "Default time-to-live for documents, in seconds (-1 = on, no expiry)"
           },
           "--endpoint": {
@@ -17714,7 +17714,7 @@
             "description": "Scope the query to a single partition-key value (else cross-partition)"
           },
           "--max-item-count": {
-            "type": "string",
+            "type": "integer",
             "description": "Max documents per page request (x-ms-max-item-count)"
           },
           "--endpoint": {
@@ -17756,7 +17756,7 @@
             "description": "Write mode: upsert (default, idempotent) or insert"
           },
           "--concurrency": {
-            "type": "string",
+            "type": "integer",
             "description": "Max concurrent writes (default: auto)"
           },
           "--continue-on-error": {
@@ -19174,7 +19174,7 @@
             "description": "Raw JSON request body (overrides --parameter). E.g. `{\"name\":\"John\",\"count\":3}`"
           },
           "--timeout": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum seconds to wait for the function to respond"
           }
         },
@@ -19838,7 +19838,7 @@
             "description": "Goal name"
           },
           "--rank": {
-            "type": "string",
+            "type": "integer",
             "description": "Optional display rank (ordering)"
           }
         },
@@ -20203,7 +20203,7 @@
             "description": "Wait for the refresh to complete"
           },
           "--timeout": {
-            "type": "string",
+            "type": "integer",
             "description": "Timeout in seconds when using --wait (default: 600)"
           }
         },
@@ -21470,7 +21470,7 @@
             "description": "Report parameter as name=value (repeatable)"
           },
           "--timeout": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum seconds to wait for the export job to complete"
           }
         },
@@ -23089,19 +23089,19 @@
             "description": "Subnet name (must be delegated to Microsoft.PowerPlatform/vnetaccesslinks)"
           },
           "--inactivity-minutes": {
-            "type": "string",
+            "type": "integer",
             "description": "Minutes of inactivity before auto-sleep (30, 60, 90, 120, 150, 240, 360, 480, 720, 1440)"
           },
           "--member-count": {
-            "type": "string",
+            "type": "integer",
             "description": "Fixed number of gateway members (1-11). Cannot be used together with --max-member-gateway-count/--min-member-gateway-count. Defaults to 1 when none of the member-count flags are provided"
           },
           "--max-member-gateway-count": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum number of gateway members (1-11, value range). Requires --min-member-gateway-count; cannot be used with --member-count"
           },
           "--min-member-gateway-count": {
-            "type": "string",
+            "type": "integer",
             "description": "Minimum number of gateway members (1-11, value range). Requires --max-member-gateway-count; cannot be used with --member-count"
           }
         },
@@ -23180,15 +23180,15 @@
             "description": "Load balancing setting (e.g., Failover, `RoundRobin`)"
           },
           "--member-count": {
-            "type": "string",
+            "type": "integer",
             "description": "Fixed number of gateway members (1-11, `VirtualNetwork` gateways only). Cannot be used together with --max-member-gateway-count/--min-member-gateway-count"
           },
           "--max-member-gateway-count": {
-            "type": "string",
+            "type": "integer",
             "description": "Maximum number of gateway members (1-11, value range). Requires --min-member-gateway-count; cannot be used with --member-count"
           },
           "--min-member-gateway-count": {
-            "type": "string",
+            "type": "integer",
             "description": "Minimum number of gateway members (1-11, value range). Requires --max-member-gateway-count; cannot be used with --member-count"
           }
         },
@@ -23507,7 +23507,7 @@
             "description": "Wait for the operation to complete"
           },
           "--timeout": {
-            "type": "string",
+            "type": "integer",
             "description": "Timeout in seconds when --wait is used (default: 120)"
           }
         },
@@ -23553,7 +23553,7 @@
             "description": "Wait for the operation to complete"
           },
           "--timeout": {
-            "type": "string",
+            "type": "integer",
             "description": "Timeout in seconds when --wait is used (default: 120)"
           }
         },
@@ -23656,7 +23656,7 @@
             "description": "Wait for the operation to complete"
           },
           "--timeout": {
-            "type": "string",
+            "type": "integer",
             "description": "Timeout in seconds when --wait is used (default: 120)"
           }
         },
@@ -23694,7 +23694,7 @@
             "description": "Wait for initialization to complete"
           },
           "--timeout": {
-            "type": "string",
+            "type": "integer",
             "description": "Timeout in seconds when --wait is used (default: 120)"
           }
         },
@@ -23739,7 +23739,7 @@
             "description": "Wait for initialization to complete"
           },
           "--timeout": {
-            "type": "string",
+            "type": "integer",
             "description": "Timeout in seconds when --wait is used (default: 120)"
           }
         },
@@ -24090,7 +24090,7 @@
         "description": "Find stale connections (never bound to an item, or whose credentials haven't been used recently) — a governance aid for reducing connection sprawl. Read-only: reports candidates for review, does not delete",
         "flags": {
           "--unused-days": {
-            "type": "string",
+            "type": "integer",
             "description": "Flag connections whose credentials have not been used in at least this many days (never-bound connections are always flagged)"
           },
           "--created-after": {
@@ -24895,7 +24895,7 @@
             "description": "Overwrite existing files in output directory"
           },
           "--concurrency": {
-            "type": "string",
+            "type": "integer",
             "description": "Max parallel getDefinition requests"
           }
         },
@@ -25067,11 +25067,11 @@
             "description": "Continuously poll the instance, streaming NDJSON until it reaches a terminal state (Completed/Failed/Cancelled/Deduped) or `--max-duration` / Ctrl-C. Watches an already-running job to completion; always terminates"
           },
           "--interval": {
-            "type": "string",
+            "type": "integer",
             "description": "Seconds between polls in `--follow` mode (default 5)"
           },
           "--max-duration": {
-            "type": "string",
+            "type": "integer",
             "description": "Total seconds to follow before stopping — the agent-safety bound (default 60)"
           }
         },
@@ -25105,7 +25105,7 @@
             "description": "Wait for the job to complete (polls until finished)"
           },
           "--timeout": {
-            "type": "u64",
+            "type": "integer",
             "description": "Maximum time to wait in seconds (default: 600). Only used with --wait",
             "default": "600"
           },
@@ -25737,11 +25737,11 @@
             "description": "Continuously poll the operation, streaming NDJSON until it reaches a terminal state (Succeeded/Failed/Canceled/Undefined) or `--max-duration` / Ctrl-C. Watches an async operation to completion; always terminates"
           },
           "--interval": {
-            "type": "string",
+            "type": "integer",
             "description": "Seconds between polls in `--follow` mode (default 5)"
           },
           "--max-duration": {
-            "type": "string",
+            "type": "integer",
             "description": "Total seconds to follow before stopping — the agent-safety bound (default 60)"
           }
         },

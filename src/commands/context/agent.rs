@@ -1518,12 +1518,15 @@ fn generate_flags(
                     .collect();
 
                 if possible_values.is_empty() {
-                    let type_str = existing_sc
-                        .and_then(|s| s.get("flags"))
-                        .and_then(serde_json::Value::as_object)
-                        .and_then(|f| f.get(&flag_name))
-                        .and_then(|fv| fv.get("type"))
-                        .and_then(serde_json::Value::as_str)
+                    let type_str = infer_scalar_parser_type(arg)
+                        .or_else(|| {
+                            existing_sc
+                                .and_then(|s| s.get("flags"))
+                                .and_then(serde_json::Value::as_object)
+                                .and_then(|f| f.get(&flag_name))
+                                .and_then(|fv| fv.get("type"))
+                                .and_then(serde_json::Value::as_str)
+                        })
                         .unwrap_or("string");
                     flag_obj.insert("type".to_owned(), serde_json::json!(type_str));
                 } else {
@@ -1559,6 +1562,30 @@ fn generate_flags(
     }
 
     flags
+}
+
+#[cfg(test)]
+fn infer_scalar_parser_type(arg: &clap::Arg) -> Option<&'static str> {
+    let type_id = arg.get_value_parser().type_id();
+    if type_id == std::any::TypeId::of::<i8>()
+        || type_id == std::any::TypeId::of::<i16>()
+        || type_id == std::any::TypeId::of::<i32>()
+        || type_id == std::any::TypeId::of::<i64>()
+        || type_id == std::any::TypeId::of::<i128>()
+        || type_id == std::any::TypeId::of::<isize>()
+        || type_id == std::any::TypeId::of::<u8>()
+        || type_id == std::any::TypeId::of::<u16>()
+        || type_id == std::any::TypeId::of::<u32>()
+        || type_id == std::any::TypeId::of::<u64>()
+        || type_id == std::any::TypeId::of::<u128>()
+        || type_id == std::any::TypeId::of::<usize>()
+    {
+        return Some("integer");
+    }
+    if type_id == std::any::TypeId::of::<f32>() || type_id == std::any::TypeId::of::<f64>() {
+        return Some("number");
+    }
+    None
 }
 
 /// Infer whether a command mutates state from its name.
@@ -1751,6 +1778,42 @@ mod tests {
                  Extra (in global_flags() but not a clap global): {extra:?}"
             );
         });
+    }
+
+    #[test]
+    fn generate_flags_infers_integer_scalar_parser_type() {
+        use clap::{Arg, Command};
+
+        let cmd = Command::new("test").arg(
+            Arg::new("max-clusters-to-hydrate")
+                .long("max-clusters-to-hydrate")
+                .action(clap::ArgAction::Set)
+                .value_parser(clap::value_parser!(i32).range(1..)),
+        );
+        let flags = generate_flags(&cmd, None);
+        let max = flags
+            .get("--max-clusters-to-hydrate")
+            .and_then(serde_json::Value::as_object)
+            .expect("flag should exist");
+        assert_eq!(max.get("type"), Some(&serde_json::json!("integer")));
+    }
+
+    #[test]
+    fn generate_flags_infers_number_scalar_parser_type() {
+        use clap::{Arg, Command};
+
+        let cmd = Command::new("test").arg(
+            Arg::new("sample")
+                .long("sample")
+                .action(clap::ArgAction::Set)
+                .value_parser(clap::value_parser!(f64)),
+        );
+        let flags = generate_flags(&cmd, None);
+        let sample = flags
+            .get("--sample")
+            .and_then(serde_json::Value::as_object)
+            .expect("flag should exist");
+        assert_eq!(sample.get("type"), Some(&serde_json::json!("number")));
     }
 
     /// Regenerate `commands.json` from clap metadata.

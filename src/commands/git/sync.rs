@@ -78,7 +78,7 @@ pub(super) async fn commit(
     )?;
     if !all && items.is_none() && items_with_file_selection.is_empty() {
         bail!(
-            "Specify --all, --items, --file-selection, or --all-files-for-item to choose changes"
+            "Specify --commit-all, --items, --file-selection, --all-files-for-item, --logical-file-selection, or --all-files-for-logical-item to choose changes"
         );
     }
 
@@ -169,8 +169,20 @@ fn build_items_with_file_selection(
     let mut selections = BTreeMap::<(String, String), Vec<String>>::new();
     add_all_files(&mut selections, "objectId", all_files_for_item)?;
     add_all_files(&mut selections, "logicalId", all_files_for_logical_item)?;
-    add_file_selections(&mut selections, "objectId", file_selections)?;
-    add_file_selections(&mut selections, "logicalId", logical_file_selections)?;
+    add_file_selections(
+        &mut selections,
+        "objectId",
+        file_selections,
+        "--file-selection",
+        "ITEM_ID",
+    )?;
+    add_file_selections(
+        &mut selections,
+        "logicalId",
+        logical_file_selections,
+        "--logical-file-selection",
+        "LOGICAL_ID",
+    )?;
     Ok(selections
         .into_iter()
         .map(|((identifier_field, identifier), selected_files)| {
@@ -202,17 +214,21 @@ fn add_file_selections(
     selections: &mut BTreeMap<(String, String), Vec<String>>,
     identifier_field: &str,
     file_selections: &[String],
+    flag_name: &str,
+    id_label: &str,
 ) -> Result<()> {
     for selection in file_selections {
         let (item_id, path) = selection.split_once('=').ok_or_else(|| {
             FabioError::with_hint(
                 ErrorCode::InvalidInput,
-                format!("Invalid --file-selection '{selection}'"),
-                "Use ITEM_ID=RELATIVE/PATH, for example --file-selection 00000000-0000-0000-0000-000000000000=metadata.json",
+                format!("Invalid {flag_name} '{selection}'"),
+                format!(
+                    "Use {id_label}=RELATIVE/PATH, for example {flag_name} 00000000-0000-0000-0000-000000000000=metadata.json"
+                ),
             )
         })?;
         if item_id.trim().is_empty() {
-            bail!("--file-selection requires a non-empty item ID");
+            bail!("{flag_name} requires a non-empty item ID");
         }
         validate_git_file_path(path)?;
         let key = (identifier_field.to_string(), item_id.to_string());
@@ -603,6 +619,14 @@ mod tests {
                 }),
             ]
         );
+    }
+
+    #[test]
+    fn rejects_invalid_logical_file_selection_with_correct_flag_name() {
+        let err = build_items_with_file_selection(&[], &[], &["logical-a".to_string()], &[])
+            .expect_err("invalid selector should fail")
+            .to_string();
+        assert!(err.contains("Invalid --logical-file-selection"));
     }
 
     #[test]
