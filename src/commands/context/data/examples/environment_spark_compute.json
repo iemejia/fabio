@@ -21,11 +21,11 @@
   "notes": "maxClustersToHydrateLimit is server-computed from capacity size. Disabling live-pool support retains settings; --clear-custom-live-pool-settings sends null to remove them.",
   "query_examples": [
     {
-      "query": "data.instancePool.maxClustersToHydrateLimit",
+      "query": "instancePool.maxClustersToHydrateLimit",
       "description": "Read the capacity-dependent hydration limit."
     },
     {
-      "query": "data.customLivePoolSettings",
+      "query": "customLivePoolSettings",
       "description": "Extract all live-pool hydration settings."
     }
   ]

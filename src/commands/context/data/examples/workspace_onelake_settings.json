@@ -3,7 +3,6 @@
   "description": "Inspect OneLake lifecycle settings, including file access-time tracking.",
   "response": {
     "data": {
-      "workspaceId": "cfafbeb1-8037-4d0c-896e-a46fb27ff227",
       "lifecycle": {
         "defaultTier": "Cool",
         "policy": "Active",
@@ -14,7 +13,7 @@
   "notes": "When accessTimeTracking is Enabled, reads and writes update LastAccessTime. Metadata-only property, metadata, and tag operations do not.",
   "query_examples": [
     {
-      "query": "data.lifecycle.accessTimeTracking",
+      "query": "lifecycle.accessTimeTracking",
       "description": "Read the current access-time tracking status."
     }
   ]

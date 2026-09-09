@@ -253,7 +253,7 @@ fn validate_git_file_path(path: &str) -> Result<()> {
         || path.contains('?')
         || path.split('/').any(|segment| {
             segment.is_empty()
-                || segment.trim() != segment
+                || segment.trim().is_empty()
                 || segment.ends_with('.')
                 || segment.chars().last().is_some_and(char::is_whitespace)
         })
@@ -637,10 +637,16 @@ mod tests {
             "folder\\file.json",
             "*.json",
             "folder./file.json",
-            " folder/file.json",
+            "folder/file.json ",
+            "folder/ /file.json",
         ] {
             assert!(validate_git_file_path(path).is_err(), "{path} must fail");
         }
+    }
+
+    #[test]
+    fn accepts_file_level_paths_with_leading_segment_whitespace() {
+        assert!(validate_git_file_path("folder/ metadata.json").is_ok());
     }
 
     #[test]

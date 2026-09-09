@@ -57,7 +57,8 @@
 - `src/commands/ontology/generate.rs`: `ontology generate` — client-side reproduction of the portal "Generate Ontology" from a semantic model (reads INFO.VIEW schema → synthesizes OWL → creates+imports the ontology); unit tests
 - `src/commands/ontology/import.rs`: OWL RDF/XML + JSON-LD parser, Fabric format generator, RDF serializer (import/bind/export handlers)
 - `src/commands/ontology/mcp.rs`: `ontology mcp-url` — builds the ontology MCP server consumption URL (`build_mcp_url`) + existence check; unit tests
-- `src/commands/environment.rs`: list/show/create/update/delete/publish/cancel-publish/get-spark-settings/get-staging-spark-settings/upload-staging-library
+- `src/commands/environment/mod.rs`: list/show/create/update/delete/publish/cancel-publish/get-spark-settings/get-staging-spark-settings/upload-staging-library dispatch
+- `src/commands/environment/spark_compute.rs`: staging Spark compute typed overrides, ISO 8601 duration validation, and PATCH body sanitization
 - `src/commands/data_pipeline.rs`: list/show/create/update/delete/run, create-schedule, list-schedules/get-schedule/update-schedule/delete-schedule, list-instances/get-instance
 - `src/commands/report.rs`: list/show/create/update/delete/get-definition/update-definition
 - `src/commands/report_pbir.rs`: PBIP/PBIR offline validation (structural + cross-reference/naming/size) + full-folder report definition gathering (backs `report validate` and `report create --definition`)
