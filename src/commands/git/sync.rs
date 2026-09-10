@@ -271,9 +271,17 @@ fn add_file_selections(
     Ok(())
 }
 
+/// Detects a Windows drive-qualified prefix (for example `C:/metadata.json`),
+/// which is absolute rather than item-root-relative.
+fn has_drive_prefix(path: &str) -> bool {
+    let mut chars = path.chars();
+    matches!((chars.next(), chars.next()), (Some(c), Some(':')) if c.is_ascii_alphabetic())
+}
+
 fn validate_git_file_path(path: &str) -> Result<()> {
     if path.is_empty()
         || path.starts_with('/')
+        || has_drive_prefix(path)
         || path.contains('\\')
         || path.contains('*')
         || path.contains('?')
@@ -287,7 +295,7 @@ fn validate_git_file_path(path: &str) -> Result<()> {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
             format!("Invalid Git item-relative file path '{path}'"),
-            "Use a full relative file path with forward slashes, no leading slash, wildcards, empty segments, or segments ending in a dot or whitespace.",
+            "Use a full relative file path with forward slashes, no leading slash, drive letter, wildcards, empty segments, or segments ending in a dot or whitespace.",
         )
         .into());
     }
@@ -691,6 +699,8 @@ mod tests {
     fn rejects_invalid_file_level_selective_paths() {
         for path in [
             "/metadata.json",
+            "C:/metadata.json",
+            "c:metadata.json",
             "folder//file.json",
             "folder\\file.json",
             "*.json",
