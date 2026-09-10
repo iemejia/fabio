@@ -203,6 +203,37 @@ fn git_file_level_selective_commit_dry_run() {
 }
 
 #[test]
+fn git_file_level_selectors_reject_empty_identifiers_as_invalid_input() {
+    for (flag, value) in [
+        ("--file-selection", "=metadata.json"),
+        ("--all-files-for-logical-item", ""),
+    ] {
+        let assert = fabio()
+            .args([
+                "--dry-run",
+                "git",
+                "commit",
+                "--workspace",
+                "aaaaaaaa-1111-2222-3333-444444444444",
+                flag,
+                value,
+            ])
+            .assert()
+            .failure();
+
+        let error: serde_json::Value =
+            serde_json::from_slice(&assert.get_output().stderr).expect("JSON error on stderr");
+        assert_eq!(error["error"]["code"], "INVALID_INPUT", "{flag}");
+        assert!(
+            error["error"]["hint"]
+                .as_str()
+                .is_some_and(|hint| hint.contains(flag)),
+            "{flag} should have an actionable hint"
+        );
+    }
+}
+
+#[test]
 fn git_file_level_selective_commit_rejects_invalid_path() {
     fabio()
         .args([
