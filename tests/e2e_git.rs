@@ -206,6 +206,8 @@ fn git_file_level_selective_commit_dry_run() {
 fn git_file_level_selectors_reject_empty_identifiers_as_invalid_input() {
     for (flag, value) in [
         ("--file-selection", "=metadata.json"),
+        ("--logical-file-selection", "=definition.pbir"),
+        ("--all-files-for-item", ""),
         ("--all-files-for-logical-item", ""),
     ] {
         let assert = fabio()

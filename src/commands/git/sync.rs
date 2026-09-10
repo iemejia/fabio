@@ -242,7 +242,7 @@ fn add_file_selections(
                 ErrorCode::InvalidInput,
                 format!("Invalid {flag_name} '{selection}'"),
                 format!(
-                    "Use {id_label}=RELATIVE/PATH, for example {flag_name} 00000000-0000-0000-0000-000000000000=metadata.json"
+                    "Use {flag_name} {id_label}=RELATIVE/PATH, for example {flag_name} 00000000-0000-0000-0000-000000000000=metadata.json"
                 ),
             )
         })?;
@@ -251,7 +251,7 @@ fn add_file_selections(
                 ErrorCode::InvalidInput,
                 format!("{flag_name} requires a non-empty {id_label}"),
                 format!(
-                    "Use {id_label}=RELATIVE/PATH, for example {flag_name} 00000000-0000-0000-0000-000000000000=metadata.json"
+                    "Use {flag_name} {id_label}=RELATIVE/PATH, for example {flag_name} 00000000-0000-0000-0000-000000000000=metadata.json"
                 ),
             )
             .into());
