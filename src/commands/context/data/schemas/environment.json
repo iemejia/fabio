@@ -18,6 +18,9 @@
     "Changes are staged first, then published as separate step",
     "Publish is fire-and-forget: POST .../staging/publish with empty body",
     "Spark settings: GET .../sparkcompute (published) vs GET .../staging/sparkcompute (pending)",
+    "Live-pool pre-hydration: update staging compute with --live-pool-support Enabled plus --max-clusters-to-hydrate, --cluster-idle-timeout, and --live-pool-lifespan; publish before workloads use it",
+    "The instancePool.maxClustersToHydrateLimit response field is the capacity-computed upper bound for --max-clusters-to-hydrate",
+    "--clear-live-pool-settings sends customLivePoolSettings:null, removing hydration settings while retaining support state unless --live-pool-support is also supplied",
     "Library upload: POST .../staging/libraries/{libraryName} with octet-stream body",
     "Cancel publish available if publish is in progress"
   ],
@@ -26,6 +29,7 @@
     "fabio environment cancel-publish --workspace <WS> --id <ID>",
     "fabio environment get-spark-settings --workspace <WS> --id <ID>",
     "fabio environment get-staging-spark-settings --workspace <WS> --id <ID>",
-    "fabio environment upload-staging-library --workspace <WS> --id <ID> --file <FILE>"
+    "fabio environment upload-staging-library --workspace <WS> --id <ID> --file <FILE>",
+    "fabio environment update-staging-spark-compute --workspace <WS> --id <ID> --live-pool-support Enabled --max-clusters-to-hydrate 4 --cluster-idle-timeout PT20M --live-pool-lifespan PT1H"
   ]
 }

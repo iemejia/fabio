@@ -936,8 +936,8 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Definition format query param**: `POST /workspaces/{ws}/items/{id}/getDefinition?format={fmt}` supports format selection.
 - **Update definition metadata**: `POST /workspaces/{ws}/items/{id}/updateDefinition?updateMetadata=true` updates `.platform` metadata alongside definition parts.
 - **Bulk operations (all LRO)**:
-  - `POST /workspaces/{ws}/items/bulkExportDefinitions?beta=True` — exports multiple item definitions. Body: `{"mode":"All"}` (all items) or `{"mode":"Selective","items":[{"id":"<uuid>"},...]}`. Requires `?beta=True` query param. Response: `{"itemDefinitionsIndex":[{"id":"...","rootPath":"...","displayName":"...","type":"..."}],"definitionParts":[{"path":"...","payload":"...","payloadType":"InlineBase64"}]}`. Only exports items caller has read+write permissions for. Items with protected sensitivity labels are excluded.
-  - `POST /workspaces/{ws}/items/bulkImportDefinitions?beta=True` — imports multiple item definitions. Body: `{"itemDefinitions":[{"displayName":"...","type":"...","definition":{"parts":[...]}}],"allowPairingByName":true}`. The `allowPairingByName` option matches items by display name instead of logicalId (useful for initial clones). Requires `?beta=True` query param.
+  - `POST /workspaces/{ws}/items/bulkExportDefinitions` — exports multiple item definitions. Body: `{"mode":"All"}` (all items) or `{"mode":"Selective","items":[{"id":"<uuid>"},...]}`. The API graduated from beta in September 2026 and no longer accepts/requires `?beta=true`. Response: `{"itemDefinitionsIndex":[{"id":"...","rootPath":"...","displayName":"...","type":"..."}],"definitionParts":[{"path":"...","payload":"...","payloadType":"InlineBase64"}]}`. Only exports items caller has read+write permissions for. Items with protected sensitivity labels are excluded.
+  - `POST /workspaces/{ws}/items/bulkImportDefinitions` — imports multiple item definitions. Body: `{"itemDefinitions":[{"displayName":"...","type":"...","definition":{"parts":[...]}}],"allowPairingByName":true}`. The `allowPairingByName` option matches items by display name instead of logicalId (useful for initial clones). The API graduated from beta in September 2026 and no longer accepts/requires `?beta=true`.
   - `POST /workspaces/{ws}/items/bulkMove` — moves multiple items between folders/workspaces
   - **Git integration blocker**: Both `bulkExportDefinitions` and `bulkImportDefinitions` fail with `ActiveCiCdOperationInProgress` error when the workspace has Git integration connected. Disconnect Git first (`fabio git disconnect --workspace <WS>`) or use `deploy export/apply` instead (which uses per-item `getDefinition`/`updateDefinition` and is not affected by Git).
   - **Workspace clone**: `fabio workspace clone --source <WS> --dest <WS>` orchestrates bulk export → transform → bulk import. Supports `--allow-pairing-by-name` and `--item-types` for selective cloning.
@@ -1476,7 +1476,7 @@ Fabric's Cosmos DB uses the **same engine as Azure Cosmos DB for NoSQL**, so fab
 - **`StreamingVirtualNetworkGateway` type (new)**: `POST /gateways` with `"type": "StreamingVirtualNetwork"` only requires `displayName` and `virtualNetworkAzureResource` — no `capacityId`, `inactivityMinutesBeforeSleep`, or `numberOfMemberGateways` (unlike the regular `VirtualNetwork` type). Update (`UpdateStreamingVirtualNetworkGatewayRequest`) only supports the base `displayName`/`type` fields — no other mutable properties. `fabio gateway create-streaming` implements the create path; `fabio gateway update` (shared with all gateway types) covers the update path.
 - **`virtualNetworkAzureResource` uses component fields**: The API expects separate `subscriptionId`, `resourceGroupName`, `virtualNetworkName`, `subnetName` fields — NOT a full ARM resource ID.
 - **`inactivityMinutesBeforeSleep` is required**: Must be one of: 30, 60, 90, 120, 150, 240, 360, 480, 720, 1440. Default in CLI: 120. Not applicable to `StreamingVirtualNetwork` gateways.
-- **`numberOfMemberGateways` is required**: Must be between 1 and 9. Default in CLI: 1. Not applicable to `StreamingVirtualNetwork` gateways.
+- **VNet gateway member count**: `numberOfMemberGateways` or the min/max range is 1-11. Fabio defaults the fixed count to 1 when no count flags are supplied. Member counts do not apply to `StreamingVirtualNetwork` gateways.
 - **Creation is slow**: Gateway creation takes 60-90 seconds to return. No LRO pattern (returns 201 directly, but response is delayed).
 - **Update requires `type` field**: `PATCH /gateways/{id}` body MUST include `"type": "VirtualNetwork"` (or `"OnPremises"`/`"StreamingVirtualNetwork"` for other gateway types). Without it, returns "The request has an invalid input". The CLI auto-fetches the current type via GET before PATCH.
 - **VNet gateways have no "members" endpoint**: `GET /gateways/{id}/members` returns NOT_FOUND for VNet gateways. Members are an on-premises gateway concept.
@@ -2175,7 +2175,7 @@ Git commands are run with CWD set to source directory. Returns `None` entirely i
 - **Restart**: `POST /gateways/{id}/restart` with empty body `{}`. LRO (polls until complete). Requires Admin permission.
 - **Shutdown**: `POST /gateways/{id}/shutdown` with empty body `{}`. LRO (polls until complete). Requires Admin permission.
 - **All require gateway Admin role**: Lifecycle operations restricted to gateway administrators.
-- **`maxMemberGatewayCount`/`minMemberGatewayCount` supersede `numberOfMemberGateways`**: `CreateVirtualNetworkGatewayRequest`/`UpdateVirtualNetworkGatewayRequest`/`GatewayProperties` now support a range pair (`maxMemberGatewayCount`, `minMemberGatewayCount`) as an alternative to the legacy fixed `numberOfMemberGateways`. The two forms are **mutually exclusive** — sending both a fixed count and a range returns `400 ConflictingMemberGatewayCountProperties`. fabio enforces this client-side via clap `conflicts_with_all`/`requires` constraints (`--member-count` conflicts with `--max-member-gateway-count`/`--min-member-gateway-count`; the two range flags require each other).
+- **`maxMemberGatewayCount`/`minMemberGatewayCount` supersede `numberOfMemberGateways`**: `CreateVirtualNetworkGatewayRequest`/`UpdateVirtualNetworkGatewayRequest`/`GatewayProperties` support a 1-11 range pair (`maxMemberGatewayCount`, `minMemberGatewayCount`) as an alternative to the legacy fixed `numberOfMemberGateways` (also 1-11). The two forms are **mutually exclusive** — sending both a fixed count and a range returns `400 ConflictingMemberGatewayCountProperties`. fabio enforces this client-side via clap `conflicts_with_all`/`requires` constraints (`--member-count` conflicts with `--max-member-gateway-count`/`--min-member-gateway-count`; the two range flags require each other).
 - **`numberOfMemberGateways` no longer required on create**: The Fabric API removed it from `CreateVirtualNetworkGatewayRequest`'s `required` array (since the range pair is now a valid alternative). fabio's `gateway create` defaults to `numberOfMemberGateways: 1` only when neither the fixed count nor the range pair is supplied (preserves prior default behavior for existing scripts); `gateway update` does NOT apply this default — omitting all three flags leaves member count unchanged (partial PATCH semantics).
 
 ## Deploy Fabric-CICD Compatibility Behaviors Discovered
@@ -2203,7 +2203,7 @@ Git commands are run with CWD set to source directory. Returns `None` entirely i
 - **Workspace IDs appear frequently in definitions**: ~30% of definition-discovered edges are `workspace_ref` — notebooks and agents embed their workspace ID in metadata (trident, datasource configs). These are informational rather than item-to-item edges.
 - **Relationship classification by file path/content**: The definition file path and content context determine the semantic relationship type (e.g., `definition.pbir` → `bound_to_model`, `default_lakehouse` in content → `default_lakehouse`, `ExecutePipeline` → `executes`).
 - **Well-known GUIDs must be excluded**: All-zeros, all-f's, and near-zero GUIDs (`00000000-0000-0000-0000-00000000000X`) are placeholder values that should not be treated as item references.
-- **`bulkExportDefinitions` is documented but insufficient for context tenant**: The API is documented at `learn.microsoft.com/rest/api/fabric/core/items/bulk-export-item-definitions(beta)`. Correct format: `POST /workspaces/{ws}/items/bulkExportDefinitions?beta=True` with body `{"mode":"All"}` or `{"mode":"Selective","items":[{"id":"<uuid>"}]}`. Response: `{"itemDefinitionsIndex":[{"id","rootPath"}],"definitionParts":[{"path","payload","payloadType"}]}`. However, it only exports items the caller has **read+write** permissions for (vs `getDefinition` which works with read-only). Benchmarked: bulk exported 14/154 items (55 edges) vs per-item 35/154 items (88 edges). The per-item approach is preferred for context tenant because completeness matters more than speed — missing `bound_to_model`, `queries`, `streams_to` edges means incomplete dependency graphs. The 2x speed gain (2m vs 4m) does not justify losing 38% of relationships.
+- **`bulkExportDefinitions` is documented but insufficient for context tenant**: Correct format: `POST /workspaces/{ws}/items/bulkExportDefinitions` with body `{"mode":"All"}` or `{"mode":"Selective","items":[{"id":"<uuid>"}]}`. The September 2026 GA contract removed the former required `?beta=True` query parameter. Response: `{"itemDefinitionsIndex":[{"id","rootPath"}],"definitionParts":[{"path","payload","payloadType"}]}`. However, it only exports items the caller has **read+write** permissions for (vs `getDefinition` which works with read-only). Benchmarked: bulk exported 14/154 items (55 edges) vs per-item 35/154 items (88 edges). The per-item approach is preferred for context tenant because completeness matters more than speed — missing `bound_to_model`, `queries`, `streams_to` edges means incomplete dependency graphs. The 2x speed gain (2m vs 4m) does not justify losing 38% of relationships.
 - **Parallel workspace listing is safe**: Concurrent `GET /workspaces/{ws}/items` calls (one per workspace) do not trigger rate limiting on typical tenants (tested with 20 concurrent calls).
 - **LRO polling is the deep mode bottleneck**: Each `getDefinition` LRO takes 2-6 seconds (POST → 202 → poll at 2s intervals). With 8 concurrent slots and 123 items: ~4 minutes total. Wall-clock time is dominated by server-side processing, not client overhead.
 - **Performance benchmarks (20 workspaces, 154 items)**: Shallow mode: 7.7s. Deep + connections: 4 min 18s. Output size: 55-57 KB. Graph: 154 nodes, 88 edges, 10 relationship types.
@@ -3202,6 +3202,37 @@ implemented or confirmed to require no code change.
   `preview` query parameter" requirement text (that sentence was not touched by this diff — it
   predates this sync and is out of scope here since no diff hunk modified it), so it was not
   altered by this sync.
+
+## Fabric REST spec sync 198c6f5 (September 2026)
+
+- **Environment custom live pools**: Spark compute create/update shapes now accept
+  `customLivePoolSupport: "Enabled"|"Disabled"` and `customLivePoolSettings` with
+  `maxClustersToHydrate` (minimum 1), `clusterIdleTimeout` (`PT20M`-`PT24H`), and
+  `customLivePoolLifespan` (`PT30M`-`PT24H`). Update is partial: omitting either property retains
+  its current value; explicitly sending `customLivePoolSettings: null` removes hydration settings,
+  while `"Disabled"` retains them. `InstancePool.maxClustersToHydrateLimit` is read-only and gives
+  the capacity-size-dependent maximum. Fabio exposes typed staging flags and preserves omitted
+  fields with its existing read-merge-write path.
+- **Git file-level status and commit**: `GET /workspaces/{ws}/git/status` accepts optional
+  `includeFilesDetails=true`; each item change then includes `fileChanges[]` entries with required
+  item-root-relative `path` and `conflictType`, plus optional workspace/remote change types. Paths
+  use forward slashes, no leading slash/directories/wildcards/empty segments, and no segment may
+  end in a dot or whitespace. `CommitMode` adds `FileLevelSelective`; its
+  `itemsWithFileSelection[]` is mutually exclusive with `items`, and an absent/empty
+  `selectedFiles` commits all files in that item.
+- **OneLake access-time tracking**: `POST
+  /workspaces/{ws}/onelake/settings/modifyAccessTimeTracking` takes required
+  `{"status":"Enabled"|"Disabled"}`, requires workspace Admin plus `OneLake.ReadWrite.All`, and
+  returns an empty 200 response. Changes apply immediately. Reads and writes update Azure Storage
+  `LastAccessTime`; metadata-only property, metadata, and tag operations do not. Effective state is
+  returned as `lifecycle.accessTimeTracking` from `get-onelake-settings`. A workspace with no
+  provisioned OneLake item can return `OneLakeNotProvisioned`; throttling returns 429 with
+  `Retry-After`.
+- **GA and limits**: bulk definition export/import dropped the required `?beta=true` path/query and
+  preview banner; item `move`/`bulkMove` and tenant-setting override APIs also dropped their preview
+  banners without changing HTTP contracts. Move keeps its parent/child atomicity rule and bulk
+  move remains capped at 50 items. Virtual-network gateway fixed/min/max member counts now allow
+  1-11 instead of 1-9.
 
 ## Upgrade / Self-Update (GitHub Release API) Behaviors Discovered
 

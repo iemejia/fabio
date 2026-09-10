@@ -163,6 +163,51 @@ tests:
       - type: contains
         value: "2.0"
 
+  - description: "Environment: enable live-pool pre-hydration"
+    vars:
+      user_query: "Enable the live pool on my Spark environment, pre-hydrate 4 clusters, release idle clusters after 20 minutes, and stop the activation after one hour"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('environment update-staging-spark-compute')
+        metric: live-pool-command
+      - type: icontains
+        value: "--live-pool-support"
+      - type: contains
+        value: "Enabled"
+      - type: icontains
+        value: "--max-clusters-to-hydrate"
+      - type: icontains
+        value: "--cluster-idle-timeout"
+      - type: contains
+        value: "PT20M"
+
+  - description: "Git: commit selected files within an item"
+    vars:
+      user_query: "Commit only metadata.json from Fabric item $ITEM in workspace $WS"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('git commit')
+        metric: git-file-commit-command
+      - type: icontains
+        value: "--file-selection"
+      - type: contains
+        value: "metadata.json"
+
+  - description: "Workspace: enable OneLake access-time tracking"
+    vars:
+      user_query: "Enable LastAccessTime tracking for OneLake files in workspace $WS"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('workspace modify-access-time-tracking')
+        metric: onelake-access-time-command
+      - type: icontains
+        value: "--status"
+      - type: contains
+        value: "Enabled"
+
   - description: "Load Parquet with PascalCase"
     vars:
       user_query: "Load a parquet file into the orders table in append mode"

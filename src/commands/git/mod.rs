@@ -27,6 +27,10 @@ pub enum GitCommand {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
+
+        /// Include per-file changes for each changed item
+        #[arg(long)]
+        include_file_details: bool,
     },
     /// Commit workspace changes to the connected remote branch
     #[command(display_order = 2)]
@@ -40,12 +44,25 @@ pub enum GitCommand {
         message: Option<String>,
 
         /// Commit all pending changes
-        #[arg(long = "commit-all", visible_alias = "all", conflicts_with = "items")]
+        #[arg(
+            long = "commit-all",
+            visible_alias = "all",
+            conflicts_with_all = ["items", "file_selection"]
+        )]
         all: bool,
 
         /// Selective commit: comma-separated item object IDs
-        #[arg(long, value_delimiter = ',', conflicts_with = "all")]
+        #[arg(long, value_delimiter = ',', conflicts_with_all = ["all", "file_selection"])]
         items: Option<Vec<String>>,
+
+        /// File-level selection as `ITEM_ID=PATH[,PATH...]` (repeatable); use `ITEM_ID=` to commit all files for that item
+        #[arg(
+            long,
+            value_name = "ITEM_ID=PATH[,PATH...]",
+            action = clap::ArgAction::Append,
+            conflicts_with_all = ["all", "items"]
+        )]
+        file_selection: Vec<String>,
 
         /// Override workspace head (auto-fetched from status if omitted)
         #[arg(long, hide = true)]
@@ -283,12 +300,16 @@ pub enum CredentialsCommand {
 #[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> Result<()> {
     match command {
-        GitCommand::Status { workspace } => sync::status(cli, client, workspace).await,
+        GitCommand::Status {
+            workspace,
+            include_file_details,
+        } => sync::status(cli, client, workspace, *include_file_details).await,
         GitCommand::Commit {
             workspace,
             message,
             all,
             items,
+            file_selection,
             workspace_head,
             wait,
             timeout,
@@ -299,6 +320,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
             message.as_deref(),
             *all,
             items.as_deref(),
+            file_selection,
             workspace_head.as_deref(),
             *wait,
             *timeout,

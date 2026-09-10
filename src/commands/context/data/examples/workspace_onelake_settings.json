@@ -1,0 +1,30 @@
+{
+  "command": "fabio workspace get-onelake-settings --workspace $WS",
+  "description": "Inspect workspace OneLake settings, including lifecycle access-time tracking.",
+  "response": {
+    "data": {
+      "defaultDomain": null,
+      "diagnostics": {
+        "logAnalytics": {
+          "status": "Disabled"
+        }
+      },
+      "lifecycle": {
+        "defaultTier": "Cool",
+        "policy": "Active",
+        "accessTimeTracking": "Enabled"
+      }
+    }
+  },
+  "notes": "lifecycle.accessTimeTracking reports whether file reads and writes update Azure Storage LastAccessTime. Change it with workspace modify-access-time-tracking --status Enabled|Disabled; metadata-only operations do not update the timestamp.",
+  "query_examples": [
+    {
+      "query": "lifecycle.accessTimeTracking",
+      "description": "Extract the effective access-time tracking status."
+    },
+    {
+      "query": "lifecycle.{tier: defaultTier, policy: policy, accessTracking: accessTimeTracking}",
+      "description": "Summarize all lifecycle settings."
+    }
+  ]
+}

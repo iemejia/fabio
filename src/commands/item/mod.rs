@@ -313,7 +313,7 @@ pub enum ItemCommand {
         #[arg(long)]
         name: Option<String>,
     },
-    /// Move an item to a folder within the same workspace
+    /// Move an item to a folder in the same workspace; child items move with their parent
     #[command(name = "move-to-folder", display_order = 16)]
     MoveToFolder {
         /// Workspace ID
@@ -392,7 +392,7 @@ pub enum ItemCommand {
         #[arg(long, group = "input")]
         content: Option<String>,
     },
-    /// Bulk move items to another workspace (LRO)
+    /// Move up to 50 items to a folder; child items must move with their parent (LRO)
     #[command(display_order = 32)]
     BulkMove {
         /// Workspace ID

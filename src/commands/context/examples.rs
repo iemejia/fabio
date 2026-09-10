@@ -298,6 +298,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/data_pipeline_run.json"),
     ),
     ("git/status", include_str!("data/examples/git_status.json")),
+    (
+        "workspace/get-onelake-settings",
+        include_str!("data/examples/workspace_onelake_settings.json"),
+    ),
     ("rest/call", include_str!("data/examples/rest_call.json")),
     (
         "capacity/list-skus",

@@ -288,6 +288,64 @@ fn gateway_create_rejects_member_count_and_range_together() {
 }
 
 #[test]
+fn gateway_create_accepts_eleven_members() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "gateway",
+            "create",
+            "--name",
+            "test-gw-eleven",
+            "--capacity-id",
+            "00000000-0000-0000-0000-000000000001",
+            "--subscription-id",
+            "00000000-0000-0000-0000-000000000099",
+            "--resource-group",
+            "rg",
+            "--vnet-name",
+            "vnet",
+            "--subnet",
+            "default",
+            "--member-count",
+            "11",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    assert_eq!(json["data"]["details"]["numberOfMemberGateways"], 11);
+}
+
+#[test]
+fn gateway_create_rejects_twelve_members() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "gateway",
+            "create",
+            "--name",
+            "test-gw-twelve",
+            "--capacity-id",
+            "00000000-0000-0000-0000-000000000001",
+            "--subscription-id",
+            "00000000-0000-0000-0000-000000000099",
+            "--resource-group",
+            "rg",
+            "--vnet-name",
+            "vnet",
+            "--subnet",
+            "default",
+            "--member-count",
+            "12",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("11") || stderr.contains("range"));
+}
+
+#[test]
 #[ignore = "requires live Fabric tenant (gateway update needs GET to resolve gateway type before dry-run)"]
 fn gateway_update_dry_run_with_member_count_range() {
     let assert = fabio()

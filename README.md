@@ -26,7 +26,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 | Statistics management | No | List/show/create/update/delete user-defined statistics |
 | KQL query execution | No | KQL Database and Eventhouse queries |
 | Data Agent interaction | No | Create, configure, publish, and query Data Agents (staging management API, datasource/fewshot/config CRUD, single-turn `query` over the agent's MCP endpoint, `evaluate` batch runs, LLM-judged `validate-fewshots` and `evaluate --llm-*` via a bring-your-own judge model) |
-| Git integration | No | Full lifecycle: connect, status, commit, pull, switch branch |
+| Git integration | No | Full lifecycle: connect, file-level status/commit, pull, switch branch |
 | Notebook run | `job run` with `--wait`/`--timeout` | Run with `--wait`, `--timeout`, `--parameters`, cancel |
 | Bulk operations | No | `item bulk-create`, `item bulk-delete` (parallel) |
 | OneLake sync | No | rsync-like sync with rename detection and dedup |

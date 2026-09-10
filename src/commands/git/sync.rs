@@ -8,9 +8,14 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
-pub(super) async fn status(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
+pub(super) async fn status(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    include_file_details: bool,
+) -> Result<()> {
     let data = client
-        .get_with_lro(&format!("/workspaces/{workspace}/git/status"))
+        .get_with_lro(&status_path(workspace, include_file_details))
         .await?;
 
     let changes = data
@@ -22,21 +27,29 @@ pub(super) async fn status(cli: &Cli, client: &FabricClient, workspace: &str) ->
     if changes.is_empty() {
         output::render_object(cli, &data, "status");
     } else {
-        output::render_list(
-            cli,
-            &changes,
-            &[
-                "itemMetadata.displayName",
-                "itemMetadata.itemType",
-                "workspaceChange",
-                "remoteChange",
-                "conflictType",
-            ],
-            &["NAME", "TYPE", "WORKSPACE", "REMOTE", "CONFLICT"],
+        let mut fields = vec![
             "itemMetadata.displayName",
-        );
+            "itemMetadata.itemType",
+            "workspaceChange",
+            "remoteChange",
+            "conflictType",
+        ];
+        let mut headers = vec!["NAME", "TYPE", "WORKSPACE", "REMOTE", "CONFLICT"];
+        if include_file_details {
+            fields.push("fileChanges");
+            headers.push("FILE CHANGES");
+        }
+        output::render_list(cli, &changes, &fields, &headers, "itemMetadata.displayName");
     }
     Ok(())
+}
+
+fn status_path(workspace: &str, include_file_details: bool) -> String {
+    if include_file_details {
+        format!("/workspaces/{workspace}/git/status?includeFilesDetails=true")
+    } else {
+        format!("/workspaces/{workspace}/git/status")
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -47,15 +60,37 @@ pub(super) async fn commit(
     message: Option<&str>,
     all: bool,
     items: Option<&[String]>,
+    file_selection: &[String],
     workspace_head: Option<&str>,
     wait: bool,
     timeout: u64,
 ) -> Result<()> {
-    if !all && items.is_none() {
-        bail!("Specify --all to commit all changes, or --items for selective commit");
+    if !all && items.is_none() && file_selection.is_empty() {
+        bail!(
+            "Specify --all to commit all changes, --items for selective commit, or --file-selection for file-level selective commit"
+        );
     }
 
-    // Auto-fetch workspace head if not provided
+    let items_with_file_selection = parse_file_selections(file_selection)?;
+    let mode = if all {
+        "All"
+    } else if items.is_some() {
+        "Selective"
+    } else {
+        "FileLevelSelective"
+    };
+
+    let preview = build_commit_body(
+        mode,
+        workspace_head.unwrap_or("<auto-fetched from git status>"),
+        message,
+        items,
+        &items_with_file_selection,
+    );
+    if output::dry_run_guard(cli, "git commit", &preview) {
+        return Ok(());
+    }
+
     let head = if let Some(h) = workspace_head {
         h.to_string()
     } else {
@@ -73,23 +108,7 @@ pub(super) async fn commit(
             .to_string()
     };
 
-    let mode = if all { "All" } else { "Selective" };
-    let mut body = serde_json::json!({
-        "mode": mode,
-        "workspaceHead": head,
-    });
-
-    if let Some(msg) = message {
-        body["comment"] = Value::from(msg);
-    }
-
-    if let Some(item_ids) = items {
-        let item_objs: Vec<Value> = item_ids
-            .iter()
-            .map(|id| serde_json::json!({"objectId": id}))
-            .collect();
-        body["items"] = Value::Array(item_objs);
-    }
+    let body = build_commit_body(mode, &head, message, items, &items_with_file_selection);
 
     let data = client
         .post_with_timeout(
@@ -101,6 +120,93 @@ pub(super) async fn commit(
         .await?;
 
     output::render_object(cli, &data, "status");
+    Ok(())
+}
+
+fn build_commit_body(
+    mode: &str,
+    workspace_head: &str,
+    message: Option<&str>,
+    items: Option<&[String]>,
+    items_with_file_selection: &[Value],
+) -> Value {
+    let mut body = serde_json::json!({
+        "mode": mode,
+        "workspaceHead": workspace_head,
+    });
+    if let Some(message) = message {
+        body["comment"] = Value::from(message);
+    }
+    if let Some(item_ids) = items {
+        body["items"] = Value::Array(
+            item_ids
+                .iter()
+                .map(|id| serde_json::json!({"objectId": id}))
+                .collect(),
+        );
+    }
+    if !items_with_file_selection.is_empty() {
+        body["itemsWithFileSelection"] = Value::Array(items_with_file_selection.to_vec());
+    }
+    body
+}
+
+fn parse_file_selections(values: &[String]) -> Result<Vec<Value>> {
+    values
+        .iter()
+        .map(|value| {
+            let (item_id, paths) = value.split_once('=').ok_or_else(|| {
+                FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!("Invalid --file-selection '{value}': expected ITEM_ID=PATH[,PATH...]"),
+                    "Example: --file-selection <ITEM_ID>=metadata.json",
+                )
+            })?;
+            if item_id.trim().is_empty() {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!("Invalid --file-selection '{value}': item ID is empty"),
+                    "Provide an item object ID before '='.",
+                )
+                .into());
+            }
+            let selected_files = if paths.is_empty() {
+                Vec::new()
+            } else {
+                paths
+                    .split(',')
+                    .map(|path| {
+                        validate_selected_file(path)?;
+                        Ok(Value::from(path))
+                    })
+                    .collect::<Result<Vec<_>>>()?
+            };
+            Ok(serde_json::json!({
+                "objectId": item_id,
+                "selectedFiles": selected_files,
+            }))
+        })
+        .collect()
+}
+
+fn validate_selected_file(path: &str) -> Result<()> {
+    let invalid_segment = path.split('/').any(|segment| {
+        segment.trim().is_empty() || segment.ends_with('.') || segment != segment.trim_end()
+    });
+    if path.starts_with('/')
+        || path.ends_with('/')
+        || path.contains('\\')
+        || path.contains('*')
+        || path.contains('?')
+        || invalid_segment
+    {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid selected file path '{path}'"),
+            "Use a full path relative to the item root with forward slashes, no leading slash, wildcards, empty segments, trailing dots, or trailing whitespace.",
+        )
+        .into());
+    }
     Ok(())
 }
 
@@ -399,6 +505,15 @@ mod tests {
     }
 
     #[test]
+    fn status_path_adds_file_details_query_only_when_requested() {
+        assert_eq!(status_path("ws", false), "/workspaces/ws/git/status");
+        assert_eq!(
+            status_path("ws", true),
+            "/workspaces/ws/git/status?includeFilesDetails=true"
+        );
+    }
+
+    #[test]
     fn conflict_error_is_enriched_only_without_override() {
         let base = || anyhow::anyhow!("updateFromGit failed: Conflict detected");
 
@@ -422,5 +537,56 @@ mod tests {
         let err = anyhow::anyhow!("Workspace not connected to Git");
         let out = enrich_pull_conflict(err, false);
         assert!(out.downcast_ref::<FabioError>().is_none());
+    }
+
+    #[test]
+    fn file_level_commit_matches_spec_shape() {
+        let selections = parse_file_selections(&[
+            "cfafbeb1-8037-4d0c-896e-28c4f2e65573=metadata.json".to_string(),
+            "d5a2b3c4-1234-5678-abcd-ef0123456789=".to_string(),
+        ])
+        .unwrap();
+        let body = build_commit_body(
+            "FileLevelSelective",
+            "eaa737b48cda41b37ffefac772ea48f6fed3eac4",
+            Some("Commit only the metadata change from MyNotebook"),
+            None,
+            &selections,
+        );
+        assert_eq!(body["mode"], "FileLevelSelective");
+        assert_eq!(
+            body["itemsWithFileSelection"][0]["selectedFiles"],
+            serde_json::json!(["metadata.json"])
+        );
+        assert_eq!(
+            body["itemsWithFileSelection"][1]["selectedFiles"],
+            serde_json::json!([])
+        );
+        assert!(body.get("items").is_none());
+    }
+
+    #[test]
+    fn file_selection_supports_nested_paths() {
+        let selections =
+            parse_file_selections(&["item-id=pages/page1.json,config/settings.json".to_string()])
+                .unwrap();
+        assert_eq!(
+            selections[0]["selectedFiles"],
+            serde_json::json!(["pages/page1.json", "config/settings.json"])
+        );
+    }
+
+    #[test]
+    fn file_selection_rejects_invalid_paths() {
+        for path in [
+            "/metadata.json",
+            "folder\\file.json",
+            "folder//file.json",
+            "folder./file.json",
+            "folder/file.json ",
+            "*.json",
+        ] {
+            assert!(validate_selected_file(path).is_err(), "{path} should fail");
+        }
     }
 }

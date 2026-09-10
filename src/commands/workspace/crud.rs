@@ -269,10 +269,10 @@ pub(super) async fn clone_workspace(
         eprintln!("[workspace clone] exporting definitions from source workspace...");
     }
 
-    // Step 2: Call bulkExportDefinitions on source (requires beta=True query param)
+    // Step 2: Call bulkExportDefinitions on source.
     let export_result = client
         .post(
-            &format!("/workspaces/{source_id}/items/bulkExportDefinitions?beta=True"),
+            &format!("/workspaces/{source_id}/items/bulkExportDefinitions"),
             &export_body,
             true, // LRO poll
         )
@@ -331,10 +331,10 @@ pub(super) async fn clone_workspace(
         }
     });
 
-    // Step 4: Call bulkImportDefinitions on destination (requires beta=True)
+    // Step 4: Call bulkImportDefinitions on destination.
     let import_result = client
         .post(
-            &format!("/workspaces/{dest_id}/items/bulkImportDefinitions?beta=True"),
+            &format!("/workspaces/{dest_id}/items/bulkImportDefinitions"),
             &import_body,
             true, // LRO poll
         )

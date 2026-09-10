@@ -727,7 +727,7 @@ pub async fn execute_changeset_bulk(
 
         match client
             .post(
-                &format!("/workspaces/{workspace_id}/items/bulkImportDefinitions?beta=True"),
+                &format!("/workspaces/{workspace_id}/items/bulkImportDefinitions"),
                 &import_body,
                 true, // LRO poll
             )

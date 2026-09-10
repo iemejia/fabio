@@ -153,6 +153,111 @@ fn git_commit_unconnected_workspace_fails() {
         .failure();
 }
 
+#[test]
+fn git_status_accepts_file_details_flag() {
+    let assert = fabio()
+        .args([
+            "git",
+            "status",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--include-file-details",
+            "--help",
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(stdout.contains("--include-file-details"));
+}
+
+#[test]
+fn git_commit_file_level_selective_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "git",
+            "commit",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--message",
+            "Commit selected files",
+            "--file-selection",
+            "cfafbeb1-8037-4d0c-896e-28c4f2e65573=metadata.json",
+            "--file-selection",
+            "d5a2b3c4-1234-5678-abcd-ef0123456789=",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "git commit");
+    assert_eq!(data["details"]["mode"], "FileLevelSelective");
+    assert_eq!(
+        data["details"]["itemsWithFileSelection"][0]["selectedFiles"],
+        serde_json::json!(["metadata.json"])
+    );
+    assert_eq!(
+        data["details"]["itemsWithFileSelection"][1]["selectedFiles"],
+        serde_json::json!([])
+    );
+}
+
+#[test]
+fn git_commit_rejects_invalid_file_selection_path() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "git",
+            "commit",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--file-selection",
+            "cfafbeb1-8037-4d0c-896e-28c4f2e65573=/metadata.json",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("Invalid selected file path"));
+}
+
+#[test]
+#[ignore = "requires a Git-connected live Fabric workspace with pending file changes"]
+#[serial]
+fn git_status_file_details_live() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "git",
+            "status",
+            "--workspace",
+            &cfg.source_workspace,
+            "--include-file-details",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let changes = data
+        .as_array()
+        .expect("live fixture must have pending Git changes");
+    assert!(
+        !changes.is_empty(),
+        "live fixture must have at least one pending Git change"
+    );
+    assert!(
+        changes
+            .iter()
+            .all(|change| change.get("fileChanges").is_some()),
+        "includeFilesDetails=true should populate fileChanges"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Pull on unconnected workspace fails
 // ---------------------------------------------------------------------------

@@ -611,7 +611,7 @@ Azure DevOps repos without any commits have no `defaultBranch`. You must push an
 - Roles: `Admin`, `ConnectionCreator`, `ConnectionCreatorWithResharing`
 - Cannot demote last Admin (returns error)
 - `inactivityMinutesBeforeSleep` must be one of: 30, 60, 90, 120, 150, 240, 360, 480, 720, 1440
-- `numberOfMemberGateways` must be 1-9
+- VNet gateway fixed/min/max member counts must be 1-11
 
 ## Admin API
 
@@ -1533,7 +1533,7 @@ Uses `git diff --name-status <REF>` to determine changed item directories. Items
 - **Three-layer relationship discovery**: Layer 1 (properties) finds typed edges from item GET responses. Layer 2 (`--deep`) decodes base64 definition payloads and regex-scans for UUID references. Layer 3 (`--include-connections`) fetches `/items/{id}/connections`. Each layer is additive — deeper layers find significantly more edges. Properties-only found 2 edges in a 154-item tenant; deep mode found 88.
 - **Items without definition support skipped in deep mode**: SQLEndpoint, Dashboard, Datamart, MLModel, MLExperiment never support `getDefinition`. Skipping them avoids wasted LRO calls. (PaginatedReport DOES support `getDefinition` and is scanned — its `.rdl` embeds a semantic-model UUID.)
 - **GUID scanning finds all cross-references generically**: Builds a registry of known item/workspace IDs, then regex-matches `[0-9a-fA-F]{8}-...-[0-9a-fA-F]{12}` in decoded definitions. Excludes well-known placeholder GUIDs (all-zeros, all-`f`s, near-zero).
-- **`bulkExportDefinitions` API format**: `POST /workspaces/{ws}/items/bulkExportDefinitions?beta=True` with `{"mode":"All"}`. Requires `?beta=True` query param. Only exports items the caller has **read+write** permissions for — silently excludes items with Viewer/Contributor role or protected labels. Benchmarked: bulk exported 14/154 items (55 edges) vs per-item 35/154 (88 edges). Per-item `getDefinition` is preferred for context tenant because completeness matters more than speed.
+- **`bulkExportDefinitions` API format**: `POST /workspaces/{ws}/items/bulkExportDefinitions` with `{"mode":"All"}`. The former `?beta=True` gate was removed at GA in September 2026. Only exports items the caller has **read+write** permissions for — silently excludes items with Viewer/Contributor role or protected labels. Benchmarked: bulk exported 14/154 items (55 edges) vs per-item 35/154 (88 edges). Per-item `getDefinition` is preferred for context tenant because completeness matters more than speed.
 - **`--no-properties` mode**: Skips type-specific GET calls, only calls `GET /workspaces/{ws}/items` (listing). Nodes lack `properties` field. Ultra-fast (~3s for 20 workspaces). Useful for initial orientation.
 - **`--output-file` writes the JSON envelope**: Writes `{"data": {...}}` (pretty-printed) to disk. Reports `{"status":"written","file":"...","nodes":N,"edges":N,"workspaces":N}` to stdout. Parent directories must exist.
 - **`--merge` is idempotent**: Loads an existing graph, unions new nodes/edges. Merge semantics: nodes deduped by ID (new overwrites old), edges unioned (exact-match dedup), workspaces deduped by ID. Re-extracting the same workspace updates it in place.

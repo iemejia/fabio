@@ -61,6 +61,7 @@ Manage workspaces
 | `fabio workspace list-folders` | no | List workspace folders |
 | `fabio workspace list-recoverable-items` | no | List soft-deleted items that are still within their retention period |
 | `fabio workspace list-role-assignments` | no | List workspace role assignments |
+| `fabio workspace modify-access-time-tracking` | yes | Enable or disable Azure Storage `LastAccessTime` tracking for `OneLake` files |
 | `fabio workspace modify-default-tier` | yes | Modify `OneLake` default tier (Hot, Cool, or Cold) |
 | `fabio workspace modify-diagnostics` | yes | Modify `OneLake` diagnostics configuration |
 | `fabio workspace modify-immutability-policy` | yes | Modify `OneLake` immutability policy |
@@ -257,6 +258,7 @@ List and resolve sensitivity labels (from Microsoft Purview via Graph API)
 - label list resolves UUIDs to names via Microsoft Graph (needs M365 E5 + InformationProtection.Read).
 - workspace recover-item can partially succeed: a failed child and its descendants remain soft-deleted while independent branches may recover.
 - Customer-Managed Key (CMK) governance: enable/rotate per workspace with 'workspace assign-encryption --key-identifier <versionless Key Vault key URI>' (rotation reuses assign since the URI is versionless), inspect with 'workspace get-encryption', revert to Microsoft-managed keys with 'workspace reset-encryption'. For a tenant-wide audit, 'admin list-workspaces --include encryption' returns each workspace's encryption state and accepts '--encryption-status' (Active/EnableInProgress/DisableInProgress/Failed/Disabled) and '--capacity-id' to scope the view (e.g. find workspaces mid-enablement on one capacity).
+- OneLake access-time tracking is workspace-scoped and requires Admin: 'workspace modify-access-time-tracking --status Enabled|Disabled'. When enabled, file reads and writes update LastAccessTime immediately; metadata-only property/tag checks do not. Read the effective state at lifecycle.accessTimeTracking from get-onelake-settings.
 
 ## Troubleshooting
 | Symptom | Fix |

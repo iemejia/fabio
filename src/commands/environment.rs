@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 use serde_json::Value;
 
 use crate::cli::Cli;
@@ -299,11 +299,11 @@ pub enum EnvironmentCommand {
         #[arg(long)]
         id: String,
 
-        /// Path to JSON file with spark compute config (full body; conflicts with --runtime-version/--spark-property)
+        /// Path to JSON file with Spark compute config (full body; conflicts with typed flags)
         #[arg(long)]
         file: Option<String>,
 
-        /// Inline JSON content with spark compute config (full body; conflicts with --runtime-version/--spark-property)
+        /// Inline JSON Spark compute config (full body; conflicts with typed flags)
         #[arg(long)]
         content: Option<String>,
 
@@ -316,7 +316,54 @@ pub enum EnvironmentCommand {
         /// Spark configuration property to set as KEY=VALUE (repeatable). Merged into existing sparkProperties. E.g. --spark-property spark.native.enabled=true
         #[arg(long = "spark-property", value_name = "KEY=VALUE", conflicts_with_all = ["file", "content"])]
         spark_property: Vec<String>,
+
+        /// Enable or disable live-pool cluster pre-hydration
+        #[arg(long, value_enum, conflicts_with_all = ["file", "content"])]
+        live_pool_support: Option<CustomLivePoolSupport>,
+
+        /// Maximum clusters to pre-hydrate per activation cycle (minimum 1; capacity maximum is returned as instancePool.maxClustersToHydrateLimit)
+        #[arg(
+            long,
+            value_parser = clap::value_parser!(u32).range(1..),
+            conflicts_with_all = ["file", "content", "clear_live_pool_settings"]
+        )]
+        max_clusters_to_hydrate: Option<u32>,
+
+        /// Hydrated-cluster idle timeout as ISO 8601 duration (PT20M through PT24H)
+        #[arg(
+            long,
+            conflicts_with_all = ["file", "content", "clear_live_pool_settings"]
+        )]
+        cluster_idle_timeout: Option<String>,
+
+        /// Live-pool activation lifespan as ISO 8601 duration (PT30M through PT24H)
+        #[arg(
+            long,
+            conflicts_with_all = ["file", "content", "clear_live_pool_settings"]
+        )]
+        live_pool_lifespan: Option<String>,
+
+        /// Remove live-pool hydration settings; support state is retained unless --live-pool-support is also supplied
+        #[arg(long, conflicts_with_all = ["file", "content"])]
+        clear_live_pool_settings: bool,
     },
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum CustomLivePoolSupport {
+    #[value(name = "Enabled")]
+    Enabled,
+    #[value(name = "Disabled")]
+    Disabled,
+}
+
+impl CustomLivePoolSupport {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Enabled => "Enabled",
+            Self::Disabled => "Disabled",
+        }
+    }
 }
 
 #[allow(clippy::too_many_lines)]
@@ -448,6 +495,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EnvironmentComm
             content,
             runtime_version,
             spark_property,
+            live_pool_support,
+            max_clusters_to_hydrate,
+            cluster_idle_timeout,
+            live_pool_lifespan,
+            clear_live_pool_settings,
         } => {
             update_staging_spark_compute(
                 cli,
@@ -458,6 +510,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EnvironmentComm
                 content.as_deref(),
                 runtime_version.as_deref(),
                 spark_property,
+                *live_pool_support,
+                *max_clusters_to_hydrate,
+                cluster_idle_timeout.as_deref(),
+                live_pool_lifespan.as_deref(),
+                *clear_live_pool_settings,
             )
             .await
         }
@@ -939,6 +996,8 @@ fn apply_spark_compute_overrides(
     mut current: Value,
     runtime_version: Option<&str>,
     spark_properties: &[(String, String)],
+    live_pool_support: Option<CustomLivePoolSupport>,
+    live_pool_settings: LivePoolSettingsOverride<'_>,
 ) -> Value {
     if !current.is_object() {
         current = Value::Object(serde_json::Map::new());
@@ -959,10 +1018,52 @@ fn apply_spark_compute_overrides(
             pobj.insert(k.clone(), Value::from(v.as_str()));
         }
     }
+    if let Some(support) = live_pool_support {
+        obj.insert(
+            "customLivePoolSupport".to_string(),
+            Value::from(support.as_str()),
+        );
+    }
+    if live_pool_settings.clear {
+        obj.insert("customLivePoolSettings".to_string(), Value::Null);
+    } else if live_pool_settings.has_values() {
+        let settings = obj
+            .entry("customLivePoolSettings".to_string())
+            .or_insert_with(|| Value::Object(serde_json::Map::new()));
+        if !settings.is_object() {
+            *settings = Value::Object(serde_json::Map::new());
+        }
+        let settings = settings.as_object_mut().expect("ensured object above");
+        if let Some(max) = live_pool_settings.max_clusters_to_hydrate {
+            settings.insert("maxClustersToHydrate".to_string(), Value::from(max));
+        }
+        if let Some(timeout) = live_pool_settings.cluster_idle_timeout {
+            settings.insert("clusterIdleTimeout".to_string(), Value::from(timeout));
+        }
+        if let Some(lifespan) = live_pool_settings.live_pool_lifespan {
+            settings.insert("customLivePoolLifespan".to_string(), Value::from(lifespan));
+        }
+    }
     current
 }
 
-#[allow(clippy::too_many_arguments)]
+#[derive(Clone, Copy, Debug, Default)]
+struct LivePoolSettingsOverride<'a> {
+    max_clusters_to_hydrate: Option<u32>,
+    cluster_idle_timeout: Option<&'a str>,
+    live_pool_lifespan: Option<&'a str>,
+    clear: bool,
+}
+
+impl LivePoolSettingsOverride<'_> {
+    const fn has_values(self) -> bool {
+        self.max_clusters_to_hydrate.is_some()
+            || self.cluster_idle_timeout.is_some()
+            || self.live_pool_lifespan.is_some()
+    }
+}
+
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 async fn update_staging_spark_compute(
     cli: &Cli,
     client: &FabricClient,
@@ -972,6 +1073,11 @@ async fn update_staging_spark_compute(
     content: Option<&str>,
     runtime_version: Option<&str>,
     spark_property: &[String],
+    live_pool_support: Option<CustomLivePoolSupport>,
+    max_clusters_to_hydrate: Option<u32>,
+    cluster_idle_timeout: Option<&str>,
+    live_pool_lifespan: Option<&str>,
+    clear_live_pool_settings: bool,
 ) -> Result<()> {
     let path = format!("/workspaces/{workspace}/environments/{id}/staging/sparkcompute");
 
@@ -1010,25 +1116,39 @@ async fn update_staging_spark_compute(
         (None, None) => None,
     };
 
-    let typed_props: Option<Vec<(String, String)>> =
-        if raw_body.is_none() && (runtime_version.is_some() || !spark_property.is_empty()) {
-            Some(
-                spark_property
-                    .iter()
-                    .map(|s| parse_spark_property(s))
-                    .collect::<Result<Vec<_>, _>>()?,
-            )
-        } else {
-            None
-        };
+    let typed_props: Option<Vec<(String, String)>> = if raw_body.is_none()
+        && (runtime_version.is_some()
+            || !spark_property.is_empty()
+            || live_pool_support.is_some()
+            || max_clusters_to_hydrate.is_some()
+            || cluster_idle_timeout.is_some()
+            || live_pool_lifespan.is_some()
+            || clear_live_pool_settings)
+    {
+        Some(
+            spark_property
+                .iter()
+                .map(|s| parse_spark_property(s))
+                .collect::<Result<Vec<_>, _>>()?,
+        )
+    } else {
+        None
+    };
 
     if raw_body.is_none() && typed_props.is_none() {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
-            "Provide either --file/--content or --runtime-version/--spark-property".to_string(),
-            "Example: fabio environment update-staging-spark-compute --workspace <WS> --id <ID> --runtime-version 2.0 --spark-property spark.native.enabled=true".to_string(),
+            "Provide either --file/--content or at least one typed Spark compute flag".to_string(),
+            "Example: fabio environment update-staging-spark-compute --workspace <WS> --id <ID> --live-pool-support Enabled --max-clusters-to-hydrate 4 --cluster-idle-timeout PT20M --live-pool-lifespan PT1H".to_string(),
         ).into());
     }
+
+    let live_pool_settings = LivePoolSettingsOverride {
+        max_clusters_to_hydrate,
+        cluster_idle_timeout,
+        live_pool_lifespan,
+        clear: clear_live_pool_settings,
+    };
 
     // Build a dry-run preview from the inputs (no network call for the typed path).
     let preview = if let Some((_, len)) = &raw_body {
@@ -1047,6 +1167,16 @@ async fn update_staging_spark_compute(
             "id": id,
             "runtimeVersion": runtime_version,
             "sparkProperties": Value::Object(props),
+            "customLivePoolSupport": live_pool_support.map(CustomLivePoolSupport::as_str),
+            "customLivePoolSettings": if clear_live_pool_settings {
+                Value::Null
+            } else {
+                serde_json::json!({
+                    "maxClustersToHydrate": max_clusters_to_hydrate,
+                    "clusterIdleTimeout": cluster_idle_timeout,
+                    "customLivePoolLifespan": live_pool_lifespan,
+                })
+            },
         })
     };
 
@@ -1061,7 +1191,13 @@ async fn update_staging_spark_compute(
         let current = client.get(&path).await.map_err(|e| {
             enrich_forbidden(e, "environment update-staging-spark-compute", "Contributor")
         })?;
-        apply_spark_compute_overrides(current, runtime_version, &typed_props.unwrap_or_default())
+        apply_spark_compute_overrides(
+            current,
+            runtime_version,
+            &typed_props.unwrap_or_default(),
+            live_pool_support,
+            live_pool_settings,
+        )
     };
 
     let data = client.patch(&path, &body).await.map_err(|e| {
@@ -1166,7 +1302,13 @@ mod tests {
             "driverCores": 8,
             "sparkProperties": { "existing.key": "keep" }
         });
-        let out = apply_spark_compute_overrides(current, Some("2.0"), &[]);
+        let out = apply_spark_compute_overrides(
+            current,
+            Some("2.0"),
+            &[],
+            None,
+            LivePoolSettingsOverride::default(),
+        );
         assert_eq!(out["runtimeVersion"], json!("2.0"));
         // Other fields preserved.
         assert_eq!(out["driverCores"], json!(8));
@@ -1184,7 +1326,13 @@ mod tests {
             ("spark.native.enabled".to_string(), "true".to_string()),
             ("override.me".to_string(), "new".to_string()),
         ];
-        let out = apply_spark_compute_overrides(current, None, &props);
+        let out = apply_spark_compute_overrides(
+            current,
+            None,
+            &props,
+            None,
+            LivePoolSettingsOverride::default(),
+        );
         // runtimeVersion unchanged when not supplied.
         assert_eq!(out["runtimeVersion"], json!("1.3"));
         // existing preserved, new added, overridden replaced.
@@ -1200,13 +1348,79 @@ mod tests {
     fn apply_overrides_creates_spark_properties_when_absent() {
         let current = json!({ "runtimeVersion": "2.0" });
         let props = vec![("k".to_string(), "v".to_string())];
-        let out = apply_spark_compute_overrides(current, None, &props);
+        let out = apply_spark_compute_overrides(
+            current,
+            None,
+            &props,
+            None,
+            LivePoolSettingsOverride::default(),
+        );
         assert_eq!(out["sparkProperties"]["k"], json!("v"));
     }
 
     #[test]
     fn apply_overrides_recovers_from_non_object_input() {
-        let out = apply_spark_compute_overrides(json!("not-an-object"), Some("2.0"), &[]);
+        let out = apply_spark_compute_overrides(
+            json!("not-an-object"),
+            Some("2.0"),
+            &[],
+            None,
+            LivePoolSettingsOverride::default(),
+        );
         assert_eq!(out["runtimeVersion"], json!("2.0"));
+    }
+
+    #[test]
+    fn apply_overrides_merges_live_pool_settings() {
+        let current = json!({
+            "customLivePoolSupport": "Disabled",
+            "customLivePoolSettings": {
+                "maxClustersToHydrate": 2,
+                "clusterIdleTimeout": "PT30M"
+            },
+            "instancePool": {
+                "maxClustersToHydrateLimit": 10
+            }
+        });
+        let out = apply_spark_compute_overrides(
+            current,
+            None,
+            &[],
+            Some(CustomLivePoolSupport::Enabled),
+            LivePoolSettingsOverride {
+                max_clusters_to_hydrate: Some(4),
+                cluster_idle_timeout: None,
+                live_pool_lifespan: Some("PT1H"),
+                clear: false,
+            },
+        );
+        assert_eq!(out["customLivePoolSupport"], "Enabled");
+        assert_eq!(out["customLivePoolSettings"]["maxClustersToHydrate"], 4);
+        assert_eq!(out["customLivePoolSettings"]["clusterIdleTimeout"], "PT30M");
+        assert_eq!(
+            out["customLivePoolSettings"]["customLivePoolLifespan"],
+            "PT1H"
+        );
+        assert_eq!(out["instancePool"]["maxClustersToHydrateLimit"], 10);
+    }
+
+    #[test]
+    fn apply_overrides_clears_live_pool_settings() {
+        let current = json!({
+            "customLivePoolSupport": "Disabled",
+            "customLivePoolSettings": {"maxClustersToHydrate": 2}
+        });
+        let out = apply_spark_compute_overrides(
+            current,
+            None,
+            &[],
+            None,
+            LivePoolSettingsOverride {
+                clear: true,
+                ..LivePoolSettingsOverride::default()
+            },
+        );
+        assert!(out["customLivePoolSettings"].is_null());
+        assert_eq!(out["customLivePoolSupport"], "Disabled");
     }
 }
