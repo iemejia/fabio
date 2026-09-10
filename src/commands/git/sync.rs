@@ -167,8 +167,20 @@ fn build_items_with_file_selection(
     all_files_for_logical_item: &[String],
 ) -> Result<Vec<Value>> {
     let mut selections = BTreeMap::<(String, String), Vec<String>>::new();
-    add_all_files(&mut selections, "objectId", all_files_for_item)?;
-    add_all_files(&mut selections, "logicalId", all_files_for_logical_item)?;
+    add_all_files(
+        &mut selections,
+        "objectId",
+        all_files_for_item,
+        "--all-files-for-item",
+        "ITEM_ID",
+    )?;
+    add_all_files(
+        &mut selections,
+        "logicalId",
+        all_files_for_logical_item,
+        "--all-files-for-logical-item",
+        "LOGICAL_ID",
+    )?;
     add_file_selections(
         &mut selections,
         "objectId",
@@ -198,10 +210,17 @@ fn add_all_files(
     selections: &mut BTreeMap<(String, String), Vec<String>>,
     identifier_field: &str,
     item_ids: &[String],
+    flag_name: &str,
+    id_label: &str,
 ) -> Result<()> {
     for item_id in item_ids {
         if item_id.trim().is_empty() {
-            bail!("The all-files item identifier cannot be empty");
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("{flag_name} requires a non-empty {id_label}"),
+                format!("Provide {flag_name} {id_label} with a non-empty identifier."),
+            )
+            .into());
         }
         selections
             .entry((identifier_field.to_string(), item_id.clone()))
@@ -228,7 +247,14 @@ fn add_file_selections(
             )
         })?;
         if item_id.trim().is_empty() {
-            bail!("{flag_name} requires a non-empty item ID");
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("{flag_name} requires a non-empty {id_label}"),
+                format!(
+                    "Use {id_label}=RELATIVE/PATH, for example {flag_name} 00000000-0000-0000-0000-000000000000=metadata.json"
+                ),
+            )
+            .into());
         }
         validate_git_file_path(path)?;
         let key = (identifier_field.to_string(), item_id.to_string());
@@ -627,6 +653,38 @@ mod tests {
             .expect_err("invalid selector should fail")
             .to_string();
         assert!(err.contains("Invalid --logical-file-selection"));
+    }
+
+    #[test]
+    fn rejects_empty_all_files_identifier_as_invalid_input() {
+        let err = build_items_with_file_selection(&[], &[], &[], &[" ".to_string()])
+            .expect_err("empty identifier should fail");
+        let fabio_err = err
+            .downcast_ref::<FabioError>()
+            .expect("error should remain structured");
+        assert_eq!(fabio_err.code, ErrorCode::InvalidInput);
+        assert!(
+            fabio_err
+                .hint
+                .as_deref()
+                .is_some_and(|hint| hint.contains("--all-files-for-logical-item LOGICAL_ID"))
+        );
+    }
+
+    #[test]
+    fn rejects_empty_file_selection_identifier_as_invalid_input() {
+        let err = build_items_with_file_selection(&["=metadata.json".to_string()], &[], &[], &[])
+            .expect_err("empty identifier should fail");
+        let fabio_err = err
+            .downcast_ref::<FabioError>()
+            .expect("error should remain structured");
+        assert_eq!(fabio_err.code, ErrorCode::InvalidInput);
+        assert!(
+            fabio_err
+                .hint
+                .as_deref()
+                .is_some_and(|hint| hint.contains("--file-selection"))
+        );
     }
 
     #[test]
