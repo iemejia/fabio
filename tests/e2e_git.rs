@@ -2281,23 +2281,26 @@ impl Drop for GitNotebookCleanup {
                     ])
                     .timeout(std::time::Duration::from_mins(1))
                     .assert();
-                let _ = retry_on_failure(|| {
-                    fabio()
-                        .args([
-                            "git",
-                            "commit",
-                            "--workspace",
-                            &self.workspace,
-                            "--commit-all",
-                            "--message",
-                            self.commit_message,
-                            "--wait",
-                        ])
-                        .timeout(std::time::Duration::from_mins(3))
-                        .assert()
-                });
             }
         }
+
+        // Always attempt the cleanup commit, even when the item was already
+        // deleted by the test body: the deletion may still be pending in Git.
+        let _ = retry_on_failure(|| {
+            fabio()
+                .args([
+                    "git",
+                    "commit",
+                    "--workspace",
+                    &self.workspace,
+                    "--commit-all",
+                    "--message",
+                    self.commit_message,
+                    "--wait",
+                ])
+                .timeout(std::time::Duration::from_mins(3))
+                .assert()
+        });
 
         let _ = fabio()
             .args(["git", "disconnect", "--workspace", &self.workspace])
