@@ -6,6 +6,7 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
+use super::bulk_operation_url;
 use super::read_json_input;
 
 // ─── Bulk Post (server-side LRO) ─────────────────────────────────────────────
@@ -19,17 +20,19 @@ pub(super) async fn bulk_post(
     content: Option<&str>,
 ) -> Result<()> {
     let body = read_json_input(file, content, operation)?;
+    let command = match operation {
+        "bulkExportDefinitions" => "bulk-export-definitions",
+        "bulkImportDefinitions" => "bulk-import-definitions",
+        "bulkMove" => "bulk-move",
+        _ => operation,
+    };
 
-    if output::dry_run_guard(cli, &format!("item {operation}"), &body) {
+    if output::dry_run_guard(cli, &format!("item {command}"), &body) {
         return Ok(());
     }
 
     let data = client
-        .post(
-            &format!("/workspaces/{workspace}/items/{operation}"),
-            &body,
-            true,
-        )
+        .post(&bulk_operation_url(workspace, operation), &body, true)
         .await?;
 
     output::render_object(cli, &data, "status");
@@ -406,7 +409,19 @@ pub(super) async fn delete_external_data_share(
 
 #[cfg(test)]
 mod tests {
-    use super::build_eds_recipient;
+    use super::{build_eds_recipient, bulk_operation_url};
+
+    #[test]
+    fn bulk_definition_urls_are_ga_without_beta_query() {
+        assert_eq!(
+            bulk_operation_url("ws-1", "bulkExportDefinitions"),
+            "/workspaces/ws-1/items/bulkExportDefinitions"
+        );
+        assert_eq!(
+            bulk_operation_url("ws-1", "bulkImportDefinitions"),
+            "/workspaces/ws-1/items/bulkImportDefinitions"
+        );
+    }
 
     #[test]
     fn user_recipient_uses_upn() {

@@ -276,6 +276,84 @@ fn environment_update_staging_spark_compute_typed_dry_run() {
 }
 
 #[test]
+fn environment_update_staging_spark_compute_live_pool_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "environment",
+            "update-staging-spark-compute",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--custom-live-pool-support",
+            "Enabled",
+            "--max-clusters-to-hydrate",
+            "4",
+            "--cluster-idle-timeout",
+            "PT20M",
+            "--custom-live-pool-lifespan",
+            "PT1H",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["details"]["customLivePoolSupport"], "Enabled");
+    assert_eq!(
+        data["details"]["customLivePoolSettings"],
+        serde_json::json!({
+            "maxClustersToHydrate": 4,
+            "clusterIdleTimeout": "PT20M",
+            "customLivePoolLifespan": "PT1H"
+        })
+    );
+}
+
+#[test]
+fn environment_update_staging_spark_compute_clear_live_pool_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "environment",
+            "update-staging-spark-compute",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--custom-live-pool-support",
+            "Disabled",
+            "--clear-custom-live-pool-settings",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["details"]["customLivePoolSupport"], "Disabled");
+    assert!(data["details"]["customLivePoolSettings"].is_null());
+}
+
+#[test]
+fn environment_update_staging_spark_compute_rejects_zero_hydration_clusters() {
+    fabio()
+        .args([
+            "--dry-run",
+            "environment",
+            "update-staging-spark-compute",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--max-clusters-to-hydrate",
+            "0",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
 fn environment_update_staging_spark_compute_requires_input() {
     // Neither --file/--content nor --runtime-version/--spark-property provided.
     let assert = fabio()
@@ -291,7 +369,7 @@ fn environment_update_staging_spark_compute_requires_input() {
         .failure();
 
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
-    assert!(stderr.contains("--runtime-version"));
+    assert!(stderr.contains("typed Spark compute override"));
 }
 
 #[test]
@@ -434,6 +512,103 @@ fn environment_staging_spark_compute_runtime_and_properties_lifecycle() {
         ])
         .assert()
         .success();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn environment_staging_spark_compute_live_pool_lifecycle() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("env_live_pool");
+    let created = fabio()
+        .args([
+            "environment",
+            "create",
+            "--workspace",
+            &cfg.source_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let created = parse_json(&created);
+    let env_id = extract_data(&created)["id"].as_str().unwrap().to_string();
+
+    let updated = fabio()
+        .args([
+            "environment",
+            "update-staging-spark-compute",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &env_id,
+            "--custom-live-pool-support",
+            "Enabled",
+            "--max-clusters-to-hydrate",
+            "1",
+            "--cluster-idle-timeout",
+            "PT20M",
+            "--custom-live-pool-lifespan",
+            "PT30M",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let updated = parse_json(&updated);
+    let data = extract_data(&updated);
+    assert_eq!(data["customLivePoolSupport"], "Enabled");
+    assert_eq!(data["customLivePoolSettings"]["maxClustersToHydrate"], 1);
+    assert_eq!(
+        data["customLivePoolSettings"]["clusterIdleTimeout"],
+        "PT20M"
+    );
+    assert_eq!(
+        data["customLivePoolSettings"]["customLivePoolLifespan"],
+        "PT30M"
+    );
+    assert!(
+        data["instancePool"]["maxClustersToHydrateLimit"]
+            .as_u64()
+            .is_some_and(|limit| limit >= 1)
+    );
+
+    fabio()
+        .args([
+            "environment",
+            "delete",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &env_id,
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+fn environment_rejects_live_pool_durations_outside_spec_ranges() {
+    for (flag, value) in [
+        ("--cluster-idle-timeout", "PT19M"),
+        ("--cluster-idle-timeout", "PT24H1S"),
+        ("--custom-live-pool-lifespan", "PT29M"),
+        ("--custom-live-pool-lifespan", "PT25H"),
+    ] {
+        fabio()
+            .args([
+                "--dry-run",
+                "environment",
+                "update-staging-spark-compute",
+                "--workspace",
+                "aaaaaaaa-1111-2222-3333-444444444444",
+                "--id",
+                "bbbbbbbb-1111-2222-3333-444444444444",
+                flag,
+                value,
+            ])
+            .assert()
+            .failure();
+    }
 }
 
 // ─── External libraries (import/export environment.yml) ──────────────────────

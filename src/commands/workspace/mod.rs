@@ -8,12 +8,29 @@ mod roles;
 mod settings;
 
 use anyhow::Result;
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError};
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum AccessTimeTrackingStatus {
+    #[value(name = "Enabled")]
+    Enabled,
+    #[value(name = "Disabled")]
+    Disabled,
+}
+
+impl AccessTimeTrackingStatus {
+    const fn as_api_value(self) -> &'static str {
+        match self {
+            Self::Enabled => "Enabled",
+            Self::Disabled => "Disabled",
+        }
+    }
+}
 
 /// Known workspace roles for error hints.
 pub(super) const KNOWN_ROLES: &[&str] = &["Admin", "Member", "Contributor", "Viewer"];
@@ -353,8 +370,17 @@ pub enum WorkspaceCommand {
         #[arg(long)]
         tier: String,
     },
-    /// Modify `OneLake` diagnostics configuration
+    /// Enable or disable `OneLake` `LastAccessTime` tracking for file reads and writes
     #[command(display_order = 57)]
+    ModifyAccessTimeTracking {
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Desired status: Enabled or Disabled
+        #[arg(long, value_enum)]
+        status: AccessTimeTrackingStatus,
+    },
+    /// Modify `OneLake` diagnostics configuration
+    #[command(display_order = 58)]
     ModifyDiagnostics {
         #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
@@ -364,7 +390,7 @@ pub enum WorkspaceCommand {
         content: Option<String>,
     },
     /// Modify `OneLake` immutability policy
-    #[command(display_order = 58)]
+    #[command(display_order = 59)]
     ModifyImmutabilityPolicy {
         #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
@@ -374,13 +400,13 @@ pub enum WorkspaceCommand {
         content: Option<String>,
     },
     /// Export `OneLake` lifecycle policy
-    #[command(display_order = 59)]
+    #[command(display_order = 60)]
     ExportLifecyclePolicy {
         #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
     /// Import `OneLake` lifecycle policy
-    #[command(display_order = 60)]
+    #[command(display_order = 61)]
     ImportLifecyclePolicy {
         #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
@@ -390,7 +416,7 @@ pub enum WorkspaceCommand {
         content: Option<String>,
     },
     /// Reset `OneLake` shortcut cache for a workspace
-    #[command(display_order = 61)]
+    #[command(display_order = 62)]
     ResetShortcutCache {
         #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
         workspace: String,
@@ -743,6 +769,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceComman
         }
         WorkspaceCommand::ModifyDefaultTier { workspace, tier } => {
             settings::modify_default_tier(cli, client, workspace, tier).await
+        }
+        WorkspaceCommand::ModifyAccessTimeTracking { workspace, status } => {
+            settings::modify_access_time_tracking(cli, client, workspace, *status).await
         }
         WorkspaceCommand::ModifyDiagnostics {
             workspace,

@@ -727,7 +727,7 @@ pub async fn execute_changeset_bulk(
 
         match client
             .post(
-                &format!("/workspaces/{workspace_id}/items/bulkImportDefinitions?beta=True"),
+                &crate::commands::item::bulk_operation_url(workspace_id, "bulkImportDefinitions"),
                 &import_body,
                 true, // LRO poll
             )

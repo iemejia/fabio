@@ -58,6 +58,7 @@
 - `src/commands/ontology/import.rs`: OWL RDF/XML + JSON-LD parser, Fabric format generator, RDF serializer (import/bind/export handlers)
 - `src/commands/ontology/mcp.rs`: `ontology mcp-url` — builds the ontology MCP server consumption URL (`build_mcp_url`) + existence check; unit tests
 - `src/commands/environment.rs`: list/show/create/update/delete/publish/cancel-publish/get-spark-settings/get-staging-spark-settings/upload-staging-library
+- `src/commands/context/data/examples/environment_spark_settings.json`, `workspace_onelake_settings.json`: Agent-facing response examples for live-pool Spark compute and OneLake access-time tracking.
 - `src/commands/data_pipeline.rs`: list/show/create/update/delete/run, create-schedule, list-schedules/get-schedule/update-schedule/delete-schedule, list-instances/get-instance
 - `src/commands/report.rs`: list/show/create/update/delete/get-definition/update-definition
 - `src/commands/report_pbir.rs`: PBIP/PBIR offline validation (structural + cross-reference/naming/size) + full-folder report definition gathering (backs `report validate` and `report create --definition`)

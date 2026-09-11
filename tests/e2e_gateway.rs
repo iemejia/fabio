@@ -141,7 +141,7 @@ fn gateway_dry_run_create_with_member_count_range() {
             "--subnet",
             "default",
             "--max-member-gateway-count",
-            "5",
+            "11",
             "--min-member-gateway-count",
             "1",
         ])
@@ -153,7 +153,7 @@ fn gateway_dry_run_create_with_member_count_range() {
     assert_eq!(data["dry_run"], true);
     assert_eq!(data["would_execute"], "gateway create");
     // The range pair must land in the request body (and NOT the legacy fixed field).
-    assert_eq!(data["details"]["maxMemberGatewayCount"], 5);
+    assert_eq!(data["details"]["maxMemberGatewayCount"], 11);
     assert_eq!(data["details"]["minMemberGatewayCount"], 1);
     assert!(
         data["details"].get("numberOfMemberGateways").is_none(),
@@ -193,6 +193,89 @@ fn gateway_dry_run_create_with_fixed_member_count() {
     assert_eq!(data["details"]["numberOfMemberGateways"], 3);
     assert!(data["details"].get("maxMemberGatewayCount").is_none());
     assert!(data["details"].get("minMemberGatewayCount").is_none());
+}
+
+#[test]
+fn gateway_create_accepts_new_eleven_member_limit() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "gateway",
+            "create",
+            "--name",
+            "test-gw-eleven",
+            "--capacity-id",
+            "00000000-0000-0000-0000-000000000001",
+            "--subscription-id",
+            "00000000-0000-0000-0000-000000000099",
+            "--resource-group",
+            "rg",
+            "--vnet-name",
+            "vnet",
+            "--subnet",
+            "default",
+            "--member-count",
+            "11",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    assert_eq!(json["data"]["details"]["numberOfMemberGateways"], 11);
+}
+
+#[test]
+fn gateway_create_rejects_member_count_above_eleven() {
+    fabio()
+        .args([
+            "--dry-run",
+            "gateway",
+            "create",
+            "--name",
+            "test-gw-twelve",
+            "--capacity-id",
+            "00000000-0000-0000-0000-000000000001",
+            "--subscription-id",
+            "00000000-0000-0000-0000-000000000099",
+            "--resource-group",
+            "rg",
+            "--vnet-name",
+            "vnet",
+            "--subnet",
+            "default",
+            "--member-count",
+            "12",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn gateway_create_rejects_reversed_member_range() {
+    fabio()
+        .args([
+            "--dry-run",
+            "gateway",
+            "create",
+            "--name",
+            "test-gw-reversed",
+            "--capacity-id",
+            "00000000-0000-0000-0000-000000000001",
+            "--subscription-id",
+            "00000000-0000-0000-0000-000000000099",
+            "--resource-group",
+            "rg",
+            "--vnet-name",
+            "vnet",
+            "--subnet",
+            "default",
+            "--max-member-gateway-count",
+            "2",
+            "--min-member-gateway-count",
+            "3",
+        ])
+        .assert()
+        .failure();
 }
 
 #[test]
@@ -298,7 +381,7 @@ fn gateway_update_dry_run_with_member_count_range() {
             "--gateway",
             "00000000-0000-0000-0000-000000000001",
             "--max-member-gateway-count",
-            "5",
+            "11",
             "--min-member-gateway-count",
             "1",
         ])

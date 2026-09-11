@@ -28,6 +28,7 @@
     "label list resolves UUIDs to names via Microsoft Graph (needs M365 E5 + InformationProtection.Read).",
     "workspace recover-item can partially succeed: a failed child and its descendants remain soft-deleted while independent branches may recover.",
     "Customer-Managed Key (CMK) governance: enable/rotate per workspace with 'workspace assign-encryption --key-identifier <versionless Key Vault key URI>' (rotation reuses assign since the URI is versionless), inspect with 'workspace get-encryption', revert to Microsoft-managed keys with 'workspace reset-encryption'. For a tenant-wide audit, 'admin list-workspaces --include encryption' returns each workspace's encryption state and accepts '--encryption-status' (Active/EnableInProgress/DisableInProgress/Failed/Disabled) and '--capacity-id' to scope the view (e.g. find workspaces mid-enablement on one capacity)."
+    ,"OneLake access-time tracking is workspace-scoped: get-onelake-settings returns lifecycle.accessTimeTracking, and modify-access-time-tracking --status Enabled|Disabled controls LastAccessTime updates for file reads/writes (metadata-only checks do not update it). VNet gateways now allow 1-11 member gateways."
   ],
   "safety": [
     "capacity suspend interrupts ALL running workloads (notebooks, pipelines, Spark jobs) on that capacity — warn about in-flight jobs.",

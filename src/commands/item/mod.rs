@@ -392,7 +392,7 @@ pub enum ItemCommand {
         #[arg(long, group = "input")]
         content: Option<String>,
     },
-    /// Bulk move items to another workspace (LRO)
+    /// Bulk move items between folders in a workspace (LRO)
     #[command(display_order = 32)]
     BulkMove {
         /// Workspace ID
@@ -569,6 +569,10 @@ pub enum ItemCommand {
         #[arg(long)]
         name: String,
     },
+}
+
+pub fn bulk_operation_url(workspace: &str, operation: &str) -> String {
+    format!("/workspaces/{workspace}/items/{operation}")
 }
 
 #[allow(clippy::too_many_lines)]

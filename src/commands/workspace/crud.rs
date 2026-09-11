@@ -269,10 +269,10 @@ pub(super) async fn clone_workspace(
         eprintln!("[workspace clone] exporting definitions from source workspace...");
     }
 
-    // Step 2: Call bulkExportDefinitions on source (requires beta=True query param)
+    // Step 2: Call the GA bulkExportDefinitions endpoint on the source.
     let export_result = client
         .post(
-            &format!("/workspaces/{source_id}/items/bulkExportDefinitions?beta=True"),
+            &crate::commands::item::bulk_operation_url(&source_id, "bulkExportDefinitions"),
             &export_body,
             true, // LRO poll
         )
@@ -331,10 +331,10 @@ pub(super) async fn clone_workspace(
         }
     });
 
-    // Step 4: Call bulkImportDefinitions on destination (requires beta=True)
+    // Step 4: Call the GA bulkImportDefinitions endpoint on the destination.
     let import_result = client
         .post(
-            &format!("/workspaces/{dest_id}/items/bulkImportDefinitions?beta=True"),
+            &crate::commands::item::bulk_operation_url(&dest_id, "bulkImportDefinitions"),
             &import_body,
             true, // LRO poll
         )

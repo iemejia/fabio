@@ -1057,6 +1057,111 @@ fn workspace_get_onelake_settings() {
     );
 }
 
+#[test]
+fn workspace_modify_access_time_tracking_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "modify-access-time-tracking",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--status",
+            "Enabled",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(
+        data["would_execute"],
+        "workspace modify-access-time-tracking"
+    );
+    assert_eq!(data["details"]["status"], "Enabled");
+}
+
+#[test]
+fn workspace_modify_access_time_tracking_rejects_unknown_status() {
+    fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "modify-access-time-tracking",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--status",
+            "Active",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn workspace_modify_access_time_tracking_roundtrip() {
+    let cfg = TestConfig::from_env();
+    let settings = fabio()
+        .args([
+            "workspace",
+            "get-onelake-settings",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+    let settings = parse_json(&settings);
+    let original = extract_data(&settings)["lifecycle"]["accessTimeTracking"]
+        .as_str()
+        .unwrap_or("Disabled");
+    let changed = if original == "Enabled" {
+        "Disabled"
+    } else {
+        "Enabled"
+    };
+
+    fabio()
+        .args([
+            "workspace",
+            "modify-access-time-tracking",
+            "--workspace",
+            &cfg.source_workspace,
+            "--status",
+            changed,
+        ])
+        .assert()
+        .success();
+
+    let readback = fabio()
+        .args([
+            "workspace",
+            "get-onelake-settings",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+    let readback = parse_json(&readback);
+    assert_eq!(
+        extract_data(&readback)["lifecycle"]["accessTimeTracking"],
+        changed
+    );
+
+    fabio()
+        .args([
+            "workspace",
+            "modify-access-time-tracking",
+            "--workspace",
+            &cfg.source_workspace,
+            "--status",
+            original,
+        ])
+        .assert()
+        .success();
+}
+
 // ===========================================================================
 // workspace get-network-policy
 // ===========================================================================

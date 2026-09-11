@@ -5,7 +5,7 @@ use crate::client::FabricClient;
 use crate::errors::enrich_forbidden;
 use crate::output;
 
-use super::read_json_body;
+use super::{AccessTimeTrackingStatus, read_json_body};
 
 pub(super) async fn apply_tags(
     cli: &Cli,
@@ -136,6 +136,37 @@ pub(super) async fn modify_default_tier(
     Ok(())
 }
 
+pub(super) async fn modify_access_time_tracking(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    status: AccessTimeTrackingStatus,
+) -> Result<()> {
+    let body = build_access_time_tracking_body(status);
+    if output::dry_run_guard(cli, "workspace modify-access-time-tracking", &body) {
+        return Ok(());
+    }
+    client
+        .post(
+            &format!("/workspaces/{workspace}/onelake/settings/modifyAccessTimeTracking"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace modify-access-time-tracking", "Admin"))?;
+    let data = serde_json::json!({
+        "workspaceId": workspace,
+        "accessTimeTracking": status.as_api_value(),
+        "status": "updated"
+    });
+    output::render_object(cli, &data, "status");
+    Ok(())
+}
+
+fn build_access_time_tracking_body(status: AccessTimeTrackingStatus) -> serde_json::Value {
+    serde_json::json!({ "status": status.as_api_value() })
+}
+
 pub(super) async fn modify_diagnostics(
     cli: &Cli,
     client: &FabricClient,
@@ -257,6 +288,7 @@ pub(super) async fn set_dataset_storage_format(
     if output::dry_run_guard(cli, "workspace set-dataset-storage-format", &body) {
         return Ok(());
     }
+
     let data = client
         .patch_powerbi(&format!("/groups/{workspace}"), &body)
         .await
@@ -394,4 +426,21 @@ pub(super) async fn reset_encryption(
         output::render_object(cli, &data, "encryptionDetail");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn access_time_tracking_body_uses_pascal_case_status() {
+        assert_eq!(
+            build_access_time_tracking_body(AccessTimeTrackingStatus::Enabled),
+            serde_json::json!({"status": "Enabled"})
+        );
+        assert_eq!(
+            build_access_time_tracking_body(AccessTimeTrackingStatus::Disabled),
+            serde_json::json!({"status": "Disabled"})
+        );
+    }
 }

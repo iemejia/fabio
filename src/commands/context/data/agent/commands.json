@@ -254,7 +254,11 @@
           }
         },
         "mutates": true,
-        "returns": "void"
+        "returns": "object",
+        "examples": [
+          "fabio environment update-staging-spark-compute --workspace $WS --id $ENV --custom-live-pool-support Enabled --max-clusters-to-hydrate 4 --cluster-idle-timeout PT20M --custom-live-pool-lifespan PT1H",
+          "fabio environment update-staging-spark-compute --workspace $WS --id $ENV --custom-live-pool-support Disabled --clear-custom-live-pool-settings"
+        ]
       },
       "remove-admin-access": {
         "description": "Remove temporary admin access from a workspace",
@@ -1319,6 +1323,30 @@
           "fabio workspace modify-default-tier --id $WS --tier Cold"
         ]
       },
+      "modify-access-time-tracking": {
+        "description": "Enable or disable `OneLake` `LastAccessTime` tracking for file reads and writes",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--status": {
+            "type": "enum",
+            "values": [
+              "Enabled",
+              "Disabled"
+            ],
+            "required": true,
+            "description": "Desired status: Enabled or Disabled"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio workspace modify-access-time-tracking --workspace $WS --status Enabled",
+          "fabio workspace modify-access-time-tracking --workspace $WS --status Disabled --dry-run"
+        ]
+      },
       "modify-diagnostics": {
         "description": "Modify `OneLake` diagnostics configuration",
         "flags": {
@@ -2252,7 +2280,7 @@
         "async": true
       },
       "bulk-move": {
-        "description": "Bulk move items to another workspace (LRO)",
+        "description": "Bulk move items between folders in a workspace (LRO)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -9089,11 +9117,11 @@
           },
           "--file": {
             "type": "string",
-            "description": "Path to JSON file with spark compute config (full body; conflicts with --runtime-version/--spark-property)"
+            "description": "Path to JSON file with full Spark compute config (conflicts with typed override flags)"
           },
           "--content": {
             "type": "string",
-            "description": "Inline JSON content with spark compute config (full body; conflicts with --runtime-version/--spark-property)"
+            "description": "Inline JSON with full Spark compute config (conflicts with typed override flags)"
           },
           "--runtime-version": {
             "type": "string",
@@ -9105,10 +9133,38 @@
               "type": "string"
             },
             "description": "Spark configuration property to set as KEY=VALUE (repeatable). Merged into existing sparkProperties. E.g. --spark-property spark.native.enabled=true"
+          },
+          "--custom-live-pool-support": {
+            "type": "enum",
+            "values": [
+              "Enabled",
+              "Disabled"
+            ],
+            "description": "Enable or disable live-pool cluster pre-hydration. Disabling retains the hydration settings"
+          },
+          "--max-clusters-to-hydrate": {
+            "type": "string",
+            "description": "Maximum clusters to pre-hydrate per activation cycle (minimum 1; capacity-specific maximum is returned as maxClustersToHydrateLimit)"
+          },
+          "--cluster-idle-timeout": {
+            "type": "string",
+            "description": "Hydrated-cluster idle timeout as ISO 8601 duration (PT20M to PT24H)"
+          },
+          "--custom-live-pool-lifespan": {
+            "type": "string",
+            "description": "Maximum live-pool activation lifespan as ISO 8601 duration (PT30M to PT24H)"
+          },
+          "--clear-custom-live-pool-settings": {
+            "type": "bool",
+            "description": "Remove live-pool hydration settings by sending customLivePoolSettings=null"
           }
         },
         "mutates": true,
-        "returns": "void"
+        "returns": "object",
+        "examples": [
+          "fabio environment update-staging-spark-compute --workspace $WS --id $ENV --custom-live-pool-support Enabled --max-clusters-to-hydrate 4 --cluster-idle-timeout PT20M --custom-live-pool-lifespan PT1H",
+          "fabio environment update-staging-spark-compute --workspace $WS --id $ENV --custom-live-pool-support Disabled --clear-custom-live-pool-settings"
+        ]
       }
     }
   },
@@ -23042,15 +23098,15 @@
           },
           "--member-count": {
             "type": "string",
-            "description": "Fixed number of gateway members (1-9). Cannot be used together with --max-member-gateway-count/--min-member-gateway-count. Defaults to 1 when none of the member-count flags are provided"
+            "description": "Fixed number of gateway members (1-11). Cannot be used together with --max-member-gateway-count/--min-member-gateway-count. Defaults to 1 when none of the member-count flags are provided"
           },
           "--max-member-gateway-count": {
             "type": "string",
-            "description": "Maximum number of gateway members (1-9, value range). Requires --min-member-gateway-count; cannot be used with --member-count"
+            "description": "Maximum number of gateway members (1-11, value range). Requires --min-member-gateway-count; cannot be used with --member-count"
           },
           "--min-member-gateway-count": {
             "type": "string",
-            "description": "Minimum number of gateway members (1-9, value range). Requires --max-member-gateway-count; cannot be used with --member-count"
+            "description": "Minimum number of gateway members (1-11, value range). Requires --max-member-gateway-count; cannot be used with --member-count"
           }
         },
         "mutates": true,
@@ -23129,15 +23185,15 @@
           },
           "--member-count": {
             "type": "string",
-            "description": "Fixed number of gateway members (1-9, `VirtualNetwork` gateways only). Cannot be used together with --max-member-gateway-count/--min-member-gateway-count"
+            "description": "Fixed number of gateway members (1-11, `VirtualNetwork` gateways only). Cannot be used together with --max-member-gateway-count/--min-member-gateway-count"
           },
           "--max-member-gateway-count": {
             "type": "string",
-            "description": "Maximum number of gateway members (1-9, value range). Requires --min-member-gateway-count; cannot be used with --member-count"
+            "description": "Maximum number of gateway members (1-11, value range). Requires --min-member-gateway-count; cannot be used with --member-count"
           },
           "--min-member-gateway-count": {
             "type": "string",
-            "description": "Minimum number of gateway members (1-9, value range). Requires --max-member-gateway-count; cannot be used with --member-count"
+            "description": "Minimum number of gateway members (1-11, value range). Requires --max-member-gateway-count; cannot be used with --member-count"
           }
         },
         "mutates": true,
@@ -23383,12 +23439,17 @@
             "type": "string",
             "required": true,
             "description": "Workspace ID"
+          },
+          "--include-files-details": {
+            "type": "bool",
+            "description": "Include per-file workspace, remote, and conflict changes for each item"
           }
         },
         "mutates": false,
         "returns": "object",
         "examples": [
-          "fabio git status --workspace $WS -o table"
+          "fabio git status --workspace $WS -o table",
+          "fabio git status --workspace $WS --include-files-details"
         ]
       },
       "commit": {
@@ -23414,6 +23475,10 @@
             },
             "description": "Selective commit: comma-separated item object IDs"
           },
+          "--items-with-file-selection": {
+            "type": "string",
+            "description": "File-level selective commit as a JSON array of objects with objectId or logicalId and optional selectedFiles. Empty selectedFiles commits all files for that item"
+          },
           "--workspace-head": {
             "type": "string",
             "description": "Override workspace head (auto-fetched from status if omitted)"
@@ -23431,7 +23496,8 @@
         "returns": "object",
         "async": true,
         "examples": [
-          "fabio git commit --workspace $WS --message \"feat: add sales pipeline\" --wait"
+          "fabio git commit --workspace $WS --commit-all --message \"feat: add sales pipeline\" --wait",
+          "fabio git commit --workspace $WS --items-with-file-selection '[{\"objectId\":\"$ITEM\",\"selectedFiles\":[\"metadata.json\"]}]' --message \"Update metadata\" --wait"
         ]
       },
       "pull": {

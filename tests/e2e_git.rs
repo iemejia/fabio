@@ -153,6 +153,54 @@ fn git_commit_unconnected_workspace_fails() {
         .failure();
 }
 
+#[test]
+fn git_commit_file_level_selective_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "git",
+            "commit",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--message",
+            "Commit metadata only",
+            "--items-with-file-selection",
+            r#"[{"objectId":"bbbbbbbb-1111-2222-3333-444444444444","selectedFiles":["metadata.json"]},{"logicalId":"cccccccc-1111-2222-3333-444444444444","selectedFiles":[]}]"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "git commit");
+    assert_eq!(data["details"]["mode"], "FileLevelSelective");
+    assert_eq!(
+        data["details"]["itemsWithFileSelection"][0]["selectedFiles"][0],
+        "metadata.json"
+    );
+    assert_eq!(
+        data["details"]["itemsWithFileSelection"][1]["selectedFiles"],
+        serde_json::json!([])
+    );
+}
+
+#[test]
+fn git_commit_file_level_selective_rejects_invalid_path() {
+    fabio()
+        .args([
+            "--dry-run",
+            "git",
+            "commit",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--items-with-file-selection",
+            r#"[{"objectId":"bbbbbbbb-1111-2222-3333-444444444444","selectedFiles":["/metadata.json"]}]"#,
+        ])
+        .assert()
+        .failure();
+}
+
 // ---------------------------------------------------------------------------
 // Pull on unconnected workspace fails
 // ---------------------------------------------------------------------------

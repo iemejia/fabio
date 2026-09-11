@@ -1954,6 +1954,36 @@ fn assign_identity_includes_assignment_type() {
     assert_eq!(data["details"]["assignmentType"], "Caller");
 }
 
+#[test]
+fn bulk_definition_dry_runs_use_canonical_ga_command_names() {
+    for (command, body) in [
+        ("bulk-export-definitions", r#"{"mode":"All"}"#),
+        (
+            "bulk-import-definitions",
+            r#"{"definitionParts":[{"path":"item/.platform","payload":"e30=","payloadType":"InlineBase64"}]}"#,
+        ),
+    ] {
+        let assert = fabio()
+            .args([
+                "--dry-run",
+                "item",
+                command,
+                "--workspace",
+                "aaaaaaaa-1111-2222-3333-444444444444",
+                "--content",
+                body,
+            ])
+            .assert()
+            .success();
+        let json = parse_json(&assert);
+        assert_eq!(
+            json["data"]["would_execute"],
+            format!("item {command}"),
+            "{command}"
+        );
+    }
+}
+
 // item apply-tags body field must be `tags` (not `tagIds`, which the API
 // rejects with InvalidInput). Offline dry-run regression.
 #[test]
