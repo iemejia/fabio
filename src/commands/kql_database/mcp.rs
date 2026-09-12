@@ -24,9 +24,11 @@ use crate::output;
 /// External MCP clients connect to this URL over HTTP transport, signing in with
 /// Fabric credentials. Same generic `dataPlane/.../items/...` shape as the ontology
 /// MCP URL, but with a `kqlEndpoint` suffix (ontology uses `ontologyEndpoint`).
+///
+/// Delegates to `kql_utils::build_kql_mcp_url` so the format lives in exactly one
+/// place (shared with `eventhouse mcp-url`).
 pub(super) fn build_mcp_url(base: &str, workspace: &str, id: &str) -> String {
-    let base = base.trim_end_matches('/');
-    format!("{base}/mcp/dataPlane/workspaces/{workspace}/items/{id}/kqlEndpoint")
+    crate::commands::kql_utils::build_kql_mcp_url(base, workspace, id)
 }
 
 /// Print the KQL-database remote MCP server URL, plus a lightweight existence check

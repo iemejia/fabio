@@ -433,6 +433,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/eventhouse_query.json"),
     ),
     (
+        "eventhouse/mcp-url",
+        include_str!("data/examples/eventhouse_mcp_url.json"),
+    ),
+    (
         "eventstream/get-topology",
         include_str!("data/examples/eventstream_get_topology.json"),
     ),

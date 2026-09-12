@@ -13433,6 +13433,23 @@
         },
         "mutates": false,
         "returns": "object"
+      },
+      "mcp-url": {
+        "description": "Print the remote MCP server URL(s) for the eventhouse's KQL databases",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Eventhouse ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
       }
     }
   },

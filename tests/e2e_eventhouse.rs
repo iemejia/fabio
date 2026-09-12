@@ -455,3 +455,79 @@ fn eventhouse_query_oneshot_and_follow_lifecycle() {
         .assert()
         .success();
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn eventhouse_mcp_url_returns_global_and_per_database_urls() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("eh_mcp");
+
+    // Create an eventhouse to resolve the MCP URL against.
+    let assert = fabio()
+        .args([
+            "eventhouse",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let eh_id = extract_data(&parse_json(&assert))["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Resolve the MCP URL(s).
+    let assert = fabio()
+        .args([
+            "eventhouse",
+            "mcp-url",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &eh_id,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["id"], eh_id);
+    assert_eq!(data["transport"], "http");
+    // The global endpoint is workspace/item-agnostic and never carries an items/ id.
+    let global = data["globalEndpoint"].as_str().unwrap();
+    assert!(
+        global.ends_with("/mcp/dataPlane/kqlEndpoint"),
+        "global: {global}"
+    );
+    assert!(!global.contains("/items/"));
+    // databases is always an array; each per-database URL carries the DB item id.
+    let dbs = data["databases"].as_array().unwrap();
+    for db in dbs {
+        let url = db["mcpUrl"].as_str().unwrap();
+        let db_id = db["id"].as_str().unwrap();
+        assert!(
+            url.contains(&format!("/items/{db_id}/kqlEndpoint")),
+            "per-database url {url} must carry db id {db_id}"
+        );
+        assert!(url.contains(&cfg.dest_workspace));
+    }
+
+    // Cleanup.
+    fabio()
+        .args([
+            "eventhouse",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &eh_id,
+        ])
+        .assert()
+        .success();
+}

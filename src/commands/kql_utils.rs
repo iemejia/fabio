@@ -507,6 +507,35 @@ pub async fn run_query(
     render_kql_results(cli, &rows, &columns);
     Ok(())
 }
+
+// ─── Eventhouse / KQL-database remote MCP URLs ───────────────────────────────
+//
+// The eventhouse remote MCP server is consumed PER KQL DATABASE (the URL carries a
+// KQL-database item id, not the parent eventhouse id — verified against
+// <https://learn.microsoft.com/fabric/real-time-intelligence/mcp-remote-eventhouse>).
+// Both `kql-database mcp-url` and `eventhouse mcp-url` build the URL from this one
+// place so the documented format never drifts between the two commands.
+
+/// Build the canonical per-KQL-database remote MCP server URL.
+///
+/// Format: `{base}/mcp/dataPlane/workspaces/{workspace}/items/{id}/kqlEndpoint`,
+/// where `{id}` is the KQL-database item id. External MCP clients connect to this
+/// URL over HTTP transport, signing in with a Fabric credential.
+pub fn build_kql_mcp_url(base: &str, workspace: &str, id: &str) -> String {
+    let base = base.trim_end_matches('/');
+    format!("{base}/mcp/dataPlane/workspaces/{workspace}/items/{id}/kqlEndpoint")
+}
+
+/// Build the eventhouse/KQL global remote MCP endpoint.
+///
+/// Format: `{base}/mcp/dataPlane/kqlEndpoint`. Unlike the per-database URL, the
+/// global endpoint is workspace/item-agnostic — clients pass `workspaceId` and
+/// `itemId` (and optionally `clusterUrl`/`databaseName`) in each tool call.
+pub fn build_kql_global_mcp_url(base: &str) -> String {
+    let base = base.trim_end_matches('/');
+    format!("{base}/mcp/dataPlane/kqlEndpoint")
+}
+
 // ─── Unit Tests ──────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -659,5 +688,34 @@ mod tests {
         let (rows, columns) = parse_kusto_v2_response(&frames).unwrap();
         assert!(rows.is_empty());
         assert!(columns.is_empty());
+    }
+
+    #[test]
+    fn build_kql_mcp_url_matches_documented_format() {
+        let url = build_kql_mcp_url("https://api.fabric.microsoft.com/v1", "ws-123", "kql-456");
+        assert_eq!(
+            url,
+            "https://api.fabric.microsoft.com/v1/mcp/dataPlane/workspaces/ws-123/items/kql-456/kqlEndpoint"
+        );
+    }
+
+    #[test]
+    fn build_kql_mcp_url_trims_trailing_slash_on_base() {
+        let url = build_kql_mcp_url("https://api.fabric.microsoft.com/v1/", "w", "k");
+        assert_eq!(
+            url,
+            "https://api.fabric.microsoft.com/v1/mcp/dataPlane/workspaces/w/items/k/kqlEndpoint"
+        );
+    }
+
+    #[test]
+    fn build_kql_global_mcp_url_matches_documented_format() {
+        let url = build_kql_global_mcp_url("https://api.fabric.microsoft.com/v1");
+        assert_eq!(
+            url,
+            "https://api.fabric.microsoft.com/v1/mcp/dataPlane/kqlEndpoint"
+        );
+        // Global endpoint is workspace/item-agnostic (no items/ segment).
+        assert!(!url.contains("/items/"));
     }
 }

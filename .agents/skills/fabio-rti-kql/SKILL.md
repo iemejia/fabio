@@ -40,6 +40,7 @@ Manage eventhouses (real-time analytics)
 | `fabio eventhouse ingestion-uri` | no | Print the eventhouse cluster ingestion URI |
 | `fabio eventhouse list` | no | List eventhouses in a workspace |
 | `fabio eventhouse list-databases` | no | List the KQL databases hosted in the eventhouse cluster |
+| `fabio eventhouse mcp-url` | no | Print the remote MCP server URL(s) for the eventhouse's KQL databases |
 | `fabio eventhouse query` | no | Run a KQL (or `.`-management, or T-SQL) query against the eventhouse cluster |
 | `fabio eventhouse query-uri` | no | Print the eventhouse cluster query URI (deterministic; agents cannot guess it) |
 | `fabio eventhouse show` | no | Show details of an eventhouse |
@@ -226,6 +227,7 @@ Manage operations agents (AI-powered operations)
 - kql-database create-shortcut REQUIRES --enable-query-acceleration and supports only the 6 STORAGE targets (OneLake, AmazonS3, AdlsGen2, GoogleCloudStorage, S3Compatible, AzureBlobStorage) — Dataverse/ExternalDataShare/OneDriveSharePoint are rejected offline. Use the typed flags (--target-type/--connection-id/--location/...) instead of hand-writing the target JSON.
 - kql-queryset add-tab --kql-database <kqlDbId> authors a tab bound to a Fabric KQL DB without hand-crafting RealTimeQueryset.json (it resolves queryServiceUri + display name and uses a type:'Fabric' data source with databaseItemName). A Fabric data source that omits databaseItemName makes 'run' fall back to NetDefaultDB and fail with EntityNotFound.
 - 'kql-database query' auto-routes a leading-SELECT (T-SQL) to the Kusto SQL endpoint; '.'-prefixed commands go to /mgmt. eventhouse create --min-consumption-units sets an always-on minimum capacity; a KQL data source in a queryset/reflex uses the KQL DATABASE item id (queryServiceUri), not the eventhouse id.
+- The Fabric Eventhouse remote MCP server (preview) is addressed PER KQL DATABASE — the URL is /mcp/dataPlane/workspaces/{ws}/items/{kqlDatabaseId}/kqlEndpoint and carries a KQL-DATABASE item id, NOT the eventhouse id. `eventhouse mcp-url` resolves the eventhouse's databases and prints the correct per-database URL for each (use it when you only have the eventhouse id); `kql-database mcp-url` prints the URL for one database directly. Both also surface the workspace/item-agnostic globalEndpoint (/mcp/dataPlane/kqlEndpoint), which takes workspaceId + itemId as tool-call arguments instead.
 
 ## Troubleshooting
 | Symptom | Fix |

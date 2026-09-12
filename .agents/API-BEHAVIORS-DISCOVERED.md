@@ -784,6 +784,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Create is LRO**: Returns 202, requires polling. Creation can take 30-60 seconds.
 - **getDefinition is LRO**: Returns 202, requires polling.
 - **Endpoint pattern**: `/workspaces/{ws}/eventhouses/{id}`.
+- **Remote MCP server URL is per-KQL-DATABASE, not per-eventhouse (verified live)**: The Fabric Eventhouse remote MCP server (preview) is addressed by a KQL-database item id, not the eventhouse id. The per-database URL is `{base}/mcp/dataPlane/workspaces/{ws}/items/{kqlDatabaseId}/kqlEndpoint`, and there is a workspace/item-agnostic global endpoint `{base}/mcp/dataPlane/kqlEndpoint` (client passes `workspaceId` + `itemId`, and optional `clusterUrl`/`databaseName`, per tool call). `eventhouse mcp-url` resolves `properties.databasesItemIds` and emits one URL per database; the URL for a database matches `kql-database mcp-url` for that same database id exactly (both call the shared `kql_utils::build_kql_mcp_url`). Creating an eventhouse auto-creates a default KQL database with the same display name, so a freshly-created eventhouse already has one database id (live: eventhouse `d3bbcce1…` → database `bacbf3e7…`). Docs: real-time-intelligence/mcp-remote-eventhouse.
 
 ## Graph Model API Behaviors Discovered
 - **Job type for refresh is `RefreshGraph` (PascalCase)**: The Jobs API uses `?jobType=RefreshGraph` query parameter. The legacy path-based format (`/jobs/refreshGraph/instances`) returns `InvalidJobType`. Must use `POST /workspaces/{ws}/graphModels/{id}/jobs/instances?jobType=RefreshGraph`.

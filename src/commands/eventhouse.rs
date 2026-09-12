@@ -217,6 +217,25 @@ pub enum EventhouseCommand {
         #[arg(long)]
         id: String,
     },
+
+    /// Print the remote MCP server URL(s) for the eventhouse's KQL databases.
+    ///
+    /// The eventhouse remote MCP server is consumed PER KQL DATABASE (the URL
+    /// carries a KQL-database item id, not the eventhouse id), so this resolves the
+    /// eventhouse's databases and prints the correct per-database URL for each, plus
+    /// the workspace/item-agnostic global endpoint. Consume a URL as a remote MCP
+    /// server (HTTP transport) from any MCP client to discover schemas, generate KQL
+    /// from natural language, execute queries, and sample data.
+    #[command(name = "mcp-url", display_order = 12)]
+    McpUrl {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Eventhouse ID
+        #[arg(long)]
+        id: String,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -324,6 +343,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EventhouseComma
         EventhouseCommand::IngestionUri { workspace, id } => {
             print_uri(cli, client, workspace, id, UriKind::Ingestion).await
         }
+        EventhouseCommand::McpUrl { workspace, id } => mcp_url(cli, client, workspace, id).await,
     }
 }
 
@@ -694,5 +714,62 @@ async fn print_uri(
     })?;
     let obj = serde_json::json!({ "id": id, label: uri });
     output::render_object(cli, &obj, label);
+    Ok(())
+}
+
+/// Print the remote MCP server URL(s) for an eventhouse's KQL databases.
+///
+/// The Fabric eventhouse MCP server is addressed PER KQL DATABASE (the URL carries a
+/// KQL-database item id, not the eventhouse id — verified against the Microsoft docs
+/// at real-time-intelligence/mcp-remote-eventhouse). So we resolve the eventhouse's
+/// databases and emit the correct per-database URL for each, plus the global
+/// endpoint. This is a read-only operation, so there is no dry-run guard.
+async fn mcp_url(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    // resolve_eventhouse_props performs the GET that also validates the id exists.
+    let props = resolve_eventhouse_props(client, workspace, id).await?;
+    let base = crate::client::fabric_base_url();
+    let global_endpoint = crate::commands::kql_utils::build_kql_global_mcp_url(base);
+
+    let mut databases: Vec<Value> = Vec::new();
+    for db_id in &props.database_ids {
+        let display_name = client
+            .get(&format!("/workspaces/{workspace}/kqlDatabases/{db_id}"))
+            .await
+            .ok()
+            .and_then(|db| {
+                db.get("displayName")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            });
+        databases.push(serde_json::json!({
+            "id": db_id,
+            "displayName": display_name,
+            "mcpUrl": crate::commands::kql_utils::build_kql_mcp_url(base, workspace, db_id),
+        }));
+    }
+
+    let mut result = serde_json::json!({
+        "id": id,
+        "transport": "http",
+        "globalEndpoint": global_endpoint,
+        "databases": databases,
+    });
+    if props.database_ids.is_empty() {
+        result["hint"] = Value::from(format!(
+            "Eventhouse '{id}' hosts no KQL databases yet, so it has no per-database MCP URL. \
+             Create one with: fabio kql-database create --workspace {workspace} --eventhouse {id} --name <DB>. \
+             The globalEndpoint works once a database exists (pass workspaceId + itemId per tool call)."
+        ));
+    } else {
+        result["note"] = Value::from(
+            "Consume a per-database mcpUrl as a remote MCP server (HTTP transport) from VS Code \
+             agent mode, GitHub Copilot, Copilot Studio, Azure AI Foundry, or any MCP client, \
+             signing in with a Fabric credential that has read/query access to the KQL database. \
+             The server discovers KQL schemas, generates KQL from natural language, executes \
+             queries, and samples data. The globalEndpoint is an alternative that takes \
+             workspaceId + itemId (and optional clusterUrl/databaseName) as tool-call arguments.",
+        );
+    }
+    output::render_object(cli, &result, "globalEndpoint");
     Ok(())
 }

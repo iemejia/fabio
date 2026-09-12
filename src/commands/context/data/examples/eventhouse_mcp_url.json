@@ -1,0 +1,24 @@
+{
+  "command": "fabio eventhouse mcp-url --workspace <WS> --id <EVENTHOUSE_ID>",
+  "description": "Print the remote Fabric Eventhouse MCP server URL(s) (preview) for an eventhouse. The eventhouse MCP server is addressed PER KQL DATABASE (the URL carries a KQL-database item id, NOT the eventhouse id), so fabio resolves the eventhouse's databases and emits the correct per-database mcpUrl for each, plus the workspace/item-agnostic global endpoint. External MCP clients (VS Code agent mode, GitHub Copilot, Copilot Studio, Azure AI Foundry) connect over HTTP transport with Fabric auth to discover KQL schemas, generate KQL from natural language, execute queries, and sample data. fabio constructs the deterministic /mcp/dataPlane/.../kqlEndpoint URL because agents cannot guess it.",
+  "response": {
+    "data": {
+      "id": "9a2b1c3d-4e5f-6789-abcd-ef0123456789",
+      "transport": "http",
+      "globalEndpoint": "https://api.fabric.microsoft.com/v1/mcp/dataPlane/kqlEndpoint",
+      "databases": [
+        {
+          "id": "b1b1b1b1-cccc-dddd-eeee-f2f2f2f2f2f2",
+          "displayName": "TelemetryDB",
+          "mcpUrl": "https://api.fabric.microsoft.com/v1/mcp/dataPlane/workspaces/11112222-bbbb-3333-cccc-4444dddd5555/items/b1b1b1b1-cccc-dddd-eeee-f2f2f2f2f2f2/kqlEndpoint"
+        }
+      ],
+      "note": "Consume a per-database mcpUrl as a remote MCP server (HTTP transport) ... The globalEndpoint is an alternative that takes workspaceId + itemId (and optional clusterUrl/databaseName) as tool-call arguments."
+    }
+  },
+  "notes": "Two endpoint shapes: per-database (databases[].mcpUrl, binds to one KQL database item — note the /items/{kqlDatabaseId}/kqlEndpoint segment carries the KQL-DATABASE id, not the eventhouse id) and global (globalEndpoint, /mcp/dataPlane/kqlEndpoint, where the agent supplies workspaceId+itemId per tool call). This bridges 'I have an eventhouse id' to the correct per-database URLs — the equivalent single-database command is 'fabio kql-database mcp-url --workspace <WS> --id <KQL_DB_ID>'. When the eventhouse hosts no KQL databases yet, databases is an empty array and a hint explains that only the global endpoint applies until a database exists. Division of labor: use the remote MCP server for interactive Copilot-in-VS-Code KQL authoring; use fabio's native eventhouse/kql-database query, describe, sample, examples, schema-context for scripted/composable execution, schema discovery, and NL grounding.",
+  "query_examples": [
+    "fabio eventhouse mcp-url --workspace <WS> --id <ID> --query globalEndpoint -o plain",
+    "fabio eventhouse mcp-url --workspace <WS> --id <ID> --query 'databases[0].mcpUrl' -o plain"
+  ]
+}
