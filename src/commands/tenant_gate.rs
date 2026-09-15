@@ -124,6 +124,11 @@ fn setting_for_command(path: &str) -> Option<TenantSetting> {
             "Users can create Digital Twin Builder (preview) items",
             None,
         ),
+        "event-schema-set" => mk(
+            "EventDefinitionTenantSwitch",
+            "Enable Event Schema Sets in Real-Time Hub (preview)",
+            None,
+        ),
         "mirrored-catalog" | "mirrored-google-lakehouse-catalog" => mk(
             "ArtifactMirroredCatalogPreview",
             "Enable new mirrored catalog items (preview)",
@@ -373,6 +378,10 @@ mod tests {
                 .unwrap()
                 .name,
             "DigitalOperationsPreview"
+        );
+        assert_eq!(
+            setting_for_command("event-schema-set.create").unwrap().name,
+            "EventDefinitionTenantSwitch"
         );
         assert_eq!(
             setting_for_command("app-backend.create").unwrap().name,

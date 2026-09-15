@@ -18,8 +18,9 @@
     "PowerBIMCP": "semantic-model generate-dax / copilot-schema, report copilot-metadata (fallback: query --dax, list-tables, report get-definition)",
     "OntologyPreview": "ontology group",
     "ArtifactDatabricksStoragePreview": "azure-databricks-storage group",
-    "DigitalOperationsPreview": "digital-twin-builder group",
-    "ArtifactMirroredCatalogPreview": "mirrored-catalog group",
+ "DigitalOperationsPreview": "digital-twin-builder group",
+ "EventDefinitionTenantSwitch": "event-schema-set group (Event Schema Sets in Real-Time Hub, preview)",
+ "ArtifactMirroredCatalogPreview": "mirrored-catalog group",
     "AllowExternalDataSharingSwitch": "item external-data-share (+ AllowExternalDataSharingReceiverSwitch for accept)",
     "PublishToWeb": "report publish-to-web",
     "AllowSendAOAIDataToOtherRegions": "ontology NL search (Fabric IQ) when the capacity region lacks in-region Azure OpenAI"
