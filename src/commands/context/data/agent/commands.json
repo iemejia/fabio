@@ -16918,7 +16918,7 @@
           },
           "--conf": {
             "type": "string",
-            "description": "Spark configuration as a JSON object, e.g. '{\"spark.executor.cores\":\"4\"}'. Use to configure High-Concurrency session packing per Microsoft docs"
+            "description": "Spark configuration as a JSON object, e.g. '{\"spark.executor.cores\":\"4\"}'"
           },
           "--wait": {
             "type": "bool",
@@ -17025,6 +17025,14 @@
           "--conf": {
             "type": "string",
             "description": "Spark configuration as a JSON object"
+          },
+          "--high-concurrency": {
+            "type": "bool",
+            "description": "Use a High-Concurrency session (shared underlying Spark session). Concurrent runs with the same --session-tag pack onto one Spark session"
+          },
+          "--session-tag": {
+            "type": "string",
+            "description": "Session tag for High-Concurrency packing (implies --high-concurrency semantics; requires --high-concurrency). Runs sharing a tag share one Spark session"
           },
           "--timeout": {
             "type": "integer",

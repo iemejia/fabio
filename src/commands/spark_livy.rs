@@ -12,6 +12,12 @@
 //! session → wait for `idle` → run one statement → return output → delete the
 //! session (the session is always cleaned up, even on error).
 //!
+//! High-Concurrency (HC): `spark run --high-concurrency [--session-tag <tag>]` uses
+//! the separate `/highConcurrencySessions` endpoint. HC sessions sharing a
+//! `sessionTag` are packed onto ONE underlying Spark session (each with an isolated
+//! REPL) — concurrent `spark run` invocations with the same tag share compute. The
+//! HC id / underlying `sessionId` / `replId` plumbing is hidden behind the one-shot.
+//!
 //! API contract verified live (2023-12-01):
 //! - create: `POST …/sessions {name?, conf?}` → `{id, artifactId}`
 //! - state:  `GET …/sessions/{id}` → `{state}` (`not_started`/`starting`/`idle`/`busy`/`dead`)
@@ -38,6 +44,16 @@ const POLL_INTERVAL_SECS: u64 = 5;
 
 fn sessions_base(ws: &str, lh: &str) -> String {
     format!("/workspaces/{ws}/lakehouses/{lh}/livyApi/versions/{LIVY_VERSION}/sessions")
+}
+
+/// The High-Concurrency (HC) session endpoint. HC sessions can be packed onto a
+/// shared underlying Spark session via a common `sessionTag`; each gets an
+/// isolated REPL. Statements route through `/repls/{replId}/statements` (using the
+/// underlying `sessionId`, not the HC id); the HC id is used to GET/DELETE.
+fn hc_base(ws: &str, lh: &str) -> String {
+    format!(
+        "/workspaces/{ws}/lakehouses/{lh}/livyApi/versions/{LIVY_VERSION}/highConcurrencySessions"
+    )
 }
 
 /// Map the user-facing `--language` to the Livy statement `kind`.
@@ -107,11 +123,18 @@ fn parse_conf(conf: Option<&str>) -> Result<Option<Value>> {
 }
 
 /// A session state that will never become idle (terminal failure).
+/// Case-insensitive: regular sessions report `dead`, HC sessions report `Dead`.
 fn is_dead_state(state: &str) -> bool {
+    let s = state.to_ascii_lowercase();
     matches!(
-        state,
-        "dead" | "error" | "killed" | "shutting_down" | "success"
+        s.as_str(),
+        "dead" | "error" | "killed" | "failed" | "shutting_down" | "success"
     )
+}
+
+/// Whether a session state is the ready state (case-insensitive: `idle`/`Idle`).
+const fn is_idle_state(state: &str) -> bool {
+    state.eq_ignore_ascii_case("idle")
 }
 
 async fn get_session_state(client: &FabricClient, ws: &str, lh: &str, sid: &str) -> Result<String> {
@@ -137,7 +160,7 @@ async fn wait_for_idle(
     let deadline = Instant::now() + Duration::from_secs(timeout_secs);
     loop {
         let state = get_session_state(client, ws, lh, sid).await?;
-        if state == "idle" {
+        if is_idle_state(&state) {
             return Ok(state);
         }
         if is_dead_state(&state) {
@@ -162,20 +185,75 @@ async fn wait_for_idle(
     }
 }
 
-/// Submit a statement and poll it to completion, bounded by `timeout_secs`.
-/// Returns the completed statement object (`{state, output, …}`).
-async fn submit_and_wait_statement(
+/// Poll an HC session until it reaches `Idle`, bounded by `timeout_secs`. Returns
+/// the `(underlying_livy_session_id, repl_id)` needed to submit statements — both
+/// are only populated once the HC session is `Idle`.
+async fn wait_for_hc_idle(
     client: &FabricClient,
     ws: &str,
     lh: &str,
-    sid: &str,
+    hc_id: &str,
+    timeout_secs: u64,
+) -> Result<(String, String)> {
+    let deadline = Instant::now() + Duration::from_secs(timeout_secs);
+    loop {
+        let data = client.get(&format!("{}/{hc_id}", hc_base(ws, lh))).await?;
+        let state = data
+            .get("state")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        if is_idle_state(state) {
+            let session_id = data
+                .get("sessionId")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let repl_id = data
+                .get("replId")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if session_id.is_empty() || repl_id.is_empty() {
+                return Err(FabioError::new(
+                    ErrorCode::ApiError,
+                    "HC session is Idle but did not return sessionId/replId.".to_string(),
+                )
+                .into());
+            }
+            return Ok((session_id.to_string(), repl_id.to_string()));
+        }
+        if is_dead_state(state) {
+            return Err(FabioError::with_hint(
+                ErrorCode::ApiError,
+                format!("HC Livy session '{hc_id}' entered terminal state '{state}' before becoming ready."),
+                "Check the lakehouse capacity is running and retry.".to_string(),
+            )
+            .into());
+        }
+        if Instant::now() >= deadline {
+            return Err(FabioError::with_hint(
+                ErrorCode::Timeout,
+                format!("HC Livy session '{hc_id}' did not reach 'Idle' within {timeout_secs}s (last state: {state})."),
+                "Increase --timeout; acquiring an HC session can take a couple of minutes.".to_string(),
+            )
+            .into());
+        }
+        tokio::time::sleep(Duration::from_secs(POLL_INTERVAL_SECS)).await;
+    }
+}
+
+/// Submit a statement to a statements collection URL and poll it to completion,
+/// bounded by `timeout_secs`. Returns the completed statement object. `statements_url`
+/// is the full collection URL: `…/sessions/{id}/statements` (regular) or
+/// `…/highConcurrencySessions/{sessionId}/repls/{replId}/statements` (HC).
+async fn submit_and_wait_statement(
+    client: &FabricClient,
+    statements_url: &str,
     code: &str,
     kind: &str,
     timeout_secs: u64,
 ) -> Result<Value> {
     let submitted = client
         .post(
-            &format!("{}/{sid}/statements", sessions_base(ws, lh)),
+            statements_url,
             &json!({ "code": code, "kind": kind }),
             false,
         )
@@ -189,12 +267,7 @@ async fn submit_and_wait_statement(
 
     let deadline = Instant::now() + Duration::from_secs(timeout_secs);
     loop {
-        let stmt = client
-            .get(&format!(
-                "{}/{sid}/statements/{stmt_id}",
-                sessions_base(ws, lh)
-            ))
-            .await?;
+        let stmt = client.get(&format!("{statements_url}/{stmt_id}")).await?;
         let state = stmt
             .get("state")
             .and_then(Value::as_str)
@@ -339,16 +412,12 @@ pub async fn run_statement(
 
     let kind = statement_kind(language);
     let timeout_secs = timeout.unwrap_or(DEFAULT_TIMEOUT_SECS);
-    let stmt = submit_and_wait_statement(
-        client,
-        workspace,
-        lakehouse,
-        session_id,
-        &code,
-        kind,
-        timeout_secs,
-    )
-    .await?;
+    let statements_url = format!(
+        "{}/{session_id}/statements",
+        sessions_base(workspace, lakehouse)
+    );
+    let stmt =
+        submit_and_wait_statement(client, &statements_url, &code, kind, timeout_secs).await?;
     let (mut result, is_error) = render_statement_output(&stmt);
     result["sessionId"] = json!(session_id);
     output::render_object(cli, &result, "text");
@@ -395,10 +464,21 @@ pub async fn run(
     code: Option<&str>,
     language: &str,
     conf: Option<&str>,
+    high_concurrency: bool,
+    session_tag: Option<&str>,
     timeout: Option<u64>,
 ) -> Result<()> {
     let code = resolve_code_input(code)?;
     let conf = parse_conf(conf)?;
+    if session_tag.is_some() && !high_concurrency {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "--session-tag requires --high-concurrency".to_string(),
+            "Add --high-concurrency (session packing only applies to HC sessions), or drop --session-tag."
+                .to_string(),
+        )
+        .into());
+    }
     if output::dry_run_guard(
         cli,
         "spark run",
@@ -406,20 +486,70 @@ pub async fn run(
             "workspace": workspace,
             "lakehouse": lakehouse,
             "language": language,
+            "highConcurrency": high_concurrency,
+            "sessionTag": session_tag,
             "codeLength": code.len(),
         }),
     ) {
         return Ok(());
     }
 
-    // Create an ephemeral session.
+    let kind = statement_kind(language);
+    let timeout_secs = timeout.unwrap_or(DEFAULT_TIMEOUT_SECS);
+
+    let stmt = if high_concurrency {
+        oneshot_hc(
+            client,
+            workspace,
+            lakehouse,
+            &code,
+            kind,
+            conf,
+            session_tag,
+            timeout_secs,
+        )
+        .await?
+    } else {
+        oneshot_regular(
+            client,
+            workspace,
+            lakehouse,
+            &code,
+            kind,
+            conf,
+            timeout_secs,
+        )
+        .await?
+    };
+
+    let (mut result, is_error) = render_statement_output(&stmt);
+    result["sessionDeleted"] = json!(true);
+    if high_concurrency {
+        result["highConcurrency"] = json!(true);
+    }
+    output::render_object(cli, &result, "text");
+    if is_error {
+        anyhow::bail!("Statement returned an error result (see ename/evalue/traceback).");
+    }
+    Ok(())
+}
+
+/// Regular one-shot: create an ephemeral session → wait idle → run one statement →
+/// ALWAYS delete the session (even on error). Returns the completed statement.
+async fn oneshot_regular(
+    client: &FabricClient,
+    ws: &str,
+    lh: &str,
+    code: &str,
+    kind: &str,
+    conf: Option<Value>,
+    timeout_secs: u64,
+) -> Result<Value> {
     let mut body = json!({ "name": "fabio-spark-run" });
     if let Some(c) = conf {
         body["conf"] = c;
     }
-    let created = client
-        .post(&sessions_base(workspace, lakehouse), &body, false)
-        .await?;
+    let created = client.post(&sessions_base(ws, lh), &body, false).await?;
     let sid = created
         .get("id")
         .and_then(Value::as_str)
@@ -431,37 +561,66 @@ pub async fn run(
         })?
         .to_string();
 
-    // Run the whole flow, then ALWAYS delete the session (even on error/timeout).
-    let kind = statement_kind(language);
-    let timeout_secs = timeout.unwrap_or(DEFAULT_TIMEOUT_SECS);
     let outcome: Result<Value> = async {
-        wait_for_idle(client, workspace, lakehouse, &sid, timeout_secs).await?;
-        submit_and_wait_statement(
-            client,
-            workspace,
-            lakehouse,
-            &sid,
-            &code,
-            kind,
-            timeout_secs,
-        )
-        .await
+        wait_for_idle(client, ws, lh, &sid, timeout_secs).await?;
+        let statements_url = format!("{}/{sid}/statements", sessions_base(ws, lh));
+        submit_and_wait_statement(client, &statements_url, code, kind, timeout_secs).await
     }
     .await;
     // Best-effort cleanup — never mask the primary outcome.
     let _ = client
-        .delete(&format!("{}/{sid}", sessions_base(workspace, lakehouse)))
+        .delete(&format!("{}/{sid}", sessions_base(ws, lh)))
         .await;
+    outcome
+}
 
-    let stmt = outcome?;
-    let (mut result, is_error) = render_statement_output(&stmt);
-    result["sessionId"] = json!(sid);
-    result["sessionDeleted"] = json!(true);
-    output::render_object(cli, &result, "text");
-    if is_error {
-        anyhow::bail!("Statement returned an error result (see ename/evalue/traceback).");
+/// HC one-shot: acquire a High-Concurrency session (optionally packed onto a shared
+/// Spark session via `session_tag`), run the statement through its isolated REPL,
+/// and ALWAYS delete the HC session. The HC id / underlying sessionId / replId
+/// plumbing is hidden here. Returns the completed statement.
+#[allow(clippy::too_many_arguments)]
+async fn oneshot_hc(
+    client: &FabricClient,
+    ws: &str,
+    lh: &str,
+    code: &str,
+    kind: &str,
+    conf: Option<Value>,
+    session_tag: Option<&str>,
+    timeout_secs: u64,
+) -> Result<Value> {
+    let mut hc_body = json!({});
+    if let Some(tag) = session_tag {
+        hc_body["sessionTag"] = json!(tag);
     }
-    Ok(())
+    if let Some(c) = conf {
+        hc_body["conf"] = c;
+    }
+    let created = client.post(&hc_base(ws, lh), &hc_body, false).await?;
+    let hc_id = created
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            FabioError::new(
+                ErrorCode::ApiError,
+                "Create HC session returned no id".to_string(),
+            )
+        })?
+        .to_string();
+
+    let outcome: Result<Value> = async {
+        let (livy_session_id, repl_id) =
+            wait_for_hc_idle(client, ws, lh, &hc_id, timeout_secs).await?;
+        let statements_url = format!(
+            "{}/{livy_session_id}/repls/{repl_id}/statements",
+            hc_base(ws, lh)
+        );
+        submit_and_wait_statement(client, &statements_url, code, kind, timeout_secs).await
+    }
+    .await;
+    // Best-effort cleanup — delete uses the HC id.
+    let _ = client.delete(&format!("{}/{hc_id}", hc_base(ws, lh))).await;
+    outcome
 }
 
 #[cfg(test)]
@@ -505,6 +664,25 @@ mod tests {
         assert!(is_dead_state("killed"));
         assert!(!is_dead_state("idle"));
         assert!(!is_dead_state("starting"));
+    }
+
+    #[test]
+    fn state_checks_are_case_insensitive() {
+        // HC sessions report Capitalized states (Idle, Dead, Failed).
+        assert!(is_idle_state("Idle"));
+        assert!(is_idle_state("idle"));
+        assert!(!is_idle_state("AcquiringHighConcurrencySession"));
+        assert!(is_dead_state("Dead"));
+        assert!(is_dead_state("Failed"));
+        assert!(is_dead_state("Killed"));
+    }
+
+    #[test]
+    fn hc_base_uses_high_concurrency_endpoint() {
+        assert_eq!(
+            hc_base("ws", "lh"),
+            "/workspaces/ws/lakehouses/lh/livyApi/versions/2023-12-01/highConcurrencySessions"
+        );
     }
 
     #[test]

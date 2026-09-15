@@ -257,8 +257,7 @@ pub enum SparkCommand {
         #[arg(long)]
         name: Option<String>,
 
-        /// Spark configuration as a JSON object, e.g. '{"spark.executor.cores":"4"}'.
-        /// Use to configure High-Concurrency session packing per Microsoft docs.
+        /// Spark configuration as a JSON object, e.g. '{"spark.executor.cores":"4"}'
         #[arg(long)]
         conf: Option<String>,
 
@@ -337,6 +336,16 @@ pub enum SparkCommand {
         /// Spark configuration as a JSON object
         #[arg(long)]
         conf: Option<String>,
+
+        /// Use a High-Concurrency session (shared underlying Spark session).
+        /// Concurrent runs with the same --session-tag pack onto one Spark session.
+        #[arg(long)]
+        high_concurrency: bool,
+
+        /// Session tag for High-Concurrency packing (implies --high-concurrency semantics;
+        /// requires --high-concurrency). Runs sharing a tag share one Spark session.
+        #[arg(long)]
+        session_tag: Option<String>,
 
         /// Max seconds to wait for the session to be ready and the statement to finish (default 300)
         #[arg(long)]
@@ -620,6 +629,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SparkCommand) -
             code,
             language,
             conf,
+            high_concurrency,
+            session_tag,
             timeout,
         } => {
             Box::pin(crate::commands::spark_livy::run(
@@ -630,6 +641,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SparkCommand) -
                 code.as_deref(),
                 language,
                 conf.as_deref(),
+                *high_concurrency,
+                session_tag.as_deref(),
                 *timeout,
             ))
             .await
