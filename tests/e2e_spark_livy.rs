@@ -100,6 +100,51 @@ fn spark_run_rejects_invalid_conf_json() {
     assert_eq!(err["error"]["code"], "INVALID_INPUT");
 }
 
+#[test]
+fn spark_run_session_tag_requires_high_concurrency() {
+    let assert = fabio()
+        .args([
+            "spark",
+            "run",
+            "--workspace",
+            "ws",
+            "--lakehouse",
+            "lh",
+            "--code",
+            "print(1)",
+            "--session-tag",
+            "pool-a",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err["error"]["code"], "INVALID_INPUT");
+}
+
+#[test]
+fn spark_cancel_statement_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "spark",
+            "cancel-statement",
+            "--workspace",
+            "ws",
+            "--lakehouse",
+            "lh",
+            "--session-id",
+            "sid",
+            "--statement-id",
+            "1",
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&assert)).clone();
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "spark cancel-statement");
+}
+
 // ─── Live: run Spark code end to end ─────────────────────────────────────────
 
 #[test]
@@ -203,4 +248,119 @@ fn spark_session_lifecycle_create_run_delete() {
         .assert()
         .success();
     assert_eq!(extract_data(&parse_json(&assert))["status"], "deleted");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn spark_async_statement_submit_get_cancel() {
+    let cfg = TestConfig::from_env();
+
+    // Warm session.
+    let assert = fabio()
+        .args([
+            "spark",
+            "create-livy-session",
+            "--workspace",
+            &cfg.source_workspace,
+            "--lakehouse",
+            &cfg.source_lakehouse,
+            "--wait",
+            "--timeout",
+            "300",
+        ])
+        .timeout(std::time::Duration::from_mins(6))
+        .assert()
+        .success();
+    let sid = extract_data(&parse_json(&assert))["sessionId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Submit a long-running statement WITHOUT waiting.
+    let assert = fabio()
+        .args([
+            "spark",
+            "submit-statement",
+            "--workspace",
+            &cfg.source_workspace,
+            "--lakehouse",
+            &cfg.source_lakehouse,
+            "--session-id",
+            &sid,
+            "--code",
+            "import time; time.sleep(90); print('done')",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let stmt_id = extract_data(&parse_json(&assert))["statementId"]
+        .as_i64()
+        .unwrap()
+        .to_string();
+
+    // get-statement reports a non-terminal state (read-only, never errors out).
+    let assert = fabio()
+        .args([
+            "spark",
+            "get-statement",
+            "--workspace",
+            &cfg.source_workspace,
+            "--lakehouse",
+            &cfg.source_lakehouse,
+            "--session-id",
+            &sid,
+            "--statement-id",
+            &stmt_id,
+        ])
+        .assert()
+        .success();
+    let state = extract_data(&parse_json(&assert))["state"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        matches!(state.as_str(), "waiting" | "running" | "available"),
+        "unexpected statement state: {state}"
+    );
+
+    // Cancel it (stops the compute).
+    let assert = fabio()
+        .args([
+            "spark",
+            "cancel-statement",
+            "--workspace",
+            &cfg.source_workspace,
+            "--lakehouse",
+            &cfg.source_lakehouse,
+            "--session-id",
+            &sid,
+            "--statement-id",
+            &stmt_id,
+        ])
+        .assert()
+        .success();
+    // The Livy cancel endpoint replies with a "canceled" acknowledgement.
+    assert!(
+        extract_data(&parse_json(&assert))["status"]
+            .as_str()
+            .unwrap()
+            .to_lowercase()
+            .contains("cancel")
+    );
+
+    // Cleanup.
+    fabio()
+        .args([
+            "spark",
+            "delete-livy-session",
+            "--workspace",
+            &cfg.source_workspace,
+            "--lakehouse",
+            &cfg.source_lakehouse,
+            "--session-id",
+            &sid,
+        ])
+        .assert()
+        .success();
 }

@@ -16972,6 +16972,96 @@
         "mutates": true,
         "returns": "object"
       },
+      "submit-statement": {
+        "description": "Submit a statement WITHOUT waiting (async) — returns the statement id to poll/cancel",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--lakehouse": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID the session belongs to"
+          },
+          "--session-id": {
+            "type": "string",
+            "required": true,
+            "description": "Interactive Livy session ID"
+          },
+          "--code": {
+            "type": "string",
+            "description": "Code to run (inline, @file, or piped via stdin)"
+          },
+          "--language": {
+            "type": "enum",
+            "values": [
+              "pyspark",
+              "scala",
+              "sql",
+              "r"
+            ],
+            "description": "Language of the code"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "get-statement": {
+        "description": "Get the current state and output of a statement (read-only; poll until `available`)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--lakehouse": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID the session belongs to"
+          },
+          "--session-id": {
+            "type": "string",
+            "required": true,
+            "description": "Interactive Livy session ID"
+          },
+          "--statement-id": {
+            "type": "string",
+            "required": true,
+            "description": "Statement ID (from submit-statement/run-statement)"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "cancel-statement": {
+        "description": "Cancel a running statement (stops the Spark compute it is consuming)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--lakehouse": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID the session belongs to"
+          },
+          "--session-id": {
+            "type": "string",
+            "required": true,
+            "description": "Interactive Livy session ID"
+          },
+          "--statement-id": {
+            "type": "string",
+            "required": true,
+            "description": "Statement ID to cancel"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
       "delete-livy-session": {
         "description": "Delete (stop) an interactive Livy session",
         "flags": {

@@ -427,6 +427,123 @@ pub async fn run_statement(
     Ok(())
 }
 
+/// Submit a statement WITHOUT waiting (async): POST the code and return the
+/// statement id immediately, so the caller can poll with `get-statement` or stop
+/// it with `cancel-statement`. Use `run-statement` for the submit-and-wait case.
+pub async fn submit_statement(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    lakehouse: &str,
+    session_id: &str,
+    code: Option<&str>,
+    language: &str,
+) -> Result<()> {
+    let code = resolve_code_input(code)?;
+    if output::dry_run_guard(
+        cli,
+        "spark submit-statement",
+        &json!({
+            "workspace": workspace,
+            "lakehouse": lakehouse,
+            "sessionId": session_id,
+            "language": language,
+            "codeLength": code.len(),
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let kind = statement_kind(language);
+    let statements_url = format!(
+        "{}/{session_id}/statements",
+        sessions_base(workspace, lakehouse)
+    );
+    let submitted = client
+        .post(
+            &statements_url,
+            &json!({ "code": code, "kind": kind }),
+            false,
+        )
+        .await?;
+    let out = json!({
+        "sessionId": session_id,
+        "statementId": submitted.get("id").cloned().unwrap_or(Value::Null),
+        "state": submitted.get("state").cloned().unwrap_or(Value::Null),
+        "hint": "Statement submitted (not awaited). Poll it with `spark get-statement --statement-id <id>`, or stop it with `spark cancel-statement --statement-id <id>`.",
+    });
+    output::render_object(cli, &out, "statementId");
+    Ok(())
+}
+
+/// Get the current state and output of a statement (read-only). Unlike
+/// `run-statement`, this does NOT wait or fail on a statement error — it reports
+/// whatever the statement's current state/output is (poll it until `available`).
+pub async fn get_statement(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    lakehouse: &str,
+    session_id: &str,
+    statement_id: &str,
+) -> Result<()> {
+    let stmt = client
+        .get(&format!(
+            "{}/{session_id}/statements/{statement_id}",
+            sessions_base(workspace, lakehouse)
+        ))
+        .await?;
+    let (mut result, _is_error) = render_statement_output(&stmt);
+    result["sessionId"] = json!(session_id);
+    output::render_object(cli, &result, "text");
+    Ok(())
+}
+
+/// Cancel a running statement (stops the Spark compute). A statement whose caller
+/// timed out keeps running and consuming capacity until cancelled — use this to
+/// stop it.
+pub async fn cancel_statement(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    lakehouse: &str,
+    session_id: &str,
+    statement_id: &str,
+) -> Result<()> {
+    if output::dry_run_guard(
+        cli,
+        "spark cancel-statement",
+        &json!({
+            "workspace": workspace,
+            "lakehouse": lakehouse,
+            "sessionId": session_id,
+            "statementId": statement_id,
+        }),
+    ) {
+        return Ok(());
+    }
+    let resp = client
+        .post(
+            &format!(
+                "{}/{session_id}/statements/{statement_id}/cancel",
+                sessions_base(workspace, lakehouse)
+            ),
+            &json!({}),
+            false,
+        )
+        .await?;
+    let msg = resp
+        .get("msg")
+        .and_then(Value::as_str)
+        .unwrap_or("cancel requested");
+    output::render_object(
+        cli,
+        &json!({ "sessionId": session_id, "statementId": statement_id, "status": msg }),
+        "status",
+    );
+    Ok(())
+}
+
 pub async fn delete_livy_session(
     cli: &Cli,
     client: &FabricClient,

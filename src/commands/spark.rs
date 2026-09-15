@@ -298,6 +298,70 @@ pub enum SparkCommand {
         timeout: Option<u64>,
     },
 
+    /// Submit a statement WITHOUT waiting (async) — returns the statement id to poll/cancel
+    #[command(name = "submit-statement", display_order = 46)]
+    SubmitStatement {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID the session belongs to
+        #[arg(long)]
+        lakehouse: String,
+
+        /// Interactive Livy session ID
+        #[arg(long)]
+        session_id: String,
+
+        /// Code to run (inline, @file, or piped via stdin)
+        #[arg(long)]
+        code: Option<String>,
+
+        /// Language of the code
+        #[arg(long, value_parser = ["pyspark", "scala", "sql", "r"], default_value = "pyspark")]
+        language: String,
+    },
+
+    /// Get the current state and output of a statement (read-only; poll until `available`)
+    #[command(name = "get-statement", display_order = 46)]
+    GetStatement {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID the session belongs to
+        #[arg(long)]
+        lakehouse: String,
+
+        /// Interactive Livy session ID
+        #[arg(long)]
+        session_id: String,
+
+        /// Statement ID (from submit-statement/run-statement)
+        #[arg(long)]
+        statement_id: String,
+    },
+
+    /// Cancel a running statement (stops the Spark compute it is consuming)
+    #[command(name = "cancel-statement", display_order = 46)]
+    CancelStatement {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID the session belongs to
+        #[arg(long)]
+        lakehouse: String,
+
+        /// Interactive Livy session ID
+        #[arg(long)]
+        session_id: String,
+
+        /// Statement ID to cancel
+        #[arg(long)]
+        statement_id: String,
+    },
+
     /// Delete (stop) an interactive Livy session
     #[command(name = "delete-livy-session", display_order = 47)]
     DeleteLivySession {
@@ -611,6 +675,56 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SparkCommand) -
                 language,
                 *timeout,
             ))
+            .await
+        }
+        SparkCommand::SubmitStatement {
+            workspace,
+            lakehouse,
+            session_id,
+            code,
+            language,
+        } => {
+            crate::commands::spark_livy::submit_statement(
+                cli,
+                client,
+                workspace,
+                lakehouse,
+                session_id,
+                code.as_deref(),
+                language,
+            )
+            .await
+        }
+        SparkCommand::GetStatement {
+            workspace,
+            lakehouse,
+            session_id,
+            statement_id,
+        } => {
+            crate::commands::spark_livy::get_statement(
+                cli,
+                client,
+                workspace,
+                lakehouse,
+                session_id,
+                statement_id,
+            )
+            .await
+        }
+        SparkCommand::CancelStatement {
+            workspace,
+            lakehouse,
+            session_id,
+            statement_id,
+        } => {
+            crate::commands::spark_livy::cancel_statement(
+                cli,
+                client,
+                workspace,
+                lakehouse,
+                session_id,
+                statement_id,
+            )
             .await
         }
         SparkCommand::DeleteLivySession {
