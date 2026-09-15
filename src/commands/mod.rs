@@ -77,6 +77,7 @@ pub mod shortcut_target;
 pub mod snowflake_database;
 pub mod spark;
 pub mod spark_job_definition;
+pub mod spark_livy;
 pub mod sql_database;
 pub mod sql_endpoint;
 pub mod sql_mcp;

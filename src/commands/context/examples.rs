@@ -297,6 +297,7 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         "data-pipeline/run",
         include_str!("data/examples/data_pipeline_run.json"),
     ),
+    ("spark/run", include_str!("data/examples/spark_run.json")),
     ("git/status", include_str!("data/examples/git_status.json")),
     (
         "environment/get-staging-spark-settings",

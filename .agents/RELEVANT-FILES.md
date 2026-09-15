@@ -102,6 +102,7 @@
 - `src/commands/dataflow.rs`: list/show/create/update/delete/get-definition/update-definition/discover-parameters/run/execute-query
 - `src/commands/graphql_api.rs`: list/show/create/update/delete/get-definition/update-definition (schema.graphql)
 - `src/commands/spark.rs`: get-settings/update-settings/list-pools/get-pool/create-pool/update-pool/delete-pool
+- `src/commands/spark_livy.rs`: INTERACTIVE Livy API (run Spark code) — `spark create-livy-session`/`run-statement`/`delete-livy-session` + the one-shot `spark run` (create→wait idle→run→output→delete). Per-lakehouse endpoint `/workspaces/{ws}/lakehouses/{lh}/livyApi/versions/2023-12-01/sessions`; DISTINCT from the read-only monitoring `list-livy-sessions`/`get-livy-session` in spark.rs. All waits bounded by --timeout.
 - `src/commands/spark_job_definition.rs`: list/show/create/update/delete/get-definition/update-definition/run
 - `src/commands/map.rs`: list/show/create/update/delete/get-definition/update-definition (geospatial Azure Maps)
 - `src/commands/plan.rs`: list/show/create/update/delete/get-definition/update-definition (connected-planning Plan item, PlanV1 / connectedPlanning/infobridge.json)
@@ -216,6 +217,7 @@
 - `tests/e2e_semantic_model.rs`: Semantic model CRUD tests + Direct Lake generate (dry-run + generate→frame→DAX lifecycle)
 - `tests/e2e_map.rs`: Map CRUD + definition tests
 - `tests/e2e_spark_job_definition.rs`: Spark job definition tests
+- `tests/e2e_spark_livy.rs`: Interactive Livy API tests (dry-run/validation offline; live `spark run` + session lifecycle)
 - `tests/e2e_deployment_pipeline.rs`: Deployment pipeline tests
 - `tests/e2e_domain.rs`: Domain management tests
 - `tests/e2e_job_scheduler.rs`: Job scheduler tests (11 tests: list, dry-run, fire-and-forget, --wait with polling)

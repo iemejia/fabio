@@ -1,0 +1,21 @@
+{
+  "command": "fabio spark run --workspace <WS> --lakehouse <LH> --code \"print(sum(range(10)))\" --language pyspark",
+  "description": "Run Spark code interactively via the Fabric Livy API and get structured output. `spark run` is the one-shot, agent-native primitive: it creates an interactive Livy session on the lakehouse, waits for it to become idle, runs one statement, returns the output, and ALWAYS deletes the session (even on error). Bounded by --timeout so it never hangs. For multiple statements on one warm session, use `spark create-livy-session --wait` + `spark run-statement` + `spark delete-livy-session`. Languages: pyspark (default), scala, sql, r. This is DISTINCT from the read-only monitoring commands `spark list-livy-sessions`/`get-livy-session`.",
+  "response": {
+    "data": {
+      "statementId": 1,
+      "state": "available",
+      "status": "ok",
+      "text": "45",
+      "data": {"text/plain": "45"},
+      "sessionId": "6c66058a-e159-495f-8819-0a61da0daaca",
+      "sessionDeleted": true
+    }
+  },
+  "notes": "Live-verified. Output fields: 'text' is the text/plain REPL output (pyspark/scala print/repr); 'status' is 'ok' or 'error'; 'data' is the FULL output.data map. IMPORTANT: Spark SQL results do NOT come back as text/plain — they arrive under data['application/json'] as {schema:{fields:[...]}, data:[[...]], truncated} (so 'text' is null for --language sql; read data['application/json']['data'] for the rows). On a Spark error the command exits non-zero and the envelope carries status='error', ename, evalue, and traceback. A cold session takes ~100s to reach 'idle', so --timeout defaults to 300s; raise it for slow starts or long jobs. create-livy-session/run-statement/run all consume Spark capacity while the session is alive; the one-shot `run` self-cleans, but a session created with create-livy-session MUST be deleted with delete-livy-session (it keeps consuming capacity until then).",
+  "query_examples": [
+    "fabio spark run --workspace <WS> --lakehouse <LH> --code @job.py --query text -o plain",
+    "fabio spark run --workspace <WS> --lakehouse <LH> --code \"SELECT count(*) FROM sales\" --language sql --query 'data.\"application/json\".data'",
+    "echo 'spark.range(1000).count()' | fabio spark run --workspace <WS> --lakehouse <LH> --language scala"
+  ]
+}

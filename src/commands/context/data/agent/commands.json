@@ -16899,6 +16899,141 @@
         "mutates": false,
         "returns": "object"
       },
+      "create-livy-session": {
+        "description": "Create an interactive Livy session on a lakehouse to run Spark code",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--lakehouse": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID the session attaches to"
+          },
+          "--name": {
+            "type": "string",
+            "description": "Optional session display name"
+          },
+          "--conf": {
+            "type": "string",
+            "description": "Spark configuration as a JSON object, e.g. '{\"spark.executor.cores\":\"4\"}'. Use to configure High-Concurrency session packing per Microsoft docs"
+          },
+          "--wait": {
+            "type": "bool",
+            "description": "Wait until the session reaches the `idle` (ready) state before returning"
+          },
+          "--timeout": {
+            "type": "integer",
+            "description": "Max seconds to wait for idle when --wait is set (default 300)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "run-statement": {
+        "description": "Run a statement (Spark/PySpark/Spark-SQL/R) on an existing Livy session",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--lakehouse": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID the session belongs to"
+          },
+          "--session-id": {
+            "type": "string",
+            "required": true,
+            "description": "Interactive Livy session ID (from create-livy-session)"
+          },
+          "--code": {
+            "type": "string",
+            "description": "Code to run (inline, @file, or piped via stdin)"
+          },
+          "--language": {
+            "type": "enum",
+            "values": [
+              "pyspark",
+              "scala",
+              "sql",
+              "r"
+            ],
+            "description": "Language of the code"
+          },
+          "--timeout": {
+            "type": "integer",
+            "description": "Max seconds to wait for the statement to finish (default 300)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "delete-livy-session": {
+        "description": "Delete (stop) an interactive Livy session",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--lakehouse": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID the session belongs to"
+          },
+          "--session-id": {
+            "type": "string",
+            "required": true,
+            "description": "Interactive Livy session ID"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "run": {
+        "description": "One-shot: create a session, run code, return output, then delete the session",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--lakehouse": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID to run on"
+          },
+          "--code": {
+            "type": "string",
+            "description": "Code to run (inline, @file, or piped via stdin)"
+          },
+          "--language": {
+            "type": "enum",
+            "values": [
+              "pyspark",
+              "scala",
+              "sql",
+              "r"
+            ],
+            "description": "Language of the code"
+          },
+          "--conf": {
+            "type": "string",
+            "description": "Spark configuration as a JSON object"
+          },
+          "--timeout": {
+            "type": "integer",
+            "description": "Max seconds to wait for the session to be ready and the statement to finish (default 300)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
       "get-advice": {
         "description": "Get Spark advisor real-time advice for a Spark application (monitoring API)",
         "flags": {

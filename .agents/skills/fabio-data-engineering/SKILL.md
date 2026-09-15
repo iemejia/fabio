@@ -54,8 +54,10 @@ Manage Spark compute (settings, custom pools)
 | Command | Mutates | Description |
 |---|---|---|
 | `fabio spark create-capacity-pool` | yes | Create a custom Spark pool in a capacity |
+| `fabio spark create-livy-session` | yes | Create an interactive Livy session on a lakehouse to run Spark code |
 | `fabio spark create-pool` | yes | Create a custom Spark pool |
 | `fabio spark delete-capacity-pool` | yes | Delete a capacity Spark pool |
+| `fabio spark delete-livy-session` | yes | Delete (stop) an interactive Livy session |
 | `fabio spark delete-pool` | yes | Delete a custom Spark pool |
 | `fabio spark get-advice` | no | Get Spark advisor real-time advice for a Spark application (monitoring API) |
 | `fabio spark get-capacity-pool` | no | Get details of a capacity Spark pool |
@@ -68,6 +70,8 @@ Manage Spark compute (settings, custom pools)
 | `fabio spark list-capacity-pools` | no | List custom Spark pools in a capacity |
 | `fabio spark list-livy-sessions` | no | List Livy sessions in a workspace |
 | `fabio spark list-pools` | no | List custom Spark pools in a workspace |
+| `fabio spark run` | yes | One-shot: create a session, run code, return output, then delete the session |
+| `fabio spark run-statement` | yes | Run a statement (Spark/PySpark/Spark-SQL/R) on an existing Livy session |
 | `fabio spark update-capacity-pool` | yes | Update a capacity Spark pool |
 | `fabio spark update-capacity-settings` | yes | Update capacity-level Spark settings |
 | `fabio spark update-pool` | yes | Update a custom Spark pool |
@@ -251,6 +255,7 @@ Manage Mounted Data Factories (ADF integration)
 - Environment custom live pools pre-hydrate clusters to reduce cold starts. Configure with --custom-live-pool-support Enabled plus hydration flags; the capacity-dependent ceiling is returned as instancePool.maxClustersToHydrateLimit. Disabled retains settings, while --clear-custom-live-pool-settings removes them.
 - Spark monitoring (spark get-advice / get-resource-usage / get-logs) needs --app-id + --attempt-id from 'spark get-livy-session' (sparkApplicationId / attemptNumber); --item-type maps to notebook|spark-job-definition|lakehouse. 'get-logs --type livy' needs no --app-id, but driver/executor logs do (--meta returns log-file metadata JSON, otherwise raw text). Livy sessions are also listable per-item via 'spark-job-definition list-livy-sessions'/'get-livy-session'.
 - On-demand job triggers (notebook/data-pipeline/copy-job/dataflow/spark-job-definition run) return 202 with the instance id in the Location header (fabio reads it); --wait polls to completion. 'copy-job run' job type is Execute.
+- Interactive Spark from the CLI uses the INTERACTIVE Livy API (per-lakehouse), which is DISTINCT from the read-only monitoring commands 'spark list-livy-sessions'/'get-livy-session' (workspace-wide, list only). To run code: 'spark run --workspace <WS> --lakehouse <LH> --code "..." --language pyspark|scala|sql|r' is the one-shot primitive (create session -> wait idle -> run -> return output -> ALWAYS delete). For multiple statements on one warm session use 'spark create-livy-session --wait' + 'spark run-statement --session-id' + 'spark delete-livy-session'. Gotchas: a cold session takes ~100s to reach 'idle' (--timeout defaults to 300s); Spark SQL results are NOT text/plain — they come back under data['application/json'] as {schema, data:[[...]]}, while pyspark/scala print output is in 'text'; a session created with create-livy-session keeps consuming capacity until delete-livy-session (the one-shot 'run' self-cleans).
 
 ## Troubleshooting
 | Symptom | Fix |

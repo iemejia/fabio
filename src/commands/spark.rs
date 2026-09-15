@@ -238,6 +238,111 @@ pub enum SparkCommand {
         livy_id: String,
     },
 
+    // ── Interactive Livy API (run Spark code) ─────────────────────────────
+    // NOTE: DISTINCT from the read-only monitoring API above. These use the
+    // per-lakehouse interactive Livy endpoint to CREATE sessions and RUN code
+    // (Spark/PySpark/Spark-SQL/R). Every wait is bounded by --timeout.
+    /// Create an interactive Livy session on a lakehouse to run Spark code
+    #[command(name = "create-livy-session", display_order = 45)]
+    CreateLivySession {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID the session attaches to
+        #[arg(long)]
+        lakehouse: String,
+
+        /// Optional session display name
+        #[arg(long)]
+        name: Option<String>,
+
+        /// Spark configuration as a JSON object, e.g. '{"spark.executor.cores":"4"}'.
+        /// Use to configure High-Concurrency session packing per Microsoft docs.
+        #[arg(long)]
+        conf: Option<String>,
+
+        /// Wait until the session reaches the `idle` (ready) state before returning
+        #[arg(long)]
+        wait: bool,
+
+        /// Max seconds to wait for idle when --wait is set (default 300)
+        #[arg(long)]
+        timeout: Option<u64>,
+    },
+
+    /// Run a statement (Spark/PySpark/Spark-SQL/R) on an existing Livy session
+    #[command(name = "run-statement", display_order = 46)]
+    RunStatement {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID the session belongs to
+        #[arg(long)]
+        lakehouse: String,
+
+        /// Interactive Livy session ID (from create-livy-session)
+        #[arg(long)]
+        session_id: String,
+
+        /// Code to run (inline, @file, or piped via stdin)
+        #[arg(long)]
+        code: Option<String>,
+
+        /// Language of the code
+        #[arg(long, value_parser = ["pyspark", "scala", "sql", "r"], default_value = "pyspark")]
+        language: String,
+
+        /// Max seconds to wait for the statement to finish (default 300)
+        #[arg(long)]
+        timeout: Option<u64>,
+    },
+
+    /// Delete (stop) an interactive Livy session
+    #[command(name = "delete-livy-session", display_order = 47)]
+    DeleteLivySession {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID the session belongs to
+        #[arg(long)]
+        lakehouse: String,
+
+        /// Interactive Livy session ID
+        #[arg(long)]
+        session_id: String,
+    },
+
+    /// One-shot: create a session, run code, return output, then delete the session
+    #[command(name = "run", display_order = 48)]
+    Run {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID to run on
+        #[arg(long)]
+        lakehouse: String,
+
+        /// Code to run (inline, @file, or piped via stdin)
+        #[arg(long)]
+        code: Option<String>,
+
+        /// Language of the code
+        #[arg(long, value_parser = ["pyspark", "scala", "sql", "r"], default_value = "pyspark")]
+        language: String,
+
+        /// Spark configuration as a JSON object
+        #[arg(long)]
+        conf: Option<String>,
+
+        /// Max seconds to wait for the session to be ready and the statement to finish (default 300)
+        #[arg(long)]
+        timeout: Option<u64>,
+    },
+
     /// Get Spark advisor real-time advice for a Spark application (monitoring API)
     #[command(display_order = 42)]
     GetAdvice {
@@ -458,6 +563,76 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SparkCommand) -
         }
         SparkCommand::GetLivySession { workspace, livy_id } => {
             get_livy_session(cli, client, workspace, livy_id).await
+        }
+        SparkCommand::CreateLivySession {
+            workspace,
+            lakehouse,
+            name,
+            conf,
+            wait,
+            timeout,
+        } => {
+            Box::pin(crate::commands::spark_livy::create_livy_session(
+                cli,
+                client,
+                workspace,
+                lakehouse,
+                name.as_deref(),
+                conf.as_deref(),
+                *wait,
+                *timeout,
+            ))
+            .await
+        }
+        SparkCommand::RunStatement {
+            workspace,
+            lakehouse,
+            session_id,
+            code,
+            language,
+            timeout,
+        } => {
+            Box::pin(crate::commands::spark_livy::run_statement(
+                cli,
+                client,
+                workspace,
+                lakehouse,
+                session_id,
+                code.as_deref(),
+                language,
+                *timeout,
+            ))
+            .await
+        }
+        SparkCommand::DeleteLivySession {
+            workspace,
+            lakehouse,
+            session_id,
+        } => {
+            crate::commands::spark_livy::delete_livy_session(
+                cli, client, workspace, lakehouse, session_id,
+            )
+            .await
+        }
+        SparkCommand::Run {
+            workspace,
+            lakehouse,
+            code,
+            language,
+            conf,
+            timeout,
+        } => {
+            Box::pin(crate::commands::spark_livy::run(
+                cli,
+                client,
+                workspace,
+                lakehouse,
+                code.as_deref(),
+                language,
+                conf.as_deref(),
+                *timeout,
+            ))
+            .await
         }
         SparkCommand::GetAdvice {
             workspace,
