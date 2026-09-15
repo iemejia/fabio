@@ -468,7 +468,7 @@ The fabio user-facing skill (`.agents/skills/fabio/SKILL.md`) is quality-tested 
 **Run locally:**
 ```bash
 AZURE_OPENAI_API_KEY=$(az cognitiveservices account keys list \
-  --name foundry-imejiauseche-ai-caglobal-demos --resource-group rg-imejiauseche-ai-demos \
+  --name foundry-imejiauseche-ai-cadata2610-demos --resource-group rg-imejiauseche-ai-demos \
   --query "key1" -o tsv) \
   promptfoo eval -c tests/eval/promptfooconfig.yaml
 promptfoo view   # interactive results browser

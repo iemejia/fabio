@@ -36,7 +36,7 @@ prompts:
 providers:
   - id: azureopenai:chat:gpt-5-mini
     config:
-      apiHost: foundry-imejiauseche-ai-caglobal-demos.openai.azure.com
+      apiHost: foundry-imejiauseche-ai-cadata2610-demos.cognitiveservices.azure.com
       apiVersion: "2024-10-21"
       reasoning_effort: minimal
 
@@ -298,6 +298,69 @@ tests:
         metric: copy-job-run-command
       - type: icontains
         value: "--wait"
+
+  # ------------------------------------------------------------
+  # INTERACTIVE SPARK (Livy API): run code, HC packing, async control
+  # ------------------------------------------------------------
+
+  - description: "Interactive Spark: run PySpark code on a lakehouse"
+    vars:
+      user_query: "Run the PySpark code print(sum(range(10))) on lakehouse lh-123 in workspace ws-456 and return the output"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('spark run')
+        metric: spark-run-command
+      - type: icontains
+        value: "--lakehouse"
+      - type: icontains
+        value: "--code"
+
+  - description: "Interactive Spark: high-concurrency session packing"
+    vars:
+      user_query: "Run df.count() on lakehouse lh-123 in workspace ws-456 using a high-concurrency Spark session tagged etl-pool so it shares compute with other jobs"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('spark run')
+        metric: spark-run-command
+      - type: icontains
+        value: "--high-concurrency"
+      - type: icontains
+        value: "--session-tag"
+
+  - description: "Interactive Spark: cancel a runaway statement"
+    vars:
+      user_query: "Statement 3 on Spark session sess-abc (lakehouse lh-123, workspace ws-456) is stuck running — stop it so it stops consuming capacity"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('spark cancel-statement')
+        metric: spark-cancel-statement-command
+      - type: icontains
+        value: "--session-id"
+      - type: icontains
+        value: "--statement-id"
+
+  - description: "Interactive Spark: warm session for multiple statements"
+    vars:
+      user_query: "Create a Spark session on lakehouse lh-123 in workspace ws-456 and wait until it's ready so I can run several statements against it"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('spark create-livy-session')
+        metric: spark-create-livy-session-command
+      - type: icontains
+        value: "--wait"
+
+  - description: "Eventhouse remote MCP server URL"
+    vars:
+      user_query: "Give me the remote MCP server URL for eventhouse eh-123 in workspace ws-456 so I can connect an external MCP client to query it"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('eventhouse mcp-url')
+        metric: eventhouse-mcp-url-command
 
   - description: "Author a KQL queryset tab bound to a KQL database"
     vars:

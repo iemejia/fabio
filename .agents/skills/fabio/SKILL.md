@@ -411,6 +411,7 @@ fabio warehouse copy-into --workspace $WS --id $WH --table dbo.orders \
 # Print the remote MCP server URL for an external MCP client (VS Code agent mode / Copilot / Copilot Studio / Foundry)
 fabio warehouse mcp-url --workspace $WS --id $WH
 fabio sql-endpoint mcp-url --workspace $WS --id $SQLEP
+fabio eventhouse mcp-url --workspace $WS --id $EH   # resolves the eventhouse's KQL database(s) → per-database MCP URL(s) + global endpoint (the URL carries the KQL-DATABASE id, not the eventhouse id)
 fabio sql-database create --workspace $WS --name "OrdersDB"
 fabio sql-database import --workspace $WS --id $DB --file data.csv --table orders --drop-if-exists
 # Execution plans (estimated, does not execute the query)
@@ -491,6 +492,25 @@ fabio notebook get-definition --workspace $WS --id $NB --strip-output
 fabio notebook update-definition --workspace $WS --id $NB --file updated.py       # replace content
 ```
 `--file` accepts both `.py` and `.ipynb` — format is auto-detected (if JSON with `nbformat` key → ipynb; otherwise → Python code wrapped into ipynb). Agents should always use `--file` when they have written code to a file.
+
+**Interactive Spark (run code via the Livy API):**
+```bash
+# One-shot: create a session, run code, return output, delete the session (bounded by --timeout).
+fabio spark run --workspace $WS --lakehouse $LH --code "print(sum(range(10)))" --language pyspark   # languages: pyspark (default), scala, sql, r
+fabio spark run --workspace $WS --lakehouse $LH --code @job.py                                       # code from a file (or pipe via stdin)
+fabio spark run --workspace $WS --lakehouse $LH --code "SELECT count(*) FROM sales" --language sql   # SQL rows come back under data["application/json"], not text
+# High-Concurrency: concurrent runs sharing a --session-tag pack onto ONE Spark session (isolated REPLs)
+fabio spark run --workspace $WS --lakehouse $LH --code "df.count()" --high-concurrency --session-tag etl-pool
+# Warm session for multiple statements (delete it when done — it consumes capacity until then):
+fabio spark create-livy-session --workspace $WS --lakehouse $LH --wait --timeout 300   # returns sessionId once idle
+fabio spark run-statement --workspace $WS --lakehouse $LH --session-id $SID --code "spark.range(3).count()"   # submit + wait
+fabio spark delete-livy-session --workspace $WS --lakehouse $LH --session-id $SID
+# Async control (a timed-out run-statement keeps RUNNING + consuming capacity until cancelled):
+fabio spark submit-statement --workspace $WS --lakehouse $LH --session-id $SID --code "long_job()"   # returns statementId, no wait
+fabio spark get-statement    --workspace $WS --lakehouse $LH --session-id $SID --statement-id 1        # poll state/output
+fabio spark cancel-statement --workspace $WS --lakehouse $LH --session-id $SID --statement-id 1        # STOP a runaway statement
+```
+NOTE: `spark run`/`create-livy-session`/`run-statement` are the INTERACTIVE Livy API (per-lakehouse, run code). They are DISTINCT from the read-only monitoring `spark list-livy-sessions`/`get-livy-session` (workspace-wide, list only).
 
 **Semantic Models & Reports:**
 ```bash
