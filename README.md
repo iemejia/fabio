@@ -673,6 +673,79 @@ FABIO_WRAP_UNTRUSTED=1 fabio item list --workspace $WS
 # Output: {"displayName": "<<<UNTRUSTED>>>My Item<<<END_UNTRUSTED>>>", ...}
 ```
 
+### Per-item options (`--item-options`)
+
+Several commands apply **item-type-specific options** to individual items during a
+bulk/definition operation: `deployment-pipeline deploy`, `git pull`,
+`item bulk-import-definitions`, and `workspace clone`. They share one JSON contract
+passed via `--item-options` — a JSON **array** of `{<identifier>, options}` entries,
+inline or as `@file`:
+
+```bash
+# deploy/clone/git-pull/bulk-import: each entry targets one item by its ID and
+# carries a JSON options object. The identifier key is the command's ID field:
+#   deployment-pipeline deploy → "sourceItemId"   (item UUID)
+#   git pull / bulk-import / clone → "logicalId"   (logical GUID)
+fabio git pull --workspace $WS \
+  --item-options '[{"logicalId":"00000000-0000-0000-0000-000000000000","options":{"validateOnly":true}}]'
+
+# Or read the entries from a file (@ prefix):
+fabio deployment-pipeline deploy --id $DP --source-stage-id $DEV \
+  --items '[{"sourceItemId":"<uuid>","itemType":"SemanticModel"}]' \
+  --item-options @item-options.json
+```
+
+Rules and safety:
+
+- Each identifier **must be a canonical 36-character hyphenated UUID** (the same
+  format every other ID flag requires); compact/URN/braced forms are rejected
+  locally before any request.
+- Each identifier may appear **once**; `options` must be a JSON **object**.
+- Options are validated **locally first**, so a malformed `--item-options` fails
+  fast (with `INVALID_INPUT`) without contacting Fabric — even under `--dry-run`.
+- **Irreversible purge:** a semantic-model entry may set
+  `options.allowPurgeData: true`, which permits Fabric to permanently purge data
+  incompatible with the new definition. When any entry enables it, the `--dry-run`
+  preview is marked `"destructive": true` (with an agent `agentNotice`) and carries
+  a `warning` — review it before re-running without `--dry-run`. After a
+  purge-enabling `semantic-model create`/`update-definition`, refresh the model
+  (`fabio semantic-model refresh`) so it reframes over the retained data.
+
+**Whole-item definition options (`item create`/`item update-definition --options`).**
+Separately from per-item `--item-options`, the generic `item create` and
+`item update-definition` commands accept a single `--options` **object** applied to
+that one item's definition (inline or `@file`). For a semantic model this is where
+you set `allowPurgeData`:
+
+```bash
+# Create a semantic model from a definition envelope, permitting a data purge.
+# --definition also accepts @file; ALWAYS preview a purge-enabling call with --dry-run first.
+fabio item create --workspace $WS --name SalesModel --type SemanticModel \
+  --definition @definition.json --options '{"allowPurgeData":true}' --dry-run
+
+# Update an existing item's definition with the same option:
+fabio item update-definition --workspace $WS --id $ITEM \
+  --definition @definition.json --options '{"allowPurgeData":true}' --dry-run
+```
+
+A `--options` object enabling `allowPurgeData` gets the same treatment as the typed
+`--allow-purge-data` flag: the `--dry-run` preview is marked `"destructive": true`
+with a `warning` + `agentNotice`, and the real success output repeats the `warning`.
+
+### SQL audit & refresh constraints
+
+A few T-SQL surface commands validate their inputs **locally** before calling Fabric
+(so a bad value fails fast with `INVALID_INPUT`):
+
+- **Audit predicate** (`--predicate-expression` on
+  `warehouse`/`sql-endpoint`/`sql-database update-audit-settings`): pass only the
+  predicate — a **leading `WHERE` keyword is rejected** (any non-identifier boundary,
+  e.g. `WHERE(...)`, is caught) — and it is limited to **3,000 characters**. Omitting
+  the flag leaves the current predicate unchanged; an explicit empty string removes it.
+- **SQL analytics endpoint refresh** (`sql-endpoint refresh-metadata --timeout`):
+  the refresh timeout may not exceed **24 hours** (across all duration units); the
+  documented default is 15 minutes.
+
 ### Update notifications
 
 fabio releases frequently. When an AI agent is detected, a successful JSON response may carry an additive `updateAvailable` object announcing a newer release, the detected install method, and the matching upgrade command — plus an `agentNotice` reminding the agent to re-run `fabio context agent` after upgrading (its cached command schema may be stale):

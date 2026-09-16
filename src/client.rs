@@ -11,7 +11,7 @@ use tokio::time::sleep;
 
 use azure_core::credentials::TokenCredential;
 
-use crate::errors::{ErrorCode, ErrorDetail, FabioError, RelatedResource};
+use crate::errors::{ErrorCode, ErrorDetail, ErrorParameter, FabioError, RelatedResource};
 use crate::verbose;
 
 // ── Bundled CA Roots ─────────────────────────────────────────────────────────
@@ -771,17 +771,13 @@ impl FabricClient {
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
             if !resp.status().is_success() {
-                let status = resp.status().as_u16();
-                let text = resp.text().await.unwrap_or_default();
-                return Err(FabioError::from_status(status, text).into());
+                return Err(error_from_failed_response(resp).await.into());
             }
             return Ok(resp.bytes().await?.to_vec());
         }
 
         if !resp.status().is_success() {
-            let status = resp.status().as_u16();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(FabioError::from_status(status, text).into());
+            return Err(error_from_failed_response(resp).await.into());
         }
 
         Ok(resp.bytes().await?.to_vec())
@@ -1054,9 +1050,7 @@ impl FabricClient {
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
             if !resp.status().is_success() && resp.status() != StatusCode::ACCEPTED {
-                let status = resp.status().as_u16();
-                let text = resp.text().await.unwrap_or_default();
-                return Err(FabioError::from_status(status, text).into());
+                return Err(error_from_failed_response(resp).await.into());
             }
             return Ok(serde_json::json!({
                 "source": src_path,
@@ -1066,9 +1060,7 @@ impl FabricClient {
         }
 
         if !resp.status().is_success() && resp.status() != StatusCode::ACCEPTED {
-            let status = resp.status().as_u16();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(FabioError::from_status(status, text).into());
+            return Err(error_from_failed_response(resp).await.into());
         }
 
         Ok(serde_json::json!({
@@ -1225,14 +1217,10 @@ impl FabricClient {
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
             if !resp.status().is_success() {
-                let status = resp.status().as_u16();
-                let text = resp.text().await.unwrap_or_default();
-                return Err(FabioError::from_status(status, text).into());
+                return Err(error_from_failed_response(resp).await.into());
             }
         } else if !resp.status().is_success() {
-            let status = resp.status().as_u16();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(FabioError::from_status(status, text).into());
+            return Err(error_from_failed_response(resp).await.into());
         }
 
         Ok(serde_json::json!({
@@ -1418,16 +1406,14 @@ impl FabricClient {
 
             let status = resp.status();
             if !status.is_success() {
-                let body = resp.text().await.unwrap_or_default();
-                return Err(FabioError::new(ErrorCode::ApiError, body).into());
+                return Err(error_from_failed_response(resp).await.into());
             }
             return Ok(resp.text().await.unwrap_or_default());
         }
 
         let status = resp.status();
         if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(FabioError::new(ErrorCode::ApiError, body).into());
+            return Err(error_from_failed_response(resp).await.into());
         }
         Ok(resp.text().await.unwrap_or_default())
     }
@@ -1716,15 +1702,18 @@ impl FabricClient {
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            // The retried response must be status-checked too — otherwise a 4xx/5xx
+            // after re-auth would be returned as "success" with the error body, and
+            // structured error.parameters / the correct failure code would be lost.
+            if !resp.status().is_success() {
+                return Err(error_from_failed_response(resp).await.into());
+            }
             return Ok(resp.bytes().await?.to_vec());
         }
 
         if !resp.status().is_success() {
             // Try to parse error response as JSON
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            let msg = error_message_from_body(status, &text);
-            return Err(FabioError::new(ErrorCode::ApiError, msg).into());
+            return Err(error_from_failed_response(resp).await.into());
         }
 
         Ok(resp.bytes().await?.to_vec())
@@ -1823,10 +1812,7 @@ impl FabricClient {
                         continue; // Still in progress
                     }
                     // Error
-                    let status = poll_resp.status();
-                    let text = poll_resp.text().await.unwrap_or_default();
-                    let msg = error_message_from_body(status, &text);
-                    return Err(FabioError::new(ErrorCode::ApiError, msg).into());
+                    return Err(error_from_failed_response(poll_resp).await.into());
                 }
             }
             // No Location header — treat as immediate empty
@@ -1834,10 +1820,7 @@ impl FabricClient {
         }
 
         if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            let msg = error_message_from_body(status, &text);
-            return Err(FabioError::new(ErrorCode::ApiError, msg).into());
+            return Err(error_from_failed_response(resp).await.into());
         }
 
         Ok(resp.bytes().await?.to_vec())
@@ -2316,17 +2299,13 @@ impl FabricClient {
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
             if !resp.status().is_success() {
-                let status = resp.status().as_u16();
-                let text = resp.text().await.unwrap_or_default();
-                return Err(FabioError::from_status(status, text).into());
+                return Err(error_from_failed_response(resp).await.into());
             }
             return Ok(resp.bytes().await?.to_vec());
         }
 
         if !resp.status().is_success() {
-            let status = resp.status().as_u16();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(FabioError::from_status(status, text).into());
+            return Err(error_from_failed_response(resp).await.into());
         }
         Ok(resp.bytes().await?.to_vec())
     }
@@ -2361,9 +2340,7 @@ impl FabricClient {
         };
 
         if !resp.status().is_success() {
-            let status = resp.status().as_u16();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(FabioError::from_status(status, text).into());
+            return Err(error_from_failed_response(resp).await.into());
         }
         Ok(resp.bytes().await?.to_vec())
     }
@@ -2643,12 +2620,10 @@ impl FabricClient {
                 }
                 "Failed" | "Canceled" => {
                     verbose::trace_lro_complete(&poll_url, op_status, start.elapsed().as_millis());
-                    let err_msg = body
-                        .get("error")
-                        .and_then(|e| e.get("message"))
-                        .and_then(Value::as_str)
-                        .unwrap_or("ARM operation failed");
-                    return Err(FabioError::new(ErrorCode::ApiError, err_msg.to_string()).into());
+                    // Reuse the metadata-preserving terminal-error path so ARM LRO
+                    // failures keep error.parameters / requestId / moreDetails / isRetriable
+                    // instead of collapsing to a bare message.
+                    return Err(failed_lro_error(&body).into());
                 }
                 _ => {
                     // Still in progress — check Retry-After header
@@ -2701,9 +2676,7 @@ impl FabricClient {
     /// Extract file properties from a HEAD response.
     async fn extract_file_properties(resp: Response, path: &str) -> Result<Value> {
         if !resp.status().is_success() {
-            let status = resp.status().as_u16();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(FabioError::from_status(status, text).into());
+            return Err(error_from_failed_response(resp).await.into());
         }
 
         let headers = resp.headers();
@@ -2776,14 +2749,10 @@ impl FabricClient {
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
             if !resp.status().is_success() {
-                let status = resp.status().as_u16();
-                let text = resp.text().await.unwrap_or_default();
-                return Err(FabioError::from_status(status, text).into());
+                return Err(error_from_failed_response(resp).await.into());
             }
         } else if !resp.status().is_success() {
-            let status = resp.status().as_u16();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(FabioError::from_status(status, text).into());
+            return Err(error_from_failed_response(resp).await.into());
         }
 
         Ok(serde_json::json!({
@@ -2829,14 +2798,10 @@ impl FabricClient {
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
             if !resp.status().is_success() {
-                let status = resp.status().as_u16();
-                let text = resp.text().await.unwrap_or_default();
-                return Err(FabioError::from_status(status, text).into());
+                return Err(error_from_failed_response(resp).await.into());
             }
         } else if !resp.status().is_success() {
-            let status = resp.status().as_u16();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(FabioError::from_status(status, text).into());
+            return Err(error_from_failed_response(resp).await.into());
         }
 
         Ok(serde_json::json!({
@@ -2870,9 +2835,7 @@ impl FabricClient {
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
 
         if resp.status() != StatusCode::ACCEPTED && resp.status() != StatusCode::OK {
-            let status = resp.status().as_u16();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(FabioError::from_status(status, text).into());
+            return Err(error_from_failed_response(resp).await.into());
         }
 
         // Extract job instance ID from Location header
@@ -2946,9 +2909,9 @@ impl FabricClient {
     async fn extract_job_id_from_response(resp: Response) -> Result<String> {
         let status = resp.status();
         if status != StatusCode::ACCEPTED && status != StatusCode::OK {
-            let status_code = status.as_u16();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(FabioError::from_status(status_code, text).into());
+            // Route job-trigger failures through the shared metadata-preserving path
+            // so error.parameters (and the other structured fields) survive here too.
+            return Err(error_from_failed_response(resp).await.into());
         }
 
         let location = resp
@@ -3178,7 +3141,7 @@ impl FabricClient {
                             "Failed",
                             start.elapsed().as_millis(),
                         );
-                        return Err(FabioError::api_error(lro_failure_message(&body)).into());
+                        return Err(failed_lro_error(&body).into());
                     }
                     // Running, NotStarted, or other in-progress states - keep polling
                     _ => {
@@ -3193,8 +3156,7 @@ impl FabricClient {
                 }
             }
             // Unexpected status
-            let text = resp.text().await.unwrap_or_default();
-            return Err(FabioError::from_status(status.as_u16(), text).into());
+            return Err(error_from_failed_response(resp).await.into());
         }
     }
 }
@@ -3450,36 +3412,6 @@ async fn try_developer_tools_credential(scope: &str) -> Result<(CachedToken, Cre
     .into())
 }
 
-/// Extract the best available error message from an HTTP error response body.
-///
-/// Handles both Fabric envelope shapes — the nested `{"error":{"message":...}}`
-/// and the top-level `{"errorCode":..., "message":...}` used by OneLake/DFS and
-/// the dataflow `executeQuery` endpoint — and falls back to the truncated,
-/// redacted raw body (never a bare `HTTP <status>`, which drops the real error).
-fn error_message_from_body(status: StatusCode, text: &str) -> String {
-    serde_json::from_str::<Value>(text)
-        .ok()
-        .and_then(|v| {
-            v.get("error")
-                .and_then(|e| e.get("message"))
-                .and_then(Value::as_str)
-                .map(String::from)
-                .or_else(|| v.get("message").and_then(Value::as_str).map(String::from))
-        })
-        .unwrap_or_else(|| {
-            let redacted = crate::verbose::redact_body_if_json(text);
-            let truncated = if redacted.len() > MAX_ERROR_BODY_LEN {
-                format!(
-                    "{}...(truncated)",
-                    &redacted[..redacted.floor_char_boundary(MAX_ERROR_BODY_LEN)]
-                )
-            } else {
-                redacted
-            };
-            format!("HTTP {status}: {truncated}")
-        })
-}
-
 /// Handle an HTTP response, converting errors to `FabioError`.
 #[allow(clippy::too_many_lines)]
 async fn handle_response(resp: Response) -> Result<Value> {
@@ -3537,19 +3469,38 @@ async fn handle_response(resp: Response) -> Result<Value> {
         .map(String::from);
 
     let status_code = status.as_u16();
-    let text = resp.text().await.unwrap_or_default();
+    // Bound the error-body read: the content-length pre-check above does not cover
+    // chunked non-2xx responses (no Content-Length), so cap the streamed read here too.
+    let text = read_body_capped(resp, MAX_API_RESPONSE_SIZE).await;
 
-    // Check for CapacityNotActive
+    // Build the structured error (message + machine-readable metadata) from the body.
+    let mut err = error_from_status_body(status_code, &text, api_error_code.as_deref());
+
+    // Special-case an inactive capacity: keep the structured metadata but reclassify
+    // to CapacityInactive and set the actionable resume hint. The hint is overwritten
+    // unconditionally — a 403 CapacityNotActive already carries a generic permission
+    // hint from `from_status_with_body`, which would otherwise mask the resume guidance.
     if text.contains("CapacityNotActive") {
-        return Err(FabioError::new(
-            ErrorCode::CapacityInactive,
-            "Capacity is inactive. Resume it in the Azure portal.",
-        )
-        .into());
+        err.code = ErrorCode::CapacityInactive;
+        err.hint = Some("Resume the capacity in the Azure portal.".to_string());
     }
 
-    // Try to extract error message from JSON body
-    let parsed = serde_json::from_str::<Value>(&text).ok();
+    Err(err.into())
+}
+
+/// Build a structured [`FabioError`] from a failed Fabric HTTP response body.
+///
+/// Extracts the human message (server `error.message`, else a redacted+truncated
+/// body) AND the machine-readable metadata (`error.parameters`, `requestId`,
+/// `moreDetails`, `relatedResource`, `isRetriable`). Every regular HTTP error
+/// path should funnel through this so structured metadata is preserved
+/// consistently — not only the generic JSON path in `handle_response`.
+fn error_from_status_body(
+    status_code: u16,
+    text: &str,
+    api_error_code: Option<&str>,
+) -> FabioError {
+    let parsed = serde_json::from_str::<Value>(text).ok();
     let message = parsed
         .as_ref()
         .and_then(|v| {
@@ -3562,7 +3513,18 @@ async fn handle_response(resp: Response) -> Result<Value> {
         .unwrap_or_else(|| {
             // Truncate raw response body to prevent leaking unbounded server error details.
             // Also redact any sensitive fields in case the server echoes back request payloads.
-            let redacted = crate::verbose::redact_body_if_json(&text);
+            let redacted = crate::verbose::redact_body_if_json(text);
+            if redacted.trim().is_empty() {
+                // No usable body — preserve the canonical status reason so agents still
+                // get a diagnostic (e.g. "HTTP 400 Bad Request") instead of "HTTP 400: ".
+                return StatusCode::from_u16(status_code)
+                    .ok()
+                    .and_then(|s| s.canonical_reason())
+                    .map_or_else(
+                        || format!("HTTP {status_code}"),
+                        |reason| format!("HTTP {status_code} {reason}"),
+                    );
+            }
             let truncated = if redacted.len() > MAX_ERROR_BODY_LEN {
                 format!(
                     "{}...(truncated)",
@@ -3575,25 +3537,80 @@ async fn handle_response(resp: Response) -> Result<Value> {
         });
 
     // Extract enriched error metadata from parsed response body
-    let (retriable, request_id, more_details, related_resource) =
+    let (retriable, request_id, more_details, related_resource, parameters) =
         extract_error_metadata(parsed.as_ref());
 
     // Prepend the server error code from headers for machine-readable context.
     // e.g., "ItemNotFound: The requested item does not exist."
-    let enriched_message = if let Some(ref code) = api_error_code {
+    let enriched_message = if let Some(code) = api_error_code {
         format!("{code}: {message}")
     } else {
         message
     };
 
-    Err(
-        FabioError::from_status_with_body(status_code, enriched_message, &text)
-            .set_retriable(retriable)
-            .set_request_id(request_id)
-            .set_more_details(more_details)
-            .set_related_resource(related_resource)
-            .into(),
-    )
+    FabioError::from_status_with_body(status_code, enriched_message, text)
+        .set_retriable(retriable)
+        .set_request_id(request_id)
+        .set_more_details(more_details)
+        .set_related_resource(related_resource)
+        .set_parameters(parameters)
+}
+
+/// Consume a failed HTTP response and build a metadata-preserving [`FabioError`].
+///
+/// Reads the machine-readable error-code header and the body, then funnels both
+/// through [`error_from_status_body`] so `error.parameters` (and the other
+/// structured fields) are preserved on EVERY regular Fabric error path — the
+/// byte/no-body helpers and job triggers included, not only `handle_response`.
+async fn error_from_failed_response(resp: Response) -> FabioError {
+    let status_code = resp.status().as_u16();
+    let api_error_code = resp
+        .headers()
+        .get("x-ms-public-api-error-code")
+        .or_else(|| resp.headers().get("x-ms-error-code"))
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
+    let text = read_body_capped(resp, MAX_API_RESPONSE_SIZE).await;
+    error_from_status_body(status_code, &text, api_error_code.as_deref())
+}
+
+/// Read a response body while bounding the allocation to `cap` bytes.
+///
+/// `resp.text()` buffers the entire body, so a hostile or misconfigured server —
+/// especially one using chunked transfer encoding, which carries no
+/// `Content-Length` — could force an unbounded allocation on the error path.
+/// Streaming the body chunk-by-chunk and stopping at `cap` bounds it. The error
+/// message is truncated to `MAX_ERROR_BODY_LEN` downstream regardless, so a capped
+/// body is sufficient for diagnostics.
+async fn read_body_capped(mut resp: Response, cap: u64) -> String {
+    let cap = usize::try_from(cap).unwrap_or(usize::MAX);
+    let mut buf: Vec<u8> = Vec::new();
+    while buf.len() < cap {
+        match resp.chunk().await {
+            Ok(Some(chunk)) => {
+                let take = chunk.len().min(cap - buf.len());
+                buf.extend_from_slice(&chunk[..take]);
+            }
+            _ => break,
+        }
+    }
+    String::from_utf8_lossy(&buf).into_owned()
+}
+
+/// Build the structured `FabioError` for a failed LRO poll result, preserving the
+/// machine-readable metadata (`error.parameters`, `requestId`, `moreDetails`,
+/// `relatedResource`, `isRetriable`) from the failure body so it survives the same
+/// as a regular HTTP failure. Extracted so a regression test can guard the contract
+/// without needing a (trusted-URL-gated) live poll.
+fn failed_lro_error(body: &Value) -> FabioError {
+    let (retriable, request_id, more_details, related_resource, parameters) =
+        extract_error_metadata(Some(body));
+    FabioError::api_error(lro_failure_message(body))
+        .set_retriable(retriable)
+        .set_request_id(request_id)
+        .set_more_details(more_details)
+        .set_related_resource(related_resource)
+        .set_parameters(parameters)
 }
 
 /// Build a diagnosable failure message from a failed LRO result body.
@@ -3607,8 +3624,9 @@ async fn handle_response(resp: Response) -> Result<Value> {
 /// real cause instead of an opaque template.
 fn lro_failure_message(body: &Value) -> String {
     let error_obj = body.get("error");
+    // Fabric uses `errorCode`; ARM uses `code` — accept either.
     let code = error_obj
-        .and_then(|e| e.get("errorCode"))
+        .and_then(|e| e.get("errorCode").or_else(|| e.get("code")))
         .and_then(Value::as_str);
     let message = error_obj
         .and_then(|e| e.get("message"))
@@ -3649,17 +3667,18 @@ fn lro_failure_message(body: &Value) -> String {
 
 /// Extract enriched error metadata from a parsed Fabric API error response.
 ///
-/// Returns `(isRetriable, requestId, moreDetails, relatedResource)` fields
+/// Returns `(isRetriable, requestId, moreDetails, relatedResource, parameters)` fields
 /// from the `error` object in the response body. These match the official
 /// Microsoft Fabric API error schema.
-fn extract_error_metadata(
-    parsed: Option<&Value>,
-) -> (
+type ErrorMetadata = (
     Option<bool>,
     Option<String>,
     Option<Vec<ErrorDetail>>,
     Option<RelatedResource>,
-) {
+    Option<Vec<ErrorParameter>>,
+);
+
+fn extract_error_metadata(parsed: Option<&Value>) -> ErrorMetadata {
     let error_obj = parsed.and_then(|v| v.get("error"));
 
     // isRetriable: indicates whether the client can retry
@@ -3703,7 +3722,46 @@ fn extract_error_metadata(
             })
         });
 
-    (retriable, request_id, more_details, related_resource)
+    let parameters = error_obj
+        .and_then(|e| e.get("parameters"))
+        .and_then(Value::as_array)
+        .map(|array| {
+            array
+                .iter()
+                .map(|parameter| {
+                    // Preserve every entry verbatim; the API schema allows any of
+                    // name/value/message to be absent, and serde already omits the
+                    // absent fields. Dropping all-absent entries would silently lose
+                    // array elements the caller expects to see preserved.
+                    let name = parameter
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .map(String::from);
+                    let value = parameter
+                        .get("value")
+                        .and_then(Value::as_str)
+                        .map(String::from);
+                    let message = parameter
+                        .get("message")
+                        .and_then(Value::as_str)
+                        .map(String::from);
+                    ErrorParameter {
+                        name,
+                        value,
+                        message,
+                    }
+                })
+                .collect::<Vec<_>>()
+        })
+        .filter(|array| !array.is_empty());
+
+    (
+        retriable,
+        request_id,
+        more_details,
+        related_resource,
+        parameters,
+    )
 }
 
 /// Build the URL for the next page of paginated results.
@@ -3866,28 +3924,41 @@ mod tests {
     use super::*;
 
     #[test]
-    fn error_message_from_body_handles_both_envelope_shapes() {
+    fn error_body_message_extraction_handles_both_envelope_shapes() {
         // Nested Fabric envelope: {"error":{"message":...}}
         assert_eq!(
-            error_message_from_body(
-                StatusCode::BAD_REQUEST,
-                r#"{"error":{"code":"X","message":"nested msg"}}"#
-            ),
+            error_from_status_body(
+                400,
+                r#"{"error":{"code":"X","message":"nested msg"}}"#,
+                None
+            )
+            .message,
             "nested msg"
         );
         // Top-level OneLake/DFS/dataflow-executeQuery envelope: {"errorCode":..., "message":...}
         // Regression for the dataflow executeQuery 400 that was dropped as a bare "HTTP 400".
         assert_eq!(
-            error_message_from_body(
-                StatusCode::BAD_REQUEST,
-                r#"{"requestId":"r","errorCode":"DataflowExecuteQueryError","message":"Query name not found","isRetriable":false}"#
-            ),
+            error_from_status_body(
+                400,
+                r#"{"requestId":"r","errorCode":"DataflowExecuteQueryError","message":"Query name not found","isRetriable":false}"#,
+                None,
+            )
+            .message,
             "Query name not found"
         );
         // Non-JSON / unrecognized body: fall back to the truncated raw body, NOT a bare status.
-        let msg = error_message_from_body(StatusCode::BAD_REQUEST, "plain text boom");
-        assert!(msg.starts_with("HTTP 400 Bad Request: "), "got: {msg}");
+        let msg = error_from_status_body(400, "plain text boom", None).message;
+        assert!(msg.starts_with("HTTP 400: "), "got: {msg}");
         assert!(msg.contains("plain text boom"), "got: {msg}");
+        // Empty (or whitespace-only) body: preserve the canonical status reason.
+        assert_eq!(
+            error_from_status_body(400, "", None).message,
+            "HTTP 400 Bad Request"
+        );
+        assert_eq!(
+            error_from_status_body(503, "   ", None).message,
+            "HTTP 503 Service Unavailable"
+        );
     }
 
     #[test]
@@ -3945,6 +4016,110 @@ mod tests {
             "error": { "errorCode": "SomeCode", "message": "" }
         });
         assert_eq!(lro_failure_message(&body), "SomeCode");
+    }
+
+    #[test]
+    fn lro_failure_accepts_arm_code_field() {
+        // ARM failures use `error.code` rather than Fabric's `error.errorCode`.
+        let body = serde_json::json!({
+            "error": { "code": "ResourceNotFound", "message": "not found" }
+        });
+        assert_eq!(lro_failure_message(&body), "ResourceNotFound: not found");
+    }
+
+    #[test]
+    fn failed_lro_error_preserves_structured_metadata() {
+        // Regression: a failed LRO poll must retain error.parameters (and the other
+        // structured fields) — guards against dropping `.set_parameters(...)`.
+        let body = serde_json::json!({
+            "status": "Failed",
+            "error": {
+                "errorCode": "OperationFailed",
+                "message": "boom",
+                "requestId": "req-lro",
+                "isRetriable": false,
+                "parameters": [{"name": "itemId", "value": "abc"}]
+            }
+        });
+        let err = failed_lro_error(&body);
+        assert_eq!(err.code, ErrorCode::ApiError);
+        assert!(err.message.contains("boom"), "message: {}", err.message);
+        let params = err
+            .parameters
+            .as_ref()
+            .expect("error.parameters preserved for failed LRO");
+        assert_eq!(params[0].name.as_deref(), Some("itemId"));
+        assert_eq!(err.request_id.as_deref(), Some("req-lro"));
+        assert_eq!(err.retriable, Some(false));
+    }
+
+    #[test]
+    fn extracts_structured_error_parameters() {
+        let body = serde_json::json!({
+            "error": {
+                "parameters": [
+                    {
+                        "name": "itemId",
+                        "value": "abc",
+                        "message": "The conflicting item"
+                    }
+                ]
+            }
+        });
+        let (_, _, _, _, parameters) = extract_error_metadata(Some(&body));
+        let parameters = parameters.unwrap();
+        assert_eq!(parameters.len(), 1);
+        assert_eq!(parameters[0].name.as_deref(), Some("itemId"));
+        assert_eq!(parameters[0].value.as_deref(), Some("abc"));
+        assert_eq!(
+            parameters[0].message.as_deref(),
+            Some("The conflicting item")
+        );
+    }
+
+    #[test]
+    fn preserves_partial_and_empty_error_parameters() {
+        // The schema allows any of name/value/message to be absent. Every entry must
+        // be preserved verbatim — including one whose fields are all absent — rather
+        // than silently dropped.
+        let body = serde_json::json!({
+            "error": {
+                "parameters": [
+                    { "name": "itemId" },
+                    {},
+                    { "value": "v", "message": "m" }
+                ]
+            }
+        });
+        let (_, _, _, _, parameters) = extract_error_metadata(Some(&body));
+        let parameters = parameters.unwrap();
+        assert_eq!(parameters.len(), 3, "no entry should be dropped");
+        assert_eq!(parameters[0].name.as_deref(), Some("itemId"));
+        assert!(
+            parameters[1].name.is_none()
+                && parameters[1].value.is_none()
+                && parameters[1].message.is_none(),
+            "all-absent entry is preserved"
+        );
+        assert_eq!(parameters[2].value.as_deref(), Some("v"));
+    }
+
+    #[test]
+    fn error_from_status_body_preserves_structured_metadata() {
+        // Regression: job-trigger failures (extract_job_id_from_response) and any
+        // other path that funnels through error_from_status_body must keep the
+        // machine-readable metadata, not only the generic handle_response path.
+        let body = r#"{"error":{"message":"Item is in use","requestId":"req-9","parameters":[{"name":"itemId","value":"abc"}]}}"#;
+        let err = error_from_status_body(409, body, Some("ItemInUse"));
+        assert_eq!(err.code, ErrorCode::Conflict);
+        assert!(
+            err.message.contains("ItemInUse"),
+            "header error code should prefix the message"
+        );
+        let params = err.parameters.as_ref().expect("parameters preserved");
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0].name.as_deref(), Some("itemId"));
+        assert_eq!(err.request_id.as_deref(), Some("req-9"));
     }
 
     // ── validate_trusted_url ─────────────────────────────────────────────
@@ -4736,7 +4911,7 @@ mod tests {
             let server = MockServer::start().await;
             Mock::given(method("GET"))
                 .respond_with(ResponseTemplate::new(400).set_body_string(
-                    r#"{"error":{"code":"CapacityNotActive","message":"Resume capacity"}}"#,
+                    r#"{"error":{"code":"CapacityNotActive","message":"Resume capacity","parameters":[{"name":"capacityId","value":"cap-1"}]}}"#,
                 ))
                 .mount(&server)
                 .await;
@@ -4745,6 +4920,45 @@ mod tests {
             let err = handle_response(resp).await.unwrap_err();
             let fabio_err = err.downcast_ref::<FabioError>().unwrap();
             assert_eq!(fabio_err.code, ErrorCode::CapacityInactive);
+            // Metadata must survive the special-case reclassification.
+            let params = fabio_err
+                .parameters
+                .as_ref()
+                .expect("error.parameters preserved for CapacityInactive");
+            assert_eq!(params[0].name.as_deref(), Some("capacityId"));
+            // The actionable resume hint is applied.
+            assert!(
+                fabio_err
+                    .hint
+                    .as_deref()
+                    .is_some_and(|h| h.contains("Resume the capacity")),
+                "hint: {:?}",
+                fabio_err.hint
+            );
+        }
+
+        #[tokio::test]
+        async fn capacity_not_active_403_overwrites_permission_hint() {
+            // A 403 CapacityNotActive: from_status_with_body sets a generic permission
+            // hint first; the special-case must OVERWRITE it with the resume guidance.
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .respond_with(ResponseTemplate::new(403).set_body_string(
+                    r#"{"error":{"code":"CapacityNotActive","message":"Capacity is paused"}}"#,
+                ))
+                .mount(&server)
+                .await;
+
+            let resp = get_response(&server).await;
+            let err = handle_response(resp).await.unwrap_err();
+            let fabio_err = err.downcast_ref::<FabioError>().unwrap();
+            assert_eq!(fabio_err.code, ErrorCode::CapacityInactive);
+            let hint = fabio_err.hint.as_deref().unwrap_or_default();
+            assert!(hint.contains("Resume the capacity"), "hint: {hint}");
+            assert!(
+                !hint.contains("role"),
+                "generic permission hint must be replaced: {hint}"
+            );
         }
 
         #[tokio::test]
@@ -4852,6 +5066,18 @@ mod tests {
                 !msg.starts_with("API_ERROR: ItemNotFound"),
                 "should not have spurious error code"
             );
+        }
+
+        #[tokio::test]
+        async fn read_body_capped_bounds_allocation() {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .respond_with(ResponseTemplate::new(200).set_body_string("X".repeat(10_000)))
+                .mount(&server)
+                .await;
+            let resp = get_response(&server).await;
+            let body = read_body_capped(resp, 100).await;
+            assert_eq!(body.len(), 100, "body read must be bounded to the cap");
         }
     }
 

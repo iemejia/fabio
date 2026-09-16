@@ -103,6 +103,99 @@ fn semantic_model_delete_not_found() {
         .failure();
 }
 
+#[test]
+fn semantic_model_update_definition_allow_purge_data_dry_run() {
+    let mut tmp = NamedTempFile::with_suffix(".bim").unwrap();
+    tmp.write_all(minimal_model_bim().as_bytes()).unwrap();
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "update-definition",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--file",
+            tmp.path().to_str().unwrap(),
+            "--allow-purge-data",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["details"]["options"]["allowPurgeData"], true);
+    // update-definition is unconditionally destructive → dry-run carries the signal.
+    assert_eq!(data["destructive"], true);
+    assert!(
+        data["details"]["warning"]
+            .as_str()
+            .is_some_and(|w| w.contains("allowPurgeData")),
+        "purge warning must appear in the dry-run preview"
+    );
+}
+
+#[test]
+fn semantic_model_create_allow_purge_data_dry_run() {
+    let mut tmp = NamedTempFile::with_suffix(".bim").unwrap();
+    tmp.write_all(minimal_model_bim().as_bytes()).unwrap();
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--name",
+            "Purge option test",
+            "--file",
+            tmp.path().to_str().unwrap(),
+            "--allow-purge-data",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["details"]["options"]["allowPurgeData"], true);
+    // create is destructive ONLY because --allow-purge-data is active (flag-conditional).
+    assert_eq!(data["destructive"], true);
+    assert!(
+        data["details"]["warning"]
+            .as_str()
+            .is_some_and(|w| w.contains("allowPurgeData")),
+        "purge warning must appear in the dry-run preview"
+    );
+}
+
+#[test]
+fn semantic_model_create_without_purge_is_not_destructive() {
+    let mut tmp = NamedTempFile::with_suffix(".bim").unwrap();
+    tmp.write_all(minimal_model_bim().as_bytes()).unwrap();
+    let assert = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--name",
+            "Plain create",
+            "--file",
+            tmp.path().to_str().unwrap(),
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    // A plain create is NOT destructive and carries no purge warning/agentNotice.
+    assert!(data.get("destructive").is_none());
+    assert!(data.get("agentNotice").is_none());
+    assert!(data["details"].get("warning").is_none());
+}
+
 // ─── Full Lifecycle: Create (model.bim) → Show → Get-Definition → Delete ────
 
 /// Minimal model.bim JSON for an Import-mode semantic model.

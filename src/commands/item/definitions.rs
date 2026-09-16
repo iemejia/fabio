@@ -42,6 +42,7 @@ pub(super) async fn get_definition(
 
 // ─── Update Definition ───────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn update_definition(
     cli: &Cli,
     client: &FabricClient,
@@ -50,13 +51,14 @@ pub(super) async fn update_definition(
     file: Option<&str>,
     definition: Option<&str>,
     update_metadata: bool,
+    options: Option<&str>,
 ) -> Result<()> {
     if file.is_none() && definition.is_none() {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
             "Either --file or --definition must be provided".to_string(),
             "Pass --file <path> to wrap a single part (keyed by the file name), or --definition \
-             with the full envelope {\"definition\":{\"parts\":[{\"path\":\"...\",\"payload\":\"base64\",\"payloadType\":\"InlineBase64\"}]}}. \
+             with the full envelope {\"definition\":{\"parts\":[{\"path\":\"...\",\"payload\":\"base64\",\"payloadType\":\"InlineBase64\"}]}} (inline or as @file). \
              Discover the required parts for an item type: fabio context schema <Type>. \
              Validate offline first: fabio item validate-definition --type <Type> --file <envelope.json>."
                 .to_string(),
@@ -64,13 +66,21 @@ pub(super) async fn update_definition(
         .into());
     }
 
-    let body = if let Some(def_json) = definition {
-        // Inline JSON definition payload
-        serde_json::from_str::<Value>(def_json).map_err(|e| {
+    let mut body = if let Some(def_json) = definition {
+        // Inline JSON envelope, or an `@file` path pointing at one. Resolving `@file`
+        // here keeps `--definition` consistent with `item create --definition` (which
+        // already resolves `@file`) and with `--options`.
+        let raw = crate::commands::query_input::resolve_query_input(
+            Some(def_json),
+            "item definition JSON",
+            "--definition",
+            "--definition '{\"definition\":{\"parts\":[{\"path\":\"...\",\"payload\":\"base64\",\"payloadType\":\"InlineBase64\"}]}}'",
+        )?;
+        serde_json::from_str::<Value>(&raw).map_err(|e| {
             FabioError::with_hint(
                 ErrorCode::InvalidInput,
                 format!("Invalid JSON in --definition: {e}"),
-                "Provide valid JSON: {\"definition\":{\"parts\":[{\"path\":\"...\",\"payload\":\"base64...\",\"payloadType\":\"InlineBase64\"}]}}"
+                "Provide valid JSON (inline or as @file): {\"definition\":{\"parts\":[{\"path\":\"...\",\"payload\":\"base64...\",\"payloadType\":\"InlineBase64\"}]}}"
                     .to_string(),
             )
         })?
@@ -102,8 +112,40 @@ pub(super) async fn update_definition(
     } else {
         unreachable!()
     };
+    // The definition envelope must be a JSON object. A `--definition` value that
+    // parses to an array/scalar (e.g. `[]`) would otherwise panic at `body["options"]`
+    // (serde_json's IndexMut panics when indexing a non-object by a string key).
+    if !body.is_object() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "The --definition value must be a JSON object (the definition envelope), not an array or scalar.".to_string(),
+            "Provide the full envelope (inline or as @file): {\"definition\":{\"parts\":[{\"path\":\"...\",\"payload\":\"base64\",\"payloadType\":\"InlineBase64\"}]}}"
+                .to_string(),
+        )
+        .into());
+    }
+    // The nested `definition` member (when the wrapped envelope is used) must itself be
+    // an object — `{"definition":[]}` is a valid object but an invalid envelope that the
+    // API would reject; fail it locally, consistent with `item create`.
+    if body.get("definition").is_some_and(|d| !d.is_object()) {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "The 'definition' member of the envelope must be a JSON object (with a parts array), not an array or scalar.".to_string(),
+            "Provide {\"definition\":{\"parts\":[{\"path\":\"...\",\"payload\":\"base64\",\"payloadType\":\"InlineBase64\"}]}}"
+                .to_string(),
+        )
+        .into());
+    }
+    if let Some(input) = options {
+        body["options"] = crate::commands::item_options::parse_options_object(input, "--options")?;
+    }
 
-    if output::dry_run_guard(cli, "item update-definition", &body) {
+    // The generic --options path can enable the irreversible allowPurgeData option
+    // without the typed --allow-purge-data flag (semantic-model). Surface the same
+    // purge warning + conditional destructive signal so this path is not a silent gap.
+    let purge = output::body_enables_purge(&body);
+
+    if output::dry_run_guard_purge_aware(cli, "item update-definition", &body, purge) {
         return Ok(());
     }
 
@@ -117,11 +159,12 @@ pub(super) async fn update_definition(
         .await
         .map_err(|e| enrich_forbidden(e, "item update-definition", "ReadWrite"))?;
 
-    let obj = serde_json::json!({
+    let mut obj = serde_json::json!({
         "id": id,
         "workspace": workspace,
         "status": "definition_updated"
     });
+    output::attach_purge_warning(&mut obj, purge);
     output::render_object(cli, &obj, "status");
     Ok(())
 }

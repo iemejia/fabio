@@ -920,38 +920,36 @@ fn enrich_dax_error(err: anyhow::Error) -> anyhow::Error {
 
     // Pattern: model not found
     if msg_lower.contains("dataset not found") || msg_lower.contains("datasetnotfound") {
-        return FabioError::with_hint(
-            ErrorCode::NotFound,
-            msg.clone(),
-            "The semantic model ID was not found in this workspace. \
-             Use: fabio semantic-model list --workspace <WS> to find available models."
-                .to_string(),
-        )
-        .into();
+        return fabio_err
+            .with_code_and_hint(
+                ErrorCode::NotFound,
+                "The semantic model ID was not found in this workspace. \
+                 Use: fabio semantic-model list --workspace <WS> to find available models.",
+                None,
+            )
+            .into();
     }
 
     // Pattern: model not refreshed / framing required
     if msg_lower.contains("3242524690") || msg_lower.contains("not framed") {
-        return FabioError::with_hint(
-            fabio_err.code,
-            msg.clone(),
-            "Direct Lake model needs framing before queries work. \
-             Run: fabio semantic-model refresh --workspace <WS> --id <ID> --type Full"
-                .to_string(),
-        )
-        .into();
+        return fabio_err
+            .with_replaced_hint(
+                "Direct Lake model needs framing before queries work. \
+                 Run: fabio semantic-model refresh --workspace <WS> --id <ID> --type Full",
+                None,
+            )
+            .into();
     }
 
     // Pattern: DAX syntax error
     if msg_lower.contains("dax") && msg_lower.contains("syntax") {
-        return FabioError::with_hint(
-            fabio_err.code,
-            msg.clone(),
-            "DAX query has a syntax error. Ensure EVALUATE is followed by a valid table expression. \
-             Example: EVALUATE SUMMARIZE(sales_summary, sales_summary[country], \"Revenue\", SUM(sales_summary[total]))"
-                .to_string(),
-        )
-        .into();
+        return fabio_err
+            .with_replaced_hint(
+                "DAX query has a syntax error. Ensure EVALUATE is followed by a valid table expression. \
+                 Example: EVALUATE SUMMARIZE(sales_summary, sales_summary[country], \"Revenue\", SUM(sales_summary[total]))",
+                None,
+            )
+            .into();
     }
 
     err

@@ -158,6 +158,10 @@ pub enum WorkspaceCommand {
         /// Match items by display name (instead of logicalId) for initial clones
         #[arg(long)]
         allow_pairing_by_name: bool,
+
+        /// Per-item import options as a JSON array keyed by logicalId (inline or @file)
+        #[arg(long, value_name = "JSON")]
+        item_options: Option<String>,
     },
     /// Assign a workspace to a capacity
     #[command(display_order = 20)]
@@ -651,6 +655,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceComman
             dest,
             item_types,
             allow_pairing_by_name,
+            item_options,
         } => {
             crud::clone_workspace(
                 cli,
@@ -659,6 +664,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceComman
                 dest,
                 item_types.as_deref(),
                 *allow_pairing_by_name,
+                item_options.as_deref(),
             )
             .await
         }
@@ -1000,7 +1006,7 @@ pub(super) fn enrich_assign_capacity_error(err: anyhow::Error, capacity: &str) -
     let hint = format!(
         "Capacity '{capacity}' was not found or is not accessible. List available capacities with: az fabric capacity list --query '[].{{name:name, id:id, state:properties.state}}' -o table. Create one with: az fabric capacity create --name <name> --resource-group <rg> --location <region> --sku F2 --administration-members <email>"
     );
-    FabioError::with_hint(fabio_err.code, fabio_err.message.clone(), hint).into()
+    fabio_err.with_replaced_hint(hint, None).into()
 }
 
 #[cfg(test)]

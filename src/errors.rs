@@ -94,6 +94,17 @@ pub struct RelatedResource {
     pub resource_type: String,
 }
 
+/// Machine-readable context from the API's `error.parameters` array.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ErrorParameter {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
 /// Classification of a hint's semantic impact on the operation.
 ///
 /// AI agents use this to decide whether a hint-driven retry is safe to execute
@@ -144,6 +155,8 @@ pub struct FabioError {
     pub more_details: Option<Vec<ErrorDetail>>,
     /// The resource involved in the error (from `error.relatedResource`).
     pub related_resource: Option<RelatedResource>,
+    /// Additional machine-readable context (from `error.parameters`).
+    pub parameters: Option<Vec<ErrorParameter>>,
 }
 
 impl FabioError {
@@ -158,6 +171,7 @@ impl FabioError {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
         }
     }
 
@@ -177,6 +191,7 @@ impl FabioError {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
         }
     }
 
@@ -199,6 +214,7 @@ impl FabioError {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
         }
     }
 
@@ -259,6 +275,56 @@ impl FabioError {
         self.related_resource = related_resource;
         self
     }
+
+    /// Set structured API error parameters (builder pattern).
+    #[must_use]
+    pub fn set_parameters(mut self, parameters: Option<Vec<ErrorParameter>>) -> Self {
+        self.parameters = parameters;
+        self
+    }
+
+    /// Return a copy of this error with its hint (and hint type) replaced while
+    /// preserving all API-derived metadata (`code`, `parameters`, `more_details`,
+    /// `related_resource`, `request_id`, `retriable`, `verify_after`).
+    ///
+    /// The enrichers (`enrich_forbidden`, `enrich_admin`,
+    /// `enrich_ontology_definition_error`) use this instead of rebuilding a bare
+    /// `FabioError` via `with_hint`/`with_typed_hint`, so structured fields such as
+    /// `error.parameters` survive hint replacement on the common enriched error
+    /// paths (a plain rebuild would drop them before `render_error` sees them).
+    #[must_use]
+    pub fn with_replaced_hint(&self, hint: impl Into<String>, hint_type: Option<HintType>) -> Self {
+        Self {
+            code: self.code,
+            message: self.message.clone(),
+            hint: Some(hint.into()),
+            hint_type,
+            verify_after: self.verify_after.clone(),
+            retriable: self.retriable,
+            request_id: self.request_id.clone(),
+            more_details: self.more_details.clone(),
+            related_resource: self.related_resource.clone(),
+            parameters: self.parameters.clone(),
+        }
+    }
+
+    /// Like [`with_replaced_hint`](Self::with_replaced_hint) but also overrides the
+    /// error `code`. Use this in enrichers that reclassify the error (e.g. an opaque
+    /// `ApiError` into a more specific `InvalidInput`) while still preserving all
+    /// API-derived metadata (`parameters`, `more_details`, `related_resource`,
+    /// `request_id`, `retriable`, `verify_after`).
+    #[must_use]
+    pub fn with_code_and_hint(
+        &self,
+        code: ErrorCode,
+        hint: impl Into<String>,
+        hint_type: Option<HintType>,
+    ) -> Self {
+        Self {
+            code,
+            ..self.with_replaced_hint(hint, hint_type)
+        }
+    }
 }
 
 /// Convert HTTP status codes to appropriate error codes.
@@ -317,6 +383,7 @@ impl FabioError {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
         }
     }
 }
@@ -342,7 +409,7 @@ pub fn enrich_forbidden(err: anyhow::Error, operation: &str, required_role: &str
          Ask a workspace Admin to grant you the required role."
     );
 
-    FabioError::with_hint(ErrorCode::Forbidden, fabio_err.message.clone(), hint).into()
+    fabio_err.with_replaced_hint(hint, None).into()
 }
 
 /// Enrich a failed ontology definition push (`import`, `bind`,
@@ -394,13 +461,9 @@ pub fn enrich_ontology_definition_error(err: anyhow::Error, operation: &str) -> 
          fabio ontology get-definition --workspace <WS> --id <ID> --decode"
     );
 
-    FabioError::with_typed_hint(
-        fabio_err.code,
-        fabio_err.message.clone(),
-        hint,
-        HintType::SemanticCorrection,
-    )
-    .into()
+    fabio_err
+        .with_replaced_hint(hint, Some(HintType::SemanticCorrection))
+        .into()
 }
 
 /// Enrich errors from admin commands with tenant-level hints.
@@ -425,7 +488,7 @@ pub fn enrich_admin(err: anyhow::Error, operation: &str) -> anyhow::Error {
              Enable it with: fabio admin update-tenant-setting \
              --setting-name AllowExternalDataSharingSwitch --content '{{\"enabled\":true}}'"
         );
-        return FabioError::with_hint(fabio_err.code, fabio_err.message.clone(), hint).into();
+        return fabio_err.with_replaced_hint(hint, None).into();
     }
 
     if msg_lower.contains("tenant setting") && msg_lower.contains("disabled") {
@@ -434,7 +497,7 @@ pub fn enrich_admin(err: anyhow::Error, operation: &str) -> anyhow::Error {
              Enable it in the Fabric Admin Portal > Tenant Settings, or use: \
              fabio admin update-tenant-setting --setting-name <SETTING> --content '{{\"enabled\":true}}'"
         );
-        return FabioError::with_hint(fabio_err.code, fabio_err.message.clone(), hint).into();
+        return fabio_err.with_replaced_hint(hint, None).into();
     }
 
     if msg_lower.contains("not supported for the requested item type") {
@@ -443,7 +506,7 @@ pub fn enrich_admin(err: anyhow::Error, operation: &str) -> anyhow::Error {
              For bulk-remove-sharing-links, only 'Report' type is supported. \
              Change the 'type' field in your request body to 'Report'."
         );
-        return FabioError::with_hint(fabio_err.code, fabio_err.message.clone(), hint).into();
+        return fabio_err.with_replaced_hint(hint, None).into();
     }
 
     if msg_lower.contains("label is not assigned to user") || msg_lower.contains("label not found")
@@ -455,7 +518,7 @@ pub fn enrich_admin(err: anyhow::Error, operation: &str) -> anyhow::Error {
              (3) Labels enabled for Fabric in the Admin Portal. \
              Verify label IDs with your compliance administrator."
         );
-        return FabioError::with_hint(fabio_err.code, fabio_err.message.clone(), hint).into();
+        return fabio_err.with_replaced_hint(hint, None).into();
     }
 
     if msg_lower.contains("feature is not available") || msg_lower.contains("featurenotavailable") {
@@ -465,7 +528,7 @@ pub fn enrich_admin(err: anyhow::Error, operation: &str) -> anyhow::Error {
              Check available settings with: fabio admin list-tenant-settings. \
              Contact your Fabric administrator to enable the required feature."
         );
-        return FabioError::with_hint(fabio_err.code, fabio_err.message.clone(), hint).into();
+        return fabio_err.with_replaced_hint(hint, None).into();
     }
 
     if msg_lower.contains("syncing admins to subdomains is not supported") {
@@ -474,7 +537,7 @@ pub fn enrich_admin(err: anyhow::Error, operation: &str) -> anyhow::Error {
              Admin role sync is not supported by the API. \
              Use --role Contributor (default) instead of --role Admin."
         );
-        return FabioError::with_hint(fabio_err.code, fabio_err.message.clone(), hint).into();
+        return fabio_err.with_replaced_hint(hint, None).into();
     }
 
     // For Forbidden errors, provide tenant-admin-level guidance
@@ -495,7 +558,7 @@ pub fn enrich_admin(err: anyhow::Error, operation: &str) -> anyhow::Error {
                  Re-authenticate with: fabio auth login"
             )
         };
-        return FabioError::with_hint(ErrorCode::Forbidden, fabio_err.message.clone(), hint).into();
+        return fabio_err.with_replaced_hint(hint, None).into();
     }
 
     err
@@ -880,6 +943,51 @@ mod tests {
             !hint.contains("Workspace roles: Admin > Member"),
             "Hint should NOT mention workspace roles: {hint}"
         );
+    }
+
+    #[test]
+    fn enrich_forbidden_preserves_structured_parameters() {
+        // A 403 carrying error.parameters must keep them after enrichment replaces the hint.
+        let err: anyhow::Error = FabioError::new(ErrorCode::Forbidden, "access denied")
+            .set_parameters(Some(vec![ErrorParameter {
+                name: Some("workspaceId".to_string()),
+                value: Some("abc-123".to_string()),
+                message: Some("Insufficient role".to_string()),
+            }]))
+            .set_request_id(Some("req-1".to_string()))
+            .into();
+        let enriched = enrich_forbidden(err, "item create", "Member");
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        // Hint was replaced with the operation-specific guidance…
+        assert!(
+            fabio_err
+                .hint
+                .as_ref()
+                .unwrap()
+                .contains("requires at least 'Member' role"),
+            "hint should be the enriched operation hint"
+        );
+        // …and the structured metadata survived the reconstruction.
+        let params = fabio_err.parameters.as_ref().expect("parameters preserved");
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0].name.as_deref(), Some("workspaceId"));
+        assert_eq!(fabio_err.request_id.as_deref(), Some("req-1"));
+    }
+
+    #[test]
+    fn enrich_admin_preserves_structured_parameters() {
+        let err: anyhow::Error = FabioError::new(ErrorCode::Forbidden, "access denied")
+            .set_parameters(Some(vec![ErrorParameter {
+                name: Some("tenantId".to_string()),
+                value: None,
+                message: None,
+            }]))
+            .into();
+        let enriched = enrich_admin(err, "admin list-workspaces");
+        let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
+        assert_eq!(fabio_err.code, ErrorCode::Forbidden);
+        let params = fabio_err.parameters.as_ref().expect("parameters preserved");
+        assert_eq!(params[0].name.as_deref(), Some("tenantId"));
     }
 
     #[test]

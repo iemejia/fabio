@@ -621,6 +621,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 
 ## Git Integration API Behaviors Discovered
 
+- **Update-from-Git accepts per-item definition options keyed by logical ID**: `POST /workspaces/{ws}/git/updateFromGit` accepts `options.itemOptionsByLogicalId`, an array of `{"logicalId":"<uuid>","options":{...}}`; each logical ID may appear at most once. `fabio git pull --item-options <JSON|@file>` validates the UUIDs, object-valued options, and uniqueness before sending. This composes with `options.allowOverrideItems`.
 - **File-detail status and file-level commits**: `GET /workspaces/{ws}/git/status?includeFilesDetails=true` adds optional `fileChanges` arrays to item changes. Each file has a root-relative forward-slash `path`, optional `workspaceChange`/`remoteChange`, and required `conflictType`. `POST .../git/commitToGit` now supports `mode: "FileLevelSelective"` with `itemsWithFileSelection`. Each entry identifies the item by `objectId` or `logicalId` and has optional `selectedFiles`; null/empty commits every file in that item. Selected paths cannot start with `/` or a drive prefix such as `C:`, use backslashes, name directories, contain wildcards or empty/whitespace-only segments, or end a segment with dot/whitespace.
 - **GitHub provider REQUIRES credentials**: `fabio git connect --provider github` ALWAYS requires `--connection-id` pointing to a pre-configured `GitHubSourceControl` connection. Without it, returns: `"The property myGitCredentials is required for the GitProviderType GitHub."`. Azure DevOps can use "Automatic" credentials without a connection ID.
 - **Fabric Git does NOT track table data**: Delta tables created via `load-table` are NOT version-controlled. Only item definitions (`.platform`, metadata files, notebook code) are tracked. `git status` shows NO changes after creating a table. CI/CD best practice: version-control the Notebook/Pipeline that creates the table.
@@ -942,9 +943,10 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Move pattern**: Copy + `DELETE /workspaces/{source}/items/{id}`. Atomic: delete only after successful copy.
 - **Definition format query param**: `POST /workspaces/{ws}/items/{id}/getDefinition?format={fmt}` supports format selection.
 - **Update definition metadata**: `POST /workspaces/{ws}/items/{id}/updateDefinition?updateMetadata=true` updates `.platform` metadata alongside definition parts.
+- **Create/update-definition item options**: Generic `POST /workspaces/{ws}/items` accepts top-level `options` only when a `definition` is also present; options without a definition return `BadRequest`. Generic `updateDefinition` accepts the same top-level options object beside `definition`. `item create --definition ... --options ...` and `item update-definition --options ...` accept inline JSON or `@file`.
 - **Bulk operations (all LRO)**:
   - `POST /workspaces/{ws}/items/bulkExportDefinitions` — exports multiple item definitions. Body: `{"mode":"All"}` (all items) or `{"mode":"Selective","items":[{"id":"<uuid>"},...]}`. The former required `?beta=True` parameter was removed when the API reached GA in September 2026. Response: `{"itemDefinitionsIndex":[{"id":"...","rootPath":"...","displayName":"...","type":"..."}],"definitionParts":[{"path":"...","payload":"...","payloadType":"InlineBase64"}]}`. Only exports items caller has read+write permissions for. Items with protected sensitivity labels are excluded.
-  - `POST /workspaces/{ws}/items/bulkImportDefinitions` — imports multiple item definitions. Body: `{"itemDefinitions":[{"displayName":"...","type":"...","definition":{"parts":[...]}}],"allowPairingByName":true}`. The `allowPairingByName` option matches items by display name instead of logicalId (useful for initial clones). The former required `?beta=True` parameter was removed at GA.
+  - `POST /workspaces/{ws}/items/bulkImportDefinitions` — imports flat `definitionParts`. `options.allowPairingByName` matches items by display name instead of logical ID; `options.itemOptionsByLogicalId` applies item-type-specific definition options to individual imported items. Each entry is `{"logicalId":"<uuid>","options":{...}}`, and a logical ID may appear at most once. The former required `?beta=True` parameter was removed at GA.
   - `POST /workspaces/{ws}/items/bulkMove` — moves multiple items between folders/workspaces
   - **Git integration blocker**: Both `bulkExportDefinitions` and `bulkImportDefinitions` fail with `ActiveCiCdOperationInProgress` error when the workspace has Git integration connected. Disconnect Git first (`fabio git disconnect --workspace <WS>`) or use `deploy export/apply` instead (which uses per-item `getDefinition`/`updateDefinition` and is not affected by Git).
   - **Workspace clone**: `fabio workspace clone --source <WS> --dest <WS>` orchestrates bulk export → transform → bulk import. Supports `--allow-pairing-by-name` and `--item-types` for selective cloning.
@@ -1054,8 +1056,9 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **`create` REQUIRES a `stages` array — the command was broken without it (found & fixed live)**: The modern `POST /deploymentPipelines` `CreateDeploymentPipelineRequest` requires BOTH `displayName` and `stages` (an array of `{displayName, description?, isPublic?}`) — a pipeline is created WITH its stages defined up front (the old "create empty pipeline, add stages later" model is gone; there is no add-stage endpoint). fabio's `create` sent only `{displayName, description}`, so EVERY create failed with `API_ERROR: InvalidInput: The request has an invalid input` (live-confirmed). Fixed: `create` now takes a repeatable `--stage NAME[:public]` (ordered stages; `:public` suffix sets `isPublic:true`, e.g. `--stage Development --stage Test --stage Production:public`) OR a full `--stages-json '[{...}]'` (inline/@file) for description/isPublic control; at least one stage is required (a clear `INVALID_INPUT` teaching error otherwise, BEFORE any network call). Live-verified end-to-end: create with 3 stages (Production public) → `list-stages` returns Development/Test/Production. Pure `build_stages` (flag→JSON, `:public` parsing, empty/non-array rejection) is unit-tested; offline e2e assert the `stages` land in the body + the empty-stages guard. NOTE: an empty `UpdateDeploymentPipelineRequest` (props `displayName`/`description` only) confirms stages are NOT editable via update — they are fixed at create time.
 - **Tenant-level scope**: All endpoints use `/deploymentPipelines/{id}` (NO `/workspaces/` prefix). Pipelines are not workspace-scoped.
 - **Deploy body**: `{"sourceStageId": "<id>", "targetStageId"?: "<id>", "items"?: [...], "note"?: "<text>"}`. `targetStageId` optional (defaults to next stage). `items` optional (defaults to all items).
+- **Deploy options can be scoped per source item**: `options.itemOptionsBySourceItemId` is an array of `{"sourceItemId":"<uuid>","options":{...}}`; each source item ID may appear at most once. `deployment-pipeline deploy --item-options <JSON|@file>` validates this shape and composes it with `--allow-cross-region-deployment` under the same `options` object.
 - **Deploy is LRO**: `POST /deploymentPipelines/{id}/deploy` with `poll: true`. May return empty/null response (treated as "accepted").
-- **Items array format**: `[{"itemId": "...", "itemType": "Notebook"}]` — PascalCase item types.
+- **Items array format**: `[{"sourceItemId": "...", "itemType": "Notebook"}]` — the identifier is `sourceItemId`, and item types are PascalCase.
 - **Stage management**: `GET .../stages` lists stages. `GET .../stages/{stageId}/items` lists items in stage. Items have `itemDisplayName`, `itemId`, `itemType` fields.
 - **Workspace assignment**: `POST .../stages/{stageId}/assignWorkspace` with `{"workspaceId": "<id>"}`. Unassign uses empty body.
 - **Operations history**: `GET .../operations` lists past deployments. `GET .../operations/{opId}` shows details.
@@ -1297,8 +1300,9 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Error `requestId` field**: API error responses may include `error.requestId` (correlation ID for support tickets). When present, included in error output as `"requestId": "<uuid>"`. Omitted from output when not provided.
 - **Error `moreDetails` field**: API error responses may include `error.moreDetails` (array of nested sub-errors with `code` and `message`). When present, included in error output as `"moreDetails": [{"code":"...","message":"..."}]`. Omitted from output when not provided.
 - **Error `relatedResource` field**: API error responses may include `error.relatedResource` (object with `resourceType` and `resourceId`). When present, included in error output as `"relatedResource": {"resourceType":"...","resourceId":"..."}`. Omitted from output when not provided.
+- **Error `parameters` field**: API error responses may include `error.parameters`, an array of structured `{name?, value?, message?}` context entries. fabio preserves it verbatim in the machine-readable error envelope and omits it when absent.
 - **Dry-run guard**: All mutations support `--dry-run` which returns the planned request body without executing. Output: `{"status": "dry_run", "message": "Would <action>..."}`.
-- **Definition operations pattern**: `POST .../getDefinition` (LRO, empty body `{}`) returns base64-encoded parts. `POST .../updateDefinition` (LRO) accepts `{"definition": {"parts": [{"path": "<file>", "payload": "<base64>", "payloadType": "InlineBase64"}]}}`.
+- **Definition operations pattern**: `POST .../getDefinition` (LRO, empty body `{}`) returns base64-encoded parts. `POST .../updateDefinition` (LRO) accepts `{"definition": {"parts": [{"path": "<file>", "payload": "<base64>", "payloadType": "InlineBase64"}]}, "options"?: {...}}`.
 - **Tenant-level vs workspace-scoped resources**:
   - Tenant-level (no workspace prefix): `/capacities`, `/connections`, `/deploymentPipelines`, `/admin/domains`, `/externalDataShares/invitations`
   - Workspace-scoped: All other resources at `/workspaces/{ws}/<resource>`
@@ -2610,6 +2614,22 @@ Two small consistency additions aligned with GA blog features (Aug 2026):
   settings needs Contributor+ AND an elevated audit scope beyond the default
   `az login` token (the `GET` read works; the `PATCH` is scope-gated). A 403
   (authorization) vs 400 (bad request) confirms the body shape is accepted.
+- **Audit predicate contract applies to Warehouse, SQL endpoint, and SQL Database**:
+  `predicateExpression` is returned by get-audit-settings and accepted by
+  update-audit-settings. Send only the predicate expression, without the `WHERE`
+  keyword; maximum length is 3,000 characters. On first enable, omission means no
+  predicate; on later updates, omission preserves the current predicate; an empty
+  string removes it. `action_id` and `class_type` compare only to numeric values,
+  and string comparisons do not perform implicit conversion.
+- **SQL endpoint refresh timeout is bounded at 24 hours**: `refresh-metadata
+  --timeout` defaults server-side to 15 minutes and accepts at most 24 hours.
+  fabio rejects larger equivalent durations across Seconds/Minutes/Hours/Days
+  before sending the request.
+- **Semantic model definition purge is explicit**: Semantic model create with a
+  definition and `updateDefinition` accept `options.allowPurgeData` (default
+  false). Use `semantic-model create/update-definition --allow-purge-data` only
+  when applying the definition may require incompatible model data to be
+  cleared; refresh the model afterward to reload data.
 - **`admin list-workspaces --capacity-id`** — the CMK tenant-governance API
   documents `GET /admin/workspaces?include=encryption&capacityId={id}` to scope
   the encryption audit to one capacity. Added as `--capacity-id` alongside the

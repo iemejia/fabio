@@ -309,14 +309,33 @@ pub(super) async fn pull(
     workspace: &str,
     conflict_resolution: Option<&str>,
     allow_override: bool,
+    item_options: Option<&str>,
     workspace_head: Option<&str>,
     remote_commit_hash: Option<&str>,
     wait: bool,
     timeout: u64,
 ) -> Result<()> {
+    // Validate local --item-options BEFORE any network call (the status auto-fetch
+    // below), so malformed JSON / invalid UUID / duplicate targets fail deterministically
+    // without depending on workspace connectivity.
+    let parsed_item_options = item_options
+        .map(|value| {
+            crate::commands::item_options::parse_item_options(value, "logicalId", "--item-options")
+        })
+        .transpose()?;
+
     // Auto-fetch hashes from status if not provided
     let (head, remote_hash) = if let (Some(h), Some(r)) = (workspace_head, remote_commit_hash) {
         (h.to_string(), r.to_string())
+    } else if cli.dry_run {
+        (
+            workspace_head
+                .unwrap_or("<resolved from git status>")
+                .to_string(),
+            remote_commit_hash
+                .unwrap_or("<resolved from git status>")
+                .to_string(),
+        )
     } else {
         let status = client
             .get_with_lro(&format!("/workspaces/{workspace}/git/status"))
@@ -367,13 +386,27 @@ pub(super) async fn pull(
         });
     }
 
-    if allow_override {
-        body["options"] = serde_json::json!({
-            "allowOverrideItems": true,
-        });
+    // A per-item option entry can nest the irreversible allowPurgeData (semantic model).
+    let purge = parsed_item_options
+        .as_ref()
+        .is_some_and(crate::commands::item_options::entries_enable_purge);
+
+    if allow_override || parsed_item_options.is_some() {
+        let mut options = serde_json::json!({});
+        if allow_override {
+            options["allowOverrideItems"] = Value::Bool(true);
+        }
+        if let Some(entries) = parsed_item_options {
+            options["itemOptionsByLogicalId"] = entries;
+        }
+        body["options"] = options;
     }
 
-    let data = client
+    if output::dry_run_guard_purge_aware(cli, "git pull", &body, purge) {
+        return Ok(());
+    }
+
+    let mut data = client
         .post_with_timeout(
             &format!("/workspaces/{workspace}/git/updateFromGit"),
             &body,
@@ -383,6 +416,7 @@ pub(super) async fn pull(
         .await
         .map_err(|e| enrich_pull_conflict(e, allow_override))?;
 
+    output::attach_purge_warning(&mut data, purge);
     output::render_object(cli, &data, "status");
     Ok(())
 }
@@ -399,14 +433,22 @@ fn enrich_pull_conflict(err: anyhow::Error, allow_override: bool) -> anyhow::Err
     if allow_override || !is_git_conflict(&err.to_string()) {
         return err;
     }
-    FabioError::with_hint(
-        ErrorCode::ApiError,
-        format!("Git pull failed due to a conflict: {err}"),
-        "The workspace has changes that conflict with the incoming remote changes. \
+    let hint = "The workspace has changes that conflict with the incoming remote changes. \
          Resolve them (commit or discard workspace changes), or re-run with \
          --allow-override to overwrite the conflicting workspace items with the \
          remote version. --allow-override is irreversible: it discards the \
-         conflicting workspace changes.",
+         conflicting workspace changes.";
+    // When the source error is already structured, preserve its API metadata
+    // (error.parameters, requestId, …) while reframing the message and hint.
+    if let Some(fabio_err) = err.downcast_ref::<FabioError>() {
+        let mut enriched = fabio_err.with_code_and_hint(ErrorCode::ApiError, hint, None);
+        enriched.message = format!("Git pull failed due to a conflict: {}", fabio_err.message);
+        return enriched.into();
+    }
+    FabioError::with_hint(
+        ErrorCode::ApiError,
+        format!("Git pull failed due to a conflict: {err}"),
+        hint,
     )
     .into()
 }

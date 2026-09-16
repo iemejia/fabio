@@ -304,7 +304,7 @@ pub enum WarehouseCommand {
         #[arg(long)]
         audit_actions: Option<String>,
 
-        /// Predicate expression for filtering audit logs (identity-based / column filters)
+        /// Predicate expression without WHERE (max 3000 chars; empty string removes it)
         #[arg(long)]
         predicate_expression: Option<String>,
     },
@@ -1043,6 +1043,7 @@ pub async fn get_connection_string(
         request_id: None,
         more_details: None,
         related_resource: None,
+        parameters: None,
     }.into())
 }
 

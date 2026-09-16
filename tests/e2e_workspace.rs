@@ -3244,6 +3244,26 @@ fn workspace_clone_same_workspace_fails() {
 }
 
 #[test]
+fn workspace_clone_invalid_item_options_fails_before_network() {
+    // Malformed --item-options must fail during LOCAL validation, before the two
+    // resolve_workspace network lookups — deterministically and offline.
+    fabio()
+        .args([
+            "workspace",
+            "clone",
+            "--source",
+            "00000000-0000-0000-0000-000000000001",
+            "--dest",
+            "00000000-0000-0000-0000-000000000002",
+            "--item-options",
+            "not json",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Invalid --item-options JSON"));
+}
+
+#[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn workspace_clone_with_item_types_dry_run() {
@@ -3265,6 +3285,65 @@ fn workspace_clone_with_item_types_dry_run() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     assert_eq!(data["would_execute"], "workspace clone");
+}
+
+#[test]
+fn workspace_clone_with_item_options_dry_run() {
+    // Hermetic: GUID --source/--dest resolve locally (resolve_workspace returns GUIDs
+    // as-is) and the dry-run guard fires before any export/import request, so no live
+    // tenant is needed to exercise the item-options preview.
+    let logical_id = "88436e65-6ed1-8185-49ff-f61077fc73d4";
+    let item_options =
+        format!(r#"[{{"logicalId":"{logical_id}","options":{{"validateOnly":true}}}}]"#);
+    let assert = fabio()
+        .args([
+            "workspace",
+            "clone",
+            "--source",
+            "00000000-0000-0000-0000-000000000001",
+            "--dest",
+            "00000000-0000-0000-0000-000000000002",
+            "--item-options",
+            &item_options,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["details"]["item_options"][0]["logicalId"], logical_id);
+}
+
+#[test]
+fn workspace_clone_item_options_purge_is_destructive() {
+    // A per-item option forwarded to bulk import can nest allowPurgeData, making the
+    // clone irreversible; the dry-run must carry the purge warning + destructive signal.
+    let logical_id = "88436e65-6ed1-8185-49ff-f61077fc73d4";
+    let item_options =
+        format!(r#"[{{"logicalId":"{logical_id}","options":{{"allowPurgeData":true}}}}]"#);
+    let assert = fabio()
+        .args([
+            "workspace",
+            "clone",
+            "--source",
+            "00000000-0000-0000-0000-000000000001",
+            "--dest",
+            "00000000-0000-0000-0000-000000000002",
+            "--item-options",
+            &item_options,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["destructive"], true);
+    assert!(
+        data["details"]["warning"]
+            .as_str()
+            .is_some_and(|w| w.contains("allowPurgeData")),
+        "nested-purge clone preview must warn"
+    );
 }
 
 // ─── Recoverable items ──────────────────────────────────────────────────────

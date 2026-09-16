@@ -482,6 +482,85 @@ fn git_pull_unconnected_workspace_fails() {
         .failure();
 }
 
+#[test]
+fn git_pull_item_options_dry_run() {
+    let logical_id = "88436e65-6ed1-8185-49ff-f61077fc73d4";
+    let item_options =
+        format!(r#"[{{"logicalId":"{logical_id}","options":{{"validateOnly":true}}}}]"#);
+    let assert = fabio()
+        .args([
+            "git",
+            "pull",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--item-options",
+            &item_options,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let details = &extract_data(&json)["details"];
+    assert_eq!(
+        details["options"]["itemOptionsByLogicalId"][0]["logicalId"],
+        logical_id
+    );
+    assert_eq!(
+        details["options"]["itemOptionsByLogicalId"][0]["options"]["validateOnly"],
+        true
+    );
+}
+
+#[test]
+fn git_pull_item_options_purge_is_destructive() {
+    // A per-item option carrying allowPurgeData makes the pull irreversible; the
+    // dry-run must carry the purge warning + destructive signal.
+    let logical_id = "88436e65-6ed1-8185-49ff-f61077fc73d4";
+    let item_options =
+        format!(r#"[{{"logicalId":"{logical_id}","options":{{"allowPurgeData":true}}}}]"#);
+    let assert = fabio()
+        .args([
+            "git",
+            "pull",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--item-options",
+            &item_options,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["destructive"], true);
+    assert!(
+        data["details"]["warning"]
+            .as_str()
+            .is_some_and(|w| w.contains("allowPurgeData")),
+        "nested-purge git pull preview must warn"
+    );
+}
+
+#[test]
+fn git_pull_invalid_item_options_fails_before_network() {
+    // Malformed --item-options must fail during LOCAL validation, before the git
+    // status auto-fetch — deterministically, without contacting Fabric (no --dry-run,
+    // no hashes provided). Parsing now happens at the top of the handler.
+    fabio()
+        .args([
+            "git",
+            "pull",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--item-options",
+            "not json",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("Invalid --item-options JSON"));
+}
+
 // ---------------------------------------------------------------------------
 // Connect → Init → Status → Disconnect lifecycle
 // Uses the dest workspace (to avoid disrupting source workspace)

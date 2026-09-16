@@ -39,6 +39,7 @@ const AGENT_ENV_VARS: &[(&str, &str)] = &[
 const DANGEROUS_FLAGS: &[&str] = &[
     "--allow-delete-types",
     "--allow-override",
+    "--allow-purge-data",
     "--allow-unresolved",
     "--cancel-on-timeout",
     "--delete-orphans",
@@ -565,10 +566,12 @@ mod tests {
         const BENIGN_ESCALATION_FLAGS: &[&str] = &[
             "--allow-cloud-connection-refresh", // gateway feature toggle
             "--allow-code-first-artifacts",     // connection capability grant (create-time)
+            "--allow-cross-region-deployment",  // deploy capability toggle (cross-region)
             "--allow-custom-connectors",        // gateway feature toggle
             "--allow-gateway-usage",            // connection capability grant
             "--allow-pairing-by-name",          // workspace clone matching (additive)
             "--allow-tool",                     // mcp serve: expose a tool (config)
+            "--allow-value-set",                // deploy validate: value-set allowlist (pr-ready)
             "--allow-write",                    // mcp serve: enable write mode (server config)
             "--drop-if-exists",                 // sql-database import mode (explicit)
         ];
@@ -597,15 +600,19 @@ mod tests {
                 continue;
             };
             for (subname, sub) in subs {
-                let Some(flags) = sub.get("flags").and_then(|f| f.as_array()) else {
-                    continue;
+                // `flags` may be legitimately absent, but if present it MUST be an object
+                // (the generated schema shape). A non-object here means the schema is stale
+                // or malformed — fail loudly rather than silently skipping the subcommand,
+                // which would let an untriaged escalation flag slip through this gate.
+                let flags = match sub.get("flags") {
+                    None => continue,
+                    Some(f) => f.as_object().unwrap_or_else(|| {
+                        panic!("commands.json: '{subname}' has a non-object 'flags' field")
+                    }),
                 };
-                for flag in flags {
-                    let Some(name) = flag.get("name").and_then(|n| n.as_str()) else {
-                        continue;
-                    };
+                for name in flags.keys() {
                     let long = if name.starts_with("--") {
-                        name.to_string()
+                        name.clone()
                     } else {
                         format!("--{name}")
                     };

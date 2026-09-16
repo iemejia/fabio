@@ -85,6 +85,7 @@ pub(super) async fn update_audit_settings(
             Value::Array(actions.iter().map(|a| Value::from(a.as_str())).collect());
     }
     if let Some(pred) = predicate_expression {
+        crate::commands::sql_audit::validate_predicate_expression(pred)?;
         body["predicateExpression"] = Value::from(pred);
     }
 

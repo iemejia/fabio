@@ -36,6 +36,79 @@ pub(super) async fn bulk_post(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn bulk_import_definitions(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+    allow_pairing_by_name: bool,
+    item_options: Option<&str>,
+) -> Result<()> {
+    let mut body = read_json_input(file, content, "bulk-import-definitions")?;
+    if !body.is_object() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Bulk import request body must be a JSON object",
+            "Provide definitionParts and optional options in a JSON object.",
+        )
+        .into());
+    }
+    // Any option flag needs an object `options`; validate/create it once so
+    // --allow-pairing-by-name and --item-options can both write into it.
+    if allow_pairing_by_name || item_options.is_some() {
+        match body.get("options") {
+            Some(options) if !options.is_object() => {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    "Bulk import request field 'options' must be a JSON object",
+                    "Remove the invalid options value or replace it with an object.",
+                )
+                .into());
+            }
+            None => body["options"] = serde_json::json!({}),
+            Some(_) => {}
+        }
+    }
+    if allow_pairing_by_name {
+        body["options"]["allowPairingByName"] = Value::Bool(true);
+    }
+    if let Some(input) = item_options {
+        let entries = crate::commands::item_options::parse_item_options(
+            input,
+            "logicalId",
+            "--item-options",
+        )?;
+        body["options"]["itemOptionsByLogicalId"] = entries;
+    }
+
+    // A per-item option entry (or a top-level option) can enable the irreversible
+    // allowPurgeData for a semantic-model definition; surface the purge warning +
+    // conditional destructive signal in the preview.
+    let purge = output::body_enables_purge(&body)
+        || body
+            .get("options")
+            .and_then(|o| o.get("itemOptionsByLogicalId"))
+            .is_some_and(crate::commands::item_options::entries_enable_purge);
+
+    if output::dry_run_guard_purge_aware(cli, "item bulk-import-definitions", &body, purge) {
+        return Ok(());
+    }
+
+    let mut data = client
+        .post(
+            &format!("/workspaces/{workspace}/items/bulkImportDefinitions"),
+            &body,
+            true,
+        )
+        .await?;
+
+    output::attach_purge_warning(&mut data, purge);
+    output::render_object(cli, &data, "status");
+    Ok(())
+}
+
 // ─── Bulk Create (client-side parallel) ──────────────────────────────────────
 
 pub(super) async fn bulk_create(

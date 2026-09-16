@@ -130,6 +130,10 @@ pub enum GitCommand {
         #[arg(long)]
         allow_override: bool,
 
+        /// Per-item update options as a JSON array keyed by logicalId (inline or @file)
+        #[arg(long, value_name = "JSON")]
+        item_options: Option<String>,
+
         /// Override workspace head (auto-fetched from status if omitted)
         #[arg(long, hide = true)]
         workspace_head: Option<String>,
@@ -376,6 +380,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
             workspace,
             conflict_resolution,
             allow_override,
+            item_options,
             workspace_head,
             remote_commit_hash,
             wait,
@@ -386,6 +391,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
             workspace,
             conflict_resolution.as_deref(),
             *allow_override,
+            item_options.as_deref(),
             workspace_head.as_deref(),
             remote_commit_hash.as_deref(),
             *wait,
@@ -576,7 +582,7 @@ pub(super) fn enrich_git_connect_error(
         return err;
     };
 
-    FabioError::with_hint(fabio_err.code, msg.clone(), hint).into()
+    fabio_err.with_replaced_hint(hint, None).into()
 }
 
 // ─── Unit Tests ──────────────────────────────────────────────────────────────

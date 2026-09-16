@@ -74,22 +74,26 @@ fn normalize_summarize_by(v: &str) -> Result<&'static str> {
 /// require Import mode; Direct Lake columns come from the lakehouse) with an
 /// actionable hint. Other import failures pass through unchanged.
 fn enrich_calculated_column_error(e: anyhow::Error, table: &str) -> anyhow::Error {
-    if e.to_string()
+    if !e
+        .to_string()
         .contains("Dataset_Import_FailedToImportDataset")
     {
-        return FabioError::with_hint(
-            ErrorCode::ApiError,
-            e.to_string(),
-            format!(
-                "Calculated columns are not supported on a Direct Lake table like '{table}' (its \
-                 columns come from the lakehouse). Options: add the column in the lakehouse/source \
-                 table, add a MEASURE instead (fabio semantic-model add-measure), or use an \
-                 Import-mode table."
-            ),
-        )
-        .into();
+        return e;
     }
-    e
+    let hint = format!(
+        "Calculated columns are not supported on a Direct Lake table like '{table}' (its \
+         columns come from the lakehouse). Options: add the column in the lakehouse/source \
+         table, add a MEASURE instead (fabio semantic-model add-measure), or use an \
+         Import-mode table."
+    );
+    // Preserve any structured API metadata (error.parameters, etc.) when the error
+    // is already a FabioError; fall back to a fresh error for non-FabioError sources.
+    if let Some(fabio_err) = e.downcast_ref::<FabioError>() {
+        return fabio_err
+            .with_code_and_hint(ErrorCode::ApiError, hint, None)
+            .into();
+    }
+    FabioError::with_hint(ErrorCode::ApiError, e.to_string(), hint).into()
 }
 
 #[allow(clippy::too_many_arguments)]
