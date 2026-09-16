@@ -270,6 +270,7 @@ pub(super) async fn inspect(
 
 // ─── Create ──────────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn create(
     cli: &Cli,
     client: &FabricClient,
@@ -278,6 +279,8 @@ pub(super) async fn create(
     item_type: &str,
     description: Option<&str>,
     sensitivity_label: Option<&str>,
+    definition: Option<&str>,
+    options: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({
         "displayName": name,
@@ -291,26 +294,65 @@ pub(super) async fn create(
             "sensitivityLabelId": label_id
         });
     }
+    if let Some(input) = definition {
+        let raw = crate::commands::query_input::resolve_query_input(
+            Some(input),
+            "item definition JSON",
+            "--definition",
+            "--definition '{\"parts\":[{\"path\":\"definition.json\",\"payload\":\"...\",\"payloadType\":\"InlineBase64\"}]}'",
+        )?;
+        let parsed: Value = serde_json::from_str(&raw).map_err(|error| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid --definition JSON: {error}"),
+                "Provide a definition object with a parts array, inline or as @file.",
+            )
+        })?;
+        let definition_value = parsed.get("definition").cloned().unwrap_or(parsed);
+        // The definition must be an object (with a parts array). Reject arrays/scalars
+        // (e.g. `--definition '[]'`) locally with INVALID_INPUT instead of sending an
+        // invalid `definition` to Fabric or reporting a misleading successful dry-run.
+        if !definition_value.is_object() {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "The --definition value must be a JSON object with a parts array, not an array or scalar."
+                    .to_string(),
+                "Provide a definition object, inline or as @file: --definition '{\"parts\":[{\"path\":\"...\",\"payload\":\"...\",\"payloadType\":\"InlineBase64\"}]}'"
+                    .to_string(),
+            )
+            .into());
+        }
+        body["definition"] = definition_value;
+    }
+    if let Some(input) = options {
+        body["options"] = crate::commands::item_options::parse_options_object(input, "--options")?;
+    }
 
-    if output::dry_run_guard(
-        cli,
-        "item create",
-        &serde_json::json!({
-            "workspace": workspace,
-            "displayName": name,
-            "type": item_type,
-            "description": description,
-            "sensitivityLabel": sensitivity_label
-        }),
-    ) {
+    // The generic --options path can enable the irreversible allowPurgeData option
+    // on a create; surface the same warning + destructive signal as the typed path.
+    let purge = output::body_enables_purge(&body);
+    let mut preview = serde_json::json!({
+        "workspace": workspace,
+        "displayName": name,
+        "type": item_type,
+        "description": description,
+        "sensitivityLabel": sensitivity_label,
+        "definition": body.get("definition"),
+        "options": body.get("options")
+    });
+    if purge {
+        preview["warning"] = Value::from(output::ALLOW_PURGE_DATA_WARNING);
+    }
+    if output::dry_run_guard_maybe_destructive(cli, "item create", &preview, purge) {
         return Ok(());
     }
 
-    let data = client
+    let mut data = client
         .post(&format!("/workspaces/{workspace}/items"), &body, true)
         .await
         .map_err(|e| enrich_item_create_error(e, item_type))
         .map_err(|e| enrich_forbidden(e, "item create", "Member"))?;
+    output::attach_purge_warning(&mut data, purge);
     output::render_object(cli, &data, "id");
     Ok(())
 }

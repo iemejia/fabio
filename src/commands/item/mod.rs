@@ -215,6 +215,14 @@ pub enum ItemCommand {
         /// Sensitivity label ID to apply on creation
         #[arg(long)]
         sensitivity_label: Option<String>,
+
+        /// Item definition JSON, either the definition object or a full envelope (inline or @file)
+        #[arg(long, value_name = "JSON")]
+        definition: Option<String>,
+
+        /// Item-type-specific create options as a JSON object (inline or @file; requires --definition)
+        #[arg(long, value_name = "JSON", requires = "definition")]
+        options: Option<String>,
     },
     /// Update item properties (name and/or description)
     #[command(display_order = 11)]
@@ -257,6 +265,10 @@ pub enum ItemCommand {
         /// When true, also update item metadata from .platform file
         #[arg(long)]
         update_metadata: bool,
+
+        /// Item-type-specific update options as a JSON object (inline or @file)
+        #[arg(long, value_name = "JSON")]
+        options: Option<String>,
     },
     /// Delete an item
     #[command(display_order = 13)]
@@ -391,6 +403,15 @@ pub enum ItemCommand {
         /// Inline JSON request body
         #[arg(long, group = "input")]
         content: Option<String>,
+
+        /// Match imported items by display name and type when no logical ID is present
+        /// (sets options.allowPairingByName; equivalent to including it in --content)
+        #[arg(long)]
+        allow_pairing_by_name: bool,
+
+        /// Per-item import options as a JSON array keyed by logicalId (inline or @file)
+        #[arg(long, value_name = "JSON")]
+        item_options: Option<String>,
     },
     /// Bulk move items to another workspace (LRO)
     #[command(display_order = 32)]
@@ -655,6 +676,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             item_type,
             description,
             sensitivity_label,
+            definition,
+            options,
         } => {
             crud::create(
                 cli,
@@ -664,6 +687,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
                 item_type,
                 description.as_deref(),
                 sensitivity_label.as_deref(),
+                definition.as_deref(),
+                options.as_deref(),
             )
             .await
         }
@@ -689,6 +714,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             file,
             definition,
             update_metadata,
+            options,
         } => {
             definitions::update_definition(
                 cli,
@@ -698,6 +724,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
                 file.as_deref(),
                 definition.as_deref(),
                 *update_metadata,
+                options.as_deref(),
             )
             .await
         }
@@ -772,14 +799,17 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             workspace,
             file,
             content,
+            allow_pairing_by_name,
+            item_options,
         } => {
-            bulk::bulk_post(
+            bulk::bulk_import_definitions(
                 cli,
                 client,
                 workspace,
-                "bulkImportDefinitions",
                 file.as_deref(),
                 content.as_deref(),
+                *allow_pairing_by_name,
+                item_options.as_deref(),
             )
             .await
         }
@@ -965,7 +995,9 @@ fn enrich_item_create_error(err: anyhow::Error, item_type: &str) -> anyhow::Erro
             "'{item_type}' is not a valid Fabric item type. Valid types: {valid_types}. \
              List items to see types in your workspace: fabio item list --workspace <ID>"
         );
-        return FabioError::with_hint(ErrorCode::InvalidInput, &fabio_err.message, hint).into();
+        return fabio_err
+            .with_code_and_hint(ErrorCode::InvalidInput, hint, None)
+            .into();
     }
 
     err
@@ -982,7 +1014,7 @@ fn enrich_item_not_found_error(err: anyhow::Error, workspace: &str, id: &str) ->
             "Item '{id}' not found in workspace '{workspace}'. \
              List available items: fabio item list --workspace {workspace}"
         );
-        return FabioError::with_hint(ErrorCode::NotFound, &fabio_err.message, hint).into();
+        return fabio_err.with_replaced_hint(hint, None).into();
     }
 
     err

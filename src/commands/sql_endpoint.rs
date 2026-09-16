@@ -141,7 +141,7 @@ pub enum SqlEndpointCommand {
         #[arg(long)]
         id: String,
 
-        /// Timeout JSON with value and timeUnit (inline or @file; default: 15 Minutes)
+        /// Timeout JSON with value and timeUnit (inline or @file; default: 15 Minutes, maximum: 24 Hours)
         #[arg(long)]
         timeout: Option<String>,
 
@@ -187,7 +187,7 @@ pub enum SqlEndpointCommand {
         #[arg(long, value_delimiter = ',')]
         audit_actions: Option<Vec<String>>,
 
-        /// Predicate expression for filtering audit logs
+        /// Predicate expression without WHERE (max 3000 chars; empty string removes it)
         #[arg(long)]
         predicate_expression: Option<String>,
     },
@@ -688,6 +688,21 @@ fn parse_timeout(input: Option<&str>) -> Result<Option<DurationDefinition>> {
         )
         .into());
     }
+    let seconds = match timeout.time_unit.as_str() {
+        "Seconds" => timeout.value,
+        "Minutes" => timeout.value * 60.0,
+        "Hours" => timeout.value * 3_600.0,
+        "Days" => timeout.value * 86_400.0,
+        _ => unreachable!(),
+    };
+    if seconds > 86_400.0 {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "SQL endpoint refresh timeout cannot exceed 24 hours.",
+            r#"Use a duration no greater than {"value":24,"timeUnit":"Hours"}."#,
+        )
+        .into());
+    }
     Ok(Some(timeout))
 }
 
@@ -885,6 +900,7 @@ async fn update_audit_settings(
             Value::Array(actions.iter().map(|a| Value::from(a.as_str())).collect());
     }
     if let Some(pred) = predicate_expression {
+        crate::commands::sql_audit::validate_predicate_expression(pred)?;
         body["predicateExpression"] = Value::from(pred);
     }
 
@@ -1141,6 +1157,13 @@ mod tests {
                 .to_string()
                 .contains("Invalid timeout timeUnit")
         );
+        assert!(
+            parse_timeout(Some(r#"{"value":25,"timeUnit":"Hours"}"#))
+                .unwrap_err()
+                .to_string()
+                .contains("cannot exceed 24 hours")
+        );
+        assert!(parse_timeout(Some(r#"{"value":1,"timeUnit":"Days"}"#)).is_ok());
     }
 
     #[test]

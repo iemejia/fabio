@@ -247,6 +247,7 @@ pub(super) async fn create(
     definition: Option<&str>,
     connection: Option<&str>,
     sensitivity_label: Option<&str>,
+    allow_purge_data: bool,
 ) -> Result<()> {
     let parts = if let Some(folder) = definition {
         // Gather a FULL model definition folder (definition.pbism + definition/
@@ -281,23 +282,36 @@ pub(super) async fn create(
             "sensitivityLabelId": label_id
         });
     }
+    if allow_purge_data {
+        body["options"] = serde_json::json!({
+            "allowPurgeData": true
+        });
+    }
 
-    if output::dry_run_guard(
+    let mut preview = serde_json::json!({
+        "workspace": workspace,
+        "displayName": name,
+        "description": description,
+        "file": file,
+        "connection": connection,
+        "sensitivityLabel": sensitivity_label,
+        "options": body.get("options")
+    });
+    if allow_purge_data {
+        preview["warning"] = Value::from(output::ALLOW_PURGE_DATA_WARNING);
+    }
+    // create is destructive ONLY when allowPurgeData permits a data purge, so force
+    // the destructive signal conditionally rather than marking create destructive.
+    if output::dry_run_guard_maybe_destructive(
         cli,
         "semantic-model create",
-        &serde_json::json!({
-            "workspace": workspace,
-            "displayName": name,
-            "description": description,
-            "file": file,
-            "connection": connection,
-            "sensitivityLabel": sensitivity_label
-        }),
+        &preview,
+        allow_purge_data,
     ) {
         return Ok(());
     }
 
-    let data = client
+    let mut data = client
         .post(
             &format!("/workspaces/{workspace}/semanticModels"),
             &body,
@@ -305,6 +319,7 @@ pub(super) async fn create(
         )
         .await
         .map_err(|e| enrich_create_error(enrich_forbidden(e, "semantic-model create", "Member")))?;
+    output::attach_purge_warning(&mut data, allow_purge_data);
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -400,25 +415,24 @@ fn enrich_create_error(err: anyhow::Error) -> anyhow::Error {
 
     // Pattern: "Import from JSON supported for V3 models only"
     if msg_lower.contains("v3 models only") || msg_lower.contains("import from json") {
-        return FabioError::with_hint(
-            fabio_err.code,
-            msg.clone(),
+        return fabio_err.with_replaced_hint(
             "model.bim must use compatibilityLevel 1604 (not 1550) and include \
              \"defaultPowerBIDataSourceVersion\": \"powerBI_V3\" in the model object. \
-             Example: {\"compatibilityLevel\": 1604, \"model\": {\"defaultPowerBIDataSourceVersion\": \"powerBI_V3\", ...}}"
+             Example: {\"compatibilityLevel\": 1604, \"model\": {\"defaultPowerBIDataSourceVersion\": \"powerBI_V3\", ...}}",
+            None,
         ).into();
     }
 
     // Pattern: TMDL "InvalidValueFormat" for PowerBIDataSourceVersion
     if msg_lower.contains("invalidvalueformat") && msg_lower.contains("powerbidatasourceversion") {
-        return FabioError::with_hint(
-            fabio_err.code,
-            msg.clone(),
-            "In TMDL, use 'defaultPowerBIDataSourceVersion: powerBI_V3' (with underscore). \
-             The value 'powerBIDataSourceVersion3' is not valid. \
-             Valid values: powerBI_V3.",
-        )
-        .into();
+        return fabio_err
+            .with_replaced_hint(
+                "In TMDL, use 'defaultPowerBIDataSourceVersion: powerBI_V3' (with underscore). \
+                 The value 'powerBIDataSourceVersion3' is not valid. \
+                 Valid values: powerBI_V3.",
+                None,
+            )
+            .into();
     }
 
     // Pattern: TMDL general parsing errors
@@ -433,32 +447,32 @@ fn enrich_create_error(err: anyhow::Error) -> anyhow::Error {
             "TMDL parsing failed. Verify file uses tab indentation and valid enum values. \
              Reference: https://learn.microsoft.com/en-us/power-bi/developer/projects/projects-dataset#tmdl-format"
         };
-        return FabioError::with_hint(fabio_err.code, msg.clone(), hint).into();
+        return fabio_err.with_replaced_hint(hint, None).into();
     }
 
     // Pattern: Definition parts missing or invalid
     if msg_lower.contains("definition") && msg_lower.contains("invalid") {
-        return FabioError::with_hint(
-            fabio_err.code,
-            msg.clone(),
-            "Semantic model creation requires: (1) a model definition file (model.bim or .tmdl), \
-             (2) a definition.pbism entry. The CLI auto-generates definition.pbism. \
-             For .bim files use compat 1604 + powerBI_V3. \
-             For .tmdl files ensure 'defaultPowerBIDataSourceVersion: powerBI_V3'.",
-        )
-        .into();
+        return fabio_err
+            .with_replaced_hint(
+                "Semantic model creation requires: (1) a model definition file (model.bim or .tmdl), \
+                 (2) a definition.pbism entry. The CLI auto-generates definition.pbism. \
+                 For .bim files use compat 1604 + powerBI_V3. \
+                 For .tmdl files ensure 'defaultPowerBIDataSourceVersion: powerBI_V3'.",
+                None,
+            )
+            .into();
     }
 
     // Pattern: DirectLake requires TMDL
     if msg_lower.contains("directlake") || msg_lower.contains("direct lake") {
-        return FabioError::with_hint(
-            fabio_err.code,
-            msg.clone(),
-            "Direct Lake semantic models require TMDL format (not model.bim). \
-             Use a .tmdl file with partition mode: directLake and provide \
-             --connection <sql-endpoint-id> to bind the lakehouse connection.",
-        )
-        .into();
+        return fabio_err
+            .with_replaced_hint(
+                "Direct Lake semantic models require TMDL format (not model.bim). \
+                 Use a .tmdl file with partition mode: directLake and provide \
+                 --connection <sql-endpoint-id> to bind the lakehouse connection.",
+                None,
+            )
+            .into();
     }
 
     // No known pattern matched — return original error

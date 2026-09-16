@@ -222,13 +222,21 @@ pub enum DeploymentPipelineCommand {
         target_stage_id: Option<String>,
 
         /// Items to deploy as JSON array (if omitted, all items are deployed).
-        /// Example: '[{"itemId":"...","itemType":"Notebook"}]'
+        /// Example: '[{"sourceItemId":"...","itemType":"Notebook"}]'
         #[arg(long)]
         items: Option<String>,
 
         /// Optional note for this deployment
         #[arg(long)]
         note: Option<String>,
+
+        /// Allow deployment between stages assigned to workspaces in different regions
+        #[arg(long)]
+        allow_cross_region_deployment: bool,
+
+        /// Per-item deployment options as a JSON array keyed by sourceItemId (inline or @file)
+        #[arg(long, value_name = "JSON")]
+        item_options: Option<String>,
     },
 }
 
@@ -315,6 +323,8 @@ pub async fn execute(
             target_stage_id,
             items,
             note,
+            allow_cross_region_deployment,
+            item_options,
         } => {
             deploy(
                 cli,
@@ -324,6 +334,8 @@ pub async fn execute(
                 target_stage_id.as_deref(),
                 items.as_deref(),
                 note.as_deref(),
+                *allow_cross_region_deployment,
+                item_options.as_deref(),
             )
             .await
         }
@@ -779,6 +791,7 @@ async fn update_stage(
 
 // ─── Deploy ──────────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 async fn deploy(
     cli: &Cli,
     client: &FabricClient,
@@ -787,6 +800,8 @@ async fn deploy(
     target_stage_id: Option<&str>,
     items: Option<&str>,
     note: Option<&str>,
+    allow_cross_region_deployment: bool,
+    item_options: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({
         "sourceStageId": source_stage_id,
@@ -796,14 +811,36 @@ async fn deploy(
     }
     if let Some(items_json) = items {
         let items_value: Value = serde_json::from_str(items_json)
-            .map_err(|e| anyhow::anyhow!("Invalid --items JSON: {e}. Expected array, e.g.: [{{\"itemId\":\"...\",\"itemType\":\"Notebook\"}}]"))?;
+            .map_err(|e| anyhow::anyhow!("Invalid --items JSON: {e}. Expected array, e.g.: [{{\"sourceItemId\":\"...\",\"itemType\":\"Notebook\"}}]"))?;
         body["items"] = items_value;
     }
     if let Some(n) = note {
         body["note"] = Value::from(n);
     }
+    let parsed_item_options = item_options
+        .map(|value| {
+            crate::commands::item_options::parse_item_options(
+                value,
+                "sourceItemId",
+                "--item-options",
+            )
+        })
+        .transpose()?;
+    // A per-item option entry can nest the irreversible allowPurgeData (semantic model).
+    let purge = parsed_item_options
+        .as_ref()
+        .is_some_and(crate::commands::item_options::entries_enable_purge);
+    if allow_cross_region_deployment || parsed_item_options.is_some() {
+        let mut options = serde_json::json!({
+            "allowCrossRegionDeployment": allow_cross_region_deployment,
+        });
+        if let Some(entries) = parsed_item_options {
+            options["itemOptionsBySourceItemId"] = entries;
+        }
+        body["options"] = options;
+    }
 
-    if output::dry_run_guard(cli, "deployment-pipeline deploy", &body) {
+    if output::dry_run_guard_purge_aware(cli, "deployment-pipeline deploy", &body, purge) {
         return Ok(());
     }
 
@@ -813,7 +850,7 @@ async fn deploy(
         .map_err(|e| enrich_forbidden(e, "deployment-pipeline deploy", "Contributor"))?;
 
     // API may return LRO or immediate result
-    let obj = if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+    let mut obj = if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
         serde_json::json!({
             "pipelineId": id,
             "status": "accepted"
@@ -821,6 +858,7 @@ async fn deploy(
     } else {
         data
     };
+    output::attach_purge_warning(&mut obj, purge);
     output::render_object(cli, &obj, "status");
     Ok(())
 }
@@ -852,7 +890,7 @@ mod tests {
 
     #[test]
     fn deploy_command_can_parse_items_json() {
-        let items = r#"[{"itemId":"abc-123","itemType":"Notebook"}]"#;
+        let items = r#"[{"sourceItemId":"abc-123","itemType":"Notebook"}]"#;
         let val: Value = serde_json::from_str(items).unwrap();
         assert!(val.is_array());
         assert_eq!(val.as_array().unwrap().len(), 1);

@@ -27,7 +27,7 @@
     "concept": "When a workspace mixes Git-tracked and Deployment-Pipeline-only items, combine both mechanisms in one release (the 'sandwich' pattern).",
     "steps": [
       "1. Deploy Git-tracked items that do NOT depend on pipeline-only items: fabio deploy apply --source ./workspace --workspace <WS> --env <env>",
-      "2. Promote Deployment-Pipeline-only items: fabio deployment-pipeline deploy --id <PIPELINE> --source-stage-id <S> --items '[{\"itemId\":\"...\",\"itemType\":\"...\"}]'",
+      "2. Promote Deployment-Pipeline-only items: fabio deployment-pipeline deploy --id <PIPELINE> --source-stage-id <S> --items '[{\"sourceItemId\":\"...\",\"itemType\":\"...\"}]'",
       "3. Deploy Git-tracked items that DEPEND on the pipeline-only items (re-run apply, or a second scoped apply)."
     ],
     "future_state": "As item types gain fabric-cicd/Git support, drop the pipeline step and use a single 'deploy apply'."

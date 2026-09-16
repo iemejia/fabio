@@ -184,8 +184,18 @@ pub(super) async fn clone_workspace(
     dest: &str,
     item_types: Option<&[String]>,
     allow_pairing_by_name: bool,
+    item_options: Option<&str>,
 ) -> Result<()> {
     use crate::commands::deploy::plan::resolve_workspace;
+
+    // Validate local --item-options BEFORE resolving workspaces, so malformed JSON /
+    // invalid UUID / duplicate targets / bad options shape fail deterministically
+    // without first performing network/auth/workspace lookups (even under --dry-run).
+    let parsed_item_options = item_options
+        .map(|value| {
+            crate::commands::item_options::parse_item_options(value, "logicalId", "--item-options")
+        })
+        .transpose()?;
 
     let source_id = resolve_workspace(client, source).await?;
     let dest_id = resolve_workspace(client, dest).await?;
@@ -199,16 +209,18 @@ pub(super) async fn clone_workspace(
         .into());
     }
 
-    if output::dry_run_guard(
-        cli,
-        "workspace clone",
-        &serde_json::json!({
-            "source_workspace": source_id,
-            "dest_workspace": dest_id,
-            "item_types": item_types,
-            "allow_pairing_by_name": allow_pairing_by_name,
-        }),
-    ) {
+    // Item-options forwarded to bulk import can nest the irreversible allowPurgeData.
+    let purge = parsed_item_options
+        .as_ref()
+        .is_some_and(crate::commands::item_options::entries_enable_purge);
+    let preview = serde_json::json!({
+        "source_workspace": source_id,
+        "dest_workspace": dest_id,
+        "item_types": item_types,
+        "allow_pairing_by_name": allow_pairing_by_name,
+        "item_options": parsed_item_options,
+    });
+    if output::dry_run_guard_purge_aware(cli, "workspace clone", &preview, purge) {
         return Ok(());
     }
 
@@ -324,12 +336,15 @@ pub(super) async fn clone_workspace(
         eprintln!("[workspace clone] importing {items_count} item(s) to destination workspace...");
     }
 
-    let import_body = serde_json::json!({
+    let mut import_body = serde_json::json!({
         "definitionParts": parts,
         "options": {
             "allowPairingByName": allow_pairing_by_name
         }
     });
+    if let Some(entries) = parsed_item_options {
+        import_body["options"]["itemOptionsByLogicalId"] = entries;
+    }
 
     // Step 4: Call bulkImportDefinitions on destination.
     let import_result = client
@@ -354,6 +369,7 @@ pub(super) async fn clone_workspace(
         result["import_details"] = details.clone();
     }
 
+    output::attach_purge_warning(&mut result, purge);
     output::render_object(cli, &result, "status");
     Ok(())
 }

@@ -494,7 +494,7 @@ fn enrich_arm_error(err: anyhow::Error, operation: &str) -> anyhow::Error {
          This is NOT a Fabric workspace role — it's an Azure subscription-level permission. \
          Check access: az role assignment list --assignee <your-id> --scope /subscriptions/<sub>/resourceGroups/<rg>"
     );
-    FabioError::with_hint(ErrorCode::Forbidden, fabio_err.message.clone(), hint).into()
+    fabio_err.with_replaced_hint(hint, None).into()
 }
 
 #[cfg(test)]

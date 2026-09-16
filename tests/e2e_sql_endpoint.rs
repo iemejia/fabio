@@ -352,6 +352,49 @@ fn sql_endpoint_update_audit_settings_requires_field() {
 }
 
 #[test]
+fn sql_endpoint_update_audit_predicate_dry_run() {
+    let assert = fabio()
+        .args([
+            "sql-endpoint",
+            "update-audit-settings",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--predicate-expression",
+            "NOT statement LIKE 'SELECT %'",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert_eq!(
+        extract_data(&json)["details"]["predicateExpression"],
+        "NOT statement LIKE 'SELECT %'"
+    );
+}
+
+#[test]
+fn sql_endpoint_refresh_rejects_timeout_over_24_hours() {
+    let assert = fabio()
+        .args([
+            "sql-endpoint",
+            "refresh-metadata",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--timeout",
+            r#"{"value":25,"timeUnit":"Hours"}"#,
+            "--dry-run",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("cannot exceed 24 hours"));
+}
+
+#[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn sql_endpoint_set_audit_actions_requires_valid_endpoint() {

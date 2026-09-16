@@ -927,10 +927,17 @@
           "--allow-pairing-by-name": {
             "type": "bool",
             "description": "Match items by display name (instead of logicalId) for initial clones"
+          },
+          "--item-options": {
+            "type": "string",
+            "description": "Per-item import options as a JSON array keyed by logicalId (inline or @file)"
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio workspace clone --source $SOURCE_WS --dest $DEST_WS --item-options @item-options.json --dry-run"
+        ]
       },
       "assign-capacity": {
         "description": "Assign a workspace to a capacity",
@@ -2024,10 +2031,21 @@
           "--sensitivity-label": {
             "type": "string",
             "description": "Sensitivity label ID to apply on creation"
+          },
+          "--definition": {
+            "type": "string",
+            "description": "Item definition JSON, either the definition object or a full envelope (inline or @file)"
+          },
+          "--options": {
+            "type": "string",
+            "description": "Item-type-specific create options as a JSON object (inline or @file; requires --definition)"
           }
         },
         "mutates": true,
         "returns": "object",
+        "examples": [
+          "fabio item create --workspace $WS --name SalesModel --type SemanticModel --definition @definition.json --options '{\"allowPurgeData\":true}' --dry-run"
+        ],
         "output_fields": [
           "id",
           "displayName",
@@ -2083,11 +2101,19 @@
           "--update-metadata": {
             "type": "bool",
             "description": "When true, also update item metadata from .platform file"
+          },
+          "--options": {
+            "type": "string",
+            "description": "Item-type-specific update options as a JSON object (inline or @file)"
           }
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true,
+        "examples": [
+          "fabio item update-definition --workspace $WS --id $ITEM --definition @definition.json --options '{\"allowPurgeData\":true}' --dry-run"
+        ]
       },
       "delete": {
         "description": "Delete an item",
@@ -2269,11 +2295,22 @@
           "--content": {
             "type": "string",
             "description": "Inline JSON request body"
+          },
+          "--allow-pairing-by-name": {
+            "type": "bool",
+            "description": "Match imported items by display name and type when no logical ID is present (sets options.allowPairingByName; equivalent to including it in --content)"
+          },
+          "--item-options": {
+            "type": "string",
+            "description": "Per-item import options as a JSON array keyed by logicalId (inline or @file)"
           }
         },
         "mutates": true,
         "returns": "object",
-        "async": true
+        "async": true,
+        "examples": [
+          "fabio item bulk-import-definitions --workspace $WS --file import.json --item-options @item-options.json --dry-run"
+        ]
       },
       "bulk-move": {
         "description": "Bulk move items to another workspace (LRO)",
@@ -5557,7 +5594,7 @@
           },
           "--predicate-expression": {
             "type": "string",
-            "description": "Predicate expression for filtering audit logs (identity-based / column filters)"
+            "description": "Predicate expression without WHERE (max 3000 chars; empty string removes it)"
           }
         },
         "mutates": true,
@@ -6330,7 +6367,7 @@
           },
           "--predicate-expression": {
             "type": "string",
-            "description": "Predicate expression for filtering audit logs"
+            "description": "Predicate expression without WHERE (max 3000 chars; empty string removes it)"
           }
         },
         "mutates": true,
@@ -6842,7 +6879,7 @@
           },
           "--timeout": {
             "type": "string",
-            "description": "Timeout JSON with value and timeUnit (inline or @file; default: 15 Minutes)"
+            "description": "Timeout JSON with value and timeUnit (inline or @file; default: 15 Minutes, maximum: 24 Hours)"
           },
           "--recreate-tables": {
             "type": "bool",
@@ -6910,11 +6947,14 @@
           },
           "--predicate-expression": {
             "type": "string",
-            "description": "Predicate expression for filtering audit logs"
+            "description": "Predicate expression without WHERE (max 3000 chars; empty string removes it)"
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "examples": [
+          "fabio sql-endpoint update-audit-settings --workspace $WS --id $EP --predicate-expression \"NOT statement LIKE 'SELECT %'\" --dry-run"
+        ]
       },
       "set-audit-actions": {
         "description": "Set audit actions and groups for the endpoint",
@@ -10654,6 +10694,10 @@
           "--sensitivity-label": {
             "type": "string",
             "description": "Sensitivity label ID to apply on creation"
+          },
+          "--allow-purge-data": {
+            "type": "bool",
+            "description": "Allow data that cannot be retained when applying the definition to be purged"
           }
         },
         "mutates": true,
@@ -10806,11 +10850,19 @@
             "type": "string",
             "required": true,
             "description": "Path to model definition file (model.bim TMSL/TMDL format)"
+          },
+          "--allow-purge-data": {
+            "type": "bool",
+            "description": "Allow definition changes that purge incompatible existing model data"
           }
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true,
+        "examples": [
+          "fabio semantic-model update-definition --workspace $WS --id $MODEL --file model.bim --allow-purge-data --dry-run"
+        ]
       },
       "query": {
         "description": "Execute a DAX query against a semantic model",
@@ -23790,6 +23842,10 @@
             "type": "bool",
             "description": "Allow overriding workspace items with incoming changes"
           },
+          "--item-options": {
+            "type": "string",
+            "description": "Per-item update options as a JSON array keyed by logicalId (inline or @file)"
+          },
           "--workspace-head": {
             "type": "string",
             "description": "Override workspace head (auto-fetched from status if omitted)"
@@ -23811,7 +23867,8 @@
         "returns": "object",
         "async": true,
         "examples": [
-          "fabio git pull --workspace $WS --strategy prefer-remote --wait"
+          "fabio git pull --workspace $WS --conflict-resolution prefer-remote --wait",
+          "fabio git pull --workspace $WS --item-options @item-options.json --wait"
         ]
       },
       "connect": {
@@ -24671,19 +24728,27 @@
           },
           "--items": {
             "type": "string",
-            "description": "Items to deploy as JSON array (if omitted, all items are deployed). Example: '[{\"itemId\":\"...\",\"itemType\":\"Notebook\"}]'"
+            "description": "Items to deploy as JSON array (if omitted, all items are deployed). Example: '[{\"sourceItemId\":\"...\",\"itemType\":\"Notebook\"}]'"
           },
           "--note": {
             "type": "string",
             "description": "Optional note for this deployment"
+          },
+          "--allow-cross-region-deployment": {
+            "type": "bool",
+            "description": "Allow deployment between stages assigned to workspaces in different regions"
+          },
+          "--item-options": {
+            "type": "string",
+            "description": "Per-item deployment options as a JSON array keyed by sourceItemId (inline or @file)"
           }
         },
         "mutates": true,
         "returns": "object",
         "async": true,
         "examples": [
-          "fabio deployment-pipeline deploy --id $DP --source-stage $DEV_STAGE --target-stage $PROD_STAGE --wait",
-          "fabio deployment-pipeline deploy --id $DP --source-stage $DEV_STAGE --items '[{\"itemId\":\"abc\",\"itemType\":\"Notebook\"}]'"
+          "fabio deployment-pipeline deploy --id $DP --source-stage-id $DEV_STAGE --target-stage-id $PROD_STAGE",
+          "fabio deployment-pipeline deploy --id $DP --source-stage-id $DEV_STAGE --items '[{\"sourceItemId\":\"00000000-0000-0000-0000-000000000000\",\"itemType\":\"Notebook\"}]' --item-options @item-options.json"
         ]
       }
     }

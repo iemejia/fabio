@@ -158,6 +158,76 @@ fn deployment_pipeline_deploy_dry_run() {
 }
 
 #[test]
+fn deployment_pipeline_deploy_item_options_dry_run() {
+    let source_item = "6bfe235c-6d7b-41b7-98a6-2b8276b3e82b";
+    let item_options =
+        format!(r#"[{{"sourceItemId":"{source_item}","options":{{"validateOnly":true}}}}]"#);
+    let output = fabio()
+        .args([
+            "deployment-pipeline",
+            "deploy",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--source-stage-id",
+            "11111111-1111-1111-1111-111111111111",
+            "--allow-cross-region-deployment",
+            "--item-options",
+            &item_options,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let details = &extract_data(&json)["details"];
+    assert_eq!(
+        details["options"]["allowCrossRegionDeployment"],
+        serde_json::Value::Bool(true)
+    );
+    assert_eq!(
+        details["options"]["itemOptionsBySourceItemId"][0]["sourceItemId"],
+        source_item
+    );
+    assert_eq!(
+        details["options"]["itemOptionsBySourceItemId"][0]["options"]["validateOnly"],
+        true
+    );
+}
+
+#[test]
+fn deployment_pipeline_deploy_item_options_purge_is_destructive() {
+    // A per-item option entry nesting allowPurgeData makes the deploy irreversible;
+    // the dry-run must carry the purge warning + destructive signal.
+    let source_item = "6bfe235c-6d7b-41b7-98a6-2b8276b3e82b";
+    let item_options =
+        format!(r#"[{{"sourceItemId":"{source_item}","options":{{"allowPurgeData":true}}}}]"#);
+    let output = fabio()
+        .args([
+            "deployment-pipeline",
+            "deploy",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--source-stage-id",
+            "11111111-1111-1111-1111-111111111111",
+            "--item-options",
+            &item_options,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["destructive"], true);
+    assert!(
+        data["details"]["warning"]
+            .as_str()
+            .is_some_and(|w| w.contains("allowPurgeData")),
+        "nested-purge deploy preview must warn"
+    );
+}
+
+#[test]
 #[ignore = "requires live Fabric tenant"]
 fn deployment_pipeline_assign_workspace_dry_run() {
     let output = fabio()

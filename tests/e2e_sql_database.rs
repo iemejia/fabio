@@ -1012,3 +1012,52 @@ fn sql_database_statistics_delete_dry_run() {
     let data = extract_data(&json);
     assert_eq!(data["dry_run"], true);
 }
+
+// sql-database update-audit-settings --predicate-expression (SQL Audit predicate)
+//
+// Hermetic test: `--predicate-expression` is serialized as top-level
+// `predicateExpression` in the audit-settings body (matching sql-endpoint /
+// warehouse), and the shared WHERE/length validation is applied. Covers the
+// SQL-Database-specific serialization path independently of the shared validator.
+#[test]
+fn sql_database_update_audit_predicate_dry_run() {
+    let assert = fabio()
+        .args([
+            "sql-database",
+            "update-audit-settings",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--predicate-expression",
+            "NOT statement LIKE 'SELECT %'",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert_eq!(
+        extract_data(&json)["details"]["predicateExpression"],
+        "NOT statement LIKE 'SELECT %'"
+    );
+}
+
+#[test]
+fn sql_database_update_audit_rejects_leading_where() {
+    let assert = fabio()
+        .args([
+            "sql-database",
+            "update-audit-settings",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--predicate-expression",
+            "WHERE statement LIKE 'SELECT %'",
+            "--dry-run",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("WHERE keyword"), "stderr: {stderr}");
+}

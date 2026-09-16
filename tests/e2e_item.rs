@@ -963,6 +963,296 @@ fn item_update_definition_requires_input() {
     );
 }
 
+#[test]
+fn item_create_with_definition_options_dry_run() {
+    let definition =
+        r#"{"parts":[{"path":"definition.json","payload":"e30=","payloadType":"InlineBase64"}]}"#;
+    let assert = fabio()
+        .args([
+            "item",
+            "create",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--name",
+            "Option test",
+            "--type",
+            "SemanticModel",
+            "--definition",
+            definition,
+            "--options",
+            r#"{"allowPurgeData":true}"#,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    let details = &data["details"];
+    assert_eq!(details["definition"]["parts"][0]["path"], "definition.json");
+    assert_eq!(details["options"]["allowPurgeData"], true);
+    // item create is destructive ONLY because --options enabled allowPurgeData.
+    assert_eq!(data["destructive"], true);
+    assert!(
+        details["warning"]
+            .as_str()
+            .is_some_and(|w| w.contains("allowPurgeData")),
+        "purge warning must appear in the dry-run preview"
+    );
+}
+
+#[test]
+fn item_update_definition_with_options_dry_run() {
+    let assert = fabio()
+        .args([
+            "item",
+            "update-definition",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--definition",
+            r#"{"definition":{"parts":[]}}"#,
+            "--options",
+            r#"{"allowPurgeData":true}"#,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let details = &extract_data(&json)["details"];
+    assert_eq!(details["options"]["allowPurgeData"], true);
+    assert!(
+        details["warning"]
+            .as_str()
+            .is_some_and(|w| w.contains("allowPurgeData")),
+        "purge warning must appear in the dry-run preview"
+    );
+}
+
+#[test]
+fn item_create_non_object_definition_fails_without_panic() {
+    // `item create --definition '[]'` must fail locally with INVALID_INPUT rather than
+    // reporting a successful dry-run or sending `definition: []` to Fabric.
+    let assert = fabio()
+        .args([
+            "item",
+            "create",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--name",
+            "Bad",
+            "--type",
+            "SemanticModel",
+            "--definition",
+            "[]",
+            "--dry-run",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err_json["error"]["code"], "INVALID_INPUT");
+    assert!(
+        err_json["error"]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("must be a JSON object")),
+        "got: {stderr}"
+    );
+}
+
+#[test]
+fn item_update_definition_non_object_definition_fails_without_panic() {
+    // A --definition that parses to a JSON array (not the object envelope) combined
+    // with --options must return a structured invalid-input error, never panic on the
+    // `body["options"]` assignment.
+    let assert = fabio()
+        .args([
+            "item",
+            "update-definition",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--definition",
+            "[]",
+            "--options",
+            r#"{"validateOnly":true}"#,
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err_json["error"]["code"], "INVALID_INPUT");
+    assert!(
+        err_json["error"]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("must be a JSON object")),
+        "expected a structured invalid-input error, got: {stderr}"
+    );
+}
+
+#[test]
+fn item_update_definition_nested_definition_array_fails() {
+    // `{"definition":[]}` is a valid object but an invalid envelope (the nested
+    // `definition` member must be an object) — reject it locally like `item create`.
+    let assert = fabio()
+        .args([
+            "item",
+            "update-definition",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--definition",
+            r#"{"definition":[]}"#,
+            "--dry-run",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(err_json["error"]["code"], "INVALID_INPUT");
+    assert!(
+        err_json["error"]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("'definition' member")),
+        "got: {stderr}"
+    );
+}
+
+#[test]
+fn item_update_definition_at_file_dry_run() {
+    // `--definition @file` must be resolved (read from disk) just like `item create
+    // --definition @file`, so the agent-facing example is valid.
+    let tmp = tempfile::tempdir().expect("create temp dir");
+    let path = tmp.path().join("definition.json");
+    std::fs::write(
+        &path,
+        r#"{"definition":{"parts":[{"path":"model.bim","payload":"e30=","payloadType":"InlineBase64"}]}}"#,
+    )
+    .expect("write definition file");
+
+    let assert = fabio()
+        .args([
+            "item",
+            "update-definition",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--definition",
+            &format!("@{}", path.to_str().unwrap()),
+            "--options",
+            r#"{"allowPurgeData":true}"#,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let details = &extract_data(&json)["details"];
+    assert_eq!(
+        details["definition"]["parts"][0]["path"], "model.bim",
+        "definition envelope should be read from the @file"
+    );
+    assert_eq!(details["options"]["allowPurgeData"], true);
+    assert!(
+        details["warning"]
+            .as_str()
+            .is_some_and(|w| w.contains("allowPurgeData")),
+        "purge warning must appear in the dry-run preview"
+    );
+}
+
+#[test]
+fn item_bulk_import_allow_pairing_by_name_flag_dry_run() {
+    // The --allow-pairing-by-name convenience flag sets options.allowPairingByName,
+    // equivalent to including it in --content.
+    let assert = fabio()
+        .args([
+            "item",
+            "bulk-import-definitions",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--content",
+            r#"{"definitionParts":[]}"#,
+            "--allow-pairing-by-name",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let details = &extract_data(&json)["details"];
+    assert_eq!(details["options"]["allowPairingByName"], true);
+}
+
+#[test]
+fn item_bulk_import_item_options_dry_run() {
+    let logical_id = "88436e65-6ed1-8185-49ff-f61077fc73d4";
+    let item_options =
+        format!(r#"[{{"logicalId":"{logical_id}","options":{{"validateOnly":true}}}}]"#);
+    let assert = fabio()
+        .args([
+            "item",
+            "bulk-import-definitions",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--content",
+            r#"{"definitionParts":[],"options":{"allowPairingByName":true}}"#,
+            "--item-options",
+            &item_options,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let details = &extract_data(&json)["details"];
+    assert_eq!(
+        details["options"]["itemOptionsByLogicalId"][0]["logicalId"],
+        logical_id
+    );
+    assert_eq!(
+        details["options"]["itemOptionsByLogicalId"][0]["options"]["validateOnly"],
+        true
+    );
+}
+
+#[test]
+fn item_bulk_import_item_options_purge_is_destructive() {
+    // A per-item option nesting allowPurgeData makes the bulk import irreversible;
+    // the dry-run must carry the purge warning + destructive signal.
+    let logical_id = "88436e65-6ed1-8185-49ff-f61077fc73d4";
+    let item_options =
+        format!(r#"[{{"logicalId":"{logical_id}","options":{{"allowPurgeData":true}}}}]"#);
+    let assert = fabio()
+        .args([
+            "item",
+            "bulk-import-definitions",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--content",
+            r#"{"definitionParts":[]}"#,
+            "--item-options",
+            &item_options,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["destructive"], true);
+    assert!(
+        data["details"]["warning"]
+            .as_str()
+            .is_some_and(|w| w.contains("allowPurgeData")),
+        "nested-purge bulk import preview must warn"
+    );
+}
+
 // ===========================================================================
 // item exists — returns {exists: true/false}, never errors on 404
 // ===========================================================================

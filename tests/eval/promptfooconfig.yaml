@@ -2132,6 +2132,31 @@ tests:
           output.includes('EVALUATE')
         metric: dax-evaluate-present
 
+  - description: "Power BI safety: allow purging data during definition update"
+    vars:
+      user_query: "Update semantic model sm-001 in workspace ws-001 from model.bim; the incompatible stored data may be purged"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('semantic-model update-definition')
+        metric: semantic-model-update-definition-command
+      - type: icontains
+        value: "--allow-purge-data"
+      - type: llm-rubric
+        value: "The response warns that --allow-purge-data can irreversibly clear model data that cannot be retained and says the model must be refreshed afterward."
+        metric: semantic-model-purge-warning
+
+  - description: "Power BI safety: create semantic model with purge option"
+    vars:
+      user_query: "Create semantic model Sales from model.bim in workspace ws-001 and allow definition data that cannot be retained to be purged"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('semantic-model create')
+        metric: semantic-model-create-command
+      - type: icontains
+        value: "--allow-purge-data"
+
   - description: "Power BI: create report bound to existing semantic model"
     vars:
       user_query: "Create a Power BI report named 'Revenue Dashboard' and bind it to my existing semantic model sm-001 in workspace ws-001"

@@ -8,10 +8,46 @@ use serde_json::Value;
 
 use crate::agent;
 use crate::cli::{Cli, OutputFormat};
-use crate::errors::{ErrorCode, ErrorDetail, FabioError, HintType, RelatedResource};
+use crate::errors::{
+    ErrorCode, ErrorDetail, ErrorParameter, FabioError, HintType, RelatedResource,
+};
 
 /// Fields that contain user-authored content and should be wrapped with untrusted markers.
 const UNTRUSTED_FIELDS: &[&str] = &["displayName", "description", "name", "message"];
+
+/// Warning surfaced whenever `allowPurgeData` is enabled on a create or
+/// update-definition — via the typed `--allow-purge-data` flag or a generic
+/// `--options {"allowPurgeData":true}`.
+///
+/// `allowPurgeData` only *permits* a purge: Fabric purges data only when the new
+/// definition is incompatible with the existing data, and a compatible definition
+/// may leave all data intact. The wording is therefore deliberately conditional —
+/// it must not claim data *was* deleted, only that any purge that does occur is
+/// irreversible.
+pub const ALLOW_PURGE_DATA_WARNING: &str = "allowPurgeData is enabled: Fabric is permitted to permanently purge existing data that is \
+     incompatible with the new definition. A compatible definition may leave data intact, but any \
+     purge that does occur is irreversible.";
+
+/// Whether a create/update-definition request body enables `options.allowPurgeData`.
+#[must_use]
+pub fn body_enables_purge(body: &Value) -> bool {
+    body.get("options")
+        .and_then(|o| o.get("allowPurgeData"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+/// Attach the [`ALLOW_PURGE_DATA_WARNING`] to a success-result object when `purge`
+/// is set, so the irreversible-purge signal is present in the ACTUAL output — not
+/// only the `--dry-run` preview. No-op when `purge` is false or `result` is not a
+/// JSON object. Used by every purge-capable success path (the typed
+/// `--allow-purge-data` create/update-definition and the per-item-options
+/// deploy/git-pull/bulk-import/clone flows).
+pub fn attach_purge_warning(result: &mut Value, purge: bool) {
+    if purge && result.is_object() {
+        result["warning"] = Value::from(ALLOW_PURGE_DATA_WARNING);
+    }
+}
 
 /// Wrap user-authored string fields in a JSON value with untrusted content markers.
 /// Recursively walks the JSON tree and wraps values of keys matching `UNTRUSTED_FIELDS`.
@@ -61,6 +97,8 @@ struct ErrorBody {
     more_details: Option<Vec<ErrorDetail>>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "relatedResource")]
     related_resource: Option<RelatedResource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parameters: Option<Vec<ErrorParameter>>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "agentNotice")]
     agent_notice: Option<String>,
 }
@@ -383,6 +421,7 @@ pub fn render_error(err: &FabioError) {
             request_id: err.request_id.clone(),
             more_details: err.more_details.clone(),
             related_resource: err.related_resource.clone(),
+            parameters: err.parameters.clone(),
             agent_notice,
         },
     };
@@ -446,28 +485,72 @@ fn infer_hint_type(code: ErrorCode, hint: &str) -> HintType {
 /// Returns `true` if dry-run is active (caller should skip the real operation).
 #[inline]
 pub fn dry_run_guard(cli: &Cli, operation: &str, details: &Value) -> bool {
+    dry_run_guard_maybe_destructive(cli, operation, details, false)
+}
+
+/// Like [`dry_run_guard`], but forces the destructive signal on when
+/// `destructive` is `true`, even if `operation` is not *unconditionally*
+/// destructive per the command schema.
+///
+/// Use for operations that are irreversible only when a specific flag/option is
+/// active (e.g. a `create` invoked with `--allow-purge-data` / an
+/// `allowPurgeData` option). The preview then carries `"destructive": true` and,
+/// for detected AI agents, the confirm-with-user `agentNotice` — the same signal
+/// an unconditionally-destructive command emits.
+#[inline]
+pub fn dry_run_guard_maybe_destructive(
+    cli: &Cli,
+    operation: &str,
+    details: &Value,
+    destructive: bool,
+) -> bool {
     if !cli.dry_run {
         return false;
     }
-    let obj = build_dry_run_object(operation, details);
+    let obj = build_dry_run_object(operation, details, destructive);
+    render_object(cli, &obj, "would_execute");
+    true
+}
+
+/// Dry-run guard for operations whose request `body` may enable `allowPurgeData`
+/// (top-level or nested in per-item options). When `purge` is set, the preview is
+/// annotated with [`ALLOW_PURGE_DATA_WARNING`] and the destructive signal is forced
+/// on; otherwise it behaves exactly like [`dry_run_guard`].
+///
+/// Shared by the per-item-options commands (`deployment-pipeline deploy`, `git pull`,
+/// `item bulk-import-definitions`, `workspace clone`) and the generic
+/// `item update-definition` path, whose bodies can carry `allowPurgeData`.
+#[inline]
+pub fn dry_run_guard_purge_aware(cli: &Cli, operation: &str, body: &Value, purge: bool) -> bool {
+    if !cli.dry_run {
+        return false;
+    }
+    let obj = if purge {
+        let mut preview = body.clone();
+        preview["warning"] = Value::from(ALLOW_PURGE_DATA_WARNING);
+        build_dry_run_object(operation, &preview, true)
+    } else {
+        build_dry_run_object(operation, body, false)
+    };
     render_object(cli, &obj, "would_execute");
     true
 }
 
 /// Build the `--dry-run` preview envelope for an operation.
 ///
-/// For a destructive operation (per the agent command schema), the envelope
-/// gains `"destructive": true` and — when an AI agent is detected — an
-/// `agentNotice` telling the agent to confirm the irreversible action with the
-/// user before executing it for real.
-fn build_dry_run_object(operation: &str, details: &Value) -> Value {
+/// The envelope gains `"destructive": true` (and, for a detected AI agent, an
+/// `agentNotice`) when the operation is destructive per the agent command schema
+/// OR when `force_destructive` is set (a flag-conditional destructive op). The
+/// notice tells the agent to confirm the irreversible action with the user before
+/// executing it for real.
+fn build_dry_run_object(operation: &str, details: &Value, force_destructive: bool) -> Value {
     let mut obj = serde_json::json!({
         "dry_run": true,
         "would_execute": operation,
         "details": details,
         "hint": "Remove --dry-run to execute this operation."
     });
-    if agent::is_destructive_operation(operation) {
+    if force_destructive || agent::is_destructive_operation(operation) {
         obj["destructive"] = Value::Bool(true);
         if let Some(notice) = agent::destructive_notice() {
             obj["agentNotice"] = Value::String(notice);
@@ -1009,7 +1092,7 @@ mod tests {
     fn dry_run_object_marks_destructive_operations() {
         let details = serde_json::json!({"id": "x"});
         // A destructive command (per commands.json) gets the destructive marker.
-        let obj = build_dry_run_object("item delete", &details);
+        let obj = build_dry_run_object("item delete", &details, false);
         assert_eq!(obj["destructive"], Value::Bool(true));
         assert_eq!(obj["dry_run"], Value::Bool(true));
         assert_eq!(obj["would_execute"], Value::from("item delete"));
@@ -1018,10 +1101,40 @@ mod tests {
     #[test]
     fn dry_run_object_omits_destructive_for_read_only_operations() {
         let details = serde_json::json!({});
-        let obj = build_dry_run_object("workspace list", &details);
+        let obj = build_dry_run_object("workspace list", &details, false);
         assert!(obj.get("destructive").is_none());
         // A non-destructive op never carries the agent confirm notice.
         assert!(obj.get("agentNotice").is_none());
+    }
+
+    #[test]
+    fn dry_run_object_forces_destructive_for_flag_conditional_ops() {
+        let details = serde_json::json!({});
+        // A non-destructive op (per commands.json) becomes destructive when the
+        // caller forces it (e.g. `create` with `--allow-purge-data`).
+        let obj = build_dry_run_object("semantic-model create", &details, true);
+        assert_eq!(obj["destructive"], Value::Bool(true));
+    }
+
+    #[test]
+    fn attach_purge_warning_adds_warning_only_when_purge() {
+        let mut with_purge = serde_json::json!({"status": "ok"});
+        attach_purge_warning(&mut with_purge, true);
+        assert!(
+            with_purge["warning"]
+                .as_str()
+                .is_some_and(|w| w.contains("allowPurgeData")),
+            "purge warning must be attached to the success result"
+        );
+
+        let mut without_purge = serde_json::json!({"status": "ok"});
+        attach_purge_warning(&mut without_purge, false);
+        assert!(without_purge.get("warning").is_none());
+
+        // No-op on non-object results.
+        let mut non_object = serde_json::json!([1, 2, 3]);
+        attach_purge_warning(&mut non_object, true);
+        assert!(non_object.get("warning").is_none());
     }
 
     #[test]
@@ -1165,6 +1278,7 @@ mod tests {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
             agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
@@ -1183,6 +1297,7 @@ mod tests {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
             agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
@@ -1201,6 +1316,7 @@ mod tests {
             request_id: Some("cfafbeb1-8037-4d0c-896e-a46fb27ff227".to_string()),
             more_details: None,
             related_resource: None,
+            parameters: None,
             agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
@@ -1219,6 +1335,7 @@ mod tests {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
             agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
@@ -1246,6 +1363,7 @@ mod tests {
                 },
             ]),
             related_resource: None,
+            parameters: None,
             agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
@@ -1269,12 +1387,38 @@ mod tests {
                 resource_id: "abc-123".to_string(),
                 resource_type: "Notebook".to_string(),
             }),
+            parameters: None,
             agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""relatedResource""#));
         assert!(json.contains(r#""resourceId":"abc-123""#));
         assert!(json.contains(r#""resourceType":"Notebook""#));
+    }
+
+    #[test]
+    fn error_body_serializes_parameters_when_set() {
+        let body = ErrorBody {
+            code: "CONFLICT".to_string(),
+            message: "item conflict".to_string(),
+            hint: None,
+            hint_type: None,
+            verify_after: None,
+            retriable: None,
+            request_id: None,
+            more_details: None,
+            related_resource: None,
+            parameters: Some(vec![ErrorParameter {
+                name: Some("itemId".to_string()),
+                value: Some("abc".to_string()),
+                message: Some("The conflicting item".to_string()),
+            }]),
+            agent_notice: None,
+        };
+        let json = serde_json::to_string(&body).unwrap();
+        assert!(json.contains(r#""parameters""#));
+        assert!(json.contains(r#""name":"itemId""#));
+        assert!(json.contains(r#""value":"abc""#));
     }
 
     #[test]
@@ -1289,6 +1433,7 @@ mod tests {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
             agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
@@ -1315,6 +1460,7 @@ mod tests {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
             agent_notice: Some(
                 "Note for AI agents (Claude Code): do not retry with the safety-bypass flag"
                     .to_string(),
@@ -1338,6 +1484,7 @@ mod tests {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
             agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
@@ -1359,6 +1506,7 @@ mod tests {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
             agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();

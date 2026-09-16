@@ -28,7 +28,7 @@
       "3. Re-deploy the reverted source: fabio deploy apply --source <DIR> --workspace <PROD_WS> --env prod --parameters params.json --verify.",
       "4. Confirm convergence: --verify (converged:true) or re-run fabio deploy plan and expect every item as Skip."
     ],
-    "non_git_tracked_items": "Items promoted via Deployment Pipelines (not Git-tracked — see the item-tracking-categories best-practice) are rolled back by re-promoting the previous stage's known-good version: fabio deployment-pipeline deploy --id <PIPELINE> --source-stage-id <PREV_STAGE> --items '[{\"itemId\":\"...\",\"itemType\":\"...\"}]'. Keep a known-good version in the earlier stage so you can re-deploy forward.",
+    "non_git_tracked_items": "Items promoted via Deployment Pipelines (not Git-tracked — see the item-tracking-categories best-practice) are rolled back by re-promoting the previous stage's known-good version: fabio deployment-pipeline deploy --id <PIPELINE> --source-stage-id <PREV_STAGE> --items '[{\"sourceItemId\":\"...\",\"itemType\":\"...\"}]'. Keep a known-good version in the earlier stage so you can re-deploy forward.",
     "data_considerations": [
       "Data is NOT versioned by Git. A definition rollback does not undo rows written by the bad release — plan the data recovery explicitly (reprocess ETL, restore seed/test data, or point-in-time restore).",
       "Snapshot data-bearing items BEFORE a risky deploy: fabio warehouse-snapshot create ... captures a Warehouse point-in-time you can query/restore from; for Lakehouses use Delta time-travel / OneLake restore.",
