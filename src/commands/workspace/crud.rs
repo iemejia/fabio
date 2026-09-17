@@ -184,8 +184,20 @@ pub(super) async fn clone_workspace(
     dest: &str,
     item_types: Option<&[String]>,
     allow_pairing_by_name: bool,
+    item_options: Option<&str>,
 ) -> Result<()> {
     use crate::commands::deploy::plan::resolve_workspace;
+
+    let item_options = item_options
+        .map(|raw| {
+            crate::commands::json_options::parse_item_options(
+                raw,
+                "--item-options",
+                "logicalId",
+                r#"[{"logicalId":"88436e65-6ed1-8185-49ff-f61077fc73d4","options":{"validateOnly":true}}]"#,
+            )
+        })
+        .transpose()?;
 
     let source_id = resolve_workspace(client, source).await?;
     let dest_id = resolve_workspace(client, dest).await?;
@@ -207,6 +219,7 @@ pub(super) async fn clone_workspace(
             "dest_workspace": dest_id,
             "item_types": item_types,
             "allow_pairing_by_name": allow_pairing_by_name,
+            "item_options": item_options,
         }),
     ) {
         return Ok(());
@@ -324,12 +337,19 @@ pub(super) async fn clone_workspace(
         eprintln!("[workspace clone] importing {items_count} item(s) to destination workspace...");
     }
 
-    let import_body = serde_json::json!({
+    let mut import_body = serde_json::json!({
         "definitionParts": parts,
         "options": {
             "allowPairingByName": allow_pairing_by_name
         }
     });
+    if let Some(entries) = item_options {
+        crate::commands::json_options::insert_option(
+            &mut import_body,
+            "itemOptionsByLogicalId",
+            entries,
+        )?;
+    }
 
     // Step 4: Call bulkImportDefinitions on destination.
     let import_result = client

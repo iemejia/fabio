@@ -963,6 +963,88 @@ fn item_update_definition_requires_input() {
     );
 }
 
+#[test]
+fn item_definition_options_dry_runs_match_api_shapes() {
+    let workspace = "00000000-0000-0000-0000-000000000001";
+    let id = "00000000-0000-0000-0000-000000000002";
+    let definition =
+        r#"{"parts":[{"path":"definition.json","payload":"e30=","payloadType":"InlineBase64"}]}"#;
+
+    let create = fabio()
+        .args([
+            "item",
+            "create",
+            "--workspace",
+            workspace,
+            "--name",
+            "Option test",
+            "--type",
+            "SemanticModel",
+            "--definition",
+            definition,
+            "--options",
+            r#"{"validateOnly":true}"#,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let create_json = parse_json(&create);
+    let create_details = &extract_data(&create_json)["details"];
+    assert_eq!(
+        create_details["definition"]["parts"][0]["path"],
+        "definition.json"
+    );
+    assert_eq!(create_details["options"]["validateOnly"], true);
+
+    let update = fabio()
+        .args([
+            "item",
+            "update-definition",
+            "--workspace",
+            workspace,
+            "--id",
+            id,
+            "--definition",
+            &format!(r#"{{"definition":{definition}}}"#),
+            "--options",
+            r#"{"validateOnly":true}"#,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let update_json = parse_json(&update);
+    assert_eq!(
+        extract_data(&update_json)["details"]["options"]["validateOnly"],
+        true
+    );
+}
+
+#[test]
+fn item_bulk_import_per_item_options_dry_run() {
+    let output = fabio()
+        .args([
+            "item",
+            "bulk-import-definitions",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--content",
+            r#"{"definitionParts":[]}"#,
+            "--allow-pairing-by-name",
+            "--item-options",
+            r#"[{"logicalId":"88436e65-6ed1-8185-49ff-f61077fc73d4","options":{"validateOnly":true}}]"#,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    let options = &extract_data(&json)["details"]["options"];
+    assert_eq!(options["allowPairingByName"], true);
+    assert_eq!(
+        options["itemOptionsByLogicalId"][0]["options"]["validateOnly"],
+        true
+    );
+}
+
 // ===========================================================================
 // item exists — returns {exists: true/false}, never errors on 404
 // ===========================================================================
@@ -1699,7 +1781,7 @@ fn item_create_dry_run_with_sensitivity_label() {
     let data = extract_data(&json);
     assert_eq!(data["dry_run"], true);
     assert_eq!(
-        data["details"]["sensitivityLabel"],
+        data["details"]["sensitivityLabelSettings"]["sensitivityLabelId"],
         "cccccccc-1111-2222-3333-444444444444"
     );
 }

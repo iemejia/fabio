@@ -270,6 +270,7 @@ pub(super) async fn inspect(
 
 // ─── Create ──────────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn create(
     cli: &Cli,
     client: &FabricClient,
@@ -278,6 +279,8 @@ pub(super) async fn create(
     item_type: &str,
     description: Option<&str>,
     sensitivity_label: Option<&str>,
+    definition: Option<&str>,
+    options: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({
         "displayName": name,
@@ -291,18 +294,25 @@ pub(super) async fn create(
             "sensitivityLabelId": label_id
         });
     }
+    if let Some(raw_definition) = definition {
+        let parsed = crate::commands::json_options::parse_object(
+            raw_definition,
+            "--definition",
+            r#"{"parts":[{"path":"definition.json","payload":"...","payloadType":"InlineBase64"}]}"#,
+        )?;
+        body["definition"] = parsed.get("definition").cloned().unwrap_or(parsed);
+    }
+    if let Some(raw_options) = options {
+        body["options"] = crate::commands::json_options::parse_object(
+            raw_options,
+            "--options",
+            r#"{"validateOnly":true}"#,
+        )?;
+    }
 
-    if output::dry_run_guard(
-        cli,
-        "item create",
-        &serde_json::json!({
-            "workspace": workspace,
-            "displayName": name,
-            "type": item_type,
-            "description": description,
-            "sensitivityLabel": sensitivity_label
-        }),
-    ) {
+    let mut preview = body.clone();
+    preview["workspace"] = Value::from(workspace);
+    if output::dry_run_guard(cli, "item create", &preview) {
         return Ok(());
     }
 

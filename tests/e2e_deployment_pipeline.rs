@@ -158,6 +158,32 @@ fn deployment_pipeline_deploy_dry_run() {
 }
 
 #[test]
+fn deployment_pipeline_deploy_item_options_dry_run() {
+    let output = fabio()
+        .args([
+            "deployment-pipeline",
+            "deploy",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--source-stage-id",
+            "11111111-1111-1111-1111-111111111111",
+            "--allow-cross-region-deployment",
+            "--item-options",
+            r#"[{"sourceItemId":"22222222-2222-2222-2222-222222222222","options":{"validateOnly":true}}]"#,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    let options = &extract_data(&json)["details"]["options"];
+    assert_eq!(options["allowCrossRegionDeployment"], true);
+    assert_eq!(
+        options["itemOptionsBySourceItemId"][0]["options"]["validateOnly"],
+        true
+    );
+}
+
+#[test]
 #[ignore = "requires live Fabric tenant"]
 fn deployment_pipeline_assign_workspace_dry_run() {
     let output = fabio()

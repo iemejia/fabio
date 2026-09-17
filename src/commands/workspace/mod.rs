@@ -158,6 +158,10 @@ pub enum WorkspaceCommand {
         /// Match items by display name (instead of logicalId) for initial clones
         #[arg(long)]
         allow_pairing_by_name: bool,
+
+        /// Per-item import options keyed by logicalId as a JSON array (inline or @file)
+        #[arg(long)]
+        item_options: Option<String>,
     },
     /// Assign a workspace to a capacity
     #[command(display_order = 20)]
@@ -651,6 +655,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceComman
             dest,
             item_types,
             allow_pairing_by_name,
+            item_options,
         } => {
             crud::clone_workspace(
                 cli,
@@ -659,6 +664,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceComman
                 dest,
                 item_types.as_deref(),
                 *allow_pairing_by_name,
+                item_options.as_deref(),
             )
             .await
         }

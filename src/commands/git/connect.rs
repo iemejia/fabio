@@ -102,6 +102,7 @@ pub(super) async fn connect(
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
         }
         .into());
     }

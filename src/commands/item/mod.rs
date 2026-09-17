@@ -215,6 +215,14 @@ pub enum ItemCommand {
         /// Sensitivity label ID to apply on creation
         #[arg(long)]
         sensitivity_label: Option<String>,
+
+        /// Item definition JSON (the definition object or full envelope; inline or @file)
+        #[arg(long)]
+        definition: Option<String>,
+
+        /// Item-type definition options as a JSON object (requires --definition; inline or @file)
+        #[arg(long, requires = "definition")]
+        options: Option<String>,
     },
     /// Update item properties (name and/or description)
     #[command(display_order = 11)]
@@ -257,6 +265,10 @@ pub enum ItemCommand {
         /// When true, also update item metadata from .platform file
         #[arg(long)]
         update_metadata: bool,
+
+        /// Item-type definition options as a JSON object (inline or @file)
+        #[arg(long)]
+        options: Option<String>,
     },
     /// Delete an item
     #[command(display_order = 13)]
@@ -391,6 +403,14 @@ pub enum ItemCommand {
         /// Inline JSON request body
         #[arg(long, group = "input")]
         content: Option<String>,
+
+        /// Match imported items by display name and type when no logical ID is present
+        #[arg(long)]
+        allow_pairing_by_name: bool,
+
+        /// Per-item options keyed by logicalId as a JSON array (inline or @file)
+        #[arg(long)]
+        item_options: Option<String>,
     },
     /// Bulk move items to another workspace (LRO)
     #[command(display_order = 32)]
@@ -655,6 +675,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             item_type,
             description,
             sensitivity_label,
+            definition,
+            options,
         } => {
             crud::create(
                 cli,
@@ -664,6 +686,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
                 item_type,
                 description.as_deref(),
                 sensitivity_label.as_deref(),
+                definition.as_deref(),
+                options.as_deref(),
             )
             .await
         }
@@ -689,6 +713,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             file,
             definition,
             update_metadata,
+            options,
         } => {
             definitions::update_definition(
                 cli,
@@ -698,6 +723,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
                 file.as_deref(),
                 definition.as_deref(),
                 *update_metadata,
+                options.as_deref(),
             )
             .await
         }
@@ -772,14 +798,17 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             workspace,
             file,
             content,
+            allow_pairing_by_name,
+            item_options,
         } => {
-            bulk::bulk_post(
+            bulk::bulk_import_definitions(
                 cli,
                 client,
                 workspace,
-                "bulkImportDefinitions",
                 file.as_deref(),
                 content.as_deref(),
+                *allow_pairing_by_name,
+                item_options.as_deref(),
             )
             .await
         }

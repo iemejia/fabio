@@ -94,6 +94,17 @@ pub struct RelatedResource {
     pub resource_type: String,
 }
 
+/// Machine-readable context from the API's `error.parameters` array.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct ErrorParameter {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
 /// Classification of a hint's semantic impact on the operation.
 ///
 /// AI agents use this to decide whether a hint-driven retry is safe to execute
@@ -144,6 +155,8 @@ pub struct FabioError {
     pub more_details: Option<Vec<ErrorDetail>>,
     /// The resource involved in the error (from `error.relatedResource`).
     pub related_resource: Option<RelatedResource>,
+    /// Structured machine-readable context from `error.parameters`.
+    pub parameters: Option<Vec<ErrorParameter>>,
 }
 
 impl FabioError {
@@ -158,6 +171,7 @@ impl FabioError {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
         }
     }
 
@@ -177,6 +191,7 @@ impl FabioError {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
         }
     }
 
@@ -199,6 +214,7 @@ impl FabioError {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
         }
     }
 
@@ -259,6 +275,13 @@ impl FabioError {
         self.related_resource = related_resource;
         self
     }
+
+    /// Set structured parameters from the API response (builder pattern).
+    #[must_use]
+    pub fn set_parameters(mut self, parameters: Option<Vec<ErrorParameter>>) -> Self {
+        self.parameters = parameters;
+        self
+    }
 }
 
 /// Convert HTTP status codes to appropriate error codes.
@@ -317,6 +340,7 @@ impl FabioError {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
         }
     }
 }

@@ -482,6 +482,34 @@ fn git_pull_unconnected_workspace_fails() {
         .failure();
 }
 
+#[test]
+fn git_pull_item_options_dry_run() {
+    let output = fabio()
+        .args([
+            "git",
+            "pull",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--workspace-head",
+            "eaa737b48cda41b37ffefac772ea48f6fed3eac4",
+            "--remote-commit-hash",
+            "7d03b2918bf6aa62f96d0a4307293f3853201705",
+            "--allow-override",
+            "--item-options",
+            r#"[{"logicalId":"88436e65-6ed1-8185-49ff-f61077fc73d4","options":{"validateOnly":true}}]"#,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    let options = &extract_data(&json)["details"]["options"];
+    assert_eq!(options["allowOverrideItems"], true);
+    assert_eq!(
+        options["itemOptionsByLogicalId"][0]["options"]["validateOnly"],
+        true
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Connect → Init → Status → Disconnect lifecycle
 // Uses the dest workspace (to avoid disrupting source workspace)

@@ -66,6 +66,54 @@ fn semantic_model_update_requires_field() {
 }
 
 #[test]
+fn semantic_model_allow_purge_data_dry_runs() {
+    let mut tmp = NamedTempFile::with_suffix(".bim").unwrap();
+    tmp.write_all(minimal_model_bim().as_bytes()).unwrap();
+    let file = tmp.path().to_str().unwrap();
+    let workspace = "00000000-0000-0000-0000-000000000001";
+
+    let create = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            workspace,
+            "--name",
+            "Purge option test",
+            "--file",
+            file,
+            "--allow-purge-data",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        extract_data(&parse_json(&create))["details"]["options"]["allowPurgeData"],
+        true
+    );
+
+    let update = fabio()
+        .args([
+            "semantic-model",
+            "update-definition",
+            "--workspace",
+            workspace,
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--file",
+            file,
+            "--allow-purge-data",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        extract_data(&parse_json(&update))["details"]["options"]["allowPurgeData"],
+        true
+    );
+}
+
+#[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn semantic_model_show_not_found() {

@@ -235,7 +235,12 @@ pub enum SqlDatabaseCommand {
         #[arg(long, value_delimiter = ',')]
         audit_actions: Option<Vec<String>>,
 
-        /// Predicate expression for filtering audit logs
+        /// Audit predicate without WHERE; max 3,000 chars; empty removes it; `file_name`,
+        /// `audit_file_offset`, and `event_time` are unsupported; `action_id` and
+        /// `class_type` require numeric comparisons
+        ///
+        /// `file_name`, `audit_file_offset`, and `event_time` are unsupported.
+        /// `action_id` and `class_type` can only be compared with numeric values.
         #[arg(long)]
         predicate_expression: Option<String>,
     },

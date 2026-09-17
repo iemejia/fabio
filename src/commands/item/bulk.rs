@@ -36,6 +36,49 @@ pub(super) async fn bulk_post(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn bulk_import_definitions(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+    allow_pairing_by_name: bool,
+    item_options: Option<&str>,
+) -> Result<()> {
+    let mut body = read_json_input(file, content, "bulk-import-definitions")?;
+    if allow_pairing_by_name {
+        crate::commands::json_options::insert_option(
+            &mut body,
+            "allowPairingByName",
+            Value::Bool(true),
+        )?;
+    }
+    if let Some(raw) = item_options {
+        let entries = crate::commands::json_options::parse_item_options(
+            raw,
+            "--item-options",
+            "logicalId",
+            r#"[{"logicalId":"88436e65-6ed1-8185-49ff-f61077fc73d4","options":{"validateOnly":true}}]"#,
+        )?;
+        crate::commands::json_options::insert_option(&mut body, "itemOptionsByLogicalId", entries)?;
+    }
+
+    if output::dry_run_guard(cli, "item bulk-import-definitions", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/items/bulkImportDefinitions"),
+            &body,
+            true,
+        )
+        .await?;
+    output::render_object(cli, &data, "status");
+    Ok(())
+}
+
 // ─── Bulk Create (client-side parallel) ──────────────────────────────────────
 
 pub(super) async fn bulk_create(

@@ -141,7 +141,7 @@ pub enum SqlEndpointCommand {
         #[arg(long)]
         id: String,
 
-        /// Timeout JSON with value and timeUnit (inline or @file; default: 15 Minutes)
+        /// Timeout JSON with value and timeUnit (inline or @file; default: 15 Minutes; max: 24 Hours)
         #[arg(long)]
         timeout: Option<String>,
 
@@ -187,7 +187,12 @@ pub enum SqlEndpointCommand {
         #[arg(long, value_delimiter = ',')]
         audit_actions: Option<Vec<String>>,
 
-        /// Predicate expression for filtering audit logs
+        /// Audit predicate without WHERE; max 3,000 chars; empty removes it; `file_name`,
+        /// `audit_file_offset`, and `event_time` are unsupported; `action_id` and
+        /// `class_type` require numeric comparisons
+        ///
+        /// `file_name`, `audit_file_offset`, and `event_time` are unsupported.
+        /// `action_id` and `class_type` can only be compared with numeric values.
         #[arg(long)]
         predicate_expression: Option<String>,
     },
@@ -688,6 +693,21 @@ fn parse_timeout(input: Option<&str>) -> Result<Option<DurationDefinition>> {
         )
         .into());
     }
+    let seconds = match timeout.time_unit.as_str() {
+        "Seconds" => timeout.value,
+        "Minutes" => timeout.value * 60.0,
+        "Hours" => timeout.value * 3_600.0,
+        "Days" => timeout.value * 86_400.0,
+        _ => unreachable!("time unit validated above"),
+    };
+    if seconds > 86_400.0 {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Timeout cannot exceed 24 hours.",
+            r#"Use at most {"value":24,"timeUnit":"Hours"}."#,
+        )
+        .into());
+    }
     Ok(Some(timeout))
 }
 
@@ -860,6 +880,7 @@ async fn update_audit_settings(
     audit_actions: Option<&[String]>,
     predicate_expression: Option<&str>,
 ) -> Result<()> {
+    crate::commands::sql_audit::validate_predicate_expression(predicate_expression)?;
     if state.is_none()
         && retention_days.is_none()
         && audit_actions.is_none()
@@ -1140,6 +1161,13 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("Invalid timeout timeUnit")
+        );
+        assert!(parse_timeout(Some(r#"{"value":24,"timeUnit":"Hours"}"#)).is_ok());
+        assert!(
+            parse_timeout(Some(r#"{"value":1.1,"timeUnit":"Days"}"#))
+                .unwrap_err()
+                .to_string()
+                .contains("24 hours")
         );
     }
 

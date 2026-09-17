@@ -91,6 +91,8 @@
 - `src/commands/kql_utils.rs`: Shared KQL utilities (resolve_kql_input, resolve_query_uri, execute_kql, execute_kql_with_timeout, QueryRunOptions, run_query -> delegates follow to commands::follow, parse v1/v2 responses)
 - `src/commands/follow.rs`: Backend-agnostic bounded --follow streaming (follow_stream over an AsyncFnMut fetch + a stop_when terminal predicate; FollowOptions::validate; filter_new_rows/value_gt). Used by KQL query (Kusto), warehouse queries-running (TDS), job-scheduler get-instance + operation get-state (poll-until-terminal)
 - `src/commands/query_input.rs`: Shared query-text resolver (resolve_query_input) — inline / `@file` / stdin, used by graph-model and graphql-api; the uniform convention for all query commands
+- `src/commands/json_options.rs`: Shared JSON object/array option parsing plus per-item UUID/duplicate validation for item, Git, workspace clone, and deployment-pipeline request options
+- `src/commands/sql_audit.rs`: Shared SQL audit predicate validation (no `WHERE`, maximum 3,000 characters) across warehouse, SQL endpoint, and SQL database
 - `src/commands/kql_queryset.rs`: CRUD + get-definition/update-definition + run (fetch definition, select tab, execute against Kusto REST API)
 - `src/commands/kql_dashboard.rs`: list/show/create/update/delete/get-definition/update-definition (RealTimeDashboard.json)
 - `src/commands/mirrored_database.rs`: list/show/create/update/delete/get-definition/update-definition/start/stop/status/table-status

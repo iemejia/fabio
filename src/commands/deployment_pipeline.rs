@@ -222,13 +222,21 @@ pub enum DeploymentPipelineCommand {
         target_stage_id: Option<String>,
 
         /// Items to deploy as JSON array (if omitted, all items are deployed).
-        /// Example: '[{"itemId":"...","itemType":"Notebook"}]'
+        /// Example: '[{"sourceItemId":"...","itemType":"Notebook"}]'
         #[arg(long)]
         items: Option<String>,
 
         /// Optional note for this deployment
         #[arg(long)]
         note: Option<String>,
+
+        /// Allow deployment between regions
+        #[arg(long)]
+        allow_cross_region_deployment: bool,
+
+        /// Per-item deployment options keyed by sourceItemId as a JSON array (inline or @file)
+        #[arg(long)]
+        item_options: Option<String>,
     },
 }
 
@@ -315,6 +323,8 @@ pub async fn execute(
             target_stage_id,
             items,
             note,
+            allow_cross_region_deployment,
+            item_options,
         } => {
             deploy(
                 cli,
@@ -324,6 +334,8 @@ pub async fn execute(
                 target_stage_id.as_deref(),
                 items.as_deref(),
                 note.as_deref(),
+                *allow_cross_region_deployment,
+                item_options.as_deref(),
             )
             .await
         }
@@ -779,6 +791,7 @@ async fn update_stage(
 
 // ─── Deploy ──────────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 async fn deploy(
     cli: &Cli,
     client: &FabricClient,
@@ -787,6 +800,8 @@ async fn deploy(
     target_stage_id: Option<&str>,
     items: Option<&str>,
     note: Option<&str>,
+    allow_cross_region_deployment: bool,
+    item_options: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({
         "sourceStageId": source_stage_id,
@@ -801,6 +816,26 @@ async fn deploy(
     }
     if let Some(n) = note {
         body["note"] = Value::from(n);
+    }
+    if allow_cross_region_deployment {
+        crate::commands::json_options::insert_option(
+            &mut body,
+            "allowCrossRegionDeployment",
+            Value::Bool(true),
+        )?;
+    }
+    if let Some(raw) = item_options {
+        let entries = crate::commands::json_options::parse_item_options(
+            raw,
+            "--item-options",
+            "sourceItemId",
+            r#"[{"sourceItemId":"6bfe235c-6d7b-41b7-98a6-2b8276b3e82b","options":{"validateOnly":true}}]"#,
+        )?;
+        crate::commands::json_options::insert_option(
+            &mut body,
+            "itemOptionsBySourceItemId",
+            entries,
+        )?;
     }
 
     if output::dry_run_guard(cli, "deployment-pipeline deploy", &body) {

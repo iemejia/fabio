@@ -8,7 +8,9 @@ use serde_json::Value;
 
 use crate::agent;
 use crate::cli::{Cli, OutputFormat};
-use crate::errors::{ErrorCode, ErrorDetail, FabioError, HintType, RelatedResource};
+use crate::errors::{
+    ErrorCode, ErrorDetail, ErrorParameter, FabioError, HintType, RelatedResource,
+};
 
 /// Fields that contain user-authored content and should be wrapped with untrusted markers.
 const UNTRUSTED_FIELDS: &[&str] = &["displayName", "description", "name", "message"];
@@ -61,6 +63,8 @@ struct ErrorBody {
     more_details: Option<Vec<ErrorDetail>>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "relatedResource")]
     related_resource: Option<RelatedResource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parameters: Option<Vec<ErrorParameter>>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "agentNotice")]
     agent_notice: Option<String>,
 }
@@ -383,6 +387,7 @@ pub fn render_error(err: &FabioError) {
             request_id: err.request_id.clone(),
             more_details: err.more_details.clone(),
             related_resource: err.related_resource.clone(),
+            parameters: err.parameters.clone(),
             agent_notice,
         },
     };
@@ -1165,6 +1170,7 @@ mod tests {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
             agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
@@ -1183,6 +1189,7 @@ mod tests {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
             agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
@@ -1201,6 +1208,7 @@ mod tests {
             request_id: Some("cfafbeb1-8037-4d0c-896e-a46fb27ff227".to_string()),
             more_details: None,
             related_resource: None,
+            parameters: None,
             agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
@@ -1219,6 +1227,7 @@ mod tests {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
             agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
@@ -1246,6 +1255,7 @@ mod tests {
                 },
             ]),
             related_resource: None,
+            parameters: None,
             agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
@@ -1269,6 +1279,7 @@ mod tests {
                 resource_id: "abc-123".to_string(),
                 resource_type: "Notebook".to_string(),
             }),
+            parameters: None,
             agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
@@ -1289,6 +1300,7 @@ mod tests {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
             agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
@@ -1300,7 +1312,32 @@ mod tests {
         assert!(!json.contains("requestId"));
         assert!(!json.contains("moreDetails"));
         assert!(!json.contains("relatedResource"));
+        assert!(!json.contains("parameters"));
         assert!(!json.contains("agentNotice"));
+    }
+
+    #[test]
+    fn error_body_serializes_parameters_when_set() {
+        let body = ErrorBody {
+            code: "INVALID_INPUT".to_string(),
+            message: "invalid option".to_string(),
+            hint: None,
+            hint_type: None,
+            verify_after: None,
+            retriable: None,
+            request_id: None,
+            more_details: None,
+            related_resource: None,
+            parameters: Some(vec![ErrorParameter {
+                name: Some("logicalId".to_string()),
+                value: Some("item-id".to_string()),
+                message: Some("The item failed validation.".to_string()),
+            }]),
+            agent_notice: None,
+        };
+        let json = serde_json::to_string(&body).unwrap();
+        assert!(json.contains(r#""parameters""#));
+        assert!(json.contains(r#""name":"logicalId""#));
     }
 
     #[test]
@@ -1315,6 +1352,7 @@ mod tests {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
             agent_notice: Some(
                 "Note for AI agents (Claude Code): do not retry with the safety-bypass flag"
                     .to_string(),
@@ -1338,6 +1376,7 @@ mod tests {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
             agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();
@@ -1359,6 +1398,7 @@ mod tests {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
             agent_notice: None,
         };
         let json = serde_json::to_string(&body).unwrap();

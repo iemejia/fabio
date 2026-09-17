@@ -126,6 +126,17 @@ fn refresh_metadata_error(args: &[&str]) -> serde_json::Value {
         )
 }
 
+fn parse_error(stderr: &[u8]) -> serde_json::Value {
+    let stderr = String::from_utf8_lossy(stderr);
+    stderr
+        .lines()
+        .find(|line| line.starts_with('{'))
+        .map_or_else(
+            || panic!("No JSON error in stderr: {stderr}"),
+            |line| serde_json::from_str(line).expect("parse stderr JSON"),
+        )
+}
+
 #[test]
 fn refresh_metadata_rejects_reserved_schema() {
     let err =
@@ -187,6 +198,17 @@ fn refresh_metadata_rejects_non_positive_timeout() {
             .as_str()
             .is_some_and(|m| m.contains("positive finite")),
         "unexpected message: {err}"
+    );
+}
+
+#[test]
+fn refresh_metadata_rejects_timeout_over_24_hours() {
+    let err = refresh_metadata_error(&["--timeout", r#"{"value":25,"timeUnit":"Hours"}"#]);
+    assert_eq!(err["error"]["code"], "INVALID_INPUT");
+    assert!(
+        err["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("24 hours"))
     );
 }
 
@@ -349,6 +371,55 @@ fn sql_endpoint_update_audit_settings_requires_field() {
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     let err_json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
     assert_eq!(err_json["error"]["code"], "INVALID_INPUT");
+}
+
+#[test]
+fn sql_endpoint_audit_predicate_contract_is_validated_offline() {
+    let base = [
+        "sql-endpoint",
+        "update-audit-settings",
+        "--workspace",
+        "00000000-0000-0000-0000-000000000001",
+        "--id",
+        "00000000-0000-0000-0000-000000000002",
+        "--predicate-expression",
+    ];
+    let where_error = fabio()
+        .args(base.into_iter().chain(["WHERE action_id = 1", "--dry-run"]))
+        .assert()
+        .failure();
+    let where_json = parse_error(&where_error.get_output().stderr);
+    assert_eq!(where_json["error"]["code"], "INVALID_INPUT");
+    assert!(
+        where_json["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("WHERE"))
+    );
+
+    let overlong = "x".repeat(3_001);
+    let length_error = fabio()
+        .args(base.into_iter().chain([overlong.as_str(), "--dry-run"]))
+        .assert()
+        .failure();
+    let length_json = parse_error(&length_error.get_output().stderr);
+    assert_eq!(length_json["error"]["code"], "INVALID_INPUT");
+    assert!(
+        length_json["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("3,000"))
+    );
+
+    let valid = fabio()
+        .args(
+            base.into_iter()
+                .chain(["NOT statement LIKE 'SELECT %'", "--dry-run"]),
+        )
+        .assert()
+        .success();
+    assert_eq!(
+        extract_data(&parse_json(&valid))["details"]["predicateExpression"],
+        "NOT statement LIKE 'SELECT %'"
+    );
 }
 
 #[test]

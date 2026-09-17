@@ -119,6 +119,7 @@ Manage variable libraries (shared variables)
 - The .platform part IS sent (enables metadata propagation) but is EXCLUDED from the content hash, so idempotent skip still works.
 - --strategy: default (per-item, content-hash skip) | bulk (fast initial deploy to an empty, non-Git workspace) | sequential (debugging).
 - git relation (WorkspaceRelations, preview) manages base/branch links between workspaces as a standalone resource — distinct from 'git branch-out', which creates+connects a feature workspace in one flow.
+- Per-item definition options are passed as a JSON array with --item-options: git pull and bulk import/workspace clone target entries by logicalId; deployment-pipeline deploy targets by sourceItemId. Every target ID must be a UUID, each target can appear only once, and each entry requires an options object.
 - Use 'git status --include-files-details' to discover root-relative changed paths, then repeat 'git commit --file-selection ITEM_ID=PATH' for an object-ID FileLevelSelective commit or --logical-file-selection for a logical ID. An empty selectedFiles list (via the corresponding --all-files flag) commits every file in that item.
 - Raw Power BI Desktop PBIP folders deploy directly: a '<name>.Report' / '<name>.SemanticModel' folder with NO '.platform' sidecar is discovered by folder-name suffix (Report needs definition.pbir, SemanticModel needs definition.pbism). Such items have no logicalId, so rename tracking is off (plan warns 'no logicalId') and they match deployed items by (type, name); a v2-PBIR report still rebinds to its model by name.
 - 'deploy apply' resolves cross-item references stored as Fabric LOGICAL IDs (the referenced item's .platform logicalId) in a SINGLE pass even to an EMPTY workspace: it creates items in topological order and records each new GUID mid-run (created_ids), then rewrites later items' logical-ID references to them (resolve_logical_ids_in_payload). Unlike fabric-cicd's parameter.yml $items placeholder, which queries the live workspace before publish and needs a two-phase deploy on first run. Exception: --strategy bulk creates all items at once and rejects interdependent items (DependenciesCouldNotBeResolved); use the default per-item strategy for first deploys with cross-item references. Do NOT rely on the $items.Type.Name.id PARAMETER form for cross-item GUIDs — it resolves against an empty map during deploy and is skipped-with-warning; use logical-ID references, a Variable Library value set, or a find_replace literal/$ENV: instead.
@@ -141,6 +142,7 @@ Manage variable libraries (shared variables)
 ## Safety
 - --force-all overwrites ALL matched items regardless of content changes — irreversible; run 'deploy plan' first.
 - --delete-orphans removes workspace items not in source; protected data types (Lakehouse/Warehouse/SQLDatabase/Eventhouse/KQLDatabase) require --allow-delete-types.
+- Per-item options such as validateOnly are item-type-specific; review the target type's update-definition contract before deploying them.
 - Deploy output includes a 'destructive' boolean — surface it to the human before applying.
 
 ## Shared references

@@ -3661,6 +3661,7 @@ mod tests {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
         };
         let anyhow_err: anyhow::Error = err.into();
         let code = extract_error_code(&anyhow_err);

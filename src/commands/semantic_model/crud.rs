@@ -247,6 +247,7 @@ pub(super) async fn create(
     definition: Option<&str>,
     connection: Option<&str>,
     sensitivity_label: Option<&str>,
+    allow_purge_data: bool,
 ) -> Result<()> {
     let parts = if let Some(folder) = definition {
         // Gather a FULL model definition folder (definition.pbism + definition/
@@ -281,6 +282,9 @@ pub(super) async fn create(
             "sensitivityLabelId": label_id
         });
     }
+    if allow_purge_data {
+        body["options"] = serde_json::json!({ "allowPurgeData": true });
+    }
 
     if output::dry_run_guard(
         cli,
@@ -291,13 +295,14 @@ pub(super) async fn create(
             "description": description,
             "file": file,
             "connection": connection,
-            "sensitivityLabel": sensitivity_label
+            "sensitivityLabel": sensitivity_label,
+            "options": body.get("options")
         }),
     ) {
         return Ok(());
     }
 
-    let data = client
+    let mut data = client
         .post(
             &format!("/workspaces/{workspace}/semanticModels"),
             &body,
@@ -305,6 +310,11 @@ pub(super) async fn create(
         )
         .await
         .map_err(|e| enrich_create_error(enrich_forbidden(e, "semantic-model create", "Member")))?;
+    if allow_purge_data {
+        data["warning"] = Value::from(
+            "--allow-purge-data was active: definition data that could not be retained may have been permanently purged. Refresh the semantic model to reload data.",
+        );
+    }
     output::render_object(cli, &data, "id");
     Ok(())
 }

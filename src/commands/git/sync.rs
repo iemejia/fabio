@@ -309,11 +309,23 @@ pub(super) async fn pull(
     workspace: &str,
     conflict_resolution: Option<&str>,
     allow_override: bool,
+    item_options: Option<&str>,
     workspace_head: Option<&str>,
     remote_commit_hash: Option<&str>,
     wait: bool,
     timeout: u64,
 ) -> Result<()> {
+    let item_options = item_options
+        .map(|raw| {
+            crate::commands::json_options::parse_item_options(
+                raw,
+                "--item-options",
+                "logicalId",
+                r#"[{"logicalId":"88436e65-6ed1-8185-49ff-f61077fc73d4","options":{"validateOnly":true}}]"#,
+            )
+        })
+        .transpose()?;
+
     // Auto-fetch hashes from status if not provided
     let (head, remote_hash) = if let (Some(h), Some(r)) = (workspace_head, remote_commit_hash) {
         (h.to_string(), r.to_string())
@@ -368,9 +380,18 @@ pub(super) async fn pull(
     }
 
     if allow_override {
-        body["options"] = serde_json::json!({
-            "allowOverrideItems": true,
-        });
+        crate::commands::json_options::insert_option(
+            &mut body,
+            "allowOverrideItems",
+            Value::Bool(true),
+        )?;
+    }
+    if let Some(entries) = item_options {
+        crate::commands::json_options::insert_option(&mut body, "itemOptionsByLogicalId", entries)?;
+    }
+
+    if output::dry_run_guard(cli, "git pull", &body) {
+        return Ok(());
     }
 
     let data = client

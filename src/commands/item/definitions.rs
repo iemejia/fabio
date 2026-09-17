@@ -42,6 +42,7 @@ pub(super) async fn get_definition(
 
 // ─── Update Definition ───────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn update_definition(
     cli: &Cli,
     client: &FabricClient,
@@ -50,6 +51,7 @@ pub(super) async fn update_definition(
     file: Option<&str>,
     definition: Option<&str>,
     update_metadata: bool,
+    options: Option<&str>,
 ) -> Result<()> {
     if file.is_none() && definition.is_none() {
         return Err(FabioError::with_hint(
@@ -64,7 +66,7 @@ pub(super) async fn update_definition(
         .into());
     }
 
-    let body = if let Some(def_json) = definition {
+    let mut body = if let Some(def_json) = definition {
         // Inline JSON definition payload
         serde_json::from_str::<Value>(def_json).map_err(|e| {
             FabioError::with_hint(
@@ -102,6 +104,14 @@ pub(super) async fn update_definition(
     } else {
         unreachable!()
     };
+    if let Some(raw_options) = options {
+        let parsed = crate::commands::json_options::parse_object(
+            raw_options,
+            "--options",
+            r#"{"validateOnly":true}"#,
+        )?;
+        crate::commands::json_options::set_options(&mut body, parsed)?;
+    }
 
     if output::dry_run_guard(cli, "item update-definition", &body) {
         return Ok(());

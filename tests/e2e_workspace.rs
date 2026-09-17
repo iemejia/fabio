@@ -3267,6 +3267,34 @@ fn workspace_clone_with_item_types_dry_run() {
     assert_eq!(data["would_execute"], "workspace clone");
 }
 
+#[test]
+fn workspace_clone_item_options_dry_run() {
+    let item_id = "88436e65-6ed1-8185-49ff-f61077fc73d4";
+    let assert = fabio()
+        .args([
+            "workspace",
+            "clone",
+            "--source",
+            "00000000-0000-0000-0000-000000000001",
+            "--dest",
+            "00000000-0000-0000-0000-000000000002",
+            "--item-options",
+            &format!(r#"[{{"logicalId":"{item_id}","options":{{"validateOnly":true}}}}]"#),
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "workspace clone");
+    assert_eq!(data["details"]["item_options"][0]["logicalId"], item_id);
+    assert_eq!(
+        data["details"]["item_options"][0]["options"]["validateOnly"],
+        true
+    );
+}
+
 // ─── Recoverable items ──────────────────────────────────────────────────────
 
 #[test]

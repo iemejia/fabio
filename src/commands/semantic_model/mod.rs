@@ -82,6 +82,10 @@ pub enum SemanticModelCommand {
         /// Sensitivity label ID to apply on creation
         #[arg(long)]
         sensitivity_label: Option<String>,
+
+        /// Allow definition changes that purge data which cannot be retained
+        #[arg(long)]
+        allow_purge_data: bool,
     },
     /// Generate a Direct Lake semantic model from a lakehouse or warehouse
     /// (reads the SQL analytics endpoint schema and picks tables, like the
@@ -194,6 +198,10 @@ pub enum SemanticModelCommand {
         /// Path to model definition file (model.bim TMSL/TMDL format)
         #[arg(long)]
         file: String,
+
+        /// Allow definition changes that purge existing model data; refresh afterward
+        #[arg(long)]
+        allow_purge_data: bool,
     },
     /// Execute a DAX query against a semantic model
     #[command(display_order = 8)]
@@ -1959,6 +1967,7 @@ pub async fn execute(
             definition,
             connection,
             sensitivity_label,
+            allow_purge_data,
         } => {
             crud::create(
                 cli,
@@ -1970,6 +1979,7 @@ pub async fn execute(
                 definition.as_deref(),
                 connection.as_deref(),
                 sensitivity_label.as_deref(),
+                *allow_purge_data,
             )
             .await
         }
@@ -2031,7 +2041,11 @@ pub async fn execute(
             workspace,
             id,
             file,
-        } => definitions::update_definition(cli, client, workspace, id, file).await,
+            allow_purge_data,
+        } => {
+            definitions::update_definition(cli, client, workspace, id, file, *allow_purge_data)
+                .await
+        }
         SemanticModelCommand::Query {
             workspace,
             id,

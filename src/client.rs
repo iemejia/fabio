@@ -11,7 +11,7 @@ use tokio::time::sleep;
 
 use azure_core::credentials::TokenCredential;
 
-use crate::errors::{ErrorCode, ErrorDetail, FabioError, RelatedResource};
+use crate::errors::{ErrorCode, ErrorDetail, ErrorParameter, FabioError, RelatedResource};
 use crate::verbose;
 
 // ── Bundled CA Roots ─────────────────────────────────────────────────────────
@@ -3575,8 +3575,13 @@ async fn handle_response(resp: Response) -> Result<Value> {
         });
 
     // Extract enriched error metadata from parsed response body
-    let (retriable, request_id, more_details, related_resource) =
-        extract_error_metadata(parsed.as_ref());
+    let ErrorMetadata {
+        retriable,
+        request_id,
+        more_details,
+        related_resource,
+        parameters,
+    } = extract_error_metadata(parsed.as_ref());
 
     // Prepend the server error code from headers for machine-readable context.
     // e.g., "ItemNotFound: The requested item does not exist."
@@ -3592,6 +3597,7 @@ async fn handle_response(resp: Response) -> Result<Value> {
             .set_request_id(request_id)
             .set_more_details(more_details)
             .set_related_resource(related_resource)
+            .set_parameters(parameters)
             .into(),
     )
 }
@@ -3649,17 +3655,17 @@ fn lro_failure_message(body: &Value) -> String {
 
 /// Extract enriched error metadata from a parsed Fabric API error response.
 ///
-/// Returns `(isRetriable, requestId, moreDetails, relatedResource)` fields
-/// from the `error` object in the response body. These match the official
-/// Microsoft Fabric API error schema.
-fn extract_error_metadata(
-    parsed: Option<&Value>,
-) -> (
-    Option<bool>,
-    Option<String>,
-    Option<Vec<ErrorDetail>>,
-    Option<RelatedResource>,
-) {
+/// These fields come from the `error` object and match the official Microsoft
+/// Fabric API error schema.
+struct ErrorMetadata {
+    retriable: Option<bool>,
+    request_id: Option<String>,
+    more_details: Option<Vec<ErrorDetail>>,
+    related_resource: Option<RelatedResource>,
+    parameters: Option<Vec<ErrorParameter>>,
+}
+
+fn extract_error_metadata(parsed: Option<&Value>) -> ErrorMetadata {
     let error_obj = parsed.and_then(|v| v.get("error"));
 
     // isRetriable: indicates whether the client can retry
@@ -3703,7 +3709,37 @@ fn extract_error_metadata(
             })
         });
 
-    (retriable, request_id, more_details, related_resource)
+    let parameters = error_obj
+        .and_then(|e| e.get("parameters"))
+        .and_then(Value::as_array)
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(|entry| {
+                    let parameter = ErrorParameter {
+                        name: entry.get("name").and_then(Value::as_str).map(String::from),
+                        value: entry.get("value").and_then(Value::as_str).map(String::from),
+                        message: entry
+                            .get("message")
+                            .and_then(Value::as_str)
+                            .map(String::from),
+                    };
+                    (parameter.name.is_some()
+                        || parameter.value.is_some()
+                        || parameter.message.is_some())
+                    .then_some(parameter)
+                })
+                .collect::<Vec<_>>()
+        })
+        .filter(|entries| !entries.is_empty());
+
+    ErrorMetadata {
+        retriable,
+        request_id,
+        more_details,
+        related_resource,
+        parameters,
+    }
 }
 
 /// Build the URL for the next page of paginated results.
@@ -3945,6 +3981,31 @@ mod tests {
             "error": { "errorCode": "SomeCode", "message": "" }
         });
         assert_eq!(lro_failure_message(&body), "SomeCode");
+    }
+
+    #[test]
+    fn extracts_structured_error_parameters() {
+        let body = serde_json::json!({
+            "error": {
+                "parameters": [
+                    {
+                        "name": "logicalId",
+                        "value": "88436e65-6ed1-8185-49ff-f61077fc73d4",
+                        "message": "The targeted item failed validation."
+                    },
+                    {"name": "optionName"}
+                ]
+            }
+        });
+        let parameters = extract_error_metadata(Some(&body)).parameters.unwrap();
+        assert_eq!(parameters.len(), 2);
+        assert_eq!(parameters[0].name.as_deref(), Some("logicalId"));
+        assert_eq!(
+            parameters[0].value.as_deref(),
+            Some("88436e65-6ed1-8185-49ff-f61077fc73d4")
+        );
+        assert_eq!(parameters[1].name.as_deref(), Some("optionName"));
+        assert!(parameters[1].message.is_none());
     }
 
     // ── validate_trusted_url ─────────────────────────────────────────────

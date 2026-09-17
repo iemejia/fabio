@@ -39,6 +39,7 @@ const AGENT_ENV_VARS: &[(&str, &str)] = &[
 const DANGEROUS_FLAGS: &[&str] = &[
     "--allow-delete-types",
     "--allow-override",
+    "--allow-purge-data",
     "--allow-unresolved",
     "--cancel-on-timeout",
     "--delete-orphans",
@@ -565,6 +566,7 @@ mod tests {
         const BENIGN_ESCALATION_FLAGS: &[&str] = &[
             "--allow-cloud-connection-refresh", // gateway feature toggle
             "--allow-code-first-artifacts",     // connection capability grant (create-time)
+            "--allow-cross-region-deployment",  // deployment routing option
             "--allow-custom-connectors",        // gateway feature toggle
             "--allow-gateway-usage",            // connection capability grant
             "--allow-pairing-by-name",          // workspace clone matching (additive)
