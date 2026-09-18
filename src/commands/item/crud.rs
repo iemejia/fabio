@@ -270,6 +270,7 @@ pub(super) async fn inspect(
 
 // ─── Create ──────────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn create(
     cli: &Cli,
     client: &FabricClient,
@@ -278,6 +279,8 @@ pub(super) async fn create(
     item_type: &str,
     description: Option<&str>,
     sensitivity_label: Option<&str>,
+    definition: Option<&str>,
+    options: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({
         "displayName": name,
@@ -291,6 +294,39 @@ pub(super) async fn create(
             "sensitivityLabelId": label_id
         });
     }
+    if let Some(definition) = definition {
+        let resolved = crate::commands::query_input::resolve_query_input(
+            Some(definition),
+            "item definition JSON",
+            "--definition",
+            r#"{"parts":[{"path":"definition.json","payload":"e30=","payloadType":"InlineBase64"}]}"#,
+        )?;
+        let parsed: Value = serde_json::from_str(&resolved).map_err(|error| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Invalid --definition JSON: {error}"),
+                "Provide a Fabric item definition envelope with a parts array.",
+            )
+        })?;
+        let has_parts = parsed
+            .pointer("/definition/parts")
+            .or_else(|| parsed.get("parts"))
+            .is_some_and(Value::is_array);
+        if !has_parts {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "--definition must contain a definition.parts or parts array",
+                "Provide a Fabric item definition envelope with a parts array.",
+            )
+            .into());
+        }
+        let envelope =
+            crate::definition_spec::build_update_definition_body(&resolved, "definition.json");
+        body["definition"] = envelope["definition"].clone();
+    }
+    if let Some(options) = options {
+        body["options"] = crate::commands::request_options::parse_object(options, "--options")?;
+    }
 
     if output::dry_run_guard(
         cli,
@@ -300,7 +336,9 @@ pub(super) async fn create(
             "displayName": name,
             "type": item_type,
             "description": description,
-            "sensitivityLabel": sensitivity_label
+            "sensitivityLabel": sensitivity_label,
+            "definition": body.get("definition"),
+            "options": body.get("options")
         }),
     ) {
         return Ok(());

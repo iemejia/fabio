@@ -309,11 +309,42 @@ pub(super) async fn pull(
     workspace: &str,
     conflict_resolution: Option<&str>,
     allow_override: bool,
+    item_options: Option<&str>,
     workspace_head: Option<&str>,
     remote_commit_hash: Option<&str>,
     wait: bool,
     timeout: u64,
 ) -> Result<()> {
+    let parsed_item_options = item_options
+        .map(|options| {
+            crate::commands::request_options::parse_item_options(
+                options,
+                "--item-options",
+                "logicalId",
+            )
+        })
+        .transpose()?;
+    let mut preview = serde_json::json!({
+        "workspace": workspace,
+        "workspaceHead": workspace_head.unwrap_or("<auto-from-status>"),
+        "remoteCommitHash": remote_commit_hash.unwrap_or("<auto-from-status>"),
+    });
+    if let Some(policy) = conflict_resolution {
+        preview["conflictResolution"] = Value::from(policy);
+    }
+    if allow_override || parsed_item_options.is_some() {
+        preview["options"] = serde_json::json!({});
+        if allow_override {
+            preview["options"]["allowOverrideItems"] = Value::Bool(true);
+        }
+        if let Some(options) = &parsed_item_options {
+            preview["options"]["itemOptionsByLogicalId"] = options.clone();
+        }
+    }
+    if output::dry_run_guard(cli, "git pull", &preview) {
+        return Ok(());
+    }
+
     // Auto-fetch hashes from status if not provided
     let (head, remote_hash) = if let (Some(h), Some(r)) = (workspace_head, remote_commit_hash) {
         (h.to_string(), r.to_string())
@@ -367,10 +398,14 @@ pub(super) async fn pull(
         });
     }
 
-    if allow_override {
-        body["options"] = serde_json::json!({
-            "allowOverrideItems": true,
-        });
+    if allow_override || parsed_item_options.is_some() {
+        body["options"] = serde_json::json!({});
+        if allow_override {
+            body["options"]["allowOverrideItems"] = Value::Bool(true);
+        }
+        if let Some(options) = parsed_item_options {
+            body["options"]["itemOptionsByLogicalId"] = options;
+        }
     }
 
     let data = client

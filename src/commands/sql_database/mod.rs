@@ -235,7 +235,8 @@ pub enum SqlDatabaseCommand {
         #[arg(long, value_delimiter = ',')]
         audit_actions: Option<Vec<String>>,
 
-        /// Predicate expression for filtering audit logs
+        /// Audit predicate without WHERE (maximum 3,000 characters).
+        /// Empty string removes the existing predicate.
         #[arg(long)]
         predicate_expression: Option<String>,
     },

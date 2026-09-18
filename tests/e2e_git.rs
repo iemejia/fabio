@@ -17,6 +17,31 @@ mod common;
 use common::{TestConfig, extract_data, fabio, parse_json};
 use serial_test::serial;
 
+#[test]
+fn git_pull_item_options_dry_run() {
+    let output = fabio()
+        .args([
+            "git",
+            "pull",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--workspace-head",
+            "workspace-head",
+            "--remote-commit-hash",
+            "remote-head",
+            "--item-options",
+            r#"[{"logicalId":"00000000-0000-0000-0000-000000000002","options":{"validateOnly":true}}]"#,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    assert_eq!(
+        extract_data(&json)["details"]["options"]["itemOptionsByLogicalId"][0]["options"]["validateOnly"],
+        true
+    );
+}
+
 /// Retry a fabio command up to 5 times with a 15-second delay between attempts.
 /// Returns the last assertion result. Used for transient "Git provider failed" errors.
 fn retry_on_failure<F>(f: F) -> assert_cmd::assert::Assert

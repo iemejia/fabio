@@ -94,6 +94,17 @@ pub struct RelatedResource {
     pub resource_type: String,
 }
 
+/// Machine-readable context from the API's `error.parameters` array.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct ErrorParameter {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
 /// Classification of a hint's semantic impact on the operation.
 ///
 /// AI agents use this to decide whether a hint-driven retry is safe to execute
@@ -121,7 +132,7 @@ pub enum HintType {
 }
 
 /// Structured error type for the fabio CLI.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 #[error("{code}: {message}")]
 pub struct FabioError {
     pub code: ErrorCode,
@@ -144,6 +155,8 @@ pub struct FabioError {
     pub more_details: Option<Vec<ErrorDetail>>,
     /// The resource involved in the error (from `error.relatedResource`).
     pub related_resource: Option<RelatedResource>,
+    /// Structured machine-readable context from `error.parameters`.
+    pub parameters: Option<Vec<ErrorParameter>>,
 }
 
 impl FabioError {
@@ -158,6 +171,7 @@ impl FabioError {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
         }
     }
 
@@ -177,6 +191,7 @@ impl FabioError {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
         }
     }
 
@@ -199,6 +214,7 @@ impl FabioError {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
         }
     }
 
@@ -259,6 +275,13 @@ impl FabioError {
         self.related_resource = related_resource;
         self
     }
+
+    /// Set structured error parameters from the API response (builder pattern).
+    #[must_use]
+    pub fn set_parameters(mut self, parameters: Option<Vec<ErrorParameter>>) -> Self {
+        self.parameters = parameters;
+        self
+    }
 }
 
 /// Convert HTTP status codes to appropriate error codes.
@@ -317,6 +340,7 @@ impl FabioError {
             request_id: None,
             more_details: None,
             related_resource: None,
+            parameters: None,
         }
     }
 }
@@ -342,7 +366,11 @@ pub fn enrich_forbidden(err: anyhow::Error, operation: &str, required_role: &str
          Ask a workspace Admin to grant you the required role."
     );
 
-    FabioError::with_hint(ErrorCode::Forbidden, fabio_err.message.clone(), hint).into()
+    let mut enriched = fabio_err.clone();
+    enriched.hint = Some(hint);
+    enriched.hint_type = Some(HintType::SemanticCorrection);
+    enriched.verify_after = None;
+    enriched.into()
 }
 
 /// Enrich a failed ontology definition push (`import`, `bind`,
@@ -976,6 +1004,7 @@ mod tests {
         assert!(err.request_id.is_none());
         assert!(err.more_details.is_none());
         assert!(err.related_resource.is_none());
+        assert!(err.parameters.is_none());
     }
 
     #[test]
@@ -1006,6 +1035,21 @@ mod tests {
         let r = err.related_resource.as_ref().unwrap();
         assert_eq!(r.resource_id, "item-456");
         assert_eq!(r.resource_type, "Notebook");
+    }
+
+    #[test]
+    fn set_parameters_sets_machine_readable_context() {
+        let err = FabioError::new(ErrorCode::ApiError, "test").set_parameters(Some(vec![
+            ErrorParameter {
+                name: Some("itemType".to_string()),
+                value: Some("SemanticModel".to_string()),
+                message: Some("The affected item type".to_string()),
+            },
+        ]));
+        assert_eq!(
+            err.parameters.as_ref().unwrap()[0].name.as_deref(),
+            Some("itemType")
+        );
     }
 
     #[test]

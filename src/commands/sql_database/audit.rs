@@ -60,6 +60,7 @@ pub(super) async fn update_audit_settings(
     audit_actions: Option<&[String]>,
     predicate_expression: Option<&str>,
 ) -> Result<()> {
+    crate::commands::sql_audit::validate_predicate_expression(predicate_expression)?;
     if state.is_none()
         && retention_days.is_none()
         && audit_actions.is_none()

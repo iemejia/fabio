@@ -57,7 +57,7 @@ fn deployment_pipeline_create_dry_run() {
 
     let json = parse_json(&output);
     let data = extract_data(&json);
-    assert_eq!(data["status"], "dry_run");
+    assert_eq!(data["dry_run"], true);
 }
 
 // The create API requires a `stages` array; these run offline (guard/validation
@@ -147,6 +147,8 @@ fn deployment_pipeline_deploy_dry_run() {
             "11111111-1111-1111-1111-111111111111",
             "--note",
             "test deployment",
+            "--item-options",
+            r#"[{"sourceItemId":"22222222-2222-2222-2222-222222222222","options":{"validateOnly":true}}]"#,
             "--dry-run",
         ])
         .assert()
@@ -154,7 +156,11 @@ fn deployment_pipeline_deploy_dry_run() {
 
     let json = parse_json(&output);
     let data = extract_data(&json);
-    assert_eq!(data["status"], "dry_run");
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(
+        data["details"]["options"]["itemOptionsBySourceItemId"][0]["options"]["validateOnly"],
+        true
+    );
 }
 
 #[test]

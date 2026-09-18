@@ -191,6 +191,39 @@ fn refresh_metadata_rejects_non_positive_timeout() {
 }
 
 #[test]
+fn refresh_metadata_rejects_timeout_over_twenty_four_hours() {
+    let err = refresh_metadata_error(&["--timeout", r#"{"value":1441,"timeUnit":"Minutes"}"#]);
+    assert_eq!(err["error"]["code"], "INVALID_INPUT");
+    assert!(
+        err["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("24 hours"))
+    );
+}
+
+#[test]
+fn sql_endpoint_update_audit_settings_predicate_dry_run() {
+    let output = fabio()
+        .args([
+            "sql-endpoint",
+            "update-audit-settings",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--predicate-expression",
+            "NOT statement LIKE 'SELECT %'",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        extract_data(&parse_json(&output))["details"]["predicateExpression"],
+        "NOT statement LIKE 'SELECT %'"
+    );
+}
+
+#[test]
 fn refresh_metadata_rejects_malformed_tables_json() {
     let err = refresh_metadata_error(&["--tables", "not-json"]);
     assert_eq!(err["error"]["code"], "INVALID_INPUT");

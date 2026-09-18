@@ -7,6 +7,123 @@ use predicates::prelude::*;
 use serial_test::serial;
 
 #[test]
+fn item_create_definition_options_dry_run() {
+    let definition =
+        r#"{"parts":[{"path":"definition.json","payload":"e30=","payloadType":"InlineBase64"}]}"#;
+    let output = fabio()
+        .args([
+            "item",
+            "create",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--name",
+            "options-preview",
+            "--type",
+            "Plan",
+            "--definition",
+            definition,
+            "--options",
+            r#"{"validateOnly":true}"#,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&output)).clone();
+    assert_eq!(data["details"]["options"]["validateOnly"], true);
+    assert!(data["details"]["definition"]["parts"].is_array());
+}
+
+#[test]
+fn item_update_definition_options_dry_run() {
+    let definition = r#"{"definition":{"parts":[{"path":"definition.json","payload":"e30=","payloadType":"InlineBase64"}]}}"#;
+    let output = fabio()
+        .args([
+            "item",
+            "update-definition",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--definition",
+            definition,
+            "--options",
+            r#"{"validateOnly":true}"#,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        extract_data(&parse_json(&output))["details"]["options"]["validateOnly"],
+        true
+    );
+}
+
+#[test]
+fn item_bulk_import_item_options_dry_run() {
+    let output = fabio()
+        .args([
+            "item",
+            "bulk-import-definitions",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--content",
+            r#"{"definitionParts":[]}"#,
+            "--item-options",
+            r#"[{"logicalId":"00000000-0000-0000-0000-000000000002","options":{"validateOnly":true}}]"#,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        extract_data(&parse_json(&output))["details"]["options"]["itemOptionsByLogicalId"][0]["options"]
+            ["validateOnly"],
+        true
+    );
+}
+
+#[test]
+fn item_create_options_require_definition() {
+    fabio()
+        .args([
+            "item",
+            "create",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--name",
+            "invalid-options",
+            "--type",
+            "Plan",
+            "--options",
+            r#"{"validateOnly":true}"#,
+            "--dry-run",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--definition"));
+}
+
+#[test]
+fn item_bulk_import_rejects_non_object_options() {
+    fabio()
+        .args([
+            "item",
+            "bulk-import-definitions",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--content",
+            r#"{"definitionParts":[],"options":true}"#,
+            "--item-options",
+            r#"[{"logicalId":"00000000-0000-0000-0000-000000000002","options":{"validateOnly":true}}]"#,
+            "--dry-run",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "Bulk import request options must be a JSON object",
+        ));
+}
+
+#[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn item_list_returns_items() {

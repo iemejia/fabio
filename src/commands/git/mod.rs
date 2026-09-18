@@ -130,6 +130,11 @@ pub enum GitCommand {
         #[arg(long)]
         allow_override: bool,
 
+        /// Per-item update options as a JSON array (inline or @file).
+        /// Each entry requires logicalId and an options object.
+        #[arg(long)]
+        item_options: Option<String>,
+
         /// Override workspace head (auto-fetched from status if omitted)
         #[arg(long, hide = true)]
         workspace_head: Option<String>,
@@ -376,6 +381,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
             workspace,
             conflict_resolution,
             allow_override,
+            item_options,
             workspace_head,
             remote_commit_hash,
             wait,
@@ -386,6 +392,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
             workspace,
             conflict_resolution.as_deref(),
             *allow_override,
+            item_options.as_deref(),
             workspace_head.as_deref(),
             remote_commit_hash.as_deref(),
             *wait,
