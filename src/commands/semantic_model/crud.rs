@@ -247,6 +247,7 @@ pub(super) async fn create(
     definition: Option<&str>,
     connection: Option<&str>,
     sensitivity_label: Option<&str>,
+    allow_purge_data: bool,
 ) -> Result<()> {
     let parts = if let Some(folder) = definition {
         // Gather a FULL model definition folder (definition.pbism + definition/
@@ -281,6 +282,9 @@ pub(super) async fn create(
             "sensitivityLabelId": label_id
         });
     }
+    if allow_purge_data {
+        body["options"] = serde_json::json!({ "allowPurgeData": true });
+    }
 
     if output::dry_run_guard(
         cli,
@@ -291,7 +295,8 @@ pub(super) async fn create(
             "description": description,
             "file": file,
             "connection": connection,
-            "sensitivityLabel": sensitivity_label
+            "sensitivityLabel": sensitivity_label,
+            "options": body.get("options")
         }),
     ) {
         return Ok(());

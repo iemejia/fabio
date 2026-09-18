@@ -141,7 +141,8 @@ pub enum SqlEndpointCommand {
         #[arg(long)]
         id: String,
 
-        /// Timeout JSON with value and timeUnit (inline or @file; default: 15 Minutes)
+        /// Timeout JSON with value and timeUnit (inline or @file; default: 15 Minutes;
+        /// maximum: 24 Hours)
         #[arg(long)]
         timeout: Option<String>,
 
@@ -187,7 +188,8 @@ pub enum SqlEndpointCommand {
         #[arg(long, value_delimiter = ',')]
         audit_actions: Option<Vec<String>>,
 
-        /// Predicate expression for filtering audit logs
+        /// Audit predicate without WHERE (maximum 3,000 characters).
+        /// Empty string removes the existing predicate.
         #[arg(long)]
         predicate_expression: Option<String>,
     },
@@ -688,6 +690,21 @@ fn parse_timeout(input: Option<&str>) -> Result<Option<DurationDefinition>> {
         )
         .into());
     }
+    let seconds = match timeout.time_unit.as_str() {
+        "Seconds" => timeout.value,
+        "Minutes" => timeout.value * 60.0,
+        "Hours" => timeout.value * 60.0 * 60.0,
+        "Days" => timeout.value * 24.0 * 60.0 * 60.0,
+        _ => unreachable!(),
+    };
+    if seconds > 24.0 * 60.0 * 60.0 {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Timeout cannot exceed 24 hours.",
+            r#"Use a duration at or below {"value":24,"timeUnit":"Hours"}."#,
+        )
+        .into());
+    }
     Ok(Some(timeout))
 }
 
@@ -860,6 +877,7 @@ async fn update_audit_settings(
     audit_actions: Option<&[String]>,
     predicate_expression: Option<&str>,
 ) -> Result<()> {
+    crate::commands::sql_audit::validate_predicate_expression(predicate_expression)?;
     if state.is_none()
         && retention_days.is_none()
         && audit_actions.is_none()
@@ -1140,6 +1158,12 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("Invalid timeout timeUnit")
+        );
+        assert!(
+            parse_timeout(Some(r#"{"value":24.1,"timeUnit":"Hours"}"#))
+                .unwrap_err()
+                .to_string()
+                .contains("24 hours")
         );
     }
 

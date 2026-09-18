@@ -35,6 +35,7 @@ pub(super) async fn update_definition(
     workspace: &str,
     id: &str,
     file: &str,
+    allow_purge_data: bool,
 ) -> Result<()> {
     let content = std::fs::read_to_string(file).map_err(|e| {
         FabioError::with_hint(
@@ -47,7 +48,10 @@ pub(super) async fn update_definition(
                 .to_string(),
         )
     })?;
-    let body = crate::definition_spec::build_update_definition_body(&content, "model.bim");
+    let mut body = crate::definition_spec::build_update_definition_body(&content, "model.bim");
+    if allow_purge_data {
+        body["options"] = serde_json::json!({ "allowPurgeData": true });
+    }
 
     if output::dry_run_guard(cli, "semantic-model update-definition", &body) {
         return Ok(());
@@ -62,11 +66,16 @@ pub(super) async fn update_definition(
         .await
         .map_err(|e| enrich_forbidden(e, "semantic-model update-definition", "Contributor"))?;
 
-    let obj = serde_json::json!({
+    let mut obj = serde_json::json!({
         "id": id,
         "workspace": workspace,
         "status": "definition_updated"
     });
+    if allow_purge_data {
+        obj["warning"] = serde_json::Value::from(
+            "--allow-purge-data was enabled: data that could not be retained may have been purged. Refresh the semantic model to reload data.",
+        );
+    }
     output::render_object(cli, &obj, "status");
     Ok(())
 }

@@ -2024,6 +2024,14 @@
           "--sensitivity-label": {
             "type": "string",
             "description": "Sensitivity label ID to apply on creation"
+          },
+          "--definition": {
+            "type": "string",
+            "description": "Item definition envelope as JSON (inline or @file)"
+          },
+          "--options": {
+            "type": "string",
+            "description": "Item-type-specific creation options as a JSON object (inline or @file). Requires --definition"
           }
         },
         "mutates": true,
@@ -2083,6 +2091,10 @@
           "--update-metadata": {
             "type": "bool",
             "description": "When true, also update item metadata from .platform file"
+          },
+          "--options": {
+            "type": "string",
+            "description": "Item-type-specific definition options as a JSON object (inline or @file)"
           }
         },
         "mutates": true,
@@ -2269,6 +2281,10 @@
           "--content": {
             "type": "string",
             "description": "Inline JSON request body"
+          },
+          "--item-options": {
+            "type": "string",
+            "description": "Per-item import options as a JSON array (inline or @file). Each entry requires logicalId and an options object"
           }
         },
         "mutates": true,
@@ -5557,7 +5573,7 @@
           },
           "--predicate-expression": {
             "type": "string",
-            "description": "Predicate expression for filtering audit logs (identity-based / column filters)"
+            "description": "Audit predicate without WHERE (maximum 3,000 characters). Empty string removes the existing predicate. (identity-based / column filters)"
           }
         },
         "mutates": true,
@@ -6330,7 +6346,7 @@
           },
           "--predicate-expression": {
             "type": "string",
-            "description": "Predicate expression for filtering audit logs"
+            "description": "Audit predicate without WHERE (maximum 3,000 characters). Empty string removes the existing predicate"
           }
         },
         "mutates": true,
@@ -6842,7 +6858,7 @@
           },
           "--timeout": {
             "type": "string",
-            "description": "Timeout JSON with value and timeUnit (inline or @file; default: 15 Minutes)"
+            "description": "Timeout JSON with value and timeUnit (inline or @file; default: 15 Minutes; maximum: 24 Hours)"
           },
           "--recreate-tables": {
             "type": "bool",
@@ -6910,7 +6926,7 @@
           },
           "--predicate-expression": {
             "type": "string",
-            "description": "Predicate expression for filtering audit logs"
+            "description": "Audit predicate without WHERE (maximum 3,000 characters). Empty string removes the existing predicate"
           }
         },
         "mutates": true,
@@ -10654,6 +10670,10 @@
           "--sensitivity-label": {
             "type": "string",
             "description": "Sensitivity label ID to apply on creation"
+          },
+          "--allow-purge-data": {
+            "type": "bool",
+            "description": "Allow definition changes that purge data which cannot be retained. Refresh the semantic model after the operation"
           }
         },
         "mutates": true,
@@ -10806,6 +10826,10 @@
             "type": "string",
             "required": true,
             "description": "Path to model definition file (model.bim TMSL/TMDL format)"
+          },
+          "--allow-purge-data": {
+            "type": "bool",
+            "description": "Allow definition changes that purge existing data which cannot be retained. Refresh the semantic model after the operation"
           }
         },
         "mutates": true,
@@ -23790,6 +23814,10 @@
             "type": "bool",
             "description": "Allow overriding workspace items with incoming changes"
           },
+          "--item-options": {
+            "type": "string",
+            "description": "Per-item update options as a JSON array (inline or @file). Each entry requires logicalId and an options object"
+          },
           "--workspace-head": {
             "type": "string",
             "description": "Override workspace head (auto-fetched from status if omitted)"
@@ -24676,6 +24704,10 @@
           "--note": {
             "type": "string",
             "description": "Optional note for this deployment"
+          },
+          "--item-options": {
+            "type": "string",
+            "description": "Per-item deployment options as a JSON array (inline or @file). Each entry requires sourceItemId and an options object"
           }
         },
         "mutates": true,

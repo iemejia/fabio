@@ -229,6 +229,11 @@ pub enum DeploymentPipelineCommand {
         /// Optional note for this deployment
         #[arg(long)]
         note: Option<String>,
+
+        /// Per-item deployment options as a JSON array (inline or @file).
+        /// Each entry requires sourceItemId and an options object.
+        #[arg(long)]
+        item_options: Option<String>,
     },
 }
 
@@ -315,6 +320,7 @@ pub async fn execute(
             target_stage_id,
             items,
             note,
+            item_options,
         } => {
             deploy(
                 cli,
@@ -324,6 +330,7 @@ pub async fn execute(
                 target_stage_id.as_deref(),
                 items.as_deref(),
                 note.as_deref(),
+                item_options.as_deref(),
             )
             .await
         }
@@ -779,6 +786,7 @@ async fn update_stage(
 
 // ─── Deploy ──────────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 async fn deploy(
     cli: &Cli,
     client: &FabricClient,
@@ -787,6 +795,7 @@ async fn deploy(
     target_stage_id: Option<&str>,
     items: Option<&str>,
     note: Option<&str>,
+    item_options: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({
         "sourceStageId": source_stage_id,
@@ -801,6 +810,15 @@ async fn deploy(
     }
     if let Some(n) = note {
         body["note"] = Value::from(n);
+    }
+    if let Some(options) = item_options {
+        body["options"] = serde_json::json!({});
+        body["options"]["itemOptionsBySourceItemId"] =
+            crate::commands::request_options::parse_item_options(
+                options,
+                "--item-options",
+                "sourceItemId",
+            )?;
     }
 
     if output::dry_run_guard(cli, "deployment-pipeline deploy", &body) {
@@ -856,6 +874,17 @@ mod tests {
         let val: Value = serde_json::from_str(items).unwrap();
         assert!(val.is_array());
         assert_eq!(val.as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn deploy_body_accepts_per_item_options() {
+        let options = crate::commands::request_options::parse_item_options(
+            r#"[{"sourceItemId":"6bfe235c-6d7b-41b7-98a6-2b8276b3e82b","options":{"validateOnly":true}}]"#,
+            "--item-options",
+            "sourceItemId",
+        )
+        .unwrap();
+        assert_eq!(options[0]["options"]["validateOnly"], true);
     }
 
     #[test]

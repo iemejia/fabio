@@ -19,6 +19,53 @@ fn error_json(stderr: &str) -> serde_json::Value {
     serde_json::from_str(line.trim()).unwrap()
 }
 
+#[test]
+fn semantic_model_definition_allow_purge_data_dry_runs() {
+    let mut model = NamedTempFile::with_suffix(".bim").unwrap();
+    writeln!(model, r#"{{"name":"Model","model":{{}}}}"#).unwrap();
+    let model_path = model.path().to_str().unwrap();
+
+    let update = fabio()
+        .args([
+            "semantic-model",
+            "update-definition",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--file",
+            model_path,
+            "--allow-purge-data",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        extract_data(&parse_json(&update))["details"]["options"]["allowPurgeData"],
+        true
+    );
+
+    let create = fabio()
+        .args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--name",
+            "purge-preview",
+            "--file",
+            model_path,
+            "--allow-purge-data",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        extract_data(&parse_json(&create))["details"]["options"]["allowPurgeData"],
+        true
+    );
+}
+
 // ─── List / Show / Update / Delete (basic) ───────────────────────────────────
 
 #[test]

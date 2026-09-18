@@ -36,6 +36,67 @@ pub(super) async fn bulk_post(
     Ok(())
 }
 
+pub(super) async fn bulk_import_definitions(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+    item_options: Option<&str>,
+) -> Result<()> {
+    let mut body = read_json_input(file, content, "bulk-import-definitions")?;
+    if let Some(options) = item_options {
+        if !body.is_object() {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "Bulk import request body must be a JSON object",
+                "Provide an object containing definitionParts and optional options.",
+            )
+            .into());
+        }
+        if body.pointer("/options/itemOptionsByLogicalId").is_some() {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "Per-item options were provided both in the request body and --item-options",
+                "Use either options.itemOptionsByLogicalId in --file/--content or --item-options, not both.",
+            )
+            .into());
+        }
+        match body.get("options") {
+            None => body["options"] = serde_json::json!({}),
+            Some(value) if value.is_object() => {}
+            Some(_) => {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    "Bulk import request options must be a JSON object",
+                    "Use an options object or remove it and pass --item-options.",
+                )
+                .into());
+            }
+        }
+        body["options"]["itemOptionsByLogicalId"] =
+            crate::commands::request_options::parse_item_options(
+                options,
+                "--item-options",
+                "logicalId",
+            )?;
+    }
+
+    if output::dry_run_guard(cli, "item bulk-import-definitions", &body) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/items/bulkImportDefinitions"),
+            &body,
+            true,
+        )
+        .await?;
+    output::render_object(cli, &data, "status");
+    Ok(())
+}
+
 // ─── Bulk Create (client-side parallel) ──────────────────────────────────────
 
 pub(super) async fn bulk_create(

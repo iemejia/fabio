@@ -39,6 +39,7 @@ const AGENT_ENV_VARS: &[(&str, &str)] = &[
 const DANGEROUS_FLAGS: &[&str] = &[
     "--allow-delete-types",
     "--allow-override",
+    "--allow-purge-data",
     "--allow-unresolved",
     "--cancel-on-timeout",
     "--delete-orphans",

@@ -118,6 +118,7 @@ pub(super) async fn update_audit_settings(
     audit_actions: Option<&str>,
     predicate_expression: Option<&str>,
 ) -> Result<()> {
+    crate::commands::sql_audit::validate_predicate_expression(predicate_expression)?;
     let mut body = serde_json::json!({});
     if let Some(s) = state {
         body["state"] = Value::from(s);
