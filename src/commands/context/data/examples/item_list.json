@@ -1,10 +1,11 @@
 {
   "command": "fabio item list --workspace $WS_ID",
-  "description": "Lists all items in a workspace with their type, name, and description. Items with sensitivity labels include a sensitivityLabel object.",
+  "description": "Lists all items in a workspace with their item ID, logical ID, type, name, and description. Items with sensitivity labels include a sensitivityLabel object.",
   "response": {
     "data": [
       {
         "id": "d4e5f6a7-b8c9-0123-def0-234567890abc",
+        "logicalId": "1423f3b4-dba5-44c1-a94f-6ae4d776369a",
         "type": "Lakehouse",
         "displayName": "SalesLakehouse",
         "description": "Main sales data lakehouse",
@@ -14,12 +15,14 @@
       },
       {
         "id": "e5f6a7b8-c9d0-1234-ef01-34567890abcd",
+        "logicalId": null,
         "type": "Notebook",
         "displayName": "DailyETL",
         "description": ""
       },
       {
         "id": "f6a7b8c9-d0e1-2345-f012-4567890abcde",
+        "logicalId": "2423f3b4-dba5-44c1-a94f-6ae4d776369a",
         "type": "SemanticModel",
         "displayName": "SalesModel",
         "description": "Direct Lake model over sales tables",
@@ -29,6 +32,7 @@
       },
       {
         "id": "a7b8c9d0-e1f2-3456-0123-567890abcdef",
+        "logicalId": null,
         "type": "Report",
         "displayName": "Sales Report",
         "description": ""
@@ -36,10 +40,11 @@
     ],
     "count": 4
   },
-  "notes": "The sensitivityLabel field is only present on items with a label assigned. Items without labels omit the field. No --include parameter is needed — labels are returned by default.",
+  "notes": "logicalId is null when no logical ID is assigned. Corresponding item instances share a logical ID across environments. The sensitivityLabel field is only present on labeled items; no --include parameter is needed.",
   "query_examples": [
     {"query": "[?type=='Lakehouse'].displayName", "description": "List all lakehouse names."},
     {"query": "[?type=='Notebook'].id", "description": "Get IDs of all notebooks."},
+    {"query": "[?logicalId].{name: displayName, logicalId: logicalId}", "description": "List items that have a logical ID."},
     {"query": "[].{name: displayName, type: type}", "description": "Project name and type only."},
     {"query": "sort_by(@, &type)[].{type: type, name: displayName}", "description": "List items sorted by type."},
     {"query": "[?contains(displayName, 'Sales')]", "description": "Find items with 'Sales' in the name."},

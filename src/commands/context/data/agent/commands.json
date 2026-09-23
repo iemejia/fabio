@@ -2077,6 +2077,32 @@
         "mutates": true,
         "returns": "object"
       },
+      "update-logical-id": {
+        "description": "Update an item's logical ID to resolve a CI/CD identity conflict",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Item ID"
+          },
+          "--logical-id": {
+            "type": "string",
+            "required": true,
+            "description": "New logical ID; must be a unique, non-empty GUID within the workspace"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio item update-logical-id --workspace $WS --id $ITEM --logical-id $LOGICAL_ID --dry-run",
+          "fabio item update-logical-id --workspace $WS --id $ITEM --logical-id cfafbeb1-8037-4d0c-896e-a46fb27ff229"
+        ]
+      },
       "update-definition": {
         "description": "Update (override) item definition from file(s)",
         "flags": {
@@ -2260,7 +2286,7 @@
         "returns": "object"
       },
       "bulk-export-definitions": {
-        "description": "Bulk export item definitions (LRO)",
+        "description": "Bulk export item definitions (LRO; 128 MB maximum request payload)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -2281,7 +2307,7 @@
         "async": true
       },
       "bulk-import-definitions": {
-        "description": "Bulk import item definitions (LRO)",
+        "description": "Bulk import item definitions (LRO; 128 MB maximum request payload)",
         "flags": {
           "--workspace": {
             "type": "string",
