@@ -71,6 +71,7 @@
   "auto_binding": {
     "concept": "Auto-binding automatically reconnects item dependencies within the same workspace after deployment or Git sync",
     "supported_via_logicalId": "Items use logicalId (not workspace-specific IDs) in definitions, enabling Fabric to resolve dependencies in any workspace",
+    "logical_id_conflicts": "Use item update-logical-id only after reviewing automations that depend on the current logical ID. Preview with --dry-run and choose a non-zero GUID unique within the workspace. If ActiveCiCdOperationInProgress is returned, wait for the active workspace CI/CD operation to finish before retrying. item list exposes nullable logicalId metadata; null means no logical ID is assigned.",
     "notebook_requirement": "Notebooks require notebook-settings.json in their item definition to enable auto-binding (added March 2026). Without it, lakehouse bindings won't auto-resolve.",
     "cross_workspace": "Auto-binding only works within a single workspace. For cross-workspace dependencies, use Item reference variables in a variable library.",
     "post_sync_scripts": "For item types that don't support auto-binding, write post-sync automation to reestablish relationships after deployment."
@@ -110,6 +111,10 @@
         "default": "Per-item parallel. Best for iterative CI/CD — content-hash skips unchanged items, full error granularity, rename detection.",
         "bulk": "Single Bulk Import API call. Best for large initial deploys (100+ items) to empty workspaces NOT connected to Git. ~10x faster than per-item for first-time deployments.",
         "sequential": "Same as default with concurrency=1. Use for debugging API ordering issues or rate-limit problems."
+      },
+      "bulk_definition_limits": {
+        "payload": "item bulk-export-definitions and item bulk-import-definitions accept serialized request payloads up to 128 MB (128,000,000 bytes). Split larger payloads into separate requests; fabio validates the limit locally, including during --dry-run.",
+        "capacity": "Requests containing Fabric item types require Fabric capacity (F SKU, including Fabric Trial). Power BI Premium capacity is sufficient only when all items are Power BI items."
       }
     }
   },
