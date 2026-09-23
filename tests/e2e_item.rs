@@ -834,9 +834,80 @@ fn item_update_logical_id_rejects_empty_guid() {
 }
 
 #[test]
+fn item_update_logical_id_rejects_invalid_path_ids() {
+    let assert = fabio()
+        .args([
+            "item",
+            "update-logical-id",
+            "--workspace",
+            "../workspace",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--logical-id",
+            "00000000-0000-0000-0000-000000000003",
+            "--dry-run",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let error: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(error["error"]["code"], "INVALID_INPUT");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("--workspace"))
+    );
+
+    let assert = fabio()
+        .args([
+            "item",
+            "update-logical-id",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "../item",
+            "--logical-id",
+            "00000000-0000-0000-0000-000000000003",
+            "--dry-run",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let error: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(error["error"]["code"], "INVALID_INPUT");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("--id"))
+    );
+}
+
+#[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn item_update_logical_id_live() {
+    struct ItemCleanup {
+        workspace: String,
+        id: String,
+    }
+
+    impl Drop for ItemCleanup {
+        fn drop(&mut self) {
+            let _ = fabio()
+                .args([
+                    "item",
+                    "delete",
+                    "--workspace",
+                    &self.workspace,
+                    "--id",
+                    &self.id,
+                ])
+                .assert();
+        }
+    }
+
     let cfg = TestConfig::from_env();
     let name = common::unique_name("logical_id");
     let create = fabio()
@@ -855,6 +926,10 @@ fn item_update_logical_id_live() {
         .success();
     let created = parse_json(&create);
     let item_id = extract_data(&created)["id"].as_str().unwrap().to_owned();
+    let _cleanup = ItemCleanup {
+        workspace: cfg.dest_workspace.clone(),
+        id: item_id.clone(),
+    };
     let logical_id = uuid::Uuid::new_v4().to_string();
 
     let update = fabio()
@@ -885,18 +960,6 @@ fn item_update_logical_id_live() {
         .assert()
         .success();
     assert_eq!(extract_data(&parse_json(&show))["logicalId"], logical_id);
-
-    fabio()
-        .args([
-            "item",
-            "delete",
-            "--workspace",
-            &cfg.dest_workspace,
-            "--id",
-            &item_id,
-        ])
-        .assert()
-        .success();
 }
 
 // ===========================================================================

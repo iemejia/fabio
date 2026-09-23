@@ -216,6 +216,9 @@ fabio lakehouse show-table --workspace $WS --id $LH --name $TABLE  # verify row 
 
 # After item create/update with changed parameters:
 fabio item show --workspace $WS --id $ID  # verify state matches intent
+
+# Change an item's logical ID after checking dependent automations:
+fabio item update-logical-id --workspace $WS --id $ID --logical-id $LOGICAL_ID --dry-run
 ```
 
 Key principle: if a hint changed WHAT the command does (not just HOW it authenticates or retries), treat the correction as a new decision that requires user awareness.
