@@ -406,6 +406,8 @@ pub(super) async fn update_logical_id(
     id: &str,
     logical_id: &str,
 ) -> Result<()> {
+    crate::client::validate_uuid(workspace, "--workspace")?;
+    crate::client::validate_uuid(id, "--id")?;
     let request = build_update_logical_id_request(logical_id)?;
     let body = serde_json::to_value(&request)?;
 
@@ -427,7 +429,7 @@ pub(super) async fn update_logical_id(
         .await
         .map_err(|e| enrich_item_not_found_error(e, workspace, id))
         .map_err(|e| enrich_update_logical_id_error(e, workspace))
-        .map_err(|e| enrich_forbidden(e, "item update-logical-id", "ReadWrite"))?;
+        .map_err(|e| enrich_forbidden(e, "item update-logical-id", "Contributor"))?;
     let response: LogicalIdResponse = serde_json::from_value(data)?;
     output::render_object(cli, &serde_json::to_value(response)?, "logicalId");
     Ok(())
