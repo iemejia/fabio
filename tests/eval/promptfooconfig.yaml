@@ -1500,6 +1500,19 @@ tests:
         value: "The response identifies this as an authentication issue and advises running fabio auth login."
         metric: auth-required-recovery
 
+  - description: "Item logical ID: resolve a CI/CD identity conflict"
+    vars:
+      user_query: "Change item item-001 in workspace ws-001 to logical ID cfafbeb1-8037-4d0c-896e-a46fb27ff229 after reviewing dependent automations"
+    assert:
+      - type: icontains
+        value: "item update-logical-id"
+      - type: icontains
+        value: "--workspace ws-001"
+      - type: icontains
+        value: "--id item-001"
+      - type: icontains
+        value: "--logical-id cfafbeb1-8037-4d0c-896e-a46fb27ff229"
+
   - description: "Error recovery: RATE_LIMITED → wait and retry, don't change command"
     vars:
       user_query: |

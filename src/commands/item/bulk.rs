@@ -8,6 +8,27 @@ use crate::output;
 
 use super::read_json_input;
 
+const MAX_BULK_DEFINITION_PAYLOAD_SIZE: usize = 128_000_000;
+
+fn validate_bulk_definition_payload_size(body: &Value) -> Result<()> {
+    validate_bulk_definition_payload_len(serde_json::to_vec(body)?.len())
+}
+
+fn validate_bulk_definition_payload_len(payload_size: usize) -> Result<()> {
+    if payload_size > MAX_BULK_DEFINITION_PAYLOAD_SIZE {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!(
+                "Bulk definition request payload is {payload_size} bytes; the API maximum is \
+                 {MAX_BULK_DEFINITION_PAYLOAD_SIZE} bytes (128 MB)"
+            ),
+            "Split the definitions into multiple requests so each serialized request is at most 128 MB.",
+        )
+        .into());
+    }
+    Ok(())
+}
+
 // ─── Bulk Post (server-side LRO) ─────────────────────────────────────────────
 
 pub(super) async fn bulk_post(
@@ -19,6 +40,9 @@ pub(super) async fn bulk_post(
     content: Option<&str>,
 ) -> Result<()> {
     let body = read_json_input(file, content, operation)?;
+    if operation == "bulkExportDefinitions" {
+        validate_bulk_definition_payload_size(&body)?;
+    }
 
     if output::dry_run_guard(cli, &format!("item {operation}"), &body) {
         return Ok(());
@@ -82,6 +106,7 @@ pub(super) async fn bulk_import_definitions(
         )?;
         body["options"]["itemOptionsByLogicalId"] = entries;
     }
+    validate_bulk_definition_payload_size(&body)?;
 
     // A per-item option entry (or a top-level option) can enable the irreversible
     // allowPurgeData for a semantic-model definition; surface the purge warning +
@@ -479,7 +504,20 @@ pub(super) async fn delete_external_data_share(
 
 #[cfg(test)]
 mod tests {
-    use super::build_eds_recipient;
+    use super::{
+        MAX_BULK_DEFINITION_PAYLOAD_SIZE, build_eds_recipient,
+        validate_bulk_definition_payload_len, validate_bulk_definition_payload_size,
+    };
+
+    #[test]
+    fn bulk_definition_payload_enforces_spec_limit() {
+        validate_bulk_definition_payload_size(&serde_json::json!({"mode": "All"})).unwrap();
+        validate_bulk_definition_payload_len(MAX_BULK_DEFINITION_PAYLOAD_SIZE).unwrap();
+        assert!(
+            validate_bulk_definition_payload_len(MAX_BULK_DEFINITION_PAYLOAD_SIZE + 1).is_err()
+        );
+        assert_eq!(MAX_BULK_DEFINITION_PAYLOAD_SIZE, 128_000_000);
+    }
 
     #[test]
     fn user_recipient_uses_upn() {

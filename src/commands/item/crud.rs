@@ -1,6 +1,7 @@
 use std::fmt::Write;
 
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::cli::Cli;
@@ -43,61 +44,14 @@ pub(super) async fn list(
         .get_list(&path, "value", cli.all, cli.continuation_token.as_deref())
         .await?;
 
-    // Dynamically add sensitivity label and tags columns if any item has them
-    let has_labels = resp
-        .items
-        .iter()
-        .any(|item| item.get("sensitivityLabel").is_some_and(|v| !v.is_null()));
-    let has_tags = output::has_tags(&resp.items);
-
-    let display_items;
-    let items_ref: &[Value] = if has_tags {
-        display_items = output::enrich_with_tags_display(&resp.items);
-        &display_items
-    } else {
-        &resp.items
-    };
-
-    match (has_labels, has_tags) {
-        (true, true) => output::render_list_with_token(
-            cli,
-            items_ref,
-            &[
-                "displayName",
-                "id",
-                "type",
-                "sensitivityLabel.id",
-                "_tagsDisplay",
-            ],
-            &["NAME", "ID", "TYPE", "SENSITIVITY LABEL", "TAGS"],
-            "id",
-            resp.continuation_token.as_deref(),
-        ),
-        (true, false) => output::render_list_with_token(
-            cli,
-            items_ref,
-            &["displayName", "id", "type", "sensitivityLabel.id"],
-            &["NAME", "ID", "TYPE", "SENSITIVITY LABEL"],
-            "id",
-            resp.continuation_token.as_deref(),
-        ),
-        (false, true) => output::render_list_with_token(
-            cli,
-            items_ref,
-            &["displayName", "id", "type", "_tagsDisplay"],
-            &["NAME", "ID", "TYPE", "TAGS"],
-            "id",
-            resp.continuation_token.as_deref(),
-        ),
-        (false, false) => output::render_list_with_token(
-            cli,
-            items_ref,
-            &["displayName", "id", "type"],
-            &["NAME", "ID", "TYPE"],
-            "id",
-            resp.continuation_token.as_deref(),
-        ),
-    }
+    output::render_item_list(
+        cli,
+        &resp.items,
+        &["displayName", "id", "logicalId", "type"],
+        &["NAME", "ID", "LOGICAL ID", "TYPE"],
+        "id",
+        resp.continuation_token.as_deref(),
+    );
     Ok(())
 }
 
@@ -393,6 +347,89 @@ pub(super) async fn update(
         .await
         .map_err(|e| enrich_forbidden(e, "item update", "ReadWrite"))?;
     output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct UpdateLogicalIdRequest {
+    logical_id: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct LogicalIdResponse {
+    logical_id: String,
+}
+
+fn update_logical_id_path(workspace: &str, id: &str) -> String {
+    format!("/workspaces/{workspace}/items/{id}/logicalId")
+}
+
+fn build_update_logical_id_request(logical_id: &str) -> Result<UpdateLogicalIdRequest> {
+    crate::client::validate_uuid(logical_id, "--logical-id")?;
+    if logical_id == "00000000-0000-0000-0000-000000000000" {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "--logical-id cannot be the empty GUID",
+            "Provide a unique, non-empty GUID that is not already assigned in this workspace.",
+        )
+        .into());
+    }
+    Ok(UpdateLogicalIdRequest {
+        logical_id: logical_id.to_owned(),
+    })
+}
+
+fn enrich_update_logical_id_error(err: anyhow::Error, workspace: &str) -> anyhow::Error {
+    let Some(fabio_err) = err.downcast_ref::<FabioError>() else {
+        return err;
+    };
+    if fabio_err.message.contains("ActiveCiCdOperationInProgress") {
+        return fabio_err
+            .with_replaced_hint(
+                format!(
+                    "Wait for the active CI/CD operation in workspace '{workspace}' to finish, then retry. \
+                     Review automations that use the current logical ID before changing it."
+                ),
+                None,
+            )
+            .into();
+    }
+    err
+}
+
+pub(super) async fn update_logical_id(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    logical_id: &str,
+) -> Result<()> {
+    let request = build_update_logical_id_request(logical_id)?;
+    let body = serde_json::to_value(&request)?;
+
+    if output::dry_run_guard(
+        cli,
+        "item update-logical-id",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "logicalId": logical_id,
+            "warning": "Changing a logical ID can break automations that rely on its current value."
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let data = client
+        .patch(&update_logical_id_path(workspace, id), &body)
+        .await
+        .map_err(|e| enrich_item_not_found_error(e, workspace, id))
+        .map_err(|e| enrich_update_logical_id_error(e, workspace))
+        .map_err(|e| enrich_forbidden(e, "item update-logical-id", "ReadWrite"))?;
+    let response: LogicalIdResponse = serde_json::from_value(data)?;
+    output::render_object(cli, &serde_json::to_value(response)?, "logicalId");
     Ok(())
 }
 
@@ -692,6 +729,60 @@ mod tests {
         assert_eq!(
             p,
             "/workspaces/ws-1/items/item-1/relations/upstream?beta=true"
+        );
+    }
+
+    #[test]
+    fn update_logical_id_request_matches_spec_example() {
+        let request =
+            super::build_update_logical_id_request("cfafbeb1-8037-4d0c-896e-a46fb27ff229").unwrap();
+        assert_eq!(
+            serde_json::to_value(request).unwrap(),
+            serde_json::json!({"logicalId": "cfafbeb1-8037-4d0c-896e-a46fb27ff229"})
+        );
+        assert_eq!(
+            super::update_logical_id_path(
+                "cfafbeb1-8037-4d0c-896e-a46fb27ff229",
+                "5b218778-e7a5-4d73-8187-f10824047715"
+            ),
+            "/workspaces/cfafbeb1-8037-4d0c-896e-a46fb27ff229/items/5b218778-e7a5-4d73-8187-f10824047715/logicalId"
+        );
+    }
+
+    #[test]
+    fn update_logical_id_response_matches_spec_example() {
+        let response: super::LogicalIdResponse = serde_json::from_value(serde_json::json!({
+            "logicalId": "cfafbeb1-8037-4d0c-896e-a46fb27ff229"
+        }))
+        .unwrap();
+        assert_eq!(response.logical_id, "cfafbeb1-8037-4d0c-896e-a46fb27ff229");
+    }
+
+    #[test]
+    fn update_logical_id_rejects_empty_guid() {
+        let error = super::build_update_logical_id_request("00000000-0000-0000-0000-000000000000")
+            .unwrap_err();
+        let fabio_error = error.downcast_ref::<crate::errors::FabioError>().unwrap();
+        assert_eq!(fabio_error.code, crate::errors::ErrorCode::InvalidInput);
+        assert!(fabio_error.message.contains("empty GUID"));
+    }
+
+    #[test]
+    fn update_logical_id_enriches_active_cicd_error() {
+        let error: anyhow::Error = crate::errors::FabioError::new(
+            crate::errors::ErrorCode::Conflict,
+            "ActiveCiCdOperationInProgress",
+        )
+        .into();
+        let enriched = super::enrich_update_logical_id_error(error, "workspace-id");
+        let fabio_error = enriched
+            .downcast_ref::<crate::errors::FabioError>()
+            .unwrap();
+        assert!(
+            fabio_error
+                .hint
+                .as_deref()
+                .is_some_and(|hint| hint.contains("workspace-id"))
         );
     }
 }

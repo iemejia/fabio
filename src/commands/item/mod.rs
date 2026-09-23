@@ -243,8 +243,23 @@ pub enum ItemCommand {
         #[arg(long)]
         description: Option<String>,
     },
-    /// Update (override) item definition from file(s)
+    /// Update an item's logical ID to resolve a CI/CD identity conflict
     #[command(display_order = 12)]
+    UpdateLogicalId {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Item ID
+        #[arg(long)]
+        id: String,
+
+        /// New logical ID; must be a unique, non-empty GUID within the workspace
+        #[arg(long)]
+        logical_id: String,
+    },
+    /// Update (override) item definition from file(s)
+    #[command(display_order = 13)]
     UpdateDefinition {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
@@ -271,7 +286,7 @@ pub enum ItemCommand {
         options: Option<String>,
     },
     /// Delete an item
-    #[command(display_order = 13)]
+    #[command(display_order = 14)]
     Delete {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
@@ -374,7 +389,7 @@ pub enum ItemCommand {
     },
 
     // ── Bulk Operations ──────────────────────────────────────────────────
-    /// Bulk export item definitions (LRO)
+    /// Bulk export item definitions (LRO; 128 MB maximum request payload)
     #[command(display_order = 30)]
     BulkExportDefinitions {
         /// Workspace ID
@@ -389,7 +404,7 @@ pub enum ItemCommand {
         #[arg(long, group = "input")]
         content: Option<String>,
     },
-    /// Bulk import item definitions (LRO)
+    /// Bulk import item definitions (LRO; 128 MB maximum request payload)
     #[command(display_order = 31)]
     BulkImportDefinitions {
         /// Workspace ID
@@ -708,6 +723,11 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             )
             .await
         }
+        ItemCommand::UpdateLogicalId {
+            workspace,
+            id,
+            logical_id,
+        } => crud::update_logical_id(cli, client, workspace, id, logical_id).await,
         ItemCommand::UpdateDefinition {
             workspace,
             id,

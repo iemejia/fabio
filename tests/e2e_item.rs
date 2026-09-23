@@ -776,6 +776,129 @@ fn item_update_requires_at_least_one_field() {
     );
 }
 
+#[test]
+fn item_update_logical_id_dry_run_matches_spec_body() {
+    let logical_id = "cfafbeb1-8037-4d0c-896e-a46fb27ff229";
+    let assert = fabio()
+        .args([
+            "item",
+            "update-logical-id",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--logical-id",
+            logical_id,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "item update-logical-id");
+    assert_eq!(data["details"]["logicalId"], logical_id);
+    assert!(
+        data["details"]["warning"]
+            .as_str()
+            .is_some_and(|warning| warning.contains("automations"))
+    );
+}
+
+#[test]
+fn item_update_logical_id_rejects_empty_guid() {
+    let assert = fabio()
+        .args([
+            "item",
+            "update-logical-id",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--logical-id",
+            "00000000-0000-0000-0000-000000000000",
+            "--dry-run",
+        ])
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    let error: serde_json::Value = serde_json::from_str(&stderr).unwrap();
+    assert_eq!(error["error"]["code"], "INVALID_INPUT");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("empty GUID"))
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn item_update_logical_id_live() {
+    let cfg = TestConfig::from_env();
+    let name = common::unique_name("logical_id");
+    let create = fabio()
+        .args([
+            "item",
+            "create",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--name",
+            &name,
+            "--type",
+            "Lakehouse",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let created = parse_json(&create);
+    let item_id = extract_data(&created)["id"].as_str().unwrap().to_owned();
+    let logical_id = uuid::Uuid::new_v4().to_string();
+
+    let update = fabio()
+        .args([
+            "item",
+            "update-logical-id",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &item_id,
+            "--logical-id",
+            &logical_id,
+        ])
+        .assert()
+        .success();
+    let updated = parse_json(&update);
+    assert_eq!(extract_data(&updated)["logicalId"], logical_id);
+
+    let show = fabio()
+        .args([
+            "item",
+            "show",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &item_id,
+        ])
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&show))["logicalId"], logical_id);
+
+    fabio()
+        .args([
+            "item",
+            "delete",
+            "--workspace",
+            &cfg.dest_workspace,
+            "--id",
+            &item_id,
+        ])
+        .assert()
+        .success();
+}
+
 // ===========================================================================
 // item get-definition
 // ===========================================================================
