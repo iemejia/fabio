@@ -3821,6 +3821,10 @@ fn extract_pagination_pointers(body: &Value) -> (Option<String>, Option<String>)
 pub fn validate_trusted_url(url: &str, flag_name: &str) -> Result<()> {
     let lower = url.to_lowercase();
 
+    if lower.starts_with("http://") && is_secure_or_loopback(url) {
+        return Ok(());
+    }
+
     // Must be HTTPS
     if !lower.starts_with("https://") {
         return Err(FabioError::with_hint(

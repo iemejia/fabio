@@ -4,6 +4,8 @@ mod common;
 
 use common::{TestConfig, extract_data, fabio, parse_json};
 use serial_test::serial;
+use wiremock::matchers::{body_json, method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[test]
 #[ignore = "requires live Fabric tenant"]
@@ -173,6 +175,98 @@ fn dataflow_upgrade_gen1_rejects_invalid_id() {
         ])
         .assert()
         .failure();
+}
+
+#[test]
+#[serial]
+fn dataflow_upgrade_gen1_renders_immediate_response() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (server_uri, _server) = rt.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(
+                "/workspaces/aaaaaaaa-1111-2222-3333-444444444444/dataflows/gen1Upgrade",
+            ))
+            .and(body_json(serde_json::json!({
+                "dataflows": [{"id": "6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b"}]
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "status": "Succeeded",
+                "summary": {"upgraded": 1}
+            })))
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "dataflow",
+            "upgrade-gen1",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["summary"]["upgraded"], 1);
+}
+
+#[test]
+#[serial]
+fn dataflow_upgrade_gen1_polls_accepted_response() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (server_uri, _server) = rt.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(
+                "/workspaces/aaaaaaaa-1111-2222-3333-444444444444/dataflows/gen1Upgrade",
+            ))
+            .respond_with(
+                ResponseTemplate::new(202)
+                    .insert_header("x-ms-operation-id", "upgrade-operation")
+                    .insert_header("retry-after", "0"),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/operations/upgrade-operation"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "status": "Succeeded",
+                "summary": {"upgraded": 1}
+            })))
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "dataflow",
+            "upgrade-gen1",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["status"], "Succeeded");
 }
 
 #[test]
