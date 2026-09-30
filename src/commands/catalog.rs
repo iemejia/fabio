@@ -98,7 +98,7 @@ async fn search(
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
             "--continuation-token cannot be combined with search, filter, workspace, file, or content inputs",
-            "Resume with only: fabio catalog search --continuation-token <TOKEN>",
+            "Resume with only: fabio catalog search --continuation-token <TOKEN> [--top <N>]",
         )
         .into());
     }

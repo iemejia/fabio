@@ -3,6 +3,9 @@
 mod common;
 
 use common::{extract_count, fabio, parse_json};
+use serial_test::serial;
+use wiremock::matchers::{body_json, method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[test]
 #[ignore = "requires live Fabric tenant"]
@@ -80,6 +83,56 @@ fn capacity_update_surge_protection_dry_run() {
     assert_eq!(json["data"]["details"]["request"]["state"], "Enabled");
     assert_eq!(json["data"]["details"]["request"]["rejectionThreshold"], 70);
     assert_eq!(json["data"]["details"]["request"]["recoveryThreshold"], 50);
+}
+
+#[test]
+#[serial]
+fn capacity_update_surge_protection_sends_patch() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (server_uri, _server) = rt.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .and(path(
+                "/capacities/96f3f0ff-4fe2-4712-b61b-05a456ba9357/surgeProtection",
+            ))
+            .and(body_json(serde_json::json!({
+                "state": "Enabled",
+                "rejectionThreshold": 70,
+                "recoveryThreshold": 50
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "state": "Enabled",
+                "rejectionThreshold": 70,
+                "recoveryThreshold": 50
+            })))
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "capacity",
+            "update-surge-protection",
+            "--id",
+            "96f3f0ff-4fe2-4712-b61b-05a456ba9357",
+            "--state",
+            "Enabled",
+            "--rejection-threshold",
+            "70",
+            "--recovery-threshold",
+            "50",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    assert_eq!(json["data"]["state"], "Enabled");
+    assert_eq!(json["data"]["rejectionThreshold"], 70);
 }
 
 #[test]

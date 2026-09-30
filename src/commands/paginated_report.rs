@@ -305,6 +305,28 @@ fn definition_object(parts: &Value) -> Value {
     serde_json::json!({ "parts": parts.clone() })
 }
 
+fn definition_summary(parts: &Value) -> Value {
+    let summary = parts
+        .as_array()
+        .map(|parts| {
+            parts
+                .iter()
+                .map(|part| {
+                    serde_json::json!({
+                        "path": part.get("path"),
+                        "payloadType": part.get("payloadType"),
+                        "payloadLength": part
+                            .get("payload")
+                            .and_then(Value::as_str)
+                            .map(str::len),
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    serde_json::json!({ "parts": summary })
+}
+
 fn build_create_body(
     name: &str,
     description: Option<&str>,
@@ -372,7 +394,13 @@ async fn create(
         "paginated-report create",
         &serde_json::json!({
             "workspace": workspace,
-            "request": body
+            "request": {
+                "displayName": body["displayName"],
+                "description": body.get("description"),
+                "sensitivityLabelSettings": body.get("sensitivityLabelSettings"),
+                "folderId": body.get("folderId"),
+                "definition": definition_summary(&body["definition"]["parts"]),
+            }
         }),
     ) {
         return Ok(());
@@ -601,6 +629,22 @@ mod tests {
         );
         assert!(def["parts"].is_array());
         assert_eq!(def["parts"][0]["path"], "R.rdl");
+    }
+
+    #[test]
+    fn definition_summary_omits_payload() {
+        let summary = definition_summary(&single_rdl_part("R", "c2Vuc2l0aXZl"));
+        assert_eq!(
+            summary,
+            serde_json::json!({
+                "parts": [{
+                    "path": "R.rdl",
+                    "payloadType": "InlineBase64",
+                    "payloadLength": 12
+                }]
+            })
+        );
+        assert!(summary["parts"][0].get("payload").is_none());
     }
 
     #[test]
