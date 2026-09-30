@@ -9,6 +9,16 @@
           "type": "CustomEndpoint",
           "status": "Running",
           "id": "c1d2e3f4-0000-0000-0000-000000000001"
+        },
+        {
+          "name": "lakehouse-change-feed",
+          "type": "LakehouseChangeFeed",
+          "status": "Running",
+          "properties": {
+            "workspaceId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "itemId": "11111111-2222-3333-4444-555555555555",
+            "tableNames": ["*"]
+          }
         }
       ],
       "destinations": [
@@ -22,6 +32,17 @@
             "workspaceId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
             "itemId": "d4e5f6a7-0000-0000-0000-000000000010",
             "tableName": "SensorEvents"
+          }
+        },
+        {
+          "name": "business-event-sink",
+          "type": "BusinessEvents",
+          "status": "Running",
+          "id": "c1d2e3f4-0000-0000-0000-000000000004",
+          "properties": {
+            "workspaceId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "itemId": "99999999-8888-7777-6666-555555555555",
+            "businessEventTypeId": "OrderShipped"
           }
         }
       ],

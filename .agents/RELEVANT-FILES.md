@@ -6,7 +6,7 @@
 - `.agents/skills/fabio/SKILL.md`: Agent skill bootstrapping document (330 lines, loaded by agent frameworks on activation)
 - `.agents/skills/fabio/references/API-BEHAVIORS.md`: Critical API gotchas that cause silent failures
 - `.agents/skills/fabio/scripts/install.sh`: Cross-platform binary installer for the skill
-- `tests/eval/promptfooconfig.yaml`: 77-case promptfoo eval testing skill instruction quality (run with `GITHUB_TOKEN=$(gh auth token) promptfoo eval -c tests/eval/promptfooconfig.yaml`)
+- `tests/eval/promptfooconfig.yaml`: 245-case promptfoo eval testing skill instruction quality (run with `GITHUB_TOKEN=$(gh auth token) promptfoo eval -c tests/eval/promptfooconfig.yaml`)
 - `src/main.rs`: Entry point, `#![recursion_limit = "256"]`, tokio async main, error handling dispatch
 - `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 74 subcommand groups
 - `src/errors.rs`: ErrorCode enum (with stable exit codes) + FabioError struct with thiserror
@@ -87,6 +87,9 @@
 - `src/commands/context/data/examples/eventstream_get_source_connection.json`: Kafka/custom endpoint connection union output example
 - `src/commands/context/data/examples/eventstream_get_destination_connection.json`: Custom endpoint destination connection output example
 - `src/commands/context/data/examples/eventstream_get_reference_lakehouse_source.json`: Reference Lakehouse source output example
+- `src/commands/context/data/examples/dataflow_list_upgrade_readiness.json`: Gen1 upgrade readiness list shape, reason codes, and query examples
+- `src/commands/context/data/examples/dataflow_upgrade_gen1.json`: Gen1-to-Gen2 batch migration summary and per-row partial-success shape
+- `src/commands/context/data/examples/capacity_surge_protection.json`: Enabled/disabled capacity surge-protection response and threshold semantics
 - `src/commands/kql_database/mod.rs`: list/show/create/update/delete/get-definition/update-definition/table-shortcuts (list/create/get/delete-shortcut; typed target flags via shared `shortcut_target`)
 - `src/commands/shortcut_target.rs`: Shared shortcut target-builder (`ShortcutTargetFlags`, `normalize_target_type`, `build_shortcut_target`) reused by lakehouse OneLake shortcuts and kql-database table shortcuts
 - `src/commands/kql_database/intelligence.rs`: query/list-entities/describe/describe-entity/sample/ingest/show-queryplan/diagnostics/deeplink

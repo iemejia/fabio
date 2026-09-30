@@ -6,7 +6,7 @@ use serde_json::Value;
 use tokio::time::sleep;
 
 use crate::cli::Cli;
-use crate::client::FabricClient;
+use crate::client::{FabricClient, validate_uuid};
 use crate::commands::jobs::{JobEntry, JobLedger};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
@@ -174,6 +174,28 @@ pub enum DataflowCommand {
         #[arg(long)]
         id: String,
     },
+    /// List Gen1 dataflow upgrade readiness results for a workspace (Preview)
+    #[command(name = "list-upgrade-readiness", display_order = 10)]
+    ListUpgradeReadiness {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Server page size (1-30); when omitted, the service chooses the size
+        #[arg(long, value_parser = clap::value_parser!(u8).range(1..=30))]
+        page_size: Option<u8>,
+    },
+    /// Upgrade 1-50 Gen1 dataflows to Gen2 in place (Preview)
+    #[command(name = "upgrade-gen1", display_order = 11)]
+    UpgradeGen1 {
+        /// Workspace ID containing every Gen1 dataflow
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Gen1 dataflow ID to upgrade (repeat for each dataflow; maximum 50)
+        #[arg(long = "id", required = true, action = clap::ArgAction::Append)]
+        ids: Vec<String>,
+    },
     /// Execute a query against a dataflow (returns Apache Arrow IPC)
     #[command(visible_alias = "query", display_order = 15)]
     ExecuteQuery {
@@ -269,6 +291,13 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataflowCommand
         DataflowCommand::DiscoverParameters { workspace, id } => {
             discover_parameters(cli, client, workspace, id).await
         }
+        DataflowCommand::ListUpgradeReadiness {
+            workspace,
+            page_size,
+        } => list_upgrade_readiness(cli, client, workspace, *page_size).await,
+        DataflowCommand::UpgradeGen1 { workspace, ids } => {
+            upgrade_gen1(cli, client, workspace, ids).await
+        }
         DataflowCommand::ExecuteQuery {
             workspace,
             id,
@@ -314,6 +343,87 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataflowCommand
             .await
         }
     }
+}
+
+async fn list_upgrade_readiness(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    page_size: Option<u8>,
+) -> Result<()> {
+    validate_uuid(workspace, "--workspace")?;
+    let path = page_size.map_or_else(
+        || format!("/workspaces/{workspace}/dataflows/gen1UpgradeReadinessResults"),
+        |size| {
+            format!("/workspaces/{workspace}/dataflows/gen1UpgradeReadinessResults?pageSize={size}")
+        },
+    );
+    let response = client
+        .get_list(&path, "value", cli.all, cli.continuation_token.as_deref())
+        .await
+        .map_err(|e| enrich_forbidden(e, "dataflow list-upgrade-readiness", "Viewer"))?;
+
+    output::render_list_with_token(
+        cli,
+        &response.items,
+        &["displayName", "id", "status", "reasons"],
+        &["NAME", "ID", "STATUS", "REASONS"],
+        "id",
+        response.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+fn build_upgrade_gen1_body(ids: &[String]) -> Result<Value> {
+    if ids.is_empty() || ids.len() > 50 {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!(
+                "Gen1 upgrade requires between 1 and 50 dataflow IDs; received {}",
+                ids.len()
+            ),
+            "Repeat --id for each Gen1 dataflow, up to 50 times.",
+        )
+        .into());
+    }
+    for id in ids {
+        validate_uuid(id, "--id")?;
+    }
+    Ok(serde_json::json!({
+        "dataflows": ids.iter().map(|id| serde_json::json!({"id": id})).collect::<Vec<_>>()
+    }))
+}
+
+async fn upgrade_gen1(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    ids: &[String],
+) -> Result<()> {
+    validate_uuid(workspace, "--workspace")?;
+    let body = build_upgrade_gen1_body(ids)?;
+    if output::dry_run_guard(
+        cli,
+        "dataflow upgrade-gen1",
+        &serde_json::json!({
+            "workspace": workspace,
+            "dataflows": body["dataflows"],
+            "count": ids.len()
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/dataflows/gen1Upgrade"),
+            &body,
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "dataflow upgrade-gen1", "Admin or item owner"))?;
+    output::render_object(cli, &data, "summary");
+    Ok(())
 }
 
 // ─── CRUD ────────────────────────────────────────────────────────────────────
@@ -807,7 +917,7 @@ async fn execute_query(
 
 #[cfg(test)]
 mod tests {
-    use super::dataflow_run_failure_hint;
+    use super::{build_upgrade_gen1_body, dataflow_run_failure_hint};
 
     #[test]
     fn queries_metadata_failure_teaches_the_shape() {
@@ -824,5 +934,30 @@ mod tests {
     fn other_failure_returns_job_id_only() {
         let hint = dataflow_run_failure_hint("some other failure", "job-2");
         assert_eq!(hint, "Job ID: job-2");
+    }
+
+    #[test]
+    fn upgrade_gen1_body_matches_spec() {
+        let ids = vec![
+            "6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b".to_string(),
+            "7c2a4e3f-9b5d-4c7f-a02b-3d4e5f6a7b8c".to_string(),
+        ];
+        let body = build_upgrade_gen1_body(&ids).unwrap();
+        assert_eq!(
+            body,
+            serde_json::json!({
+                "dataflows": [
+                    {"id": "6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b"},
+                    {"id": "7c2a4e3f-9b5d-4c7f-a02b-3d4e5f6a7b8c"}
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn upgrade_gen1_rejects_more_than_fifty_ids() {
+        let ids = vec!["6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b".to_string(); 51];
+        let error = build_upgrade_gen1_body(&ids).unwrap_err().to_string();
+        assert!(error.contains("between 1 and 50"), "got: {error}");
     }
 }

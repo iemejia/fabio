@@ -402,6 +402,18 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/capacity_list.json"),
     ),
     (
+        "capacity/get-surge-protection",
+        include_str!("data/examples/capacity_surge_protection.json"),
+    ),
+    (
+        "dataflow/list-upgrade-readiness",
+        include_str!("data/examples/dataflow_list_upgrade_readiness.json"),
+    ),
+    (
+        "dataflow/upgrade-gen1",
+        include_str!("data/examples/dataflow_upgrade_gen1.json"),
+    ),
+    (
         "profile/list",
         include_str!("data/examples/profile_list.json"),
     ),

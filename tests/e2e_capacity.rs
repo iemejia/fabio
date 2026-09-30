@@ -53,6 +53,69 @@ fn capacity_show() {
     assert_eq!(data["id"].as_str().unwrap(), first_id);
 }
 
+#[test]
+fn capacity_update_surge_protection_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "capacity",
+            "update-surge-protection",
+            "--id",
+            "96f3f0ff-4fe2-4712-b61b-05a456ba9357",
+            "--state",
+            "Enabled",
+            "--rejection-threshold",
+            "70",
+            "--recovery-threshold",
+            "50",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    assert_eq!(
+        json["data"]["would_execute"],
+        "capacity update-surge-protection"
+    );
+    assert_eq!(json["data"]["destructive"], true);
+    assert_eq!(json["data"]["details"]["request"]["state"], "Enabled");
+    assert_eq!(json["data"]["details"]["request"]["rejectionThreshold"], 70);
+    assert_eq!(json["data"]["details"]["request"]["recoveryThreshold"], 50);
+}
+
+#[test]
+fn capacity_update_surge_protection_rejects_threshold_order() {
+    fabio()
+        .args([
+            "--dry-run",
+            "capacity",
+            "update-surge-protection",
+            "--id",
+            "96f3f0ff-4fe2-4712-b61b-05a456ba9357",
+            "--rejection-threshold",
+            "50",
+            "--recovery-threshold",
+            "60",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+#[ignore = "requires capacity administrator permissions"]
+fn capacity_get_surge_protection_live() {
+    let capacity_id =
+        std::env::var("FABIO_TEST_CAPACITY_ID").expect("FABIO_TEST_CAPACITY_ID required");
+    let output = fabio()
+        .args(["capacity", "get-surge-protection", "--id", &capacity_id])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    assert!(matches!(
+        json["data"]["state"].as_str(),
+        Some("Enabled" | "Disabled")
+    ));
+}
+
 // ── ARM API tests ─────────────────────────────────────────────────────
 
 #[test]

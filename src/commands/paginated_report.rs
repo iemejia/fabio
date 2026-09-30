@@ -5,7 +5,7 @@ use clap::Subcommand;
 use serde_json::Value;
 
 use crate::cli::Cli;
-use crate::client::FabricClient;
+use crate::client::{FabricClient, validate_uuid};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
@@ -58,6 +58,10 @@ pub enum PaginatedReportCommand {
         /// Sensitivity label ID to apply on creation
         #[arg(long)]
         sensitivity_label: Option<String>,
+
+        /// Folder ID; omit to create the report at the workspace root
+        #[arg(long)]
+        folder_id: Option<String>,
     },
     /// Update paginated report properties (name and/or description)
     #[command(display_order = 4)]
@@ -175,6 +179,7 @@ pub async fn execute(
             file,
             content,
             sensitivity_label,
+            folder_id,
         } => {
             create(
                 cli,
@@ -185,6 +190,7 @@ pub async fn execute(
                 file.as_deref(),
                 content.as_deref(),
                 sensitivity_label.as_deref(),
+                folder_id.as_deref(),
             )
             .await
         }
@@ -299,6 +305,32 @@ fn definition_object(parts: &Value) -> Value {
     serde_json::json!({ "parts": parts.clone() })
 }
 
+fn build_create_body(
+    name: &str,
+    description: Option<&str>,
+    parts: &Value,
+    sensitivity_label: Option<&str>,
+    folder_id: Option<&str>,
+) -> Result<Value> {
+    let mut body = serde_json::json!({
+        "displayName": name,
+        "definition": definition_object(parts),
+    });
+    if let Some(desc) = description {
+        body["description"] = Value::from(desc);
+    }
+    if let Some(label_id) = sensitivity_label {
+        body["sensitivityLabelSettings"] = serde_json::json!({
+            "sensitivityLabelId": label_id
+        });
+    }
+    if let Some(id) = folder_id {
+        validate_uuid(id, "--folder-id")?;
+        body["folderId"] = Value::from(id);
+    }
+    Ok(body)
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn create(
     cli: &Cli,
@@ -309,6 +341,7 @@ async fn create(
     file: Option<&str>,
     content: Option<&str>,
     sensitivity_label: Option<&str>,
+    folder_id: Option<&str>,
 ) -> Result<()> {
     // Build the definition parts from file or content. The single RDL part must
     // be named `<displayName>.rdl` (see single_rdl_part).
@@ -332,27 +365,14 @@ async fn create(
         }
     };
 
-    let mut body = serde_json::json!({
-        "displayName": name,
-        "definition": definition_object(&parts),
-    });
-    if let Some(desc) = description {
-        body["description"] = Value::from(desc);
-    }
-    if let Some(label_id) = sensitivity_label {
-        body["sensitivityLabelSettings"] = serde_json::json!({
-            "sensitivityLabelId": label_id
-        });
-    }
+    let body = build_create_body(name, description, &parts, sensitivity_label, folder_id)?;
 
     if output::dry_run_guard(
         cli,
         "paginated-report create",
         &serde_json::json!({
             "workspace": workspace,
-            "displayName": name,
-            "description": description,
-            "sensitivityLabel": sensitivity_label
+            "request": body
         }),
     ) {
         return Ok(());
@@ -581,5 +601,25 @@ mod tests {
         );
         assert!(def["parts"].is_array());
         assert_eq!(def["parts"][0]["path"], "R.rdl");
+    }
+
+    #[test]
+    fn create_body_serializes_folder_id() {
+        let body = build_create_body(
+            "Sales",
+            None,
+            &single_rdl_part("Sales", "QUJD"),
+            None,
+            Some("7f2c8a91-3b4d-4e5f-a6b7-c8d9e0f1a2b3"),
+        )
+        .unwrap();
+        assert_eq!(body["folderId"], "7f2c8a91-3b4d-4e5f-a6b7-c8d9e0f1a2b3");
+    }
+
+    #[test]
+    fn create_body_omits_folder_id_for_workspace_root() {
+        let body = build_create_body("Sales", None, &single_rdl_part("Sales", "QUJD"), None, None)
+            .unwrap();
+        assert!(body.get("folderId").is_none());
     }
 }

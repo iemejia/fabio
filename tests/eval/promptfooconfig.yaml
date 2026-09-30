@@ -47,6 +47,39 @@ defaultTest:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
 tests:
+  - description: "Dataflows: assess then upgrade Gen1 dataflows in place"
+    vars:
+      user_query: "Assess all Gen1 dataflows in my workspace, then preview upgrading DF1 and DF2 to Gen2"
+    assert:
+      - type: icontains
+        value: "dataflow list-upgrade-readiness"
+      - type: icontains
+        value: "dataflow upgrade-gen1"
+      - type: icontains
+        value: "--workspace"
+      - type: icontains
+        value: "--id"
+      - type: icontains
+        value: "--dry-run"
+      - type: javascript
+        value: |
+          output.indexOf('list-upgrade-readiness') < output.indexOf('upgrade-gen1')
+
+  - description: "Administration: configure capacity surge protection"
+    vars:
+      user_query: "Preview enabling surge protection on capacity CAP at 70 percent rejection and 50 percent recovery"
+    assert:
+      - type: icontains
+        value: "capacity update-surge-protection"
+      - type: contains
+        value: "--state Enabled"
+      - type: icontains
+        value: "--rejection-threshold 70"
+      - type: icontains
+        value: "--recovery-threshold 50"
+      - type: icontains
+        value: "--dry-run"
+
   # ============================================================
   # BASIC CRUD OPERATIONS
   # ============================================================

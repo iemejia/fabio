@@ -5,6 +5,7 @@
   "command_groups": ["dataflow", "datamart"],
   "when_to_use": [
     "Creating/updating/refreshing Dataflows Gen2 (Power Query mashup ETL).",
+    "Assessing and upgrading legacy Gen1 dataflows to Gen2 in place.",
     "Inspecting or querying an existing dataflow definition.",
     "Managing datamarts."
   ],
@@ -15,7 +16,8 @@
   ],
   "must": [
     "Treat 'dataflow' as Dataflow Gen2 (the current Power Query item); see 'fabio context disambiguate dataflow'.",
-    "Provide both the mashup (Power Query M) and queryMetadata parts when building a definition."
+    "Provide both the mashup (Power Query M) and queryMetadata parts when building a definition.",
+    "Run list-upgrade-readiness before upgrade-gen1 and inspect every NeedsAttention or UpgradeUnavailable reason."
   ],
   "prefer": [
     "Dataflow Gen2 for new low-code ETL; migrate legacy Gen1 rather than authoring new Gen1.",
@@ -27,7 +29,8 @@
   ],
   "key_gotchas": [
     "A Dataflow Gen2 definition combines a Power Query mashup with queryMetadata; both are required.",
-    "Refresh is asynchronous — poll or use the run/wait semantics."
+    "Refresh is asynchronous — poll or use the run/wait semantics.",
+    "Gen1 upgrade is Preview and in place: successful rows preserve item IDs, a 1-50 item batch may partially succeed, only the owner or a workspace Admin can upgrade each row, and cancellation is unsupported."
   ],
   "troubleshooting": [
     {"symptom": "Unsure whether to use a dataflow or a pipeline", "fix": "Transform data -> dataflow; sequence activities -> data-pipeline. Run 'fabio context disambiguate dataflow'."},
@@ -35,7 +38,8 @@
     {"symptom": "'dataflow run' fails with 'Invalid QueriesMetadata ... must not be empty'", "fix": "A REST-authored Gen2 dataflow needs a queriesMetadata map in queryMetadata.json: add \"queriesMetadata\": {\"<QueryName>\": {\"queryId\", \"queryName\", \"loadEnabled\"}}. NOTE the Gen2 lakehouse data destination is portal-generated (a hand-authored dataDestinations binding runs but persists no table)."}
   ],
   "safety": [
-    "Deleting or overwriting a dataflow definition replaces its transformation logic — confirm with the user."
+    "Deleting or overwriting a dataflow definition replaces its transformation logic — confirm with the user.",
+    "Gen1-to-Gen2 upgrade changes the item in place. Preview with --dry-run and review readiness results before executing."
   ],
   "shared_references": ["throttling", "pagination", "lro"],
   "see_also": [

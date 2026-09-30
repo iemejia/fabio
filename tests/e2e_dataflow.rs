@@ -129,6 +129,87 @@ fn dataflow_dry_run_create() {
     assert_eq!(json["data"]["would_execute"], "dataflow create");
 }
 
+#[test]
+fn dataflow_upgrade_gen1_dry_run_matches_request() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "dataflow",
+            "upgrade-gen1",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b",
+            "--id",
+            "7c2a4e3f-9b5d-4c7f-a02b-3d4e5f6a7b8c",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "dataflow upgrade-gen1");
+    assert_eq!(data["destructive"], true);
+    assert_eq!(data["details"]["count"], 2);
+    assert_eq!(
+        data["details"]["dataflows"],
+        serde_json::json!([
+            {"id": "6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b"},
+            {"id": "7c2a4e3f-9b5d-4c7f-a02b-3d4e5f6a7b8c"}
+        ])
+    );
+}
+
+#[test]
+fn dataflow_upgrade_gen1_rejects_invalid_id() {
+    fabio()
+        .args([
+            "--dry-run",
+            "dataflow",
+            "upgrade-gen1",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "not-a-uuid",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn dataflow_list_upgrade_readiness_rejects_large_page() {
+    fabio()
+        .args([
+            "dataflow",
+            "list-upgrade-readiness",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--page-size",
+            "31",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with Gen1 upgrade preview"]
+#[serial]
+fn dataflow_list_upgrade_readiness_live() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "dataflow",
+            "list-upgrade-readiness",
+            "--workspace",
+            &cfg.source_workspace,
+            "--page-size",
+            "30",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(extract_data(&json).is_array());
+}
+
 // ─── Discover Parameters ─────────────────────────────────────────────────────
 
 #[test]

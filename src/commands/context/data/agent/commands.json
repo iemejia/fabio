@@ -4617,6 +4617,54 @@
         "output_fields": [
           "nameAvailable"
         ]
+      },
+      "get-surge-protection": {
+        "description": "Get a capacity's background-operation surge protection configuration",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio capacity get-surge-protection --id $CAPACITY_ID"
+        ]
+      },
+      "update-surge-protection": {
+        "description": "Update a capacity's background-operation surge protection configuration",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          },
+          "--state": {
+            "type": "enum",
+            "values": [
+              "Enabled",
+              "Disabled"
+            ],
+            "description": "Enable or disable surge protection; disabling clears persisted thresholds"
+          },
+          "--rejection-threshold": {
+            "type": "integer",
+            "description": "Background utilization percentage that rejects operations (15-100)"
+          },
+          "--recovery-threshold": {
+            "type": "integer",
+            "description": "Background utilization percentage that ends protection (6-99 and lower than rejection)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true,
+        "examples": [
+          "fabio capacity update-surge-protection --id $CAPACITY_ID --state Enabled --rejection-threshold 70 --recovery-threshold 50",
+          "fabio capacity update-surge-protection --id $CAPACITY_ID --state Disabled --dry-run"
+        ]
       }
     }
   },
@@ -4629,11 +4677,11 @@
         "flags": {
           "--search": {
             "type": "string",
-            "description": "Search query string"
+            "description": "Search text; supports quoted phrases, *, ?, and && operators"
           },
           "--type": {
             "type": "string",
-            "description": "Filter by item type (e.g., Notebook, Lakehouse). Comma-separated for multiple"
+            "description": "Filter by entry type (e.g., Report, Lakehouse, Workspace). Comma-separated for multiple"
           },
           "--exclude-type": {
             "type": "string",
@@ -4641,7 +4689,14 @@
           },
           "--top": {
             "type": "integer",
-            "description": "Maximum number of results to return"
+            "description": "Server page size (1-1000; defaults to 50)"
+          },
+          "--workspace": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Filter entries to a workspace ID (repeat up to 12 times)"
           },
           "--file": {
             "type": "string",
@@ -5175,7 +5230,11 @@
           }
         },
         "mutates": false,
-        "returns": "list"
+        "returns": "list",
+        "examples": [
+          "fabio catalog search --search 'quarterly revenue' --type Report,SemanticModel --workspace $WS --top 50",
+          "fabio catalog search --type Workspace --top 100"
+        ]
       },
       "get-livy-session": {
         "description": "Get details of a Livy session",
@@ -10038,6 +10097,52 @@
         },
         "mutates": false,
         "returns": "object"
+      },
+      "list-upgrade-readiness": {
+        "description": "List Gen1 dataflow upgrade readiness results for a workspace (Preview)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--page-size": {
+            "type": "integer",
+            "description": "Server page size (1-30); when omitted, the service chooses the size"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio dataflow list-upgrade-readiness --workspace $WS --page-size 30",
+          "fabio dataflow list-upgrade-readiness --workspace $WS --all"
+        ]
+      },
+      "upgrade-gen1": {
+        "description": "Upgrade 1-50 Gen1 dataflows to Gen2 in place (Preview)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID containing every Gen1 dataflow"
+          },
+          "--id": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Gen1 dataflow ID to upgrade (repeat for each dataflow; maximum 50)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "async": true,
+        "destructive": true,
+        "examples": [
+          "fabio dataflow upgrade-gen1 --workspace $WS --id $DF1 --id $DF2 --dry-run",
+          "fabio dataflow upgrade-gen1 --workspace $WS --id $DF1"
+        ]
       },
       "execute-query": {
         "description": "Execute a query against a dataflow (returns Apache Arrow IPC)",
@@ -21663,11 +21768,18 @@
           "--sensitivity-label": {
             "type": "string",
             "description": "Sensitivity label ID to apply on creation"
+          },
+          "--folder-id": {
+            "type": "string",
+            "description": "Folder ID; omit to create the report at the workspace root"
           }
         },
         "mutates": true,
         "returns": "object",
-        "async": true
+        "async": true,
+        "examples": [
+          "fabio paginated-report create --workspace $WS --name 'Operations' --file operations.rdl --folder-id $FOLDER_ID"
+        ]
       },
       "update": {
         "description": "Update paginated report properties (name and/or description)",

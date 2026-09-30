@@ -203,6 +203,8 @@ pub(super) async fn add_destination(
     // sits in `Warning`, ingests nothing, logs no ingestion failure).
     if destination_type.eq_ignore_ascii_case("eventhouse") {
         validate_eventhouse_destination(&props)?;
+    } else if destination_type.eq_ignore_ascii_case("BusinessEvents") {
+        validate_business_events_destination(&props)?;
     }
 
     if output::dry_run_guard(
@@ -242,6 +244,16 @@ pub(super) async fn add_destination(
     push_definition(cli, client, workspace, id, &def).await?;
     Ok(())
 }
+
+fn validate_business_events_destination(props: &Value) -> Result<()> {
+    let workspace = required_string(props, "workspaceId", "BusinessEvents")?;
+    let item = required_string(props, "itemId", "BusinessEvents")?;
+    let _ = required_string(props, "businessEventTypeId", "BusinessEvents")?;
+    validate_uuid(workspace, "BusinessEvents workspaceId")?;
+    validate_uuid(item, "BusinessEvents itemId")?;
+    Ok(())
+}
+
 // ─── Builder Helpers ─────────────────────────────────────────────────────────
 
 /// Validate an Eventhouse destination's `properties` per its `dataIngestionMode`
@@ -328,8 +340,36 @@ pub(super) fn validate_source_properties(source_type: &str, props: &Value) -> Re
 
     if source_type.eq_ignore_ascii_case("ReferenceLakehouse") {
         validate_reference_lakehouse_source(props)?;
+    } else if source_type.eq_ignore_ascii_case("LakehouseChangeFeed") {
+        validate_lakehouse_change_feed_source(props)?;
     } else if source_type.eq_ignore_ascii_case("FabricCapacityOperationEvents") {
         validate_capacity_operation_source(props)?;
+    }
+    Ok(())
+}
+
+fn validate_lakehouse_change_feed_source(props: &Value) -> Result<()> {
+    let workspace = required_string(props, "workspaceId", "LakehouseChangeFeed")?;
+    let item = required_string(props, "itemId", "LakehouseChangeFeed")?;
+    validate_uuid(workspace, "LakehouseChangeFeed workspaceId")?;
+    validate_uuid(item, "LakehouseChangeFeed itemId")?;
+    let table_names = props
+        .get("tableNames")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "LakehouseChangeFeed source requires array property 'tableNames'",
+                "The API currently supports only: \"tableNames\":[\"*\"]",
+            )
+        })?;
+    if table_names.len() != 1 || table_names[0].as_str() != Some("*") {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "LakehouseChangeFeed tableNames currently supports only [\"*\"]",
+            "Specific table selection is not yet supported; use \"tableNames\":[\"*\"].",
+        )
+        .into());
     }
     Ok(())
 }
@@ -1066,6 +1106,7 @@ pub(super) fn list_components(cli: &Cli, category: &str) {
         {"type": "FabricWorkspaceItemEvents", "category": "source", "description": "Fabric workspace item events"},
         {"type": "GooglePubSub", "category": "source", "description": "Google Cloud Pub/Sub"},
         {"type": "Http", "category": "source", "description": "HTTP polling endpoint"},
+        {"type": "LakehouseChangeFeed", "category": "source", "description": "Changes from all tables in a Fabric Lakehouse"},
         {"type": "MirroredDatabaseChangeFeed", "category": "source", "description": "Mirrored Database Change Feed"},
         {"type": "MongoDBCDC", "category": "source", "description": "MongoDB change data capture"},
         {"type": "Mqtt", "category": "source", "description": "MQTT broker"},
@@ -1085,6 +1126,7 @@ pub(super) fn list_components(cli: &Cli, category: &str) {
         {"type": "Lakehouse", "category": "destination", "description": "Delta tables in a Lakehouse"},
         {"type": "CustomEndpoint", "category": "destination", "description": "Custom app endpoint (Event Hub-compatible)"},
         {"type": "Activator", "category": "destination", "description": "Data Activator (Reflex) trigger"},
+        {"type": "BusinessEvents", "category": "destination", "description": "Business event type in an Event Schema Set"},
         {"type": "Notebook", "category": "destination", "description": "Fabric Notebook (real-time processing)"},
     ]);
 
@@ -1125,8 +1167,9 @@ pub(super) fn list_components(cli: &Cli, category: &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        OPERATOR_TYPES, normalize_sample_type, validate_capacity_operation_filters,
-        validate_eventhouse_destination, validate_source_properties,
+        OPERATOR_TYPES, normalize_sample_type, validate_business_events_destination,
+        validate_capacity_operation_filters, validate_eventhouse_destination,
+        validate_source_properties,
     };
     use serde_json::json;
 
@@ -1237,6 +1280,39 @@ mod tests {
             "refreshRate": "00:05:00"
         });
         assert!(validate_source_properties("ReferenceLakehouse", &props).is_ok());
+    }
+
+    #[test]
+    fn lakehouse_change_feed_accepts_all_tables_shape() {
+        let props = json!({
+            "workspaceId": "cfafbeb1-8037-4d0c-896e-a46fb27ff229",
+            "itemId": "11111111-2222-3333-4444-555555555555",
+            "tableNames": ["*"]
+        });
+        assert!(validate_source_properties("LakehouseChangeFeed", &props).is_ok());
+    }
+
+    #[test]
+    fn lakehouse_change_feed_rejects_specific_tables() {
+        let props = json!({
+            "workspaceId": "cfafbeb1-8037-4d0c-896e-a46fb27ff229",
+            "itemId": "11111111-2222-3333-4444-555555555555",
+            "tableNames": ["Orders"]
+        });
+        let error = validate_source_properties("LakehouseChangeFeed", &props)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("[\"*\"]"), "got: {error}");
+    }
+
+    #[test]
+    fn business_events_destination_requires_spec_fields() {
+        let props = json!({
+            "workspaceId": "cfafbeb1-8037-4d0c-896e-a46fb27ff229",
+            "itemId": "99999999-8888-7777-6666-555555555555",
+            "businessEventTypeId": "OrderShipped"
+        });
+        assert!(validate_business_events_destination(&props).is_ok());
     }
 
     #[test]
