@@ -180,7 +180,7 @@ fn dataflow_upgrade_gen1_rejects_invalid_id() {
 #[test]
 #[serial]
 fn dataflow_upgrade_gen1_renders_immediate_response() {
-    let rt = tokio::runtime::Builder::new_current_thread()
+    let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap();
@@ -223,7 +223,7 @@ fn dataflow_upgrade_gen1_renders_immediate_response() {
 #[test]
 #[serial]
 fn dataflow_upgrade_gen1_polls_accepted_response() {
-    let rt = tokio::runtime::Builder::new_current_thread()
+    let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap();

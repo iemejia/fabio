@@ -88,7 +88,7 @@ fn capacity_update_surge_protection_dry_run() {
 #[test]
 #[serial]
 fn capacity_update_surge_protection_sends_patch() {
-    let rt = tokio::runtime::Builder::new_current_thread()
+    let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap();
