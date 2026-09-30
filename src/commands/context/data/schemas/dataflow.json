@@ -33,6 +33,7 @@
     "Run supports --wait with polling (terminal states: Completed, Failed, Cancelled)",
     "execute-query returns binary Apache Arrow IPC stream (save to --file)",
     "discover-parameters returns M parameters from the dataflow",
+    "Gen1 upgrade preview: list-upgrade-readiness evaluates every Gen1 dataflow in a workspace (pageSize 1-30); upgrade-gen1 accepts 1-50 repeated --id values, upgrades in place while preserving IDs, and can partially succeed",
     "Validate offline before pushing: fabio item validate-definition --type Dataflow --dir <folder>"
   ],
   "related_commands": [
@@ -41,6 +42,8 @@
     "fabio dataflow update-definition --workspace <WS> --id <ID> --file <ENVELOPE.json>",
     "fabio item validate-definition --type Dataflow --dir <FOLDER>",
     "fabio dataflow discover-parameters --workspace <WS> --id <ID>",
+    "fabio dataflow list-upgrade-readiness --workspace <WS> [--page-size 30]",
+    "fabio dataflow upgrade-gen1 --workspace <WS> --id <GEN1_ID> [--id <GEN1_ID> ...]",
     "fabio dataflow execute-query --workspace <WS> --id <ID> --query-name <NAME> --file <OUTPUT>"
   ]
 }

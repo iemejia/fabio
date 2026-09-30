@@ -24,6 +24,7 @@
     "--decode": "Add decodedPayload field to get-definition output"
   },
   "notes": [
+    "Bare create (no definition) now resolves to ontology generation 2. When a definition is supplied, Fabric infers generation from its parts. list/show/update responses expose the read-only properties.generation value (1 or 2).",
     "Data binding sourceType must be FIRST key in sourceTableProperties (JSON key ordering WITHIN a binding matters!)",
     "Data binding IDs must be valid UUIDs (non-UUID values are silently dropped)",
     "Entity/relationship/property names must match ^[a-zA-Z][a-zA-Z0-9_-]{0,127}$ (no spaces)",

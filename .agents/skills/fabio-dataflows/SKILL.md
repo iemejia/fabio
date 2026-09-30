@@ -13,6 +13,7 @@ license: MIT
 
 ## When to use
 - Creating/updating/refreshing Dataflows Gen2 (Power Query mashup ETL).
+- Assessing and upgrading legacy Gen1 dataflows to Gen2 in place.
 - Inspecting or querying an existing dataflow definition.
 - Managing datamarts.
 
@@ -36,10 +37,12 @@ Manage dataflows (Power BI data transformation)
 | `fabio dataflow execute-query` | no | Execute a query against a dataflow (returns Apache Arrow IPC) |
 | `fabio dataflow get-definition` | no | Get the definition of a dataflow |
 | `fabio dataflow list` | no | List dataflows in a workspace |
+| `fabio dataflow list-upgrade-readiness` | no | List Gen1 dataflow upgrade readiness results for a workspace (Preview) |
 | `fabio dataflow run` | yes | Run a dataflow on demand |
 | `fabio dataflow show` | no | Show details of a dataflow |
 | `fabio dataflow update` | yes | Update dataflow properties (name and/or description) |
 | `fabio dataflow update-definition` | yes | Update the definition of a dataflow |
+| `fabio dataflow upgrade-gen1` | yes | Upgrade 1-50 Gen1 dataflows to Gen2 in place (Preview) |
 
 ### fabio datamart
 Manage datamarts (Power BI)
@@ -52,6 +55,7 @@ Manage datamarts (Power BI)
 ### MUST
 - Treat 'dataflow' as Dataflow Gen2 (the current Power Query item); see 'fabio context disambiguate dataflow'.
 - Provide both the mashup (Power Query M) and queryMetadata parts when building a definition.
+- Run list-upgrade-readiness before upgrade-gen1 and inspect every NeedsAttention or UpgradeUnavailable reason.
 
 ### PREFER
 - Dataflow Gen2 for new low-code ETL; migrate legacy Gen1 rather than authoring new Gen1.
@@ -64,6 +68,7 @@ Manage datamarts (Power BI)
 ## Key gotchas
 - A Dataflow Gen2 definition combines a Power Query mashup with queryMetadata; both are required.
 - Refresh is asynchronous — poll or use the run/wait semantics.
+- Gen1 upgrade is Preview and in place: successful rows preserve item IDs, a 1-50 item batch may partially succeed, only the owner or a workspace Admin can upgrade each row, and cancellation is unsupported.
 
 ## Troubleshooting
 | Symptom | Fix |
@@ -74,6 +79,7 @@ Manage datamarts (Power BI)
 
 ## Safety
 - Deleting or overwriting a dataflow definition replaces its transformation logic — confirm with the user.
+- Gen1-to-Gen2 upgrade changes the item in place. Preview with --dry-run and review readiness results before executing.
 
 ## Shared references
 Cross-cutting operational guidance (the "common" layer) — consult the relevant topic before non-trivial work:

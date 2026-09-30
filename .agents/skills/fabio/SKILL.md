@@ -343,6 +343,9 @@ fabio item list-downstream-relations --workspace $WS --id $ITEM_ID  # beta: item
 fabio item create-external-data-share --workspace $WS --id $ITEM_ID --paths "Tables/mytable" \
   --recipient-type User --recipient-email alice@othertenant.com          # or: --recipient-type ServicePrincipal --recipient-id <obj-id> --recipient-tenant-id <tid>
 fabio capacity list                                          # tenant-scoped (no --workspace)
+fabio capacity get-surge-protection --id $CAP                # Fabric API; capacity admin required
+fabio capacity update-surge-protection --id $CAP --state Enabled \
+  --rejection-threshold 70 --recovery-threshold 50 --dry-run # Disabled clears thresholds
 fabio gateway list                                           # tenant-scoped (no --workspace)
 fabio gateway create-streaming --name "MyVNetGW" \           # streaming VNet gateway
   --subscription-id $SUB --resource-group $RG --vnet $VNET --subnet $SUBNET
@@ -616,6 +619,8 @@ fabio user-data-function invoke --url https://<app>.<region>.fabric.microsoft.co
 
 **Data Pipeline & Job Scheduling:**
 ```bash
+fabio dataflow list-upgrade-readiness --workspace $WS --all  # assess every Gen1 dataflow first
+fabio dataflow upgrade-gen1 --workspace $WS --id $DF1 --id $DF2 --dry-run # in-place; 1-50 IDs
 fabio data-pipeline create --workspace $WS --name "Daily-ETL"
 fabio data-pipeline run --workspace $WS --id $DP --wait                    # trigger + wait
 fabio data-pipeline create-schedule --workspace $WS --id $DP --content '{"enabled":true,...}'

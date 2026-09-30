@@ -15,8 +15,8 @@
   },
   "notes": [
     "Topology is graph-based: nodes reference each other via inputNodes arrays",
-    "Source types: CustomEndpoint, AzureEventHub, SampleData, AmazonKinesis, etc.",
-    "Destination types: Eventhouse, Lakehouse, CustomEndpoint, Activator",
+    "Source types include CustomEndpoint, AzureEventHub, LakehouseChangeFeed, SampleData, AmazonKinesis, etc.",
+    "Destination types include Eventhouse, Lakehouse, BusinessEvents, CustomEndpoint, Activator",
     "Eventhouse destination itemId must be KQL Database ID (not Eventhouse ID)",
     "Use add-source/add-destination helpers to avoid manual definition crafting",
     "Sample data source: add-sample-source --sample-type Bicycles|YellowTaxi|StockMarket|Buses (sets properties.type; empty properties are rejected by the API)",
@@ -25,7 +25,10 @@
     "compatibilityLevel should be '1.1'",
     "CDC sources (AzureSQLDBCDC, AzureSQLMIDBCDC, SQLServerOnVMDBCDC, MySQLCDC, PostgreSQLCDC) support snapshotMode (Initial/InitialOnly/NoData) in --properties to customize the initial snapshot",
     "SQL Server-family CDC sources only (AzureSQLDBCDC, AzureSQLMIDBCDC, SQLServerOnVMDBCDC) additionally support excludedColumns (comma-separated), databaseApplicationIntent (ReadWrite/ReadOnly), and snapshotSelectStatementOverrides ([{tableName, selectStatement}])",
-    "ApacheKafka, ConfluentCloud, and MQTT sources support tlsSettings.trustCACertificate / tlsSettings.clientCertificate, each referencing a KeyVault-backed certificate ({\"type\":\"KeyVault\",\"azureKeyVaultResourceId\":\"<ARM id>\",\"certificateName\":\"<name>\"})",
+    "ApacheKafka, ConfluentCloud, MQTT, and SolacePubSub sources support tlsSettings. Certificate settings use certificateResource (not the removed certificate key), containing a KeyVault-backed certificate ({\"type\":\"KeyVault\",\"azureKeyVaultResourceId\":\"<ARM id>\",\"certificateName\":\"<name>\"})",
+    "LakehouseChangeFeed requires workspaceId, itemId, and tableNames; currently tableNames supports only [\"*\"] (all tables)",
+    "BusinessEvents destination requires workspaceId, itemId (an Event Schema Set), and businessEventTypeId; inputSerialization is optional",
+    "SQL Server-family CDC sources support heartbeatIntervalMs, heartbeatActionQuery, and storeOnlyCapturedTablesDdl; PostgreSQL CDC supports heartbeatIntervalMs; MySQL/Oracle CDC support storeOnlyCapturedTablesDdl",
     "FabricAnomalyDetectionEvents source properties: workspaceId, itemId, configurationId, includedEventTypes (e.g. Microsoft.Fabric.AnomalyDetection.AnomalyDetected), and optional Event Grid advanced filters"
   ],
   "related_commands": [
