@@ -1,5 +1,6 @@
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use std::net::Ipv4Addr;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
@@ -92,7 +93,9 @@ pub fn is_secure_or_loopback(url: &str) -> bool {
         || rest.split(['/', ':', '?', '#']).next().unwrap_or(""),
         |r| r.split(']').next().unwrap_or(""),
     );
-    host == "localhost" || host == "::1" || host.starts_with("127.")
+    host == "localhost"
+        || host == "::1"
+        || host.parse::<Ipv4Addr>().is_ok_and(|ip| ip.is_loopback())
 }
 
 /// Environment variables that override an endpoint or token-audience URL fabio
@@ -4234,6 +4237,12 @@ mod tests {
     }
 
     #[test]
+    fn trusted_url_rejects_numeric_prefix_dns_names() {
+        assert!(validate_trusted_url("http://127.0.0.1.attacker.example", "test").is_err());
+        assert!(validate_trusted_url("http://127.evil.example", "test").is_err());
+    }
+
+    #[test]
     fn trusted_url_rejects_ftp() {
         assert!(validate_trusted_url("ftp://api.fabric.microsoft.com/v1", "test").is_err());
     }
@@ -4584,6 +4593,8 @@ mod tests {
         assert!(!is_secure_or_loopback("http://api.evil.example.com"));
         assert!(!is_secure_or_loopback("http://10.0.0.5"));
         assert!(!is_secure_or_loopback("http://localhost.evil.com"));
+        assert!(!is_secure_or_loopback("http://127.0.0.1.attacker.example"));
+        assert!(!is_secure_or_loopback("http://127.evil.example"));
         assert!(!is_secure_or_loopback("ftp://localhost"));
     }
 
