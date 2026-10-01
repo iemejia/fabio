@@ -4617,6 +4617,54 @@
         "output_fields": [
           "nameAvailable"
         ]
+      },
+      "get-surge-protection": {
+        "description": "Show a capacity's background-operation surge protection configuration",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio capacity get-surge-protection --id $CAPACITY_ID"
+        ]
+      },
+      "update-surge-protection": {
+        "description": "Update a capacity's background-operation surge protection configuration",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          },
+          "--state": {
+            "type": "enum",
+            "values": [
+              "Enabled",
+              "Disabled"
+            ],
+            "description": "Surge protection state: Enabled or Disabled"
+          },
+          "--rejection-threshold": {
+            "type": "integer",
+            "description": "Utilization percentage that rejects background operations (15-100)"
+          },
+          "--recovery-threshold": {
+            "type": "integer",
+            "description": "Utilization percentage that deactivates protection (6-99 and below rejection threshold)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio capacity update-surge-protection --id $CAPACITY_ID --state Enabled --rejection-threshold 70 --recovery-threshold 50",
+          "fabio capacity update-surge-protection --id $CAPACITY_ID --rejection-threshold 80 --recovery-threshold 60",
+          "fabio capacity update-surge-protection --id $CAPACITY_ID --state Disabled"
+        ]
       }
     }
   },
@@ -4639,9 +4687,13 @@
             "type": "string",
             "description": "Exclude item types from results. Comma-separated for multiple"
           },
+          "--workspace-id": {
+            "type": "string",
+            "description": "Filter by containing workspace ID. Comma-separated for up to 12 workspaces"
+          },
           "--top": {
             "type": "integer",
-            "description": "Maximum number of results to return"
+            "description": "Server page size (1-1000; defaults to 50)"
           },
           "--file": {
             "type": "string",
@@ -4653,7 +4705,11 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "list",
+        "examples": [
+          "fabio catalog search --search '\"sales revenue\"' --type Report,Workspace --top 50",
+          "fabio catalog search --search revenue --type Report,SemanticModel --workspace-id $WS --top 20"
+        ]
       }
     }
   },
@@ -10072,6 +10128,52 @@
         },
         "mutates": false,
         "returns": "object"
+      },
+      "list-gen1-upgrade-readiness": {
+        "description": "List Gen1 dataflow upgrade readiness results for a workspace (preview)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--page-size": {
+            "type": "integer",
+            "description": "Server page size (1-30); omitted to use the service default"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio dataflow list-gen1-upgrade-readiness --workspace $WS --page-size 30",
+          "fabio dataflow list-gen1-upgrade-readiness --workspace $WS --all"
+        ]
+      },
+      "upgrade-gen1": {
+        "description": "Upgrade 1-50 Gen1 dataflows to Gen2 in place (preview)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID containing every Gen1 dataflow"
+          },
+          "--id": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Gen1 dataflow ID to upgrade; repeat for a batch of up to 50"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "async": true,
+        "destructive": true,
+        "examples": [
+          "fabio dataflow upgrade-gen1 --workspace $WS --id $GEN1_ID",
+          "fabio dataflow upgrade-gen1 --workspace $WS --id $GEN1_ID_1 --id $GEN1_ID_2 --dry-run"
+        ]
       }
     }
   },
@@ -21651,6 +21753,10 @@
           "--description": {
             "type": "string",
             "description": "Optional description (max 256 characters)"
+          },
+          "--folder-id": {
+            "type": "string",
+            "description": "Folder ID; omit to create the report at the workspace root"
           },
           "--file": {
             "type": "string",

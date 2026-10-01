@@ -61,7 +61,7 @@ fn paginated_report_create_dry_run_no_file_fails() {
 
 #[test]
 fn paginated_report_create_dry_run_with_content() {
-    fabio()
+    let assert = fabio()
         .args([
             "paginated-report",
             "create",
@@ -71,10 +71,19 @@ fn paginated_report_create_dry_run_with_content() {
             "TestReport",
             "--content",
             "PHJlcG9ydC8+", // base64 of "<report/>"
+            "--folder-id",
+            "aaaaaaaa-1111-2222-3333-444444444444",
             "--dry-run",
         ])
         .assert()
         .success();
+
+    let output = String::from_utf8_lossy(&assert.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&output).unwrap();
+    assert_eq!(
+        json["data"]["details"]["folderId"],
+        "aaaaaaaa-1111-2222-3333-444444444444"
+    );
 }
 
 #[test]

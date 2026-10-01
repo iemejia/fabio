@@ -1,0 +1,53 @@
+{
+  "command": "fabio dataflow upgrade-gen1 --workspace $WS --id $GEN1_ID_1 --id $GEN1_ID_2",
+  "description": "Upgrades a batch of Gen1 dataflows to Dataflow Gen2 in place and reports partial success per dataflow.",
+  "response": {
+    "data": {
+      "summary": {
+        "totalCount": 2,
+        "succeededCount": 1,
+        "failedCount": 1
+      },
+      "destructive": true,
+      "migrations": [
+        {
+          "dataflowId": "6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b",
+          "dataflowName": "Sales Ingestion (Gen1)",
+          "targetDataflowName": "Sales Ingestion",
+          "workspaceId": "afced311-0e76-4b74-9d59-6cdcbab44653",
+          "workspaceName": "Analytics",
+          "assessmentStatus": "ReadyToMigrate",
+          "migrationStatus": "Succeeded",
+          "migrationEndDateTime": "2026-08-19T10:15:42Z"
+        },
+        {
+          "dataflowId": "7c2a4e3f-9b5d-4c7f-a02b-3d4e5f6a7b8c",
+          "dataflowName": "Marketing Blend (Gen1)",
+          "targetDataflowName": "Marketing Blend (Gen1)",
+          "workspaceId": "afced311-0e76-4b74-9d59-6cdcbab44653",
+          "workspaceName": "Analytics",
+          "assessmentStatus": "NeedsAttention",
+          "requiredActions": [
+            {
+              "status": "NeedsAttention",
+              "code": "HasUnresolvedConnections",
+              "message": "Recreate or rebind unresolved connections before upgrading."
+            }
+          ],
+          "migrationStatus": "Failed",
+          "migrationError": {
+            "errorCode": "DataflowRequiresChanges",
+            "message": "The dataflow requires changes before it can be upgraded.",
+            "isRetriable": false
+          }
+        }
+      ]
+    }
+  },
+  "notes": "Preview API. The request accepts 1-50 IDs from one workspace. Authorization and migration results are evaluated per dataflow, so a batch can partially succeed. The upgrade is in place and preserves each successful dataflow ID.",
+  "query_examples": [
+    {"query": "summary.failedCount", "description": "Count failed migrations."},
+    {"query": "migrations[?migrationStatus=='Failed']", "description": "Inspect failed dataflows and required actions."},
+    {"query": "migrations[?migrationError.isRetriable==`true`].dataflowId", "description": "Find retryable failures."}
+  ]
+}

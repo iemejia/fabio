@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{fabio, parse_json};
+use common::{TestConfig, fabio, parse_json};
 use serial_test::serial;
 
 #[test]
@@ -33,6 +33,20 @@ fn catalog_search_with_type_filter() {
         ])
         .assert()
         .success();
+    let json = parse_json(&assert);
+    assert!(json.get("data").is_some());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
+fn catalog_search_with_workspace_filter() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args(["catalog", "search", "--workspace-id", &cfg.source_workspace])
+        .assert()
+        .success();
+
     let json = parse_json(&assert);
     assert!(json.get("data").is_some());
 }
@@ -116,6 +130,46 @@ fn catalog_search_dry_run() {
     assert_eq!(details["search"], "test");
     assert_eq!(details["pageSize"], 3);
     assert_eq!(details["filter"], "Type eq 'Notebook'");
+}
+
+#[test]
+fn catalog_search_workspace_filter_dry_run() {
+    let workspace = "7f2c8a91-3b4d-4e5f-a6b7-c8d9e0f1a2b3";
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "catalog",
+            "search",
+            "--search",
+            "revenue",
+            "--type",
+            "Report,SemanticModel",
+            "--workspace-id",
+            workspace,
+            "--top",
+            "2",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert_eq!(
+        json["data"]["details"]["filter"],
+        "(Type eq 'Report' or Type eq 'SemanticModel') and WorkspaceId eq '7f2c8a91-3b4d-4e5f-a6b7-c8d9e0f1a2b3'"
+    );
+}
+
+#[test]
+fn catalog_search_rejects_invalid_workspace_filter() {
+    fabio()
+        .args([
+            "--dry-run",
+            "catalog",
+            "search",
+            "--workspace-id",
+            "not-a-guid",
+        ])
+        .assert()
+        .failure();
 }
 
 #[test]

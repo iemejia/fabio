@@ -343,6 +343,9 @@ fabio item list-downstream-relations --workspace $WS --id $ITEM_ID  # beta: item
 fabio item create-external-data-share --workspace $WS --id $ITEM_ID --paths "Tables/mytable" \
   --recipient-type User --recipient-email alice@othertenant.com          # or: --recipient-type ServicePrincipal --recipient-id <obj-id> --recipient-tenant-id <tid>
 fabio capacity list                                          # tenant-scoped (no --workspace)
+fabio capacity get-surge-protection --id $CAP
+fabio capacity update-surge-protection --id $CAP --state Enabled \
+  --rejection-threshold 90 --recovery-threshold 70 --dry-run
 fabio gateway list                                           # tenant-scoped (no --workspace)
 fabio gateway create-streaming --name "MyVNetGW" \           # streaming VNet gateway
   --subscription-id $SUB --resource-group $RG --vnet $VNET --subnet $SUBNET
@@ -353,6 +356,13 @@ fabio deployment-pipeline assign-workspace --id $DP --stage-id $SID --workspace 
 fabio deployment-pipeline deploy --id $DP --source-stage-id $SRC --target-stage-id $DST  # promote content
 # Command aliases: app-backend (aliases: rayfin-app, data-app), data-build-tool-job (aliases: dbt-job, dbt)
 fabio dbt list --workspace $WS                               # same as: fabio data-build-tool-job list
+```
+
+**Dataflow Gen1 modernization:**
+```bash
+fabio dataflow list-gen1-upgrade-readiness --workspace $WS --all
+fabio dataflow upgrade-gen1 --workspace $WS --id $DF1 --id $DF2 --dry-run
+# Review each migration result; a successful batch can contain per-dataflow failures.
 ```
 
 **Lakehouse (files, tables, sync, Iceberg, Materialized Lake Views):**

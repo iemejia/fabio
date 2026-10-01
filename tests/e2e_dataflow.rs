@@ -24,6 +24,26 @@ fn dataflow_list_returns_array() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
+fn dataflow_list_gen1_upgrade_readiness_returns_array() {
+    let cfg = TestConfig::from_env();
+
+    let assert = fabio()
+        .args([
+            "dataflow",
+            "list-gen1-upgrade-readiness",
+            "--workspace",
+            &cfg.source_workspace,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    assert!(extract_data(&json).is_array());
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn dataflow_create_and_delete() {
     let cfg = TestConfig::from_env();
     let name = common::unique_name("df_test");
@@ -127,6 +147,49 @@ fn dataflow_dry_run_create() {
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(json["data"]["would_execute"], "dataflow create");
+}
+
+#[test]
+fn dataflow_upgrade_gen1_dry_run_matches_spec_body() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "dataflow",
+            "upgrade-gen1",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--id",
+            "cccccccc-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "dataflow upgrade-gen1");
+    assert_eq!(data["destructive"], true);
+    assert_eq!(data["details"]["dataflows"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        data["details"]["dataflows"][0]["id"],
+        "bbbbbbbb-1111-2222-3333-444444444444"
+    );
+}
+
+#[test]
+fn dataflow_upgrade_readiness_page_size_is_bounded() {
+    fabio()
+        .args([
+            "dataflow",
+            "list-gen1-upgrade-readiness",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--page-size",
+            "31",
+        ])
+        .assert()
+        .failure();
 }
 
 // ─── Discover Parameters ─────────────────────────────────────────────────────

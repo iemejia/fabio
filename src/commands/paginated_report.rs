@@ -47,6 +47,10 @@ pub enum PaginatedReportCommand {
         #[arg(long)]
         description: Option<String>,
 
+        /// Folder ID; omit to create the report at the workspace root
+        #[arg(long)]
+        folder_id: Option<String>,
+
         /// Path to the .rdl definition file (base64-encoded and sent as the definition)
         #[arg(long)]
         file: Option<String>,
@@ -172,6 +176,7 @@ pub async fn execute(
             workspace,
             name,
             description,
+            folder_id,
             file,
             content,
             sensitivity_label,
@@ -182,6 +187,7 @@ pub async fn execute(
                 workspace,
                 name,
                 description.as_deref(),
+                folder_id.as_deref(),
                 file.as_deref(),
                 content.as_deref(),
                 sensitivity_label.as_deref(),
@@ -306,6 +312,7 @@ async fn create(
     workspace: &str,
     name: &str,
     description: Option<&str>,
+    folder_id: Option<&str>,
     file: Option<&str>,
     content: Option<&str>,
     sensitivity_label: Option<&str>,
@@ -339,6 +346,9 @@ async fn create(
     if let Some(desc) = description {
         body["description"] = Value::from(desc);
     }
+    if let Some(id) = folder_id {
+        body["folderId"] = Value::from(id);
+    }
     if let Some(label_id) = sensitivity_label {
         body["sensitivityLabelSettings"] = serde_json::json!({
             "sensitivityLabelId": label_id
@@ -352,6 +362,7 @@ async fn create(
             "workspace": workspace,
             "displayName": name,
             "description": description,
+            "folderId": folder_id,
             "sensitivityLabel": sensitivity_label
         }),
     ) {

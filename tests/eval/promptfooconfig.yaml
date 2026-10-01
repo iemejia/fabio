@@ -86,6 +86,59 @@ tests:
           output.includes('workspace list')
         metric: workspace-list-command
 
+  - description: "Dataflows: assess Gen1 upgrade readiness"
+    vars:
+      user_query: "Assess every Gen1 dataflow in workspace ws-123 before upgrading them"
+    assert:
+      - type: icontains
+        value: "fabio dataflow list-gen1-upgrade-readiness"
+      - type: icontains
+        value: "--workspace"
+
+  - description: "Dataflows: preview in-place Gen1 upgrades"
+    vars:
+      user_query: "Preview upgrading Gen1 dataflows df-1 and df-2 in workspace ws-123 to Gen2"
+    assert:
+      - type: icontains
+        value: "fabio dataflow upgrade-gen1"
+      - type: icontains
+        value: "--id"
+      - type: icontains
+        value: "--dry-run"
+
+  - description: "Capacity: enable surge protection"
+    vars:
+      user_query: "Preview enabling surge protection on capacity cap-123, rejecting background operations at 90 percent and recovering at 70 percent"
+    assert:
+      - type: icontains
+        value: "fabio capacity update-surge-protection"
+      - type: contains
+        value: "--state Enabled"
+      - type: icontains
+        value: "--rejection-threshold 90"
+      - type: icontains
+        value: "--recovery-threshold 70"
+      - type: icontains
+        value: "--dry-run"
+
+  - description: "Capacity: inspect surge protection"
+    vars:
+      user_query: "Show the current surge protection configuration for capacity cap-123"
+    assert:
+      - type: icontains
+        value: "fabio capacity get-surge-protection"
+      - type: icontains
+        value: "--id"
+
+  - description: "Catalog: filter search to workspaces"
+    vars:
+      user_query: "Search the Fabric catalog for sales assets only in workspaces 11111111-1111-1111-1111-111111111111 and 22222222-2222-2222-2222-222222222222"
+    assert:
+      - type: icontains
+        value: "fabio catalog search"
+      - type: icontains
+        value: "--workspace-id"
+
   - description: "Delete a warehouse"
     vars:
       user_query: "Delete warehouse abc-123 from workspace ws-456"

@@ -5,6 +5,7 @@
   "command_groups": ["dataflow", "datamart"],
   "when_to_use": [
     "Creating/updating/refreshing Dataflows Gen2 (Power Query mashup ETL).",
+    "Assessing and upgrading legacy Gen1 dataflows to Gen2 in place.",
     "Inspecting or querying an existing dataflow definition.",
     "Managing datamarts."
   ],
@@ -27,15 +28,18 @@
   ],
   "key_gotchas": [
     "A Dataflow Gen2 definition combines a Power Query mashup with queryMetadata; both are required.",
-    "Refresh is asynchronous — poll or use the run/wait semantics."
+    "Refresh is asynchronous — poll or use the run/wait semantics.",
+    "Gen1 readiness evaluates every Gen1 dataflow in a workspace (no per-item filter), pages at 1-30 rows, and excludes Gen2 items. Upgrade accepts 1-50 Gen1 IDs from that same workspace and can partially succeed."
   ],
   "troubleshooting": [
     {"symptom": "Unsure whether to use a dataflow or a pipeline", "fix": "Transform data -> dataflow; sequence activities -> data-pipeline. Run 'fabio context disambiguate dataflow'."},
     {"symptom": "Definition rejected", "fix": "Ensure both the mashup and queryMetadata parts are present and valid."},
     {"symptom": "'dataflow run' fails with 'Invalid QueriesMetadata ... must not be empty'", "fix": "A REST-authored Gen2 dataflow needs a queriesMetadata map in queryMetadata.json: add \"queriesMetadata\": {\"<QueryName>\": {\"queryId\", \"queryName\", \"loadEnabled\"}}. NOTE the Gen2 lakehouse data destination is portal-generated (a hand-authored dataDestinations binding runs but persists no table)."}
+    ,{"symptom": "A Gen1 upgrade batch contains failed rows despite HTTP success", "fix": "Inspect migrations[].requiredActions and migrations[].migrationError. Authorization and migration are evaluated per dataflow; fix readiness issues and retry only rows with migrationError.isRetriable=true."}
   ],
   "safety": [
-    "Deleting or overwriting a dataflow definition replaces its transformation logic — confirm with the user."
+    "Deleting or overwriting a dataflow definition replaces its transformation logic — confirm with the user.",
+    "Gen1 upgrade converts dataflows in place. Always inspect list-gen1-upgrade-readiness and preview upgrade-gen1 with --dry-run before migrating."
   ],
   "shared_references": ["throttling", "pagination", "lro"],
   "see_also": [
