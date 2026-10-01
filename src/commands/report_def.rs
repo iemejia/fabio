@@ -1581,7 +1581,7 @@ mod tests {
         assert_eq!(pj["pageOrder"].as_array().unwrap().len(), 2);
         let active = pj["activePageName"].as_str().unwrap();
         assert_ne!(active, "p1"); // the second page has active:true
-        assert!(!active.is_empty());
+        assert_ne!(active, "");
     }
 
     #[test]

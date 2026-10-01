@@ -158,7 +158,7 @@ fn graphql_api_query_customers() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     let items = data["customers"]["items"].as_array().unwrap();
-    assert!(!items.is_empty());
+    assert_ne!(items.len(), 0);
     // Check first item has expected fields
     assert!(items[0].get("customer_id").is_some());
     assert!(items[0].get("email").is_some());
@@ -190,7 +190,7 @@ fn graphql_api_query_with_filter() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     let items = data["products"]["items"].as_array().unwrap();
-    assert!(!items.is_empty());
+    assert_ne!(items.len(), 0);
     // All returned items should be Electronics
     for item in items {
         assert_eq!(item["category"], "Electronics");
@@ -227,7 +227,7 @@ fn graphql_api_query_from_file() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     let items = data["products"]["items"].as_array().unwrap();
-    assert!(!items.is_empty());
+    assert_ne!(items.len(), 0);
 
     // Cleanup
     let _ = std::fs::remove_file(&tmp_file);
@@ -404,7 +404,7 @@ fn graphql_api_query_filter_returns_empty() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     let items = data["customers"]["items"].as_array().unwrap();
-    assert!(items.is_empty());
+    assert_eq!(items.len(), 0);
 }
 
 #[test]
@@ -435,8 +435,8 @@ fn graphql_api_query_multiple_root_fields() {
     // Both root fields present
     assert!(data["customers"]["items"].is_array());
     assert!(data["products"]["items"].is_array());
-    assert!(!data["customers"]["items"].as_array().unwrap().is_empty());
-    assert!(!data["products"]["items"].as_array().unwrap().is_empty());
+    assert_ne!(data["customers"]["items"].as_array().unwrap().len(), 0);
+    assert_ne!(data["products"]["items"].as_array().unwrap().len(), 0);
 }
 
 #[test]
@@ -468,7 +468,7 @@ fn graphql_api_query_with_field_projection() {
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     // Field projection extracts the nested path
     let items = json["data"].as_array().unwrap();
-    assert!(!items.is_empty());
+    assert_ne!(items.len(), 0);
     assert!(items[0].get("product_id").is_some());
 }
 
@@ -600,7 +600,7 @@ fn graphql_api_query_price_filter_gte() {
     let data = extract_data(&json);
     let items = data["products"]["items"].as_array().unwrap();
     // products with price >= 40: product_id 2 (49.99), 5 (89.99)
-    assert!(!items.is_empty());
+    assert_ne!(items.len(), 0);
     for item in items {
         let price = item["price"].as_f64().unwrap();
         assert!(price >= 40.0, "Expected price >= 40, got {price}");

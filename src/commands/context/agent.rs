@@ -1830,7 +1830,7 @@ mod tests {
             }
         });
         let (properties, required) = build_json_schema_params(&cmd);
-        assert!(required.is_empty());
+        assert_eq!(required, [] as [std::string::String; 0]);
         assert_eq!(
             properties.get("x").and_then(|prop| prop.get("type")),
             Some(&serde_json::json!("number"))

@@ -191,7 +191,7 @@ fn kql_queryset_run_by_tab_name() {
     let data = extract_data(&json);
     // EventCount should return a count result
     if let Some(rows) = data.as_array() {
-        assert!(!rows.is_empty());
+        assert_ne!(rows.len(), 0);
         assert!(rows[0].get("Count").is_some());
     }
 }

@@ -162,7 +162,7 @@ fn warehouse_query_empty_result_renders_as_empty_list() {
     assert_eq!(json["count"], 0);
     let data = extract_data(&json);
     let rows = data.as_array().expect("expected empty array of rows");
-    assert!(rows.is_empty());
+    assert_eq!(rows.len(), 0);
 }
 
 #[test]
@@ -1240,7 +1240,7 @@ fn warehouse_mcp_url_mocked_exists_and_missing() {
     );
     assert_eq!(data["exists"], false);
     assert!(data["note"].is_null());
-    assert!(!data["hint"].as_str().unwrap().is_empty());
+    assert_ne!(data["hint"].as_str().unwrap(), "");
 }
 
 /// Live test: emit the remote MCP server URL for a real warehouse and assert the

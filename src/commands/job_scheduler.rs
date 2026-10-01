@@ -871,9 +871,9 @@ mod tests {
 
     #[test]
     fn known_job_types_are_non_empty() {
-        assert!(!KNOWN_JOB_TYPES.is_empty());
+        assert_ne!(KNOWN_JOB_TYPES.len(), 0);
         for t in KNOWN_JOB_TYPES {
-            assert!(!t.is_empty());
+            assert_ne!(*t, "");
         }
     }
 

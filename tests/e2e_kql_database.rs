@@ -1265,7 +1265,7 @@ fn kql_database_mcp_url_lifecycle() {
             .ends_with(&format!("/items/{missing}/kqlEndpoint"))
     );
     assert_eq!(data["exists"], false);
-    assert!(!data["hint"].as_str().unwrap().is_empty());
+    assert_ne!(data["hint"].as_str().unwrap(), "");
 
     // Clean up (deleting the eventhouse cascades to its KQL database).
     fabio()

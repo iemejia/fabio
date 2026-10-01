@@ -536,7 +536,7 @@ mod tests {
         assert!(result.summary.rules_generated >= 1);
 
         let rules = result.parameters_json["find_replace"].as_array().unwrap();
-        assert!(!rules.is_empty());
+        assert_ne!(rules.len(), 0);
 
         // The first rule should map the source GUID to the compare GUID
         let rule = &rules[0];

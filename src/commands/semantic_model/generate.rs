@@ -692,7 +692,7 @@ mod tests {
             json!({"TABLE_NAME": "blobs", "COLUMN_NAME": "data", "DATA_TYPE": "varbinary", "ORDINAL_POSITION": 1}),
         ];
         let (tables, dropped) = plan_tables(&rows, None);
-        assert!(tables.is_empty());
+        assert_eq!(tables.len(), 0);
         assert_eq!(dropped.len(), 1);
     }
 

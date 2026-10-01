@@ -257,7 +257,7 @@ fn agent_format_mcp_emits_tools_array() {
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
 
     let tools = json["data"]["tools"].as_array().unwrap();
-    assert!(!tools.is_empty());
+    assert_ne!(tools.len(), 0);
 
     // Each tool should have MCP-standard fields.
     let tool = &tools[0];
@@ -433,7 +433,7 @@ fn agent_format_openai_emits_functions_array() {
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
 
     let functions = json["data"]["functions"].as_array().unwrap();
-    assert!(!functions.is_empty());
+    assert_ne!(functions.len(), 0);
 
     // Each function should have OpenAI-standard structure.
     let func = &functions[0];
@@ -551,7 +551,7 @@ fn find_results_have_required_fields() {
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
 
     let results = json["data"]["results"].as_array().unwrap();
-    assert!(!results.is_empty());
+    assert_ne!(results.len(), 0);
     let first = &results[0];
     assert!(first["command"].is_string());
     assert!(first["score"].is_number());
@@ -731,7 +731,7 @@ fn find_command_results_lack_type_field() {
         })
         .collect();
 
-    assert!(!command_results.is_empty());
+    assert_ne!(command_results, [] as [&serde_json::Value; 0]);
     for result in &command_results {
         assert!(
             result.get("type").is_none() || result["type"].is_null(),

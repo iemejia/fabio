@@ -23,7 +23,7 @@ fn item_list_returns_items() {
 
     assert!(count > 0);
     let arr = data.as_array().unwrap();
-    assert!(!arr.is_empty());
+    assert_ne!(arr.len(), 0);
 
     // Each item should have id, displayName, type
     let first = &arr[0];

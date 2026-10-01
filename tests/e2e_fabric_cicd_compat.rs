@@ -25,13 +25,11 @@ use std::time::Duration;
 /// Resolve the path to the fabric-cicd sample workspace.
 /// Returns `None` if the path does not exist (allows tests to skip gracefully in CI).
 fn fabric_cicd_sample_workspace() -> Option<PathBuf> {
-    let repo = std::env::var("FABIO_TEST_FABRIC_CICD_REPO").unwrap_or_else(|_| {
-        let home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .unwrap_or_default();
-        format!("{home}/msrepos/fabric-cicd")
-    });
-    let path = PathBuf::from(&repo).join("sample/workspace");
+    let repo = std::env::var_os("FABIO_TEST_FABRIC_CICD_REPO")
+        .map(PathBuf::from)
+        .or_else(|| home::home_dir().map(|home| home.join("msrepos").join("fabric-cicd")))
+        .unwrap_or_default();
+    let path = repo.join("sample").join("workspace");
     if path.exists() {
         Some(path)
     } else {

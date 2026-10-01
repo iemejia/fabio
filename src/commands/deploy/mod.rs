@@ -1845,7 +1845,7 @@ mod tests {
 
     #[test]
     fn protected_types_list_is_non_empty() {
-        assert!(!PROTECTED_DELETE_TYPES.is_empty());
+        assert_ne!(PROTECTED_DELETE_TYPES.len(), 0);
     }
 
     #[test]

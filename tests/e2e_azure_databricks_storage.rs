@@ -182,7 +182,7 @@ fn azure_databricks_storage_create_and_delete() {
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     let item_id = json["data"]["id"].as_str().unwrap().to_string();
-    assert!(!item_id.is_empty());
+    assert_ne!(item_id, "");
 
     // Delete
     let assert = fabio()

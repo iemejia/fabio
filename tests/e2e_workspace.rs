@@ -21,7 +21,7 @@ fn workspace_list_returns_workspaces() {
     assert!(count > 0, "expected at least one workspace");
     assert!(data.is_array());
     let arr = data.as_array().unwrap();
-    assert!(!arr.is_empty());
+    assert_ne!(arr.len(), 0);
 
     // Each workspace should have id, displayName, type
     let first = &arr[0];
@@ -498,7 +498,7 @@ fn workspace_list_role_assignments() {
         "Expected at least one role assignment (the admin)"
     );
     let arr = data.as_array().unwrap();
-    assert!(!arr.is_empty());
+    assert_ne!(arr.len(), 0);
 
     // Each assignment should have id and role
     let first = &arr[0];
