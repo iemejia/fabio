@@ -246,9 +246,14 @@ pub(super) async fn add_destination(
 }
 
 fn validate_business_events_destination(props: &Value) -> Result<()> {
-    let workspace = required_string(props, "workspaceId", "BusinessEvents")?;
-    let item = required_string(props, "itemId", "BusinessEvents")?;
-    let _ = required_string(props, "businessEventTypeId", "BusinessEvents")?;
+    let workspace = required_string(props, "workspaceId", "BusinessEvents", "destination")?;
+    let item = required_string(props, "itemId", "BusinessEvents", "destination")?;
+    let _ = required_string(
+        props,
+        "businessEventTypeId",
+        "BusinessEvents",
+        "destination",
+    )?;
     validate_uuid(workspace, "BusinessEvents workspaceId")?;
     validate_uuid(item, "BusinessEvents itemId")?;
     Ok(())
@@ -349,8 +354,8 @@ pub(super) fn validate_source_properties(source_type: &str, props: &Value) -> Re
 }
 
 fn validate_lakehouse_change_feed_source(props: &Value) -> Result<()> {
-    let workspace = required_string(props, "workspaceId", "LakehouseChangeFeed")?;
-    let item = required_string(props, "itemId", "LakehouseChangeFeed")?;
+    let workspace = required_string(props, "workspaceId", "LakehouseChangeFeed", "source")?;
+    let item = required_string(props, "itemId", "LakehouseChangeFeed", "source")?;
     validate_uuid(workspace, "LakehouseChangeFeed workspaceId")?;
     validate_uuid(item, "LakehouseChangeFeed itemId")?;
     let table_names = props
@@ -374,11 +379,16 @@ fn validate_lakehouse_change_feed_source(props: &Value) -> Result<()> {
     Ok(())
 }
 
-fn required_string<'a>(props: &'a Value, field: &str, source_type: &str) -> Result<&'a str> {
+fn required_string<'a>(
+    props: &'a Value,
+    field: &str,
+    component_type: &str,
+    component_kind: &str,
+) -> Result<&'a str> {
     props.get(field).and_then(Value::as_str).ok_or_else(|| {
         FabioError::with_hint(
             ErrorCode::InvalidInput,
-            format!("{source_type} source requires string property '{field}'"),
+            format!("{component_type} {component_kind} requires string property '{field}'"),
             format!("Provide '{field}' in --properties."),
         )
         .into()
@@ -386,9 +396,9 @@ fn required_string<'a>(props: &'a Value, field: &str, source_type: &str) -> Resu
 }
 
 fn validate_reference_lakehouse_source(props: &Value) -> Result<()> {
-    let workspace = required_string(props, "workspaceId", "ReferenceLakehouse")?;
-    let item = required_string(props, "itemId", "ReferenceLakehouse")?;
-    let path = required_string(props, "absoluteOneLakePath", "ReferenceLakehouse")?;
+    let workspace = required_string(props, "workspaceId", "ReferenceLakehouse", "source")?;
+    let item = required_string(props, "itemId", "ReferenceLakehouse", "source")?;
+    let path = required_string(props, "absoluteOneLakePath", "ReferenceLakehouse", "source")?;
     validate_uuid(workspace, "ReferenceLakehouse workspaceId")?;
     validate_uuid(item, "ReferenceLakehouse itemId")?;
 
@@ -487,7 +497,12 @@ fn validate_refresh_rate(rate: &str) -> Result<()> {
 }
 
 fn validate_capacity_operation_source(props: &Value) -> Result<()> {
-    let scope = required_string(props, "eventScope", "FabricCapacityOperationEvents")?;
+    let scope = required_string(
+        props,
+        "eventScope",
+        "FabricCapacityOperationEvents",
+        "source",
+    )?;
     let event_scopes = ["Tenant", "Capacity", "Workspace", "Item", "SubItem"];
     if !event_scopes.contains(&scope) {
         return Err(FabioError::with_hint(
@@ -1313,6 +1328,17 @@ mod tests {
             "businessEventTypeId": "OrderShipped"
         });
         assert!(validate_business_events_destination(&props).is_ok());
+    }
+
+    #[test]
+    fn business_events_missing_property_identifies_destination() {
+        let err = validate_business_events_destination(&json!({}))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("BusinessEvents destination requires string property 'workspaceId'"),
+            "got: {err}"
+        );
     }
 
     #[test]
