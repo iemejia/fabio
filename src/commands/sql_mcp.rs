@@ -244,6 +244,6 @@ mod tests {
     fn parse_csv_to_rows_empty_result_set() {
         let (cols, rows) = parse_csv_to_rows("Region,Amount\n").unwrap();
         assert_eq!(cols, vec!["Region", "Amount"]);
-        assert!(rows.is_empty());
+        assert_eq!(rows, [] as [serde_json::Value; 0]);
     }
 }

@@ -2667,7 +2667,7 @@ mod tests {
     #[test]
     fn parse_filters_empty_string() {
         let patterns = parse_filter_patterns("");
-        assert!(patterns.is_empty());
+        assert_eq!(patterns, [] as [glob::Pattern; 0]);
     }
 
     // ─── parse_size_value ────────────────────────────────────────────────

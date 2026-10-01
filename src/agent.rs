@@ -490,12 +490,12 @@ mod tests {
 
     #[test]
     fn dangerous_flags_list_is_non_empty() {
-        assert!(!DANGEROUS_FLAGS.is_empty());
+        assert_ne!(DANGEROUS_FLAGS.len(), 0);
     }
 
     #[test]
     fn agent_env_vars_list_is_non_empty() {
-        assert!(!AGENT_ENV_VARS.is_empty());
+        assert_ne!(AGENT_ENV_VARS.len(), 0);
     }
 
     #[test]

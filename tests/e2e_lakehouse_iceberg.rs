@@ -651,7 +651,7 @@ fn iceberg_snapshots_returns_history() {
     let snapshots = data["snapshots"]
         .as_array()
         .expect("should have snapshots array");
-    assert!(!snapshots.is_empty());
+    assert_ne!(snapshots.len(), 0);
 
     // Each snapshot should have id and timestamp
     let first = &snapshots[0];

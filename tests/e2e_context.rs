@@ -388,7 +388,7 @@ fn context_tenant_no_properties_is_faster_and_lacks_properties() {
     let nodes = data["nodes"].as_array().expect("nodes is not an array");
 
     // Nodes should exist but without properties
-    assert!(!nodes.is_empty());
+    assert_ne!(nodes.len(), 0);
     for node in nodes {
         assert!(
             node.get("properties").is_none() || node["properties"].is_null(),

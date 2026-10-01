@@ -310,7 +310,7 @@ fn deploy_apply_verify_reports_convergence() {
     let discrepancies = verification["discrepancies"].as_array().unwrap();
     // If converged, no discrepancies; otherwise each is well-formed.
     if verification["converged"] == true {
-        assert!(discrepancies.is_empty());
+        assert_eq!(discrepancies.len(), 0);
     } else {
         for d in discrepancies {
             assert!(d["name"].is_string() && d["type"].is_string() && d["issue"].is_string());
@@ -1593,7 +1593,7 @@ fn deploy_init_params_diff_mode() {
     let written: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&out_file).unwrap()).unwrap();
     let rules = written["find_replace"].as_array().unwrap();
-    assert!(!rules.is_empty());
+    assert_ne!(rules.len(), 0);
 
     let guid_rule = rules
         .iter()

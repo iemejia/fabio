@@ -260,6 +260,9 @@ mod tests {
     #[test]
     fn empty_when_no_entity_types() {
         let def = json!({"definition":{"parts":[{"path":"definition.json","payload":BASE64.encode("{}"),"payloadType":"InlineBase64"}]}});
-        assert!(build_entity_type_values(&def, None, true).is_empty());
+        assert_eq!(
+            build_entity_type_values(&def, None, true),
+            [] as [serde_json::Value; 0]
+        );
     }
 }

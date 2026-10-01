@@ -330,7 +330,10 @@ mod tests {
 
     #[test]
     fn odata_items_empty_when_no_value() {
-        assert!(odata_items(&json!({})).is_empty());
-        assert!(odata_items(&json!({"value": null})).is_empty());
+        assert_eq!(odata_items(&json!({})), [] as [serde_json::Value; 0]);
+        assert_eq!(
+            odata_items(&json!({"value": null})),
+            [] as [serde_json::Value; 0]
+        );
     }
 }

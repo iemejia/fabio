@@ -296,7 +296,7 @@ fn graph_model_get_definition() {
     let data = extract_data(&json);
     // Definition should have parts with at least .platform
     let parts = data["definition"]["parts"].as_array().unwrap();
-    assert!(!parts.is_empty());
+    assert_ne!(parts.len(), 0);
     assert!(
         parts
             .iter()

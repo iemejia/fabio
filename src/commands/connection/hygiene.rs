@@ -427,7 +427,10 @@ mod tests {
             dup_conn("a", "s1;db", Some("2026-07-01T00:00:00Z"), "Basic"),
             dup_conn("b", "s2;db", Some("2026-08-01T00:00:00Z"), "Basic"),
         ];
-        assert!(duplicate_candidates(&conns, false).is_empty());
+        assert_eq!(
+            duplicate_candidates(&conns, false),
+            [] as [serde_json::Value; 0]
+        );
     }
 
     #[test]
@@ -439,7 +442,10 @@ mod tests {
             dup_conn("b", "server;db", Some("2026-08-01T00:00:00Z"), "OAuth2"),
         ];
         assert_eq!(duplicate_candidates(&conns, false).len(), 1);
-        assert!(duplicate_candidates(&conns, true).is_empty());
+        assert_eq!(
+            duplicate_candidates(&conns, true),
+            [] as [serde_json::Value; 0]
+        );
     }
 
     #[test]

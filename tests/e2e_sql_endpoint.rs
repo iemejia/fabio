@@ -822,7 +822,7 @@ fn sql_endpoint_mcp_url_mocked_exists_and_missing() {
         .success();
     let data = extract_data(&parse_json(&assert)).clone();
     assert_eq!(data["exists"], false);
-    assert!(!data["hint"].as_str().unwrap().is_empty());
+    assert_ne!(data["hint"].as_str().unwrap(), "");
 }
 
 /// Live test: schema discovery over a SQL analytics endpoint. Picks the first
@@ -884,7 +884,7 @@ fn sql_endpoint_schema_discovery_lifecycle() {
         .as_array()
         .unwrap()
         .clone();
-    assert!(!cols.is_empty());
+    assert_ne!(cols, [] as [serde_json::Value; 0]);
     assert_eq!(cols[0]["ORDINAL_POSITION"], 1);
     assert!(cols.iter().all(|c| c["COLUMN_NAME"].is_string()));
 }

@@ -301,7 +301,7 @@ fn job_scheduler_run_on_demand_fire_and_forget() {
     assert_eq!(data["status"], "accepted");
     assert!(data["jobId"].is_string());
     let job_id = data["jobId"].as_str().unwrap();
-    assert!(!job_id.is_empty());
+    assert_ne!(job_id, "");
 
     // Cancel the job we just started so it doesn't consume resources
     let _ = fabio()
