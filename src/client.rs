@@ -1,6 +1,6 @@
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use std::net::Ipv4Addr;
+use std::net::IpAddr;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
@@ -74,28 +74,41 @@ fn env_or_default(var: &str, default: &str) -> String {
 }
 
 /// True if `url` is HTTPS, or plaintext HTTP to a **loopback** host
-/// (`localhost`, `127.0.0.0/8`, `::1`). Loopback traffic never leaves the
-/// machine, so it is exempt from the HTTPS-only rule — the same rationale as
-/// the OAuth loopback redirect (RFC 8252), and needed for local mock servers
-/// and locally-hosted OpenAI-compatible model servers. Any non-loopback
-/// `http://` is rejected. Pure.
+/// (`localhost`, `127.0.0.0/8`, `::1`), without userinfo. Loopback traffic
+/// never leaves the machine, so it is exempt from the HTTPS-only rule — the
+/// same rationale as the OAuth loopback redirect (RFC 8252), and needed for
+/// local mock servers and locally-hosted OpenAI-compatible model servers. Any
+/// non-loopback `http://` is rejected. Pure.
 #[must_use]
 pub fn is_secure_or_loopback(url: &str) -> bool {
-    let lower = url.trim().to_ascii_lowercase();
-    if lower.starts_with("https://") {
-        return true;
-    }
-    let Some(rest) = lower.strip_prefix("http://") else {
+    let Ok(parsed) = reqwest::Url::parse(url.trim()) else {
         return false;
     };
-    // Extract the host, handling bracketed IPv6 (`[::1]`).
-    let host = rest.strip_prefix('[').map_or_else(
-        || rest.split(['/', ':', '?', '#']).next().unwrap_or(""),
-        |r| r.split(']').next().unwrap_or(""),
-    );
-    host == "localhost"
-        || host == "::1"
-        || host.parse::<Ipv4Addr>().is_ok_and(|ip| ip.is_loopback())
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return false;
+    }
+    let raw_authority = url
+        .trim()
+        .split_once("://")
+        .map(|(_, rest)| rest.split(['/', '?', '#']).next().unwrap_or_default());
+    if !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || raw_authority.is_none_or(|authority| authority.contains('@'))
+    {
+        return false;
+    }
+    if parsed.scheme() == "https" {
+        return true;
+    }
+    parsed.host_str().is_some_and(|host| {
+        host.eq_ignore_ascii_case("localhost")
+            || host
+                .strip_prefix('[')
+                .and_then(|host| host.strip_suffix(']'))
+                .unwrap_or(host)
+                .parse::<IpAddr>()
+                .is_ok_and(|ip| ip.is_loopback())
+    })
 }
 
 /// Environment variables that override an endpoint or token-audience URL fabio
@@ -4595,6 +4608,14 @@ mod tests {
         assert!(!is_secure_or_loopback("http://localhost.evil.com"));
         assert!(!is_secure_or_loopback("http://127.0.0.1.attacker.example"));
         assert!(!is_secure_or_loopback("http://127.evil.example"));
+        assert!(!is_secure_or_loopback(concat!(
+            "http://localhost:80",
+            "@evil.example/path"
+        )));
+        assert!(!is_secure_or_loopback("http://@localhost"));
+        assert!(!is_secure_or_loopback(
+            "https://user@api.fabric.microsoft.com"
+        ));
         assert!(!is_secure_or_loopback("ftp://localhost"));
     }
 

@@ -174,8 +174,11 @@ async fn search(
         if !cli.all || last_token.is_none() {
             break;
         }
-        // Next page: the token encodes the search/filter — send ONLY it.
+        // The token encodes the search/filter; pageSize can still be repeated.
         body = serde_json::json!({ "continuationToken": last_token.clone().unwrap_or_default() });
+        if let Some(size) = top {
+            body["pageSize"] = Value::from(size);
+        }
     }
 
     // Flatten the `{value:[...]}` search envelope to the standard list shape

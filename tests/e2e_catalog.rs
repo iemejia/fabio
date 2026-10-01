@@ -4,6 +4,8 @@ mod common;
 
 use common::{fabio, parse_json};
 use serial_test::serial;
+use wiremock::matchers::{body_json, method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[test]
 #[ignore = "requires live Fabric tenant"]
@@ -217,6 +219,56 @@ fn catalog_search_all_paginates_and_flattens() {
         json.get("count").is_some(),
         "list envelope must carry count"
     );
+}
+
+#[test]
+#[serial]
+fn catalog_search_all_retains_top_across_pages() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (server_uri, _server) = rt.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/catalog/search"))
+            .and(body_json(serde_json::json!({
+                "search": "Sales",
+                "pageSize": 7
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [{"id": "first"}],
+                "continuationToken": "next-page"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/catalog/search"))
+            .and(body_json(serde_json::json!({
+                "continuationToken": "next-page",
+                "pageSize": 7
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [{"id": "second"}],
+                "continuationToken": ""
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "catalog", "search", "--search", "Sales", "--top", "7", "--all",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    assert_eq!(json["data"].as_array().unwrap().len(), 2);
 }
 
 #[test]
