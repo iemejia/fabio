@@ -399,7 +399,7 @@ fn notice_value(
         // FABIO_AUTO_UPGRADE is on and a background `fabio upgrade` was launched;
         // it takes effect on the next invocation. Signals the agent that it does
         // NOT need to tell the user to run the upgrade command manually.
-        obj["autoUpgrade"] = Value::String("launched".to_string());
+        obj["autoUpgrade"] = Value::from("launched");
     }
     if let Some(notice) = agent_notice {
         obj["agentNotice"] = Value::String(notice);

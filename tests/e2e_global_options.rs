@@ -49,7 +49,7 @@ fn query_extracts_field_from_list() {
 
     // Should be an array of display names (strings)
     let arr = data.as_array().expect("expected array of names");
-    assert!(!arr.is_empty());
+    assert_ne!(arr.len(), 0);
     // Each element should be a string
     for name in arr {
         assert!(name.is_string(), "expected string, got: {name}");
@@ -143,7 +143,7 @@ fn query_nested_field() {
 
     // Should be the capacity ID string
     assert!(data.is_string(), "expected capacityId to be a string");
-    assert!(!data.as_str().unwrap().is_empty());
+    assert_ne!(data.as_str().unwrap(), "");
 }
 
 // --- --query validation (fail fast on jq syntax / envelope confusion) ---

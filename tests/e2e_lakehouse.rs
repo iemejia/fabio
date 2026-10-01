@@ -1117,7 +1117,7 @@ fn lakehouse_plan_returns_xml() {
     let data = extract_data(&json);
     assert_eq!(data["statementCount"], 1);
     let plans = data["plans"].as_array().expect("plans should be array");
-    assert!(!plans.is_empty());
+    assert_ne!(plans.len(), 0);
     let plan_xml = plans[0]["planXml"]
         .as_str()
         .expect("planXml should be string");

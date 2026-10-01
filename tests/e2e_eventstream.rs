@@ -240,12 +240,12 @@ fn eventstream_add_source_custom_endpoint() {
     let data = extract_data(&json);
     // Topology should contain the new source
     let sources = data["sources"].as_array().unwrap();
-    assert!(!sources.is_empty());
+    assert_ne!(sources.len(), 0);
     assert_eq!(sources[0]["name"], "my-source");
     assert_eq!(sources[0]["type"], "CustomEndpoint");
     // Default stream should have been auto-created
     let streams = data["streams"].as_array().unwrap();
-    assert!(!streams.is_empty());
+    assert_ne!(streams.len(), 0);
 
     // Cleanup
     fabio()
@@ -489,7 +489,7 @@ fn eventstream_get_definition_returns_parts() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     let parts = data["definition"]["parts"].as_array().unwrap();
-    assert!(!parts.is_empty());
+    assert_ne!(parts.len(), 0);
     // Should contain eventstream.json
     let has_eventstream_json = parts
         .iter()
@@ -1041,7 +1041,7 @@ fn eventstream_validate_valid_definition() {
     let json = parse_json(&output);
     let data = extract_data(&json);
     assert_eq!(data["valid"], true);
-    assert!(data["errors"].as_array().unwrap().is_empty());
+    assert_eq!(data["errors"].as_array().unwrap().len(), 0);
     let _ = std::fs::remove_file(&tmp);
 }
 
@@ -1069,7 +1069,7 @@ fn eventstream_validate_invalid_references() {
     let data = extract_data(&json);
     assert_eq!(data["valid"], false);
     let errors = data["errors"].as_array().unwrap();
-    assert!(!errors.is_empty());
+    assert_ne!(errors.len(), 0);
     assert!(
         errors[0]
             .as_str()

@@ -1459,7 +1459,7 @@ mod tests {
         // PATH exists on all CI/dev systems
         let result = resolve_value("$ENV:PATH", &ctx);
         assert!(result.is_ok());
-        assert!(!result.unwrap().is_empty());
+        assert_ne!(result.unwrap(), "");
 
         // Non-existent env var should error
         let result = resolve_value("$ENV:FABIO_NONEXISTENT_VAR_12345", &ctx);
@@ -1584,7 +1584,7 @@ mod tests {
         };
 
         let warnings = apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
-        assert!(warnings.is_empty());
+        assert_eq!(warnings, [] as [std::string::String; 0]);
 
         // Verify the payload was substituted
         let new_payload = &source.items[0].parts[0].payload;
@@ -1746,7 +1746,7 @@ mod tests {
         };
 
         let warnings = apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
-        assert!(warnings.is_empty());
+        assert_eq!(warnings, [] as [std::string::String; 0]);
 
         let payload = BASE64.decode(&source.items[0].parts[0].payload).unwrap();
         let result: serde_json::Value = serde_json::from_slice(&payload).unwrap();
@@ -2102,7 +2102,7 @@ mod tests {
         };
 
         let warnings = apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
-        assert!(!warnings.is_empty());
+        assert_ne!(warnings, [] as [std::string::String; 0]);
         assert!(warnings[0].contains("no value for env 'prod'"));
         // Payload should remain unchanged
         assert_eq!(source.items[0].parts[0].payload, encoded);
@@ -2174,7 +2174,7 @@ mod tests {
         };
 
         let warnings = apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
-        assert!(warnings.is_empty());
+        assert_eq!(warnings, [] as [std::string::String; 0]);
 
         let payload = BASE64.decode(&source.items[0].parts[0].payload).unwrap();
         let result: serde_json::Value = serde_json::from_slice(&payload).unwrap();
@@ -2402,7 +2402,7 @@ mod tests {
         };
 
         let warnings = apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
-        assert!(warnings.is_empty());
+        assert_eq!(warnings, [] as [std::string::String; 0]);
 
         let payload = BASE64.decode(&source.items[0].parts[0].payload).unwrap();
         let result: serde_json::Value = serde_json::from_slice(&payload).unwrap();
@@ -2777,7 +2777,7 @@ mod tests {
         };
 
         let warnings = apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
-        assert!(warnings.is_empty());
+        assert_eq!(warnings, [] as [std::string::String; 0]);
 
         // Check pipeline: find_replace runs first (dev→prod), then key_value_replace overrides server
         let pl_payload = BASE64.decode(&source.items[0].parts[0].payload).unwrap();
@@ -2913,7 +2913,7 @@ mod tests {
         };
 
         let warnings = apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
-        assert!(warnings.is_empty());
+        assert_eq!(warnings, [] as [std::string::String; 0]);
 
         let payload = source.items[0].creation_payload.as_ref().unwrap();
         assert_eq!(payload["parentEventhouseItemId"], "PROD_EH_ID");
@@ -2973,7 +2973,7 @@ mod tests {
         };
 
         let warnings = apply_parameters(&mut source, &params, "prod", &ctx).unwrap();
-        assert!(warnings.is_empty());
+        assert_eq!(warnings, [] as [std::string::String; 0]);
 
         let payload = source.items[0].creation_payload.as_ref().unwrap();
         assert_eq!(payload["parentEventhouseItemId"], "new-eh-id-456");

@@ -1147,7 +1147,7 @@ mod tests {
         let targets = HashSet::new();
         let (out, fixed) = fix_summarize_by_tmdl(tmdl, &targets);
         assert_eq!(out, tmdl);
-        assert!(fixed.is_empty());
+        assert_eq!(fixed, [] as [std::string::String; 0]);
     }
 
     #[test]

@@ -379,7 +379,7 @@ mod tests {
     fn test_topological_sort_empty() {
         let items: Vec<(String, Vec<String>)> = vec![];
         let sorted = topological_sort(&items).unwrap();
-        assert!(sorted.is_empty());
+        assert_eq!(sorted, [] as [std::string::String; 0]);
     }
 
     #[test]

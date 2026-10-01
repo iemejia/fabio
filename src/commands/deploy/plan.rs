@@ -1228,6 +1228,6 @@ mod tests {
 
         validate_references(&source, &mut changeset);
 
-        assert!(changeset.warnings.is_empty());
+        assert_eq!(changeset.warnings, [] as [std::string::String; 0]);
     }
 }

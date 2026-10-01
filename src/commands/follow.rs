@@ -214,7 +214,7 @@ mod tests {
         assert_eq!(last, Some(json!(3)));
 
         let out2 = filter_new_rows(&rows, "seq", &mut last);
-        assert!(out2.is_empty());
+        assert_eq!(out2, [] as [serde_json::Value; 0]);
 
         let more = vec![json!({"seq": 4}), json!({"seq": 3})];
         let out3 = filter_new_rows(&more, "seq", &mut last);

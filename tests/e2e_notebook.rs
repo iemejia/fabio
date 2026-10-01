@@ -72,7 +72,7 @@ fn notebook_create_get_definition_and_delete() {
     let data = extract_data(&json);
     // Should have definition.parts
     let parts = data["definition"]["parts"].as_array().unwrap();
-    assert!(!parts.is_empty());
+    assert_ne!(parts.len(), 0);
     assert!(parts.iter().any(|p| p["path"] == "notebook-content.py"));
 
     // Delete
@@ -151,7 +151,7 @@ fn notebook_run_status_stop() {
     let data = extract_data(&json);
     assert_eq!(data["status"], "started");
     let job_id = data["jobId"].as_str().unwrap().to_string();
-    assert!(!job_id.is_empty());
+    assert_ne!(job_id, "");
 
     // Status
     let assert = fabio()
@@ -697,7 +697,7 @@ fn notebook_get_definition_strip_output() {
     let data = extract_data(&json);
     // Should still have definition.parts
     let parts = data["definition"]["parts"].as_array().unwrap();
-    assert!(!parts.is_empty());
+    assert_ne!(parts.len(), 0);
     // Should have notebook-content part
     let has_content_part = parts.iter().any(|p| {
         p["path"]
@@ -1042,7 +1042,7 @@ fn notebook_create_from_py_file() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     let nb_id = data["id"].as_str().unwrap();
-    assert!(!nb_id.is_empty());
+    assert_ne!(nb_id, "");
 
     // Get definition and verify it's a valid notebook
     let assert = fabio()
@@ -1062,7 +1062,7 @@ fn notebook_create_from_py_file() {
     let def_json = parse_json(&assert);
     let def_data = extract_data(&def_json);
     let parts = def_data["definition"]["parts"].as_array().unwrap();
-    assert!(!parts.is_empty());
+    assert_ne!(parts.len(), 0);
     // The decoded payload should contain our code
     let decoded = parts[0]["decodedPayload"].as_str().unwrap_or("");
     assert!(decoded.contains("from .py file"));
@@ -1131,7 +1131,7 @@ fn notebook_create_from_ipynb_file() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     let nb_id = data["id"].as_str().unwrap();
-    assert!(!nb_id.is_empty());
+    assert_ne!(nb_id, "");
 
     // Cleanup
     fabio()

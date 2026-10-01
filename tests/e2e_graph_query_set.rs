@@ -133,7 +133,7 @@ fn graph_query_set_get_definition() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     let parts = data["definition"]["parts"].as_array().unwrap();
-    assert!(!parts.is_empty());
+    assert_ne!(parts.len(), 0);
     // Should have exportedDefinition.json and .platform
     let paths: Vec<&str> = parts.iter().map(|p| p["path"].as_str().unwrap()).collect();
     assert!(paths.contains(&"exportedDefinition.json"));

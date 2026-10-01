@@ -151,8 +151,8 @@ mod tests {
     fn test_changeset_new_is_empty() {
         let cs = Changeset::new();
         assert!(cs.changes.is_empty());
-        assert!(cs.warnings.is_empty());
-        assert!(cs.errors.is_empty());
+        assert_eq!(cs.warnings, [] as [std::string::String; 0]);
+        assert_eq!(cs.errors, [] as [std::string::String; 0]);
     }
 
     #[test]

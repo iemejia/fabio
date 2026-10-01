@@ -1,7 +1,7 @@
 //! Cosmos DB data-plane: document operations (query, bulk import, single-document
 //! CRUD, and export).
 
-use std::io::{Read, Write};
+use std::io::Write;
 
 use anyhow::Result;
 use serde_json::Value;
@@ -421,17 +421,18 @@ pub(super) async fn export(
 
 /// Read the import source: a file path, or stdin when `None`.
 fn read_source(source: Option<&str>) -> Result<String> {
-    if let Some(path) = source {
-        std::fs::read_to_string(path).map_err(|e| {
-            FabioError::not_found(format!("Import source not found: {path}: {e}")).into()
-        })
-    } else {
-        let mut buf = String::new();
-        std::io::stdin().read_to_string(&mut buf).map_err(|e| {
-            FabioError::new(ErrorCode::ApiError, format!("Failed to read stdin: {e}"))
-        })?;
-        Ok(buf)
-    }
+    source.map_or_else(
+        || {
+            std::io::read_to_string(std::io::stdin()).map_err(|e| {
+                FabioError::new(ErrorCode::ApiError, format!("Failed to read stdin: {e}")).into()
+            })
+        },
+        |path| {
+            std::fs::read_to_string(path).map_err(|e| {
+                FabioError::not_found(format!("Import source not found: {path}: {e}")).into()
+            })
+        },
+    )
 }
 
 /// Read a single JSON document from `--file`, inline `--content`, or stdin.

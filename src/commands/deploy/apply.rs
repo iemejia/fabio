@@ -3067,7 +3067,7 @@ mod tests {
         };
 
         let refs = extract_pipeline_references(&item);
-        assert!(refs.is_empty());
+        assert_eq!(refs, [] as [std::string::String; 0]);
     }
 
     fn src_item_with_part(item_type: &str, name: &str, payload_plain: &str) -> SourceItem {

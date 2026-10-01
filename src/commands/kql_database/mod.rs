@@ -1556,7 +1556,7 @@ mod tests {
 
         let (rows, columns) = parse_kusto_v2_response(&frames).unwrap();
         assert_eq!(columns, vec!["Count"]);
-        assert!(rows.is_empty());
+        assert_eq!(rows, [] as [serde_json::Value; 0]);
     }
 
     #[test]
@@ -1635,8 +1635,8 @@ mod tests {
         ]);
 
         let (rows, columns) = parse_kusto_v2_response(&frames).unwrap();
-        assert!(rows.is_empty());
-        assert!(columns.is_empty());
+        assert_eq!(rows, [] as [serde_json::Value; 0]);
+        assert_eq!(columns, [] as [std::string::String; 0]);
     }
 
     #[test]
