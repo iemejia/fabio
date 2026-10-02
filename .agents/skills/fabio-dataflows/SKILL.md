@@ -14,6 +14,7 @@ license: MIT
 ## When to use
 - Creating/updating/refreshing Dataflows Gen2 (Power Query mashup ETL).
 - Inspecting or querying an existing dataflow definition.
+- Assessing Gen1 upgrade readiness and upgrading eligible Gen1 dataflows to Gen2 in place.
 - Managing datamarts.
 
 ## When NOT to use (route elsewhere)
@@ -36,10 +37,12 @@ Manage dataflows (Power BI data transformation)
 | `fabio dataflow execute-query` | no | Execute a query against a dataflow (returns Apache Arrow IPC) |
 | `fabio dataflow get-definition` | no | Get the definition of a dataflow |
 | `fabio dataflow list` | no | List dataflows in a workspace |
+| `fabio dataflow list-gen1-upgrade-readiness` | no | List Gen1 dataflow upgrade readiness results for every Gen1 dataflow in a workspace (Preview) |
 | `fabio dataflow run` | yes | Run a dataflow on demand |
 | `fabio dataflow show` | no | Show details of a dataflow |
 | `fabio dataflow update` | yes | Update dataflow properties (name and/or description) |
 | `fabio dataflow update-definition` | yes | Update the definition of a dataflow |
+| `fabio dataflow upgrade-gen1` | yes | Upgrade 1-50 Gen1 dataflows to Dataflow Gen2 in place (Preview) |
 
 ### fabio datamart
 Manage datamarts (Power BI)
@@ -64,6 +67,7 @@ Manage datamarts (Power BI)
 ## Key gotchas
 - A Dataflow Gen2 definition combines a Power Query mashup with queryMetadata; both are required.
 - Refresh is asynchronous — poll or use the run/wait semantics.
+- Gen1 upgrade is Preview: readiness assesses every Gen1 dataflow in the workspace (no per-ID filter), while upgrade-gen1 accepts 1-50 IDs, can partially succeed, preserves successful IDs, and cannot be cancelled.
 
 ## Troubleshooting
 | Symptom | Fix |

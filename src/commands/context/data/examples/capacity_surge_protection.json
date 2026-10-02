@@ -1,0 +1,16 @@
+{
+  "command": "fabio capacity get-surge-protection --id $CAPACITY_ID",
+  "description": "Returns the background-operation surge protection state and configured utilization thresholds.",
+  "response": {
+    "data": {
+      "state": "Enabled",
+      "rejectionThreshold": 70,
+      "recoveryThreshold": 50
+    }
+  },
+  "notes": "Disabled configurations omit both thresholds. Enabling an unconfigured capacity requires both thresholds; disabling clears persisted thresholds. Recovery must be 6-99 and strictly below rejection, which must be 15-100.",
+  "query_examples": [
+    {"query": "data.state", "description": "Read the current state."},
+    {"query": "data.{reject: rejectionThreshold, recover: recoveryThreshold}", "description": "Project both utilization thresholds."}
+  ]
+}

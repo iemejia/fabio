@@ -61,7 +61,7 @@ fn paginated_report_create_dry_run_no_file_fails() {
 
 #[test]
 fn paginated_report_create_dry_run_with_content() {
-    fabio()
+    let assert = fabio()
         .args([
             "paginated-report",
             "create",
@@ -71,10 +71,38 @@ fn paginated_report_create_dry_run_with_content() {
             "TestReport",
             "--content",
             "PHJlcG9ydC8+", // base64 of "<report/>"
+            "--folder-id",
+            "11111111-2222-3333-4444-555555555555",
             "--dry-run",
         ])
         .assert()
         .success();
+    let json: serde_json::Value = serde_json::from_slice(&assert.get_output().stdout).unwrap();
+    assert_eq!(
+        json["data"]["details"]["folderId"],
+        "11111111-2222-3333-4444-555555555555"
+    );
+}
+
+#[test]
+fn paginated_report_create_rejects_invalid_folder_id() {
+    fabio()
+        .args([
+            "paginated-report",
+            "create",
+            "--workspace",
+            "test-ws",
+            "--name",
+            "TestReport",
+            "--content",
+            "PHJlcG9ydC8+",
+            "--folder-id",
+            "not-a-guid",
+            "--dry-run",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--folder-id"));
 }
 
 #[test]

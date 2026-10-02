@@ -2587,6 +2587,38 @@ tests:
         value: "The response uses 'fabio paginated-report export' with --format PDF and --out <file> (and --workspace/--id). It does NOT invent a non-existent command."
         metric: paginated-report-export-routing
 
+  - description: "Dataflow: assess and upgrade Gen1 dataflows"
+    vars:
+      user_query: "Assess all Gen1 dataflows in workspace $WS, then upgrade IDs $DF1 and $DF2 to Gen2"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('dataflow list-gen1-upgrade-readiness') &&
+          output.includes('dataflow upgrade-gen1') &&
+          output.includes('--dataflow-id')
+        metric: dataflow-gen1-upgrade-commands
+      - type: llm-rubric
+        value: "The response runs readiness before the in-place upgrade, uses --workspace on both commands and one or more --dataflow-id values for upgrade-gen1, and warns that the preview batch may partially succeed and cannot be cancelled."
+        metric: dataflow-gen1-upgrade-safety
+
+  - description: "Capacity: configure surge protection"
+    vars:
+      user_query: "Enable surge protection on Fabric capacity $CAP at 70 percent rejection and 50 percent recovery"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('capacity update-surge-protection')
+        metric: capacity-surge-protection-command
+      - type: icontains
+        value: "--state Enabled"
+        metric: capacity-surge-protection-state
+      - type: icontains
+        value: "--rejection-threshold 70"
+        metric: capacity-surge-protection-rejection
+      - type: icontains
+        value: "--recovery-threshold 50"
+        metric: capacity-surge-protection-recovery
+
   - description: "Power BI report: export to file"
     vars:
       user_query: "Export a Power BI report in Fabric to a PowerPoint file"

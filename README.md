@@ -76,6 +76,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 - **Post-deploy automation** — Semantic Model refresh, Environment publish, SQL endpoint polling, Variable Library value set activation, job schedule creation
 - **Workspace clone** — replicate workspace items via Bulk Export/Import APIs (`--allow-pairing-by-name` for initial clones)
 - **Data orchestration** — `--post-run-item` triggers a pipeline or notebook after deployment to populate lakehouses
+- **Modernization and capacity resilience** — assess/upgrade legacy Dataflow Gen1 batches to Gen2 in place, and configure capacity surge-protection thresholds
 - **Parallel execution** — bounded-concurrency async deployment (default 8 parallel ops per type)
 - **Profile management** — named profiles store default workspace, capacity, output format, and private link settings; switch contexts with `fabio profile use`
 

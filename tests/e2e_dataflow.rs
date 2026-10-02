@@ -129,6 +129,83 @@ fn dataflow_dry_run_create() {
     assert_eq!(json["data"]["would_execute"], "dataflow create");
 }
 
+#[test]
+fn dataflow_upgrade_gen1_dry_run_matches_spec_body() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "dataflow",
+            "upgrade-gen1",
+            "--workspace",
+            "afced311-0e76-4b74-9d59-6cdcbab44653",
+            "--dataflow-id",
+            "6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b",
+            "--dataflow-id",
+            "7c2a4e3f-9b5d-4c7f-a02b-3d4e5f6a7b8c",
+        ])
+        .assert()
+        .success();
+    let output = parse_json(&assert);
+    let data = extract_data(&output);
+    assert_eq!(data["would_execute"], "dataflow upgrade-gen1");
+    assert_eq!(data["details"]["count"], 2);
+    assert_eq!(
+        data["details"]["request"]["dataflows"][0]["id"],
+        "6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b"
+    );
+}
+
+#[test]
+fn dataflow_upgrade_gen1_rejects_invalid_id_before_network() {
+    fabio()
+        .args([
+            "dataflow",
+            "upgrade-gen1",
+            "--workspace",
+            "afced311-0e76-4b74-9d59-6cdcbab44653",
+            "--dataflow-id",
+            "not-a-guid",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn dataflow_upgrade_gen1_rejects_invalid_workspace_before_network() {
+    fabio()
+        .args([
+            "--dry-run",
+            "dataflow",
+            "upgrade-gen1",
+            "--workspace",
+            "not-a-guid",
+            "--dataflow-id",
+            "6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with Gen1 upgrade preview"]
+#[serial]
+fn dataflow_list_gen1_upgrade_readiness() {
+    let cfg = TestConfig::from_env();
+    let assert = fabio()
+        .args([
+            "dataflow",
+            "list-gen1-upgrade-readiness",
+            "--workspace",
+            &cfg.source_workspace,
+            "--page-size",
+            "30",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(json["data"].is_array());
+}
+
 // ─── Discover Parameters ─────────────────────────────────────────────────────
 
 #[test]

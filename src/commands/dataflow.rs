@@ -6,7 +6,7 @@ use serde_json::Value;
 use tokio::time::sleep;
 
 use crate::cli::Cli;
-use crate::client::FabricClient;
+use crate::client::{FabricClient, validate_uuid};
 use crate::commands::jobs::{JobEntry, JobLedger};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
@@ -174,6 +174,28 @@ pub enum DataflowCommand {
         #[arg(long)]
         id: String,
     },
+    /// List Gen1 dataflow upgrade readiness results for every Gen1 dataflow in a workspace (Preview)
+    #[command(name = "list-gen1-upgrade-readiness", display_order = 10)]
+    ListGen1UpgradeReadiness {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Maximum results per page (1-30; server-selected when omitted)
+        #[arg(long, value_parser = clap::value_parser!(u8).range(1..=30))]
+        page_size: Option<u8>,
+    },
+    /// Upgrade 1-50 Gen1 dataflows to Dataflow Gen2 in place (Preview)
+    #[command(name = "upgrade-gen1", display_order = 11)]
+    UpgradeGen1 {
+        /// Workspace ID containing every Gen1 dataflow
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Gen1 dataflow ID to upgrade; repeat or pass a comma-separated list (1-50)
+        #[arg(long, required = true, value_delimiter = ',', num_args = 1..=50)]
+        dataflow_id: Vec<String>,
+    },
     /// Execute a query against a dataflow (returns Apache Arrow IPC)
     #[command(visible_alias = "query", display_order = 15)]
     ExecuteQuery {
@@ -269,6 +291,14 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataflowCommand
         DataflowCommand::DiscoverParameters { workspace, id } => {
             discover_parameters(cli, client, workspace, id).await
         }
+        DataflowCommand::ListGen1UpgradeReadiness {
+            workspace,
+            page_size,
+        } => list_gen1_upgrade_readiness(cli, client, workspace, *page_size).await,
+        DataflowCommand::UpgradeGen1 {
+            workspace,
+            dataflow_id,
+        } => upgrade_gen1(cli, client, workspace, dataflow_id).await,
         DataflowCommand::ExecuteQuery {
             workspace,
             id,
@@ -289,6 +319,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataflowCommand
             )
             .await
         }
+
         DataflowCommand::Run {
             workspace,
             id,
@@ -314,6 +345,87 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataflowCommand
             .await
         }
     }
+}
+
+async fn list_gen1_upgrade_readiness(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    page_size: Option<u8>,
+) -> Result<()> {
+    validate_uuid(workspace, "--workspace")?;
+    let path = page_size.map_or_else(
+        || format!("/workspaces/{workspace}/dataflows/gen1UpgradeReadinessResults"),
+        |size| {
+            format!("/workspaces/{workspace}/dataflows/gen1UpgradeReadinessResults?pageSize={size}")
+        },
+    );
+    let response = client
+        .get_list(&path, "value", cli.all, cli.continuation_token.as_deref())
+        .await
+        .map_err(|e| enrich_forbidden(e, "dataflow list-gen1-upgrade-readiness", "Viewer"))?;
+
+    output::render_list_with_token(
+        cli,
+        &response.items,
+        &["displayName", "id", "status", "reasons"],
+        &["NAME", "ID", "STATUS", "REASONS"],
+        "id",
+        response.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+fn build_upgrade_gen1_body(dataflow_ids: &[String]) -> Result<Value> {
+    if !(1..=50).contains(&dataflow_ids.len()) {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!(
+                "Gen1 upgrade requires between 1 and 50 dataflow IDs; received {}",
+                dataflow_ids.len()
+            ),
+            "Repeat --dataflow-id or pass a comma-separated list of 1-50 IDs.",
+        )
+        .into());
+    }
+    for id in dataflow_ids {
+        validate_uuid(id, "--dataflow-id")?;
+    }
+    Ok(serde_json::json!({
+        "dataflows": dataflow_ids.iter().map(|id| serde_json::json!({"id": id})).collect::<Vec<_>>()
+    }))
+}
+
+async fn upgrade_gen1(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    dataflow_ids: &[String],
+) -> Result<()> {
+    validate_uuid(workspace, "--workspace")?;
+    let body = build_upgrade_gen1_body(dataflow_ids)?;
+    if output::dry_run_guard(
+        cli,
+        "dataflow upgrade-gen1",
+        &serde_json::json!({
+            "workspace": workspace,
+            "count": dataflow_ids.len(),
+            "request": body
+        }),
+    ) {
+        return Ok(());
+    }
+
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/dataflows/gen1Upgrade"),
+            &body,
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "dataflow upgrade-gen1", "Admin or dataflow owner"))?;
+    output::render_object(cli, &data, "summary");
+    Ok(())
 }
 
 // ─── CRUD ────────────────────────────────────────────────────────────────────
@@ -515,6 +627,33 @@ async fn discover_parameters(
         resp.continuation_token.as_deref(),
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod upgrade_tests {
+    use super::build_upgrade_gen1_body;
+
+    #[test]
+    fn upgrade_body_matches_spec_shape() {
+        let ids = vec![
+            "6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b".to_string(),
+            "7c2a4e3f-9b5d-4c7f-a02b-3d4e5f6a7b8c".to_string(),
+        ];
+        let body = build_upgrade_gen1_body(&ids).unwrap();
+        assert_eq!(body["dataflows"][0]["id"], ids[0]);
+        assert_eq!(body["dataflows"][1]["id"], ids[1]);
+    }
+
+    #[test]
+    fn upgrade_body_rejects_invalid_id() {
+        assert!(build_upgrade_gen1_body(&["not-a-uuid".to_string()]).is_err());
+    }
+
+    #[test]
+    fn upgrade_body_rejects_more_than_fifty_ids() {
+        let ids = vec!["6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b".to_string(); 51];
+        assert!(build_upgrade_gen1_body(&ids).is_err());
+    }
 }
 
 // ─── Execution ───────────────────────────────────────────────────────────────

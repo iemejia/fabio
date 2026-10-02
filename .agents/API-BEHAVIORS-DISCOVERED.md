@@ -3197,13 +3197,54 @@ implemented or confirmed to require no code change.
   secondary connection string/JAAS config). The connection API contains credentials and its output
   must not be persisted or logged. `add-source` remains the generic `--properties` authoring path
   but now validates these non-obvious shapes offline; `add-operator --input-node` is repeatable so
-  reference joins can be authored; `list-components` now mirrors all 37 current source enum values.
-- **Core Platform/LRO throttling quotas (spec commit `4dc2abd`, Sep 2026)**: workspace create/list/
-  show/update/delete and item list/create/show/update/delete now document both the unified Platform
-  API quota and endpoint API limit as **200 calls/min**. Get Operation State and Get Operation Result
-  similarly document a unified Long-Running Operations quota and endpoint API limit of
-  **200 calls/min**. This changes no HTTP contract: fabio's existing `Retry-After` handling, bounded
-  concurrency, list/bulk preference, and 2-second LRO polling already respect the operational model.
+  reference joins can be authored; `list-components` now mirrors all 38 current source enum values.
+- **Dataflow Gen1 upgrade Preview (spec commit `a070c71`, Sep 2026)**:
+  `GET /workspaces/{workspaceId}/dataflows/gen1UpgradeReadinessResults` assesses ALL Gen1 dataflows
+  in a workspace (Gen2 excluded), supports pageSize 1-30 + standard continuation pagination, but no
+  individual selection/filter/sort. Status is `Unknown|ReadyToMigrate|NeedsAttention|
+  UpgradeUnavailable`; `ReadyToMigrate` omits `reasons`, while `Unknown` always includes them.
+  `POST .../dataflows/gen1Upgrade` accepts 1-50 `{id}` targets from the same workspace, upgrades
+  in place (preserving each successful ID), supports partial success and sync-or-LRO results, and
+  cannot be cancelled. Authorization is per row: owner or workspace Admin; unauthorized rows fail
+  without failing the batch. Migration errors add required `isRetriable` and use the operation ID
+  as `requestId`.
+- **Eventstream Business Events, Lakehouse Change Feed, CDC/TLS expansion (spec commit `a070c71`,
+  Sep 2026)**: `LakehouseChangeFeed` source properties require `workspaceId`, Lakehouse `itemId`,
+  and `tableNames`; currently ONLY `["*"]` is supported. `BusinessEvents` destination properties
+  require `workspaceId`, Event Schema Set `itemId`, and `businessEventTypeId`, with optional
+  `inputSerialization`. SolacePubSub now accepts `tlsSettings`. The nested TLS property was renamed
+  from `certificate` to `certificateResource` for both trust-CA and client certificates. SQL
+  Server-family CDC gained `heartbeatIntervalMs`, `heartbeatActionQuery`, and
+  `storeOnlyCapturedTablesDdl`; PostgreSQL gained `heartbeatIntervalMs`; MySQL/Oracle gained
+  `storeOnlyCapturedTablesDdl`. These bags still round-trip generically; fabio validates the two new
+  discriminated shapes and rejects the removed TLS field before a network call.
+- **Ontology generation resolution (spec commit `a070c71`, Sep 2026)**: Ontology list/show/create/
+  update responses now expose read-only `properties.generation` (`1` or `2`). A bare create with no
+  definition resolves to generation 2; when a definition is supplied, Fabric infers generation from
+  its parts (including generation-2 TMDL parts). Fabio surfaces generation in JSON and the list table.
+- **Paginated Report folder creation (spec commit `a070c71`, Sep 2026)**: Create now accepts optional
+  `folderId`; omitted/null creates at workspace root. The prior "subfolders unsupported" limitation
+  was removed. Fabio exposes this as `paginated-report create --folder-id`.
+- **Catalog workspaces + query constraints (spec commit `a070c71`, Sep 2026)**: CatalogEntry gained
+  the `Workspace` discriminator/type. Search supports phrase (`"..."`), `*`, `?`, and `&&`; `_` stays
+  part of a term while other special characters are separators. Filters now support `Type` (max 500
+  values, 50 chars each) AND `WorkspaceId` (max 12 valid GUIDs), with `eq|ne|and|or|()`. pageSize is
+  1-1000 and defaults to 50. A continuation token carries search/filter/pageSize and MUST be sent
+  alone. New errors include InvalidRequest/Search/Filter/FilterProperty/PageSize/ContinuationToken,
+  FilterTooManyValues/NotSupported, ConflictingFilterParameters, ContinuationTokenTooLong, and
+  TypeNotFound.
+- **Capacity surge protection (spec commit `a070c71`, Sep 2026)**:
+  `GET/PATCH /capacities/{capacityId}/surgeProtection` require capacity administrator permission.
+  State is PascalCase `Enabled|Disabled`. rejectionThreshold is 15-100; recoveryThreshold is 6-99
+  and strictly lower. Enabling an unconfigured capacity requires both thresholds in the same PATCH;
+  omitted PATCH properties remain unchanged; disabling clears stored thresholds. Disabled GET
+  responses omit thresholds.
+- **Core Platform/LRO throttling quotas (updated by spec commit `a070c71`, Sep 2026)**: unified
+  Platform quota increased from 200 to **500 calls/min** for the documented workspace/item APIs.
+  Workspace/item list/show API limits also rose to 500, while create/update/delete retain 200 where
+  documented. Get Operation State/Result unified and endpoint limits rose to **500 calls/min**.
+  This changes no HTTP contract: fabio's `Retry-After` handling, bounded concurrency, list/bulk
+  preference, and 2-second LRO polling already respect the operational model.
 - **`GitConnectionType` (`Full`/`Selective`) read-only field on `GitSyncDetails`**: New enum field
   `gitConnectionType` was added to the Git connection status shape returned by
   `GET /workspaces/{workspaceId}/git/connection`. `fabio git connect show` (`connection_show()` in

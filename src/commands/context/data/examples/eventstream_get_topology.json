@@ -9,6 +9,17 @@
           "type": "CustomEndpoint",
           "status": "Running",
           "id": "c1d2e3f4-0000-0000-0000-000000000001"
+        },
+        {
+          "name": "lakehouse-changes",
+          "type": "LakehouseChangeFeed",
+          "status": "Running",
+          "id": "c1d2e3f4-0000-0000-0000-000000000002",
+          "properties": {
+            "workspaceId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "itemId": "11111111-2222-3333-4444-555555555555",
+            "tableNames": ["*"]
+          }
         }
       ],
       "destinations": [
@@ -22,6 +33,18 @@
             "workspaceId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
             "itemId": "d4e5f6a7-0000-0000-0000-000000000010",
             "tableName": "SensorEvents"
+          },
+          {
+            "name": "business-events",
+            "type": "BusinessEvents",
+            "status": "Running",
+            "id": "c1d2e3f4-0000-0000-0000-000000000004",
+            "properties": {
+              "workspaceId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "itemId": "99999999-8888-7777-6666-555555555555",
+              "businessEventTypeId": "OrderShipped"
+            },
+            "inputNodes": [{"name": "app-events-source-stream"}]
           }
         }
       ],
@@ -35,7 +58,7 @@
       "operators": []
     }
   },
-  "notes": "Sources feed into streams, streams feed into destinations/operators. Status values: Creating, Running, Warning, Stopped. Destination itemId must be the KQL Database ID (NOT Eventhouse ID). CustomEndpoint sources expose Event Hub-compatible interface for sending events.",
+  "notes": "Sources feed into streams, streams feed into destinations/operators. Status values: Creating, Running, Warning, Stopped. Eventhouse itemId must be the KQL Database ID; BusinessEvents itemId must be the Event Schema Set ID. LakehouseChangeFeed currently consumes all tables via tableNames:[\"*\"].",
   "query_examples": [
     {"query": "sources[].name", "description": "List all source names."},
     {"query": "destinations[?status=='Running'].name", "description": "Active destinations."},

@@ -4617,6 +4617,54 @@
         "output_fields": [
           "nameAvailable"
         ]
+      },
+      "get-surge-protection": {
+        "description": "Show the capacity's background-operation surge protection configuration",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio capacity get-surge-protection --id $CAPACITY_ID"
+        ]
+      },
+      "update-surge-protection": {
+        "description": "Update the capacity's background-operation surge protection configuration",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          },
+          "--state": {
+            "type": "enum",
+            "values": [
+              "Enabled",
+              "Disabled"
+            ],
+            "description": "Enable surge protection, or disable it and clear persisted thresholds"
+          },
+          "--rejection-threshold": {
+            "type": "integer",
+            "description": "Background utilization percentage at which operations are rejected (15-100)"
+          },
+          "--recovery-threshold": {
+            "type": "integer",
+            "description": "Background utilization percentage at which protection deactivates (6-99)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio capacity update-surge-protection --id $CAPACITY_ID --state Enabled --rejection-threshold 70 --recovery-threshold 50",
+          "fabio capacity update-surge-protection --id $CAPACITY_ID --rejection-threshold 80 --recovery-threshold 60",
+          "fabio capacity update-surge-protection --id $CAPACITY_ID --state Disabled"
+        ]
       }
     }
   },
@@ -4629,19 +4677,23 @@
         "flags": {
           "--search": {
             "type": "string",
-            "description": "Search query string"
+            "description": "Search text; supports quoted phrases, *, ?, &&, and underscores"
           },
           "--type": {
             "type": "string",
-            "description": "Filter by item type (e.g., Notebook, Lakehouse). Comma-separated for multiple"
+            "description": "Filter by item type. Comma-separated; at most 500 values of 50 characters"
           },
           "--exclude-type": {
             "type": "string",
-            "description": "Exclude item types from results. Comma-separated for multiple"
+            "description": "Exclude item types. Comma-separated; shares the 500-value Type limit"
+          },
+          "--workspace-id": {
+            "type": "string",
+            "description": "Filter to workspace IDs. Comma-separated; at most 12"
           },
           "--top": {
             "type": "integer",
-            "description": "Maximum number of results to return"
+            "description": "Results per page (1-1000; defaults to 50)"
           },
           "--file": {
             "type": "string",
@@ -10039,6 +10091,52 @@
         "mutates": false,
         "returns": "object"
       },
+      "list-gen1-upgrade-readiness": {
+        "description": "List Gen1 dataflow upgrade readiness results for every Gen1 dataflow in a workspace (Preview)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--page-size": {
+            "type": "integer",
+            "description": "Maximum results per page (1-30; server-selected when omitted)"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio dataflow list-gen1-upgrade-readiness --workspace $WS",
+          "fabio dataflow list-gen1-upgrade-readiness --workspace $WS --page-size 30 --all"
+        ]
+      },
+      "upgrade-gen1": {
+        "description": "Upgrade 1-50 Gen1 dataflows to Dataflow Gen2 in place (Preview)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID containing every Gen1 dataflow"
+          },
+          "--dataflow-id": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Gen1 dataflow ID to upgrade; repeat or pass a comma-separated list (1-50)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "async": true,
+        "destructive": true,
+        "examples": [
+          "fabio dataflow upgrade-gen1 --workspace $WS --dataflow-id $GEN1_ID --dry-run",
+          "fabio dataflow upgrade-gen1 --workspace $WS --dataflow-id $GEN1_ID_1 --dataflow-id $GEN1_ID_2"
+        ]
+      },
       "execute-query": {
         "description": "Execute a query against a dataflow (returns Apache Arrow IPC)",
         "flags": {
@@ -13962,7 +14060,7 @@
           "--source-type": {
             "type": "string",
             "required": true,
-            "description": "Source type (for example `CustomEndpoint`, `Cribl`, `FabricCapacityOperationEvents`, `ReferenceLakehouse`, `SAPDatasphere`)"
+            "description": "Source type (for example `CustomEndpoint`, `LakehouseChangeFeed`, `FabricCapacityOperationEvents`, `ReferenceLakehouse`)"
           },
           "--properties": {
             "type": "string",
@@ -13998,7 +14096,7 @@
           "--destination-type": {
             "type": "string",
             "required": true,
-            "description": "Destination type (e.g., `Eventhouse`, `Lakehouse`, `CustomEndpoint`, `Activator`)"
+            "description": "Destination type (for example `Eventhouse`, `BusinessEvents`, `Lakehouse`, `Activator`)"
           },
           "--properties": {
             "type": "string",
@@ -21663,6 +21761,10 @@
           "--sensitivity-label": {
             "type": "string",
             "description": "Sensitivity label ID to apply on creation"
+          },
+          "--folder-id": {
+            "type": "string",
+            "description": "Folder ID; omit to create the report at the workspace root"
           }
         },
         "mutates": true,

@@ -43,6 +43,7 @@
   ],
   "key_gotchas": [
     "Ontology definitions use the item-definition (base64 parts) format; fetch the template with 'fabio context schema ontology'.",
+    "Bare ontology create (no definition) now produces generation 2. With a definition, Fabric resolves generation from the parts; inspect read-only properties.generation on list/show/create/update responses.",
     "fabio's context tenant graph can emit OWL/RDF that imports directly via 'fabio ontology import --file'.",
     "OWL carries no data-binding info (workspace/lakehouse/table/column). 'ontology import' generates only the type schema unless you pass a source: --lakehouse (Delta) or Eventhouse/KustoTable source flags (+ --bindings for relationship key columns). An entity can carry MULTIPLE data bindings, and import also emits entity Documents + ResourceLinks and preserves entity-type inheritance.",
     "Untyped properties (valueType Any) are NOT bindable — they live only under entityType.untypedProperties. Putting one in a DataBinding makes updateDefinition fail with a generic ALMOperationImportFailed. fabio import excludes them automatically; hand-authored parts must too.",
