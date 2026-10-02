@@ -1,13 +1,30 @@
 use anyhow::Result;
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 use serde_json::{Value, json};
 
 use crate::cli::Cli;
-use crate::client::FabricClient;
-use crate::errors::{ErrorCode, FabioError};
+use crate::client::{FabricClient, validate_uuid};
+use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 const ARM_API_VERSION: &str = "2023-11-01";
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum SurgeProtectionState {
+    #[value(name = "Enabled")]
+    Enabled,
+    #[value(name = "Disabled")]
+    Disabled,
+}
+
+impl SurgeProtectionState {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Enabled => "Enabled",
+            Self::Disabled => "Disabled",
+        }
+    }
+}
 
 #[derive(Debug, Subcommand)]
 #[command(
@@ -130,6 +147,29 @@ pub enum CapacityCommand {
         #[arg(long, default_value = "Microsoft.Fabric/capacities")]
         r#type: String,
     },
+    /// Show the capacity's background-operation surge protection configuration
+    #[command(display_order = 10)]
+    GetSurgeProtection {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Update the capacity's background-operation surge protection configuration
+    #[command(display_order = 11)]
+    UpdateSurgeProtection {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+        /// Enable surge protection, or disable it and clear persisted thresholds
+        #[arg(long)]
+        state: Option<SurgeProtectionState>,
+        /// Background utilization percentage at which operations are rejected (15-100)
+        #[arg(long, value_parser = clap::value_parser!(u8).range(15..=100))]
+        rejection_threshold: Option<u8>,
+        /// Background utilization percentage at which protection deactivates (6-99)
+        #[arg(long, value_parser = clap::value_parser!(u8).range(6..=99))]
+        recovery_threshold: Option<u8>,
+    },
 }
 
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &CapacityCommand) -> Result<()> {
@@ -198,6 +238,23 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &CapacityCommand
             location,
             r#type,
         } => check_name(cli, client, subscription, name, location, r#type).await,
+        CapacityCommand::GetSurgeProtection { id } => get_surge_protection(cli, client, id).await,
+        CapacityCommand::UpdateSurgeProtection {
+            id,
+            state,
+            rejection_threshold,
+            recovery_threshold,
+        } => {
+            update_surge_protection(
+                cli,
+                client,
+                id,
+                *state,
+                *rejection_threshold,
+                *recovery_threshold,
+            )
+            .await
+        }
     }
 }
 
@@ -227,6 +284,88 @@ async fn list(cli: &Cli, client: &FabricClient) -> Result<()> {
 async fn show(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
     let data = client.get(&format!("/capacities/{id}")).await?;
     output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn get_surge_protection(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
+    validate_uuid(id, "--id")?;
+    let data = client
+        .get(&format!("/capacities/{id}/surgeProtection"))
+        .await
+        .map_err(|e| {
+            enrich_forbidden(e, "capacity get-surge-protection", "capacity administrator")
+        })?;
+    output::render_object(cli, &data, "state");
+    Ok(())
+}
+
+fn build_surge_protection_body(
+    state: Option<SurgeProtectionState>,
+    rejection_threshold: Option<u8>,
+    recovery_threshold: Option<u8>,
+) -> Result<Value> {
+    if state.is_none() && rejection_threshold.is_none() && recovery_threshold.is_none() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "At least one of --state, --rejection-threshold, or --recovery-threshold is required",
+            "To enable an unconfigured capacity: --state Enabled --rejection-threshold 70 --recovery-threshold 50",
+        )
+        .into());
+    }
+    if let (Some(rejection), Some(recovery)) = (rejection_threshold, recovery_threshold)
+        && recovery >= rejection
+    {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!(
+                "--recovery-threshold ({recovery}) must be strictly less than --rejection-threshold ({rejection})"
+            ),
+            "Use --recovery-threshold 50 --rejection-threshold 70.",
+        )
+        .into());
+    }
+
+    let mut body = serde_json::Map::new();
+    if let Some(value) = state {
+        body.insert("state".to_string(), Value::from(value.as_str()));
+    }
+    if let Some(value) = rejection_threshold {
+        body.insert("rejectionThreshold".to_string(), Value::from(value));
+    }
+    if let Some(value) = recovery_threshold {
+        body.insert("recoveryThreshold".to_string(), Value::from(value));
+    }
+    Ok(Value::Object(body))
+}
+
+async fn update_surge_protection(
+    cli: &Cli,
+    client: &FabricClient,
+    id: &str,
+    state: Option<SurgeProtectionState>,
+    rejection_threshold: Option<u8>,
+    recovery_threshold: Option<u8>,
+) -> Result<()> {
+    validate_uuid(id, "--id")?;
+    let body = build_surge_protection_body(state, rejection_threshold, recovery_threshold)?;
+    if output::dry_run_guard(
+        cli,
+        "capacity update-surge-protection",
+        &json!({"capacityId": id, "request": body}),
+    ) {
+        return Ok(());
+    }
+    let data = client
+        .patch(&format!("/capacities/{id}/surgeProtection"), &body)
+        .await
+        .map_err(|e| {
+            enrich_forbidden(
+                e,
+                "capacity update-surge-protection",
+                "capacity administrator",
+            )
+        })?;
+    output::render_object(cli, &data, "state");
     Ok(())
 }
 
@@ -489,6 +628,7 @@ fn enrich_arm_error(err: anyhow::Error, operation: &str) -> anyhow::Error {
     if fabio_err.code != ErrorCode::Forbidden {
         return err;
     }
+
     let hint = format!(
         "'{operation}' requires Azure RBAC Contributor (or Owner) role on the capacity resource. \
          This is NOT a Fabric workspace role — it's an Azure subscription-level permission. \
@@ -500,6 +640,28 @@ fn enrich_arm_error(err: anyhow::Error, operation: &str) -> anyhow::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn surge_protection_enable_body_matches_spec() {
+        let body =
+            build_surge_protection_body(Some(SurgeProtectionState::Enabled), Some(70), Some(50))
+                .unwrap();
+        assert_eq!(body["state"], "Enabled");
+        assert_eq!(body["rejectionThreshold"], 70);
+        assert_eq!(body["recoveryThreshold"], 50);
+    }
+
+    #[test]
+    fn surge_protection_disable_body_omits_thresholds() {
+        let body =
+            build_surge_protection_body(Some(SurgeProtectionState::Disabled), None, None).unwrap();
+        assert_eq!(body, serde_json::json!({"state": "Disabled"}));
+    }
+
+    #[test]
+    fn surge_protection_recovery_must_be_below_rejection() {
+        assert!(build_surge_protection_body(None, Some(70), Some(70)).is_err());
+    }
 
     #[test]
     fn arm_capacity_path_format() {

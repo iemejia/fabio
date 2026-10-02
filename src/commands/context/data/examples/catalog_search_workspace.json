@@ -1,0 +1,32 @@
+{
+  "command": "fabio catalog search --search revenue --type Report,SemanticModel --workspace-id $WS --top 2",
+  "description": "Searches catalog entries within a workspace and includes workspace entries in the supported type union.",
+  "response": {
+    "data": [
+      {
+        "id": "0acd697c-1550-43cd-b998-91bfb12347c6",
+        "type": "Report",
+        "catalogEntryType": "FabricItem",
+        "displayName": "Monthly Sales Revenue",
+        "hierarchy": {
+          "workspace": {
+            "id": "7f2c8a91-3b4d-4e5f-a6b7-c8d9e0f1a2b3",
+            "displayName": "Sales Analytics"
+          }
+        }
+      },
+      {
+        "id": "7f2c8a91-3b4d-4e5f-a6b7-c8d9e0f1a2b3",
+        "type": "Workspace",
+        "catalogEntryType": "Workspace",
+        "displayName": "Sales Analytics"
+      }
+    ],
+    "count": 2
+  },
+  "notes": "Type supports Workspace as well as Fabric item types. A continuation token must be sent alone because it carries the original search, filter, and page size.",
+  "query_examples": [
+    {"query": "data[?catalogEntryType=='Workspace']", "description": "Select workspace catalog entries."},
+    {"query": "data[?hierarchy.workspace.id=='7f2c8a91-3b4d-4e5f-a6b7-c8d9e0f1a2b3']", "description": "Select item entries from one workspace."}
+  ]
+}

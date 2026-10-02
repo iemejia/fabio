@@ -1,0 +1,52 @@
+{
+  "command": "fabio dataflow upgrade-gen1 --workspace $WS --dataflow-id $DF1 --dataflow-id $DF2",
+  "description": "Upgrades a batch of 1-50 Gen1 dataflows to Gen2 in place and returns per-dataflow outcomes.",
+  "response": {
+    "data": {
+      "summary": {
+        "totalCount": 2,
+        "succeededCount": 1,
+        "failedCount": 1
+      },
+      "migrations": [
+        {
+          "dataflowId": "6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b",
+          "dataflowName": "Sales Ingestion (Gen1)",
+          "targetDataflowName": "Sales Ingestion",
+          "workspaceId": "afced311-0e76-4b74-9d59-6cdcbab44653",
+          "workspaceName": "Test Workspace",
+          "assessmentStatus": "ReadyToMigrate",
+          "migrationStatus": "Succeeded",
+          "migrationEndDateTime": "2026-08-19T10:15:42Z"
+        },
+        {
+          "dataflowId": "7c2a4e3f-9b5d-4c7f-a02b-3d4e5f6a7b8c",
+          "dataflowName": "Marketing Blend (Gen1)",
+          "targetDataflowName": "Marketing Blend (Gen1)",
+          "workspaceId": "afced311-0e76-4b74-9d59-6cdcbab44653",
+          "workspaceName": "Test Workspace",
+          "assessmentStatus": "NeedsAttention",
+          "requiredActions": [
+            {
+              "status": "NeedsAttention",
+              "code": "HasUnresolvedConnections",
+              "message": "Recreate or rebind unresolved connections before upgrading."
+            }
+          ],
+          "migrationStatus": "Failed",
+          "migrationError": {
+            "errorCode": "DataflowRequiresChanges",
+            "message": "The dataflow could not be upgraded.",
+            "requestId": "0f8fad5b-d9cb-469f-a165-70867728950e",
+            "isRetriable": false
+          }
+        }
+      ]
+    }
+  },
+  "notes": "This preview operation upgrades in place, preserves successful dataflow IDs, permits partial success, supports LRO responses, and cannot be cancelled. Use --dry-run and review readiness first.",
+  "query_examples": [
+    {"query": "data.summary", "description": "Get batch roll-up counts."},
+    {"query": "data.migrations[?migrationStatus=='Failed']", "description": "Inspect failed migrations and retriability."}
+  ]
+}

@@ -62,6 +62,7 @@ fn ontology_create_show_update_delete() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     assert_eq!(data["displayName"], name);
+    assert_eq!(data["properties"]["generation"], 2);
     let ont_id = data["id"].as_str().unwrap().to_string();
 
     // Show ontology
@@ -81,6 +82,7 @@ fn ontology_create_show_update_delete() {
     let data = extract_data(&json);
     assert_eq!(data["id"], ont_id);
     assert_eq!(data["displayName"], name);
+    assert_eq!(data["properties"]["generation"], 2);
 
     // Update name and description
     let new_name = unique_name("ont_renamed");

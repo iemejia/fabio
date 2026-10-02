@@ -6,6 +6,7 @@
   "when_to_use": [
     "Creating/updating/refreshing Dataflows Gen2 (Power Query mashup ETL).",
     "Inspecting or querying an existing dataflow definition.",
+    "Assessing Gen1 upgrade readiness and upgrading eligible Gen1 dataflows to Gen2 in place.",
     "Managing datamarts."
   ],
   "when_not_to_use": [
@@ -27,7 +28,8 @@
   ],
   "key_gotchas": [
     "A Dataflow Gen2 definition combines a Power Query mashup with queryMetadata; both are required.",
-    "Refresh is asynchronous — poll or use the run/wait semantics."
+    "Refresh is asynchronous — poll or use the run/wait semantics.",
+    "Gen1 upgrade is Preview: readiness assesses every Gen1 dataflow in the workspace (no per-ID filter), while upgrade-gen1 accepts 1-50 IDs, can partially succeed, preserves successful IDs, and cannot be cancelled."
   ],
   "troubleshooting": [
     {"symptom": "Unsure whether to use a dataflow or a pipeline", "fix": "Transform data -> dataflow; sequence activities -> data-pipeline. Run 'fabio context disambiguate dataflow'."},

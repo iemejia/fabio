@@ -28,6 +28,7 @@
       {"type": "FabricWorkspaceItemEvents", "category": "source", "description": "Fabric workspace item events"},
       {"type": "GooglePubSub", "category": "source", "description": "Google Cloud Pub/Sub"},
       {"type": "Http", "category": "source", "description": "HTTP polling endpoint"},
+      {"type": "LakehouseChangeFeed", "category": "source", "description": "Changes from all tables in a Fabric Lakehouse"},
       {"type": "MirroredDatabaseChangeFeed", "category": "source", "description": "Mirrored Database Change Feed"},
       {"type": "MongoDBCDC", "category": "source", "description": "MongoDB change data capture"},
       {"type": "Mqtt", "category": "source", "description": "MQTT broker"},
@@ -41,9 +42,9 @@
       {"type": "SampleData", "category": "source", "description": "Built-in sample/simulated data"},
       {"type": "SolacePubSub", "category": "source", "description": "Solace PubSub+"}
     ],
-    "count": 37
+    "count": 38
   },
-  "notes": "Use --category destination to see destination types (Eventhouse, Lakehouse, CustomEndpoint, Activator, Notebook), --category operator for event processors, or --category all for every component.",
+  "notes": "Use --category destination to see destination types (Eventhouse, Lakehouse, CustomEndpoint, Activator, BusinessEvents, Notebook), --category operator for event processors, or --category all for every component.",
   "query_examples": [
     {"query": "[].type", "description": "Get just the type names."},
     {"query": "[?category=='source'].type", "description": "Filter to source types only."},

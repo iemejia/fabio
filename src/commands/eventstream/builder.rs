@@ -201,8 +201,14 @@ pub(super) async fn add_destination(
     // network call (and before the dry-run guard) — an Eventhouse destination
     // with the wrong property set fails SILENTLY server-side (the destination
     // sits in `Warning`, ingests nothing, logs no ingestion failure).
-    if destination_type.eq_ignore_ascii_case("eventhouse") {
-        validate_eventhouse_destination(&props)?;
+    match destination_type {
+        value if value.eq_ignore_ascii_case("eventhouse") => {
+            validate_eventhouse_destination(&props)?;
+        }
+        value if value.eq_ignore_ascii_case("BusinessEvents") => {
+            validate_business_events_destination(&props)?;
+        }
+        _ => {}
     }
 
     if output::dry_run_guard(
@@ -326,19 +332,119 @@ pub(super) fn validate_source_properties(source_type: &str, props: &Value) -> Re
         .into());
     }
 
+    validate_tls_settings(props)?;
     if source_type.eq_ignore_ascii_case("ReferenceLakehouse") {
         validate_reference_lakehouse_source(props)?;
+    } else if source_type.eq_ignore_ascii_case("LakehouseChangeFeed") {
+        validate_lakehouse_change_feed_source(props)?;
     } else if source_type.eq_ignore_ascii_case("FabricCapacityOperationEvents") {
         validate_capacity_operation_source(props)?;
     }
     Ok(())
 }
 
-fn required_string<'a>(props: &'a Value, field: &str, source_type: &str) -> Result<&'a str> {
+fn validate_lakehouse_change_feed_source(props: &Value) -> Result<()> {
+    let workspace = required_string(props, "workspaceId", "LakehouseChangeFeed source")?;
+    let item = required_string(props, "itemId", "LakehouseChangeFeed source")?;
+    validate_uuid(workspace, "LakehouseChangeFeed workspaceId")?;
+    validate_uuid(item, "LakehouseChangeFeed itemId")?;
+    let tables = props
+        .get("tableNames")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "LakehouseChangeFeed source requires array property 'tableNames'",
+                "Specific table selection is not yet supported; use \"tableNames\":[\"*\"].",
+            )
+        })?;
+    if tables.len() != 1 || tables[0].as_str() != Some("*") {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "LakehouseChangeFeed currently supports only tableNames: [\"*\"]",
+            "Use --properties '{\"workspaceId\":\"<WS>\",\"itemId\":\"<LAKEHOUSE>\",\"tableNames\":[\"*\"]}'.",
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn validate_business_events_destination(props: &Value) -> Result<()> {
+    let workspace = required_string(props, "workspaceId", "BusinessEvents destination")?;
+    let item = required_string(props, "itemId", "BusinessEvents destination")?;
+    let event_type = required_string(props, "businessEventTypeId", "BusinessEvents destination")?;
+    validate_uuid(workspace, "BusinessEvents workspaceId")?;
+    validate_uuid(item, "BusinessEvents itemId")?;
+    if event_type.is_empty() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "BusinessEvents businessEventTypeId must not be empty",
+            "Use the business event type identifier defined in the target Event Schema Set.",
+        )
+        .into());
+    }
+    if let Some(serialization) = props.get("inputSerialization")
+        && !serialization.is_object()
+    {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "BusinessEvents inputSerialization must be a JSON object",
+            "Example: \"inputSerialization\":{\"type\":\"Json\",\"properties\":{\"encoding\":\"UTF8\"}}",
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn validate_tls_settings(props: &Value) -> Result<()> {
+    let Some(settings) = props.get("tlsSettings") else {
+        return Ok(());
+    };
+    let settings = settings.as_object().ok_or_else(|| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "tlsSettings must be a JSON object",
+            "Use tlsSettings.trustCACertificate and/or tlsSettings.clientCertificate.",
+        )
+    })?;
+    for section in ["trustCACertificate", "clientCertificate"] {
+        let Some(value) = settings.get(section) else {
+            continue;
+        };
+        let config = value.as_object().ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("tlsSettings.{section} must be a JSON object"),
+                format!("Use \"{section}\":{{\"certificateResource\":{{...}}}}."),
+            )
+        })?;
+        if config.contains_key("certificate") {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("tlsSettings.{section}.certificate was renamed to certificateResource"),
+                format!("Replace '{section}.certificate' with '{section}.certificateResource'."),
+            )
+            .into());
+        }
+        if let Some(resource) = config.get("certificateResource")
+            && !resource.is_object()
+        {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("tlsSettings.{section}.certificateResource must be a JSON object"),
+                "For Key Vault use {\"type\":\"KeyVault\",\"azureKeyVaultResourceId\":\"<ARM-ID>\",\"certificateName\":\"<NAME>\"}.",
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
+fn required_string<'a>(props: &'a Value, field: &str, component: &str) -> Result<&'a str> {
     props.get(field).and_then(Value::as_str).ok_or_else(|| {
         FabioError::with_hint(
             ErrorCode::InvalidInput,
-            format!("{source_type} source requires string property '{field}'"),
+            format!("{component} requires string property '{field}'"),
             format!("Provide '{field}' in --properties."),
         )
         .into()
@@ -346,9 +452,9 @@ fn required_string<'a>(props: &'a Value, field: &str, source_type: &str) -> Resu
 }
 
 fn validate_reference_lakehouse_source(props: &Value) -> Result<()> {
-    let workspace = required_string(props, "workspaceId", "ReferenceLakehouse")?;
-    let item = required_string(props, "itemId", "ReferenceLakehouse")?;
-    let path = required_string(props, "absoluteOneLakePath", "ReferenceLakehouse")?;
+    let workspace = required_string(props, "workspaceId", "ReferenceLakehouse source")?;
+    let item = required_string(props, "itemId", "ReferenceLakehouse source")?;
+    let path = required_string(props, "absoluteOneLakePath", "ReferenceLakehouse source")?;
     validate_uuid(workspace, "ReferenceLakehouse workspaceId")?;
     validate_uuid(item, "ReferenceLakehouse itemId")?;
 
@@ -447,7 +553,7 @@ fn validate_refresh_rate(rate: &str) -> Result<()> {
 }
 
 fn validate_capacity_operation_source(props: &Value) -> Result<()> {
-    let scope = required_string(props, "eventScope", "FabricCapacityOperationEvents")?;
+    let scope = required_string(props, "eventScope", "FabricCapacityOperationEvents source")?;
     let event_scopes = ["Tenant", "Capacity", "Workspace", "Item", "SubItem"];
     if !event_scopes.contains(&scope) {
         return Err(FabioError::with_hint(
@@ -1066,6 +1172,7 @@ pub(super) fn list_components(cli: &Cli, category: &str) {
         {"type": "FabricWorkspaceItemEvents", "category": "source", "description": "Fabric workspace item events"},
         {"type": "GooglePubSub", "category": "source", "description": "Google Cloud Pub/Sub"},
         {"type": "Http", "category": "source", "description": "HTTP polling endpoint"},
+        {"type": "LakehouseChangeFeed", "category": "source", "description": "Changes from all tables in a Fabric Lakehouse"},
         {"type": "MirroredDatabaseChangeFeed", "category": "source", "description": "Mirrored Database Change Feed"},
         {"type": "MongoDBCDC", "category": "source", "description": "MongoDB change data capture"},
         {"type": "Mqtt", "category": "source", "description": "MQTT broker"},
@@ -1085,6 +1192,7 @@ pub(super) fn list_components(cli: &Cli, category: &str) {
         {"type": "Lakehouse", "category": "destination", "description": "Delta tables in a Lakehouse"},
         {"type": "CustomEndpoint", "category": "destination", "description": "Custom app endpoint (Event Hub-compatible)"},
         {"type": "Activator", "category": "destination", "description": "Data Activator (Reflex) trigger"},
+        {"type": "BusinessEvents", "category": "destination", "description": "Business event type in an Event Schema Set"},
         {"type": "Notebook", "category": "destination", "description": "Fabric Notebook (real-time processing)"},
     ]);
 
@@ -1125,8 +1233,9 @@ pub(super) fn list_components(cli: &Cli, category: &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        OPERATOR_TYPES, normalize_sample_type, validate_capacity_operation_filters,
-        validate_eventhouse_destination, validate_source_properties,
+        OPERATOR_TYPES, normalize_sample_type, validate_business_events_destination,
+        validate_capacity_operation_filters, validate_eventhouse_destination,
+        validate_source_properties,
     };
     use serde_json::json;
 
@@ -1237,6 +1346,53 @@ mod tests {
             "refreshRate": "00:05:00"
         });
         assert!(validate_source_properties("ReferenceLakehouse", &props).is_ok());
+    }
+
+    #[test]
+    fn lakehouse_change_feed_accepts_all_tables() {
+        let props = json!({
+            "workspaceId": "cfafbeb1-8037-4d0c-896e-a46fb27ff229",
+            "itemId": "11111111-2222-3333-4444-555555555555",
+            "tableNames": ["*"]
+        });
+        assert!(validate_source_properties("LakehouseChangeFeed", &props).is_ok());
+    }
+
+    #[test]
+    fn lakehouse_change_feed_rejects_specific_tables() {
+        let props = json!({
+            "workspaceId": "cfafbeb1-8037-4d0c-896e-a46fb27ff229",
+            "itemId": "11111111-2222-3333-4444-555555555555",
+            "tableNames": ["orders"]
+        });
+        assert!(validate_source_properties("LakehouseChangeFeed", &props).is_err());
+    }
+
+    #[test]
+    fn business_events_destination_matches_spec_shape() {
+        let props = json!({
+            "workspaceId": "cfafbeb1-8037-4d0c-896e-a46fb27ff229",
+            "itemId": "99999999-8888-7777-6666-555555555555",
+            "businessEventTypeId": "OrderShipped",
+            "inputSerialization": {"type": "Json", "properties": {"encoding": "UTF8"}}
+        });
+        assert!(validate_business_events_destination(&props).is_ok());
+    }
+
+    #[test]
+    fn tls_settings_reject_removed_certificate_field() {
+        let props = json!({
+            "tlsSettings": {
+                "trustCACertificate": {
+                    "certificate": {"type": "KeyVault"},
+                    "verifyHostname": true
+                }
+            }
+        });
+        let error = validate_source_properties("SolacePubSub", &props)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("certificateResource"), "got: {error}");
     }
 
     #[test]
