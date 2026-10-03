@@ -13,6 +13,7 @@ license: MIT
 
 ## When to use
 - Creating/updating/refreshing Dataflows Gen2 (Power Query mashup ETL).
+- Assessing and upgrading legacy Gen1 dataflows to Gen2 in place.
 - Inspecting or querying an existing dataflow definition.
 - Managing datamarts.
 
@@ -36,10 +37,12 @@ Manage dataflows (Power BI data transformation)
 | `fabio dataflow execute-query` | no | Execute a query against a dataflow (returns Apache Arrow IPC) |
 | `fabio dataflow get-definition` | no | Get the definition of a dataflow |
 | `fabio dataflow list` | no | List dataflows in a workspace |
+| `fabio dataflow list-gen1-upgrade-readiness` | no | List Gen1 dataflow upgrade readiness results for a workspace (preview) |
 | `fabio dataflow run` | yes | Run a dataflow on demand |
 | `fabio dataflow show` | no | Show details of a dataflow |
 | `fabio dataflow update` | yes | Update dataflow properties (name and/or description) |
 | `fabio dataflow update-definition` | yes | Update the definition of a dataflow |
+| `fabio dataflow upgrade-gen1` | yes | Upgrade 1-50 Gen1 dataflows to Gen2 in place (preview) |
 
 ### fabio datamart
 Manage datamarts (Power BI)
@@ -64,6 +67,7 @@ Manage datamarts (Power BI)
 ## Key gotchas
 - A Dataflow Gen2 definition combines a Power Query mashup with queryMetadata; both are required.
 - Refresh is asynchronous — poll or use the run/wait semantics.
+- Gen1 readiness evaluates every Gen1 dataflow in a workspace (no per-item filter), pages at 1-30 rows, and excludes Gen2 items. Upgrade accepts 1-50 Gen1 IDs from that same workspace and can partially succeed.
 
 ## Troubleshooting
 | Symptom | Fix |
@@ -71,9 +75,11 @@ Manage datamarts (Power BI)
 | Unsure whether to use a dataflow or a pipeline | Transform data -> dataflow; sequence activities -> data-pipeline. Run 'fabio context disambiguate dataflow'. |
 | Definition rejected | Ensure both the mashup and queryMetadata parts are present and valid. |
 | 'dataflow run' fails with 'Invalid QueriesMetadata ... must not be empty' | A REST-authored Gen2 dataflow needs a queriesMetadata map in queryMetadata.json: add "queriesMetadata": {"<QueryName>": {"queryId", "queryName", "loadEnabled"}}. NOTE the Gen2 lakehouse data destination is portal-generated (a hand-authored dataDestinations binding runs but persists no table). |
+| A Gen1 upgrade batch contains failed rows despite HTTP success | Inspect migrations[].requiredActions and migrations[].migrationError. Authorization and migration are evaluated per dataflow; fix readiness issues and retry only rows with migrationError.isRetriable=true. |
 
 ## Safety
 - Deleting or overwriting a dataflow definition replaces its transformation logic — confirm with the user.
+- Gen1 upgrade converts dataflows in place. Always inspect list-gen1-upgrade-readiness and preview upgrade-gen1 with --dry-run before migrating.
 
 ## Shared references
 Cross-cutting operational guidance (the "common" layer) — consult the relevant topic before non-trivial work:

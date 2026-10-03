@@ -201,6 +201,28 @@ pub enum DataflowCommand {
         #[arg(long, default_value = "1")]
         arrow_version: u8,
     },
+    /// List Gen1 dataflow upgrade readiness results for a workspace (preview)
+    #[command(name = "list-gen1-upgrade-readiness", display_order = 16)]
+    ListGen1UpgradeReadiness {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Server page size (1-30); omitted to use the service default
+        #[arg(long, value_parser = clap::value_parser!(u8).range(1..=30))]
+        page_size: Option<u8>,
+    },
+    /// Upgrade 1-50 Gen1 dataflows to Gen2 in place (preview)
+    #[command(name = "upgrade-gen1", display_order = 17)]
+    UpgradeGen1 {
+        /// Workspace ID containing every Gen1 dataflow
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Gen1 dataflow ID to upgrade; repeat for a batch of up to 50
+        #[arg(long = "id", required = true, num_args = 1..=50)]
+        ids: Vec<String>,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -312,6 +334,13 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataflowCommand
                 *cancel_on_timeout,
             )
             .await
+        }
+        DataflowCommand::ListGen1UpgradeReadiness {
+            workspace,
+            page_size,
+        } => list_gen1_upgrade_readiness(cli, client, workspace, *page_size).await,
+        DataflowCommand::UpgradeGen1 { workspace, ids } => {
+            upgrade_gen1(cli, client, workspace, ids).await
         }
     }
 }
@@ -514,6 +543,88 @@ async fn discover_parameters(
         "name",
         resp.continuation_token.as_deref(),
     );
+    Ok(())
+}
+
+// ─── Gen1 upgrade ────────────────────────────────────────────────────────────
+
+fn gen1_upgrade_body(ids: &[String]) -> Result<Value> {
+    if !(1..=50).contains(&ids.len()) {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!(
+                "Gen1 upgrade requires between 1 and 50 dataflow IDs; received {}",
+                ids.len()
+            ),
+            "Repeat --id once per Gen1 dataflow, for example: --id <ID1> --id <ID2>",
+        )
+        .into());
+    }
+    if let Some(id) = ids.iter().find(|id| uuid::Uuid::parse_str(id).is_err()) {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid Gen1 dataflow ID: '{id}'"),
+            "Provide each --id as a valid dataflow GUID.",
+        )
+        .into());
+    }
+
+    Ok(serde_json::json!({
+        "dataflows": ids.iter().map(|id| serde_json::json!({"id": id})).collect::<Vec<_>>()
+    }))
+}
+
+async fn list_gen1_upgrade_readiness(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    page_size: Option<u8>,
+) -> Result<()> {
+    let path = page_size.map_or_else(
+        || format!("/workspaces/{workspace}/dataflows/gen1UpgradeReadinessResults"),
+        |size| {
+            format!("/workspaces/{workspace}/dataflows/gen1UpgradeReadinessResults?pageSize={size}")
+        },
+    );
+    let resp = client
+        .get_list(&path, "value", cli.all, cli.continuation_token.as_deref())
+        .await
+        .map_err(|e| enrich_forbidden(e, "dataflow list-gen1-upgrade-readiness", "Viewer"))?;
+
+    output::render_list_with_token(
+        cli,
+        &resp.items,
+        &["displayName", "id", "status", "reasons"],
+        &["NAME", "ID", "STATUS", "REASONS"],
+        "id",
+        resp.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+async fn upgrade_gen1(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    ids: &[String],
+) -> Result<()> {
+    let body = gen1_upgrade_body(ids)?;
+    if output::dry_run_guard(cli, "dataflow upgrade-gen1", &body) {
+        return Ok(());
+    }
+
+    let mut data = client
+        .post(
+            &format!("/workspaces/{workspace}/dataflows/gen1Upgrade"),
+            &body,
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "dataflow upgrade-gen1", "Admin or item owner"))?;
+    if let Some(result) = data.as_object_mut() {
+        result.insert("destructive".to_string(), Value::Bool(true));
+    }
+    output::render_object(cli, &data, "summary");
     Ok(())
 }
 
@@ -807,7 +918,7 @@ async fn execute_query(
 
 #[cfg(test)]
 mod tests {
-    use super::dataflow_run_failure_hint;
+    use super::{dataflow_run_failure_hint, gen1_upgrade_body};
 
     #[test]
     fn queries_metadata_failure_teaches_the_shape() {
@@ -824,5 +935,33 @@ mod tests {
     fn other_failure_returns_job_id_only() {
         let hint = dataflow_run_failure_hint("some other failure", "job-2");
         assert_eq!(hint, "Job ID: job-2");
+    }
+
+    #[test]
+    fn gen1_upgrade_body_matches_spec() {
+        let ids = vec![
+            "6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b".to_string(),
+            "7c2a4e3f-9b5d-4c7f-a02b-3d4e5f6a7b8c".to_string(),
+        ];
+        assert_eq!(
+            gen1_upgrade_body(&ids).unwrap(),
+            serde_json::json!({
+                "dataflows": [
+                    {"id": "6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b"},
+                    {"id": "7c2a4e3f-9b5d-4c7f-a02b-3d4e5f6a7b8c"}
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn gen1_upgrade_body_rejects_more_than_fifty_ids() {
+        let ids = (0..51).map(|index| index.to_string()).collect::<Vec<_>>();
+        assert!(gen1_upgrade_body(&ids).is_err());
+    }
+
+    #[test]
+    fn gen1_upgrade_body_rejects_invalid_id() {
+        assert!(gen1_upgrade_body(&["not-a-guid".to_string()]).is_err());
     }
 }

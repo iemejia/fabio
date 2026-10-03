@@ -36,6 +36,8 @@
     "Entity type required: id, namespace ('usertypes'), name, namespaceType ('Custom')",
     "Documents/Overviews/ResourceLinks are optional entity metadata; import generates Documents/ResourceLinks from RDF annotations, and all three pass through via --dir",
     "getDefinition/updateDefinition are both LRO",
+    "Bare create defaults to ontology generation 2; when definition parts are provided, Fabric resolves the generation from those parts",
+    "List/show/create/update responses expose the resolved read-only generation at properties.generation (1 or 2)",
     "updateDefinition validates ALL parts together and, on failure, returns a generic 'ALMOperationImportFailed' (top-level message is often an unfilled '{0} {1} {2}' template; the real reason is in error.errorCode + error.moreDetails). Likely causes, in order: (1) an untyped property in a binding, (2) a binding/contextualization referencing an entityTypeId/propertyId/relationshipTypeId not defined in the same push (IDs are case-sensitive), (3) a TimeSeries binding missing timestampColumn, (4) a malformed part ($schema/required field/mismatched contextualization endpoints).",
     "Fabric does NOT validate that referenced Lakehouse tables/columns exist at updateDefinition time — that is deferred to query time. A binding to a non-existent table still imports successfully, so a missing table is never the cause of ALMOperationImportFailed.",
     "Neither .platform nor part ordering across files is required for updateDefinition (interleaved vs defs-first both work); only key order WITHIN a single DataBinding matters.",

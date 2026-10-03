@@ -9,6 +9,16 @@
           "type": "CustomEndpoint",
           "status": "Running",
           "id": "c1d2e3f4-0000-0000-0000-000000000001"
+        },
+        {
+          "name": "lakehouse-changes",
+          "type": "LakehouseChangeFeed",
+          "status": "Running",
+          "properties": {
+            "workspaceId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "itemId": "c1d2e3f4-0000-0000-0000-000000000020",
+            "tableNames": ["*"]
+          }
         }
       ],
       "destinations": [
@@ -23,6 +33,21 @@
             "itemId": "d4e5f6a7-0000-0000-0000-000000000010",
             "tableName": "SensorEvents"
           }
+        },
+        {
+          "name": "business-events",
+          "type": "BusinessEvents",
+          "status": "Running",
+          "properties": {
+            "workspaceId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "itemId": "c1d2e3f4-0000-0000-0000-000000000030",
+            "businessEventTypeId": "OrderShipped",
+            "inputSerialization": {
+              "type": "Json",
+              "properties": {"encoding": "UTF8"}
+            }
+          },
+          "inputNodes": [{"name": "app-events-source-stream"}]
         }
       ],
       "streams": [
@@ -35,7 +60,7 @@
       "operators": []
     }
   },
-  "notes": "Sources feed into streams, streams feed into destinations/operators. Status values: Creating, Running, Warning, Stopped. Destination itemId must be the KQL Database ID (NOT Eventhouse ID). CustomEndpoint sources expose Event Hub-compatible interface for sending events.",
+  "notes": "Sources feed into streams, streams feed into destinations/operators. Status values: Creating, Running, Warning, Stopped. Destination itemId must be the KQL Database ID (NOT Eventhouse ID). BusinessEvents targets an Event Schema Set and requires businessEventTypeId. LakehouseChangeFeed currently accepts only tableNames:[\"*\"]. CDC properties now include heartbeatIntervalMs, heartbeatActionQuery, and storeOnlyCapturedTablesDdl where supported. Solace supports tlsSettings; trust/client certificate objects use certificateResource (not certificate).",
   "query_examples": [
     {"query": "sources[].name", "description": "List all source names."},
     {"query": "destinations[?status=='Running'].name", "description": "Active destinations."},

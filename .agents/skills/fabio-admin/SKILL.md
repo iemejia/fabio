@@ -13,7 +13,7 @@ license: MIT
 
 ## When to use
 - Workspace lifecycle and governance: create/assign-capacity, recover or permanently delete soft-deleted items, role assignments, folders, domains, networking/firewall/encryption policies, git outbound policy, OneLake settings.
-- Capacity lifecycle: list, resume, suspend, create, delete (ARM-scoped).
+- Capacity lifecycle: list, resume, suspend, create, delete (ARM-scoped), and Fabric surge protection thresholds.
 - Tenant-wide inventory and settings (requires Fabric admin role).
 - Governance: domains (group workspaces), sensitivity labels.
 - Connectivity: gateways, connections, managed private endpoints.
@@ -153,12 +153,14 @@ List and inspect Fabric capacities
 | `fabio capacity check-name` | no | Check if a capacity name is available (ARM API) |
 | `fabio capacity create` | yes | Create a new Fabric capacity (ARM API) |
 | `fabio capacity delete` | yes | Delete a Fabric capacity (ARM API) |
+| `fabio capacity get-surge-protection` | no | Show a capacity's background-operation surge protection configuration |
 | `fabio capacity list` | no | List capacities available to the caller (Fabric API) |
 | `fabio capacity list-skus` | no | List available SKUs for Fabric capacities (ARM API) |
 | `fabio capacity resume` | yes | Resume a suspended capacity (ARM API) |
 | `fabio capacity show` | no | Show details of a specific capacity (Fabric API) |
 | `fabio capacity suspend` | yes | Suspend (pause) a capacity (ARM API) |
 | `fabio capacity update` | yes | Update an existing Fabric capacity (ARM API) |
+| `fabio capacity update-surge-protection` | yes | Update a capacity's background-operation surge protection configuration |
 
 ### fabio domain
 Manage domains (organize workspaces into business domains)
@@ -255,6 +257,7 @@ List and resolve sensitivity labels (from Microsoft Purview via Graph API)
 
 ## Key gotchas
 - capacity suspend/resume/create/delete use the ARM scope (management.azure.com), not the Fabric scope.
+- capacity get/update-surge-protection use the Fabric scope and require capacity administrator permissions. Enabling an unconfigured capacity needs both thresholds; disabling clears them.
 - label list resolves UUIDs to names via Microsoft Graph (needs M365 E5 + InformationProtection.Read).
 - workspace recover-item can partially succeed: a failed child and its descendants remain soft-deleted while independent branches may recover.
 - Customer-Managed Key (CMK) governance: enable/rotate per workspace with 'workspace assign-encryption --key-identifier <versionless Key Vault key URI>' (rotation reuses assign since the URI is versionless), inspect with 'workspace get-encryption', revert to Microsoft-managed keys with 'workspace reset-encryption'. For a tenant-wide audit, 'admin list-workspaces --include encryption' returns each workspace's encryption state and accepts '--encryption-status' (Active/EnableInProgress/DisableInProgress/Failed/Disabled) and '--capacity-id' to scope the view (e.g. find workspaces mid-enablement on one capacity).
@@ -270,6 +273,7 @@ List and resolve sensitivity labels (from Microsoft Purview via Graph API)
 
 ## Safety
 - capacity suspend interrupts ALL running workloads (notebooks, pipelines, Spark jobs) on that capacity — warn about in-flight jobs.
+- Surge protection rejects background operations above the configured threshold; preview threshold changes with --dry-run and account for workload impact.
 - Tenant setting changes are broad — confirm scope before applying.
 - Deleting a workspace is permanent and removes ALL items inside — warn and suggest --dry-run.
 - workspace delete-recoverable-item permanently removes a soft-deleted item; always inspect list-recoverable-items and use --dry-run first.

@@ -83,10 +83,13 @@
  - `src/commands/semantic_model/perspectives.rs`: `add-perspective`/`delete-perspective`/`add-perspective-member`/`remove-perspective-member`/`list-perspectives` (filtered model views in `definition/perspectives/<name>.tmdl` + `ref perspective` in model.tmdl); pure `parse_perspective`/`render_perspective`/`remove_member` + `model.bim` variants + unit tests
 - `src/commands/eventhouse.rs`: list/show/create/update/delete/get-definition/update-definition + data plane (query with one-shot + `--follow` NDJSON streaming, list-databases, query-uri, ingestion-uri)
 - `src/commands/eventstream/mod.rs`: list/show/create/update/delete/get-definition/update-definition/get-topology/pause/resume/sources/destinations
-- `src/commands/eventstream/builder.rs`: add-source/add-destination/add-sample-source/add-derived-stream/validate/list-components
+- `src/commands/eventstream/builder.rs`: add-source/add-destination/add-sample-source/add-derived-stream/validate/list-components, including LakehouseChangeFeed and BusinessEvents validation
 - `src/commands/context/data/examples/eventstream_get_source_connection.json`: Kafka/custom endpoint connection union output example
 - `src/commands/context/data/examples/eventstream_get_destination_connection.json`: Custom endpoint destination connection output example
 - `src/commands/context/data/examples/eventstream_get_reference_lakehouse_source.json`: Reference Lakehouse source output example
+- `src/commands/context/data/examples/dataflow_gen1_upgrade.json`: Gen1 readiness/upgrade partial-success output example
+- `src/commands/context/data/examples/capacity_surge_protection.json`: Enabled/disabled surge-protection output example
+- `src/commands/context/data/examples/catalog_search.json`: Mixed item/workspace catalog results and workspace filtering
 - `src/commands/kql_database/mod.rs`: list/show/create/update/delete/get-definition/update-definition/table-shortcuts (list/create/get/delete-shortcut; typed target flags via shared `shortcut_target`)
 - `src/commands/shortcut_target.rs`: Shared shortcut target-builder (`ShortcutTargetFlags`, `normalize_target_type`, `build_shortcut_target`) reused by lakehouse OneLake shortcuts and kql-database table shortcuts
 - `src/commands/kql_database/intelligence.rs`: query/list-entities/describe/describe-entity/sample/ingest/show-queryplan/diagnostics/deeplink
@@ -101,14 +104,14 @@
 - `src/commands/ml_model.rs`: list/show/create/update/delete (CRUD only)
 - `src/commands/ml_experiment.rs`: list/show/create/update/delete (CRUD only)
 - `src/commands/copy_job.rs`: list/show/create/update/delete/get-definition/update-definition/reset
-- `src/commands/dataflow.rs`: list/show/create/update/delete/get-definition/update-definition/discover-parameters/run/execute-query
+- `src/commands/dataflow.rs`: list/show/create/update/delete/get-definition/update-definition/discover-parameters/run/execute-query + Gen1 upgrade readiness/in-place migration
 - `src/commands/graphql_api.rs`: list/show/create/update/delete/get-definition/update-definition (schema.graphql)
 - `src/commands/spark.rs`: get-settings/update-settings/list-pools/get-pool/create-pool/update-pool/delete-pool
 - `src/commands/spark_livy.rs`: INTERACTIVE Livy API (run Spark code) — `spark create-livy-session`/`run-statement`/`delete-livy-session` + the one-shot `spark run` (create→wait idle→run→output→delete). Per-lakehouse endpoint `/workspaces/{ws}/lakehouses/{lh}/livyApi/versions/2023-12-01/sessions`; DISTINCT from the read-only monitoring `list-livy-sessions`/`get-livy-session` in spark.rs. All waits bounded by --timeout.
 - `src/commands/spark_job_definition.rs`: list/show/create/update/delete/get-definition/update-definition/run
 - `src/commands/map.rs`: list/show/create/update/delete/get-definition/update-definition (geospatial Azure Maps)
 - `src/commands/plan.rs`: list/show/create/update/delete/get-definition/update-definition (connected-planning Plan item, PlanV1 / connectedPlanning/infobridge.json)
-- `src/commands/capacity.rs`: list/show (Fabric API) + suspend/resume/create/update/delete/list-skus/check-name (ARM API)
+- `src/commands/capacity.rs`: list/show/surge protection (Fabric API) + suspend/resume/create/update/delete/list-skus/check-name (ARM API)
 - `src/commands/connection/`: directory module (split from `connection.rs` when it crossed the 1500-line limit) — `mod.rs` (enum + execute dispatch), `crud.rs` (list/show/create/update/delete/list-supported-types + body builders + recency-aware `list_table_columns`), `roles.rs` (role assignments + test-connection), `hygiene.rs` (find-stale/find-duplicates/find-single-owner governance commands built on connection-recency signals — all read-only pure logic + unit tests)
 - `src/commands/deployment_pipeline.rs`: list/show/create/update/delete/list-stages/list-stage-items/assign-workspace/unassign-workspace/deploy
 - `src/commands/domain.rs`: list/show/create/update/delete/list-workspaces/assign-workspaces/unassign-workspaces/assign-by-capacity/assign-by-principal
@@ -169,7 +172,7 @@
 - `src/commands/context/skills.rs`: Runtime accessor for intent-scoped sub-skill judgment (`context skill <family>`; embeds `data/skills/*.json` via build.rs; indexed by `context find` so gotchas are keyword-discoverable)
 - `src/commands/context/disambiguations.rs`: Overloaded-term resolution tables (materialized-view, dataflow, semantic-model, sql-endpoint)
 - `src/commands/context/skillgen.rs`: (`#[cfg(test)]`-only) generator + drift test for the 6 intent-scoped sub-skills (`.agents/skills/fabio-*/SKILL.md`) from `data/skills/*.json` + `commands.json`
-- `src/commands/context/examples.rs`: Output shape examples (34 commands)
+- `src/commands/context/examples.rs`: Output shape examples (37 commands)
 - `src/commands/context/tenant.rs`: Live workspace graph extraction
 - `src/commands/mcp/mod.rs`: MCP command group (serve subcommand)
 - `src/commands/mcp/serve.rs`: MCP JSON-RPC 2.0 server (initialize, tools/list, tools/call over stdio)
@@ -204,7 +207,7 @@
 - `tests/e2e_environment.rs`: Environment CRUD, staging Spark compute, runtime, Spark properties, and custom live-pool tests
 - `tests/e2e_data_pipeline.rs`: Data pipeline CRUD + run + schedule/instance tests
 - `tests/e2e_eventhouse.rs`: Eventhouse CRUD tests + query lifecycle (one-shot/follow) + offline follow-flag guard
-- `tests/e2e_eventstream.rs`: Eventstream CRUD tests
+- `tests/e2e_eventstream.rs`: Eventstream CRUD plus LakehouseChangeFeed/BusinessEvents dry-run tests
 - `tests/e2e_kql_database.rs`: KQL database tests
 - `tests/e2e_kql_queryset.rs`: KQL queryset tests
 - `tests/e2e_kql_dashboard.rs`: KQL dashboard tests
@@ -214,7 +217,7 @@
 - `tests/e2e_ml_model.rs`: ML model CRUD tests
 - `tests/e2e_ml_experiment.rs`: ML experiment CRUD tests
 - `tests/e2e_copy_job.rs`: Copy job CRUD + reset tests
-- `tests/e2e_dataflow.rs`: Dataflow CRUD + run + execute-query tests
+- `tests/e2e_dataflow.rs`: Dataflow CRUD + run + execute-query + Gen1 upgrade tests
 - `tests/e2e_report.rs`: Report CRUD tests
 - `tests/e2e_semantic_model.rs`: Semantic model CRUD tests + Direct Lake generate (dry-run + generate→frame→DAX lifecycle)
 - `tests/e2e_map.rs`: Map CRUD + definition tests
@@ -224,7 +227,7 @@
 - `tests/e2e_domain.rs`: Domain management tests
 - `tests/e2e_job_scheduler.rs`: Job scheduler tests (11 tests: list, dry-run, fire-and-forget, --wait with polling)
 - `tests/e2e_spark.rs`: Spark settings and pool tests
-- `tests/e2e_capacity.rs`: Capacity list/show tests + ARM dry-run tests (suspend/resume/create/update/delete)
+- `tests/e2e_capacity.rs`: Capacity list/show/surge protection tests + ARM dry-run tests (suspend/resume/create/update/delete)
 - `tests/e2e_onelake_security.rs`: OneLake security tests
 - `tests/e2e_managed_private_endpoint.rs`: Managed private endpoint tests
 - `tests/e2e_admin.rs`: Admin API tests (63 tests: listing, tag lifecycle, domain lifecycle, dry-run validations, sharing links, labels, external data shares)

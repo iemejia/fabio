@@ -15,8 +15,8 @@
   },
   "notes": [
     "Topology is graph-based: nodes reference each other via inputNodes arrays",
-    "Source types: CustomEndpoint, AzureEventHub, SampleData, AmazonKinesis, etc.",
-    "Destination types: Eventhouse, Lakehouse, CustomEndpoint, Activator",
+    "Source types include CustomEndpoint, AzureEventHub, SampleData, AmazonKinesis, and LakehouseChangeFeed",
+    "Destination types include Eventhouse, Lakehouse, CustomEndpoint, Activator, and BusinessEvents",
     "Eventhouse destination itemId must be KQL Database ID (not Eventhouse ID)",
     "Use add-source/add-destination helpers to avoid manual definition crafting",
     "Sample data source: add-sample-source --sample-type Bicycles|YellowTaxi|StockMarket|Buses (sets properties.type; empty properties are rejected by the API)",
@@ -24,8 +24,10 @@
     "Filter operator properties: {conditions:[{column:{node,columnName,columnPath:[]}, operatorType:'Equals'|..., value:{dataType,value}}]} (the condition field is 'operatorType', NOT 'operator' as some docs show)",
     "compatibilityLevel should be '1.1'",
     "CDC sources (AzureSQLDBCDC, AzureSQLMIDBCDC, SQLServerOnVMDBCDC, MySQLCDC, PostgreSQLCDC) support snapshotMode (Initial/InitialOnly/NoData) in --properties to customize the initial snapshot",
-    "SQL Server-family CDC sources only (AzureSQLDBCDC, AzureSQLMIDBCDC, SQLServerOnVMDBCDC) additionally support excludedColumns (comma-separated), databaseApplicationIntent (ReadWrite/ReadOnly), and snapshotSelectStatementOverrides ([{tableName, selectStatement}])",
-    "ApacheKafka, ConfluentCloud, and MQTT sources support tlsSettings.trustCACertificate / tlsSettings.clientCertificate, each referencing a KeyVault-backed certificate ({\"type\":\"KeyVault\",\"azureKeyVaultResourceId\":\"<ARM id>\",\"certificateName\":\"<name>\"})",
+    "SQL Server-family CDC sources additionally support excludedColumns, databaseApplicationIntent, snapshotSelectStatementOverrides, heartbeatIntervalMs, heartbeatActionQuery, and storeOnlyCapturedTablesDdl; MySQL and Oracle support storeOnlyCapturedTablesDdl; PostgreSQL supports heartbeatIntervalMs",
+    "ApacheKafka, ConfluentCloud, MQTT, and Solace sources support tlsSettings. trustCACertificate/clientCertificate reference Key Vault material under certificateResource (not certificate): {\"certificateResource\":{\"type\":\"KeyVault\",\"azureKeyVaultResourceId\":\"<ARM id>\",\"certificateName\":\"<name>\"}}",
+    "LakehouseChangeFeed requires workspaceId, Lakehouse itemId, and tableNames; currently tableNames must be [\"*\"]",
+    "BusinessEvents destination requires workspaceId, Event Schema Set itemId, businessEventTypeId, and optional inputSerialization",
     "FabricAnomalyDetectionEvents source properties: workspaceId, itemId, configurationId, includedEventTypes (e.g. Microsoft.Fabric.AnomalyDetection.AnomalyDetected), and optional Event Grid advanced filters"
   ],
   "related_commands": [

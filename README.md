@@ -78,6 +78,8 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 - **Data orchestration** — `--post-run-item` triggers a pipeline or notebook after deployment to populate lakehouses
 - **Parallel execution** — bounded-concurrency async deployment (default 8 parallel ops per type)
 - **Profile management** — named profiles store default workspace, capacity, output format, and private link settings; switch contexts with `fabio profile use`
+- **Legacy modernization** — assess every Dataflow Gen1 in a workspace and upgrade 1-50 items to Gen2 in place with per-item partial-success reporting
+- **Capacity surge protection** — inspect and tune background-operation rejection/recovery thresholds before deep throttling
 
 ### How fabio avoids the chicken-and-egg problem
 
