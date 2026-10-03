@@ -3,8 +3,8 @@ name: Sync Fabric REST API specs
 on:
   workflow_dispatch:
   schedule:
-    # Run daily at 23:00 UTC (1h after typical upstream spec update ~22:00 UTC)
-    - cron: '0 23 * * *'
+    # Run Tuesdays and Fridays at 23:00 UTC (1h after typical upstream spec update ~22:00 UTC)
+    - cron: '0 23 * * 2,5'
 
 permissions:
   contents: write
