@@ -1,0 +1,16 @@
+{
+  "command": "fabio capacity show-surge-protection --id $CAPACITY_ID",
+  "description": "Inspect capacity surge protection state and utilization thresholds.",
+  "response": {
+    "data": {
+      "state": "Enabled",
+      "rejectionThreshold": 70,
+      "recoveryThreshold": 50
+    }
+  },
+  "notes": "Thresholds are omitted when state is Disabled. Enabling an unconfigured capacity requires both thresholds; disabling clears persisted thresholds.",
+  "query_examples": [
+    {"query": "state", "description": "Enabled or Disabled."},
+    {"query": "rejectionThreshold", "description": "Background utilization percentage that triggers rejection."}
+  ]
+}

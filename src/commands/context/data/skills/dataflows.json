@@ -4,6 +4,7 @@
   "description": "Intent-scoped fabio skill for Fabric low-code data preparation: Dataflows Gen2 (Power Query / M mashup) and datamarts. Use for visual/low-code ETL that loads into a lakehouse or warehouse. Triggers: \"dataflow\", \"dataflow gen2\", \"power query\", \"mashup\", \"low-code etl\", \"datamart\", \"transform without code\".",
   "command_groups": ["dataflow", "datamart"],
   "when_to_use": [
+    "Assessing and upgrading legacy Gen1 dataflows in place to Dataflow Gen2.",
     "Creating/updating/refreshing Dataflows Gen2 (Power Query mashup ETL).",
     "Inspecting or querying an existing dataflow definition.",
     "Managing datamarts."
@@ -26,6 +27,7 @@
     "Authoring new Gen1 dataflows (Gen2 is the strategic path)."
   ],
   "key_gotchas": [
+    "Gen1 upgrade is Preview. list-upgrade-readiness assesses every Gen1 dataflow in a workspace (no per-item filter, page size 1-30); upgrade-gen1 accepts 1-50 repeated --id values, preserves IDs/workspace, and can partially succeed.",
     "A Dataflow Gen2 definition combines a Power Query mashup with queryMetadata; both are required.",
     "Refresh is asynchronous — poll or use the run/wait semantics."
   ],

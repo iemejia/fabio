@@ -337,6 +337,14 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/dataflow_execute_query.json"),
     ),
     (
+        "dataflow/upgrade-gen1",
+        include_str!("data/examples/dataflow_upgrade_gen1.json"),
+    ),
+    (
+        "dataflow/list-upgrade-readiness",
+        include_str!("data/examples/dataflow_upgrade_readiness.json"),
+    ),
+    (
         "workspace/create",
         include_str!("data/examples/workspace_create.json"),
     ),
@@ -400,6 +408,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
         "capacity/list",
         include_str!("data/examples/capacity_list.json"),
+    ),
+    (
+        "capacity/show-surge-protection",
+        include_str!("data/examples/capacity_surge_protection.json"),
     ),
     (
         "profile/list",

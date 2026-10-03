@@ -326,6 +326,62 @@ fn eventstream_add_destination_dry_run() {
 }
 
 #[test]
+fn eventstream_add_lakehouse_change_feed_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "eventstream",
+            "add-source",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "lakehouse-changes",
+            "--source-type",
+            "LakehouseChangeFeed",
+            "--properties",
+            r#"{"workspaceId":"cfafbeb1-8037-4d0c-896e-a46fb27ff229","itemId":"11111111-2222-3333-4444-555555555555","tableNames":["*"]}"#,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert_eq!(
+        json["data"]["details"]["source"]["type"],
+        "LakehouseChangeFeed"
+    );
+}
+
+#[test]
+fn eventstream_add_business_events_destination_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "eventstream",
+            "add-destination",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "business-events",
+            "--destination-type",
+            "BusinessEvents",
+            "--input-node",
+            "ProcessedOrders",
+            "--properties",
+            r#"{"workspaceId":"cfafbeb1-8037-4d0c-896e-a46fb27ff229","itemId":"99999999-8888-7777-6666-555555555555","businessEventTypeId":"OrderShipped","inputSerialization":{"type":"Json","properties":{"encoding":"UTF8"}}}"#,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert_eq!(
+        json["data"]["details"]["destination"]["type"],
+        "BusinessEvents"
+    );
+}
+
+#[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn eventstream_add_destination_eventhouse_wrong_mode_teaches() {
@@ -567,7 +623,7 @@ fn eventstream_list_components_filter_source() {
     let json = parse_json(&output);
     let data = extract_data(&json);
     let items = data.as_array().expect("should be array");
-    assert_eq!(items.len(), 37, "Should match the complete SourceType enum");
+    assert_eq!(items.len(), 38, "Should match the complete SourceType enum");
     let types: Vec<&str> = items
         .iter()
         .filter_map(|item| item["type"].as_str())
@@ -575,6 +631,7 @@ fn eventstream_list_components_filter_source() {
     for new_type in [
         "Cribl",
         "FabricCapacityOperationEvents",
+        "LakehouseChangeFeed",
         "ReferenceLakehouse",
         "SAPDatasphere",
     ] {
@@ -600,7 +657,11 @@ fn eventstream_list_components_filter_destination() {
     let json = parse_json(&output);
     let data = extract_data(&json);
     let items = data.as_array().expect("should be array");
-    assert_eq!(items.len(), 5, "Should have 5 destination types");
+    assert_eq!(items.len(), 6, "Should have 6 destination types");
+    assert!(
+        items.iter().any(|item| item["type"] == "BusinessEvents"),
+        "Should include BusinessEvents"
+    );
     for item in items {
         assert_eq!(item["category"], "destination");
     }

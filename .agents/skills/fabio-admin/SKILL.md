@@ -13,7 +13,7 @@ license: MIT
 
 ## When to use
 - Workspace lifecycle and governance: create/assign-capacity, recover or permanently delete soft-deleted items, role assignments, folders, domains, networking/firewall/encryption policies, git outbound policy, OneLake settings.
-- Capacity lifecycle: list, resume, suspend, create, delete (ARM-scoped).
+- Capacity lifecycle: list, resume, suspend, create, delete (ARM-scoped), and configure Fabric surge protection thresholds.
 - Tenant-wide inventory and settings (requires Fabric admin role).
 - Governance: domains (group workspaces), sensitivity labels.
 - Connectivity: gateways, connections, managed private endpoints.
@@ -157,8 +157,10 @@ List and inspect Fabric capacities
 | `fabio capacity list-skus` | no | List available SKUs for Fabric capacities (ARM API) |
 | `fabio capacity resume` | yes | Resume a suspended capacity (ARM API) |
 | `fabio capacity show` | no | Show details of a specific capacity (Fabric API) |
+| `fabio capacity show-surge-protection` | no | Show surge protection configuration for a capacity |
 | `fabio capacity suspend` | yes | Suspend (pause) a capacity (ARM API) |
 | `fabio capacity update` | yes | Update an existing Fabric capacity (ARM API) |
+| `fabio capacity update-surge-protection` | yes | Update surge protection state and/or utilization thresholds |
 
 ### fabio domain
 Manage domains (organize workspaces into business domains)
@@ -254,6 +256,7 @@ List and resolve sensitivity labels (from Microsoft Purview via Graph API)
 - Bulk tenant-setting changes without confirming the scope with the user.
 
 ## Key gotchas
+- Capacity surge protection is a Fabric API (not ARM): enabling an unconfigured capacity requires state Enabled plus both thresholds; rejection is 15-100 and recovery is 6-99 and strictly lower. Disabling clears persisted thresholds.
 - capacity suspend/resume/create/delete use the ARM scope (management.azure.com), not the Fabric scope.
 - label list resolves UUIDs to names via Microsoft Graph (needs M365 E5 + InformationProtection.Read).
 - workspace recover-item can partially succeed: a failed child and its descendants remain soft-deleted while independent branches may recover.

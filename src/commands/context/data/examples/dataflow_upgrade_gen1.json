@@ -1,0 +1,52 @@
+{
+  "command": "fabio dataflow upgrade-gen1 --workspace $WS --id $GEN1_ID_1 --id $GEN1_ID_2",
+  "description": "Upgrade a batch of Gen1 dataflows to Gen2 in place and inspect partial-success results.",
+  "response": {
+    "data": {
+      "summary": {
+        "totalCount": 2,
+        "succeededCount": 1,
+        "failedCount": 1
+      },
+      "migrations": [
+        {
+          "dataflowId": "6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b",
+          "dataflowName": "Sales Ingestion (Gen1)",
+          "targetDataflowName": "Sales Ingestion",
+          "workspaceId": "afced311-0e76-4b74-9d59-6cdcbab44653",
+          "workspaceName": "Test Workspace",
+          "assessmentStatus": "ReadyToMigrate",
+          "migrationStatus": "Succeeded",
+          "migrationEndDateTime": "2026-08-19T10:15:42Z"
+        },
+        {
+          "dataflowId": "7c2a4e3f-9b5d-4c7f-a02b-3d4e5f6a7b8c",
+          "dataflowName": "Marketing Blend (Gen1)",
+          "targetDataflowName": "Marketing Blend (Gen1)",
+          "workspaceId": "afced311-0e76-4b74-9d59-6cdcbab44653",
+          "workspaceName": "Test Workspace",
+          "assessmentStatus": "NeedsAttention",
+          "requiredActions": [
+            {
+              "status": "NeedsAttention",
+              "code": "HasUnresolvedConnections",
+              "message": "One or more data source connections could not be resolved."
+            }
+          ],
+          "migrationStatus": "Failed",
+          "migrationError": {
+            "errorCode": "DataflowRequiresChanges",
+            "message": "The dataflow could not be upgraded.",
+            "requestId": "0f8fad5b-d9cb-469f-a165-70867728950e",
+            "isRetriable": false
+          }
+        }
+      ]
+    }
+  },
+  "notes": "Preview API. The operation accepts 1-50 IDs, preserves each successful dataflow ID and workspace, and may return partial success. Run list-upgrade-readiness first. Failed rows can include requiredActions and migrationError.isRetriable.",
+  "query_examples": [
+    {"query": "summary.failedCount", "description": "Count failed migrations."},
+    {"query": "migrations[?migrationStatus=='Failed']", "description": "Inspect failed migration rows."}
+  ]
+}

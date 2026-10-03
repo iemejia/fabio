@@ -321,7 +321,7 @@ pub enum EventstreamCommand {
         #[arg(long)]
         name: String,
 
-        /// Source type (for example `CustomEndpoint`, `Cribl`, `FabricCapacityOperationEvents`, `ReferenceLakehouse`, `SAPDatasphere`)
+        /// Source type (for example `CustomEndpoint`, `LakehouseChangeFeed`, `ReferenceLakehouse`, `SAPDatasphere`)
         #[arg(long, visible_alias = "type")]
         source_type: String,
 
@@ -345,7 +345,7 @@ pub enum EventstreamCommand {
         #[arg(long)]
         name: String,
 
-        /// Destination type (e.g., `Eventhouse`, `Lakehouse`, `CustomEndpoint`, `Activator`)
+        /// Destination type (e.g., `BusinessEvents`, `Eventhouse`, `Lakehouse`, `CustomEndpoint`, `Activator`)
         #[arg(long, visible_alias = "type")]
         destination_type: String,
 

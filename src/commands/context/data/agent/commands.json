@@ -254,7 +254,7 @@
           }
         },
         "mutates": true,
-        "returns": "void"
+        "returns": "object"
       },
       "remove-admin-access": {
         "description": "Remove temporary admin access from a workspace",
@@ -4617,6 +4617,53 @@
         "output_fields": [
           "nameAvailable"
         ]
+      },
+      "show-surge-protection": {
+        "description": "Show surge protection configuration for a capacity",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio capacity show-surge-protection --id $CAPACITY_ID"
+        ]
+      },
+      "update-surge-protection": {
+        "description": "Update surge protection state and/or utilization thresholds",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          },
+          "--state": {
+            "type": "enum",
+            "values": [
+              "Enabled",
+              "Disabled"
+            ],
+            "description": "Surge protection state (`PascalCase`)"
+          },
+          "--rejection-threshold": {
+            "type": "integer",
+            "description": "Background utilization rejection threshold (15-100)"
+          },
+          "--recovery-threshold": {
+            "type": "integer",
+            "description": "Recovery threshold (6-99 and lower than rejection threshold when both are supplied)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio capacity update-surge-protection --id $CAPACITY_ID --state Enabled --rejection-threshold 70 --recovery-threshold 50",
+          "fabio capacity update-surge-protection --id $CAPACITY_ID --state Disabled"
+        ]
       }
     }
   },
@@ -4638,6 +4685,10 @@
           "--exclude-type": {
             "type": "string",
             "description": "Exclude item types from results. Comma-separated for multiple"
+          },
+          "--workspace-id": {
+            "type": "string",
+            "description": "Restrict results to workspace IDs; comma-separated (maximum 12)"
           },
           "--top": {
             "type": "integer",
@@ -10039,6 +10090,52 @@
         "mutates": false,
         "returns": "object"
       },
+      "list-upgrade-readiness": {
+        "description": "List Gen1 dataflow upgrade readiness results for a workspace (Preview)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--page-size": {
+            "type": "integer",
+            "description": "Maximum results per page (1-30; server-selected when omitted)"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio dataflow list-upgrade-readiness --workspace $WS --page-size 30",
+          "fabio dataflow list-upgrade-readiness --workspace $WS --all"
+        ]
+      },
+      "upgrade-gen1": {
+        "description": "Upgrade 1-50 Gen1 dataflows to Gen2 in place (Preview)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID containing every dataflow"
+          },
+          "--id": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Gen1 dataflow ID; repeat for each dataflow (1-50)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "async": true,
+        "destructive": true,
+        "examples": [
+          "fabio dataflow upgrade-gen1 --workspace $WS --id $GEN1_ID",
+          "fabio dataflow upgrade-gen1 --workspace $WS --id $GEN1_ID_1 --id $GEN1_ID_2 --dry-run"
+        ]
+      },
       "execute-query": {
         "description": "Execute a query against a dataflow (returns Apache Arrow IPC)",
         "flags": {
@@ -13962,7 +14059,7 @@
           "--source-type": {
             "type": "string",
             "required": true,
-            "description": "Source type (for example `CustomEndpoint`, `Cribl`, `FabricCapacityOperationEvents`, `ReferenceLakehouse`, `SAPDatasphere`)"
+            "description": "Source type (for example `CustomEndpoint`, `LakehouseChangeFeed`, `ReferenceLakehouse`, `SAPDatasphere`)"
           },
           "--properties": {
             "type": "string",
@@ -13998,7 +14095,7 @@
           "--destination-type": {
             "type": "string",
             "required": true,
-            "description": "Destination type (e.g., `Eventhouse`, `Lakehouse`, `CustomEndpoint`, `Activator`)"
+            "description": "Destination type (e.g., `BusinessEvents`, `Eventhouse`, `Lakehouse`, `CustomEndpoint`, `Activator`)"
           },
           "--properties": {
             "type": "string",
@@ -21663,6 +21760,10 @@
           "--sensitivity-label": {
             "type": "string",
             "description": "Sensitivity label ID to apply on creation"
+          },
+          "--folder-id": {
+            "type": "string",
+            "description": "Folder ID; omit to create at the workspace root"
           }
         },
         "mutates": true,

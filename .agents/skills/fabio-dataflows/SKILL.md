@@ -12,6 +12,7 @@ license: MIT
 > **Prefer runtime introspection.** This index is a snapshot; the installed binary is always authoritative. Use `fabio context agent --group <group>` and `fabio context describe <group> <command>` for exact flags and output shapes.
 
 ## When to use
+- Assessing and upgrading legacy Gen1 dataflows in place to Dataflow Gen2.
 - Creating/updating/refreshing Dataflows Gen2 (Power Query mashup ETL).
 - Inspecting or querying an existing dataflow definition.
 - Managing datamarts.
@@ -36,10 +37,12 @@ Manage dataflows (Power BI data transformation)
 | `fabio dataflow execute-query` | no | Execute a query against a dataflow (returns Apache Arrow IPC) |
 | `fabio dataflow get-definition` | no | Get the definition of a dataflow |
 | `fabio dataflow list` | no | List dataflows in a workspace |
+| `fabio dataflow list-upgrade-readiness` | no | List Gen1 dataflow upgrade readiness results for a workspace (Preview) |
 | `fabio dataflow run` | yes | Run a dataflow on demand |
 | `fabio dataflow show` | no | Show details of a dataflow |
 | `fabio dataflow update` | yes | Update dataflow properties (name and/or description) |
 | `fabio dataflow update-definition` | yes | Update the definition of a dataflow |
+| `fabio dataflow upgrade-gen1` | yes | Upgrade 1-50 Gen1 dataflows to Gen2 in place (Preview) |
 
 ### fabio datamart
 Manage datamarts (Power BI)
@@ -62,6 +65,7 @@ Manage datamarts (Power BI)
 - Authoring new Gen1 dataflows (Gen2 is the strategic path).
 
 ## Key gotchas
+- Gen1 upgrade is Preview. list-upgrade-readiness assesses every Gen1 dataflow in a workspace (no per-item filter, page size 1-30); upgrade-gen1 accepts 1-50 repeated --id values, preserves IDs/workspace, and can partially succeed.
 - A Dataflow Gen2 definition combines a Power Query mashup with queryMetadata; both are required.
 - Refresh is asynchronous — poll or use the run/wait semantics.
 

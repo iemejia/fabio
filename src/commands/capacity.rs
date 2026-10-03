@@ -1,13 +1,30 @@
 use anyhow::Result;
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 use serde_json::{Value, json};
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::{ErrorCode, FabioError};
+use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
 const ARM_API_VERSION: &str = "2023-11-01";
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum SurgeProtectionState {
+    #[value(name = "Enabled")]
+    Enabled,
+    #[value(name = "Disabled")]
+    Disabled,
+}
+
+impl SurgeProtectionState {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Enabled => "Enabled",
+            Self::Disabled => "Disabled",
+        }
+    }
+}
 
 #[derive(Debug, Subcommand)]
 #[command(
@@ -130,6 +147,29 @@ pub enum CapacityCommand {
         #[arg(long, default_value = "Microsoft.Fabric/capacities")]
         r#type: String,
     },
+    /// Show surge protection configuration for a capacity
+    #[command(display_order = 10)]
+    ShowSurgeProtection {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Update surge protection state and/or utilization thresholds
+    #[command(display_order = 11)]
+    UpdateSurgeProtection {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+        /// Surge protection state (`PascalCase`)
+        #[arg(long, value_enum)]
+        state: Option<SurgeProtectionState>,
+        /// Background utilization rejection threshold (15-100)
+        #[arg(long, value_parser = clap::value_parser!(u8).range(15..=100))]
+        rejection_threshold: Option<u8>,
+        /// Recovery threshold (6-99 and lower than rejection threshold when both are supplied)
+        #[arg(long, value_parser = clap::value_parser!(u8).range(6..=99))]
+        recovery_threshold: Option<u8>,
+    },
 }
 
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &CapacityCommand) -> Result<()> {
@@ -198,6 +238,23 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &CapacityCommand
             location,
             r#type,
         } => check_name(cli, client, subscription, name, location, r#type).await,
+        CapacityCommand::ShowSurgeProtection { id } => show_surge_protection(cli, client, id).await,
+        CapacityCommand::UpdateSurgeProtection {
+            id,
+            state,
+            rejection_threshold,
+            recovery_threshold,
+        } => {
+            update_surge_protection(
+                cli,
+                client,
+                id,
+                *state,
+                *rejection_threshold,
+                *recovery_threshold,
+            )
+            .await
+        }
     }
 }
 
@@ -227,6 +284,73 @@ async fn list(cli: &Cli, client: &FabricClient) -> Result<()> {
 async fn show(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
     let data = client.get(&format!("/capacities/{id}")).await?;
     output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn show_surge_protection(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
+    crate::client::validate_uuid(id, "capacity ID")?;
+    let data = client
+        .get(&format!("/capacities/{id}/surgeProtection"))
+        .await
+        .map_err(|e| enrich_forbidden(e, "capacity show-surge-protection", "Capacity Admin"))?;
+    output::render_object(cli, &data, "state");
+    Ok(())
+}
+
+fn surge_protection_body(
+    state: Option<SurgeProtectionState>,
+    rejection_threshold: Option<u8>,
+    recovery_threshold: Option<u8>,
+) -> Result<Value> {
+    if state.is_none() && rejection_threshold.is_none() && recovery_threshold.is_none() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "At least one surge protection field must be provided",
+            "Provide --state Enabled|Disabled and/or --rejection-threshold/--recovery-threshold.",
+        )
+        .into());
+    }
+    if let (Some(rejection), Some(recovery)) = (rejection_threshold, recovery_threshold)
+        && recovery >= rejection
+    {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "--recovery-threshold must be strictly lower than --rejection-threshold",
+            "Example: --rejection-threshold 70 --recovery-threshold 50",
+        )
+        .into());
+    }
+    let mut body = serde_json::Map::new();
+    if let Some(value) = state {
+        body.insert("state".to_string(), Value::from(value.as_str()));
+    }
+    if let Some(value) = rejection_threshold {
+        body.insert("rejectionThreshold".to_string(), Value::from(value));
+    }
+    if let Some(value) = recovery_threshold {
+        body.insert("recoveryThreshold".to_string(), Value::from(value));
+    }
+    Ok(Value::Object(body))
+}
+
+async fn update_surge_protection(
+    cli: &Cli,
+    client: &FabricClient,
+    id: &str,
+    state: Option<SurgeProtectionState>,
+    rejection_threshold: Option<u8>,
+    recovery_threshold: Option<u8>,
+) -> Result<()> {
+    crate::client::validate_uuid(id, "capacity ID")?;
+    let body = surge_protection_body(state, rejection_threshold, recovery_threshold)?;
+    if output::dry_run_guard(cli, "capacity update-surge-protection", &body) {
+        return Ok(());
+    }
+    let data = client
+        .patch(&format!("/capacities/{id}/surgeProtection"), &body)
+        .await
+        .map_err(|e| enrich_forbidden(e, "capacity update-surge-protection", "Capacity Admin"))?;
+    output::render_object(cli, &data, "state");
     Ok(())
 }
 
@@ -517,7 +641,7 @@ mod tests {
 
     #[test]
     fn capacity_command_has_all_variants() {
-        // Ensure all 9 subcommands exist by matching exhaustively
+        // Ensure all subcommands exist by matching exhaustively
         let commands = [
             "List",
             "Show",
@@ -528,8 +652,10 @@ mod tests {
             "Delete",
             "ListSkus",
             "CheckName",
+            "ShowSurgeProtection",
+            "UpdateSurgeProtection",
         ];
-        assert_eq!(commands.len(), 9);
+        assert_eq!(commands.len(), 11);
     }
 
     #[test]
@@ -623,6 +749,33 @@ mod tests {
         assert_eq!(
             path,
             "/subscriptions/my-sub-id/providers/Microsoft.Fabric/skus?api-version=2023-11-01"
+        );
+    }
+
+    #[test]
+    fn surge_protection_body_matches_enable_example() {
+        let body =
+            surge_protection_body(Some(SurgeProtectionState::Enabled), Some(70), Some(50)).unwrap();
+        assert_eq!(
+            body,
+            json!({"state":"Enabled","rejectionThreshold":70,"recoveryThreshold":50})
+        );
+    }
+
+    #[test]
+    fn surge_protection_rejects_inverted_thresholds() {
+        assert!(surge_protection_body(None, Some(50), Some(60)).is_err());
+    }
+
+    #[test]
+    fn surge_protection_body_omits_unchanged_fields() {
+        assert_eq!(
+            surge_protection_body(Some(SurgeProtectionState::Disabled), None, None).unwrap(),
+            json!({"state":"Disabled"})
+        );
+        assert_eq!(
+            surge_protection_body(None, Some(80), Some(60)).unwrap(),
+            json!({"rejectionThreshold":80,"recoveryThreshold":60})
         );
     }
 }
