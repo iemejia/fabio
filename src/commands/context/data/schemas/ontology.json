@@ -24,6 +24,8 @@
     "--decode": "Add decodedPayload field to get-definition output"
   },
   "notes": [
+    "A create without a definition now resolves to ontology generation 2. A definition-backed create derives generation from its parts.",
+    "List/show/create/update responses expose the resolved generation at properties.generation (1 or 2); this field is read-only.",
     "Data binding sourceType must be FIRST key in sourceTableProperties (JSON key ordering WITHIN a binding matters!)",
     "Data binding IDs must be valid UUIDs (non-UUID values are silently dropped)",
     "Entity/relationship/property names must match ^[a-zA-Z][a-zA-Z0-9_-]{0,127}$ (no spaces)",

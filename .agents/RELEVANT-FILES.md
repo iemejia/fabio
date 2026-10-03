@@ -83,7 +83,7 @@
  - `src/commands/semantic_model/perspectives.rs`: `add-perspective`/`delete-perspective`/`add-perspective-member`/`remove-perspective-member`/`list-perspectives` (filtered model views in `definition/perspectives/<name>.tmdl` + `ref perspective` in model.tmdl); pure `parse_perspective`/`render_perspective`/`remove_member` + `model.bim` variants + unit tests
 - `src/commands/eventhouse.rs`: list/show/create/update/delete/get-definition/update-definition + data plane (query with one-shot + `--follow` NDJSON streaming, list-databases, query-uri, ingestion-uri)
 - `src/commands/eventstream/mod.rs`: list/show/create/update/delete/get-definition/update-definition/get-topology/pause/resume/sources/destinations
-- `src/commands/eventstream/builder.rs`: add-source/add-destination/add-sample-source/add-derived-stream/validate/list-components
+- `src/commands/eventstream/builder.rs`: add-source/add-destination/add-sample-source/add-derived-stream/validate/list-components, including Lakehouse Change Feed and Business Events validation
 - `src/commands/context/data/examples/eventstream_get_source_connection.json`: Kafka/custom endpoint connection union output example
 - `src/commands/context/data/examples/eventstream_get_destination_connection.json`: Custom endpoint destination connection output example
 - `src/commands/context/data/examples/eventstream_get_reference_lakehouse_source.json`: Reference Lakehouse source output example
@@ -101,14 +101,17 @@
 - `src/commands/ml_model.rs`: list/show/create/update/delete (CRUD only)
 - `src/commands/ml_experiment.rs`: list/show/create/update/delete (CRUD only)
 - `src/commands/copy_job.rs`: list/show/create/update/delete/get-definition/update-definition/reset
-- `src/commands/dataflow.rs`: list/show/create/update/delete/get-definition/update-definition/discover-parameters/run/execute-query
+- `src/commands/dataflow.rs`: list/show/create/update/delete/get-definition/update-definition/discover-parameters/run/execute-query + Gen1 upgrade readiness and in-place Gen1-to-Gen2 upgrade
+- `src/commands/context/data/examples/dataflow_upgrade_readiness.json`: Gen1 upgrade readiness statuses and nested reason output
+- `src/commands/context/data/examples/dataflow_upgrade_gen1.json`: Gen1 upgrade partial-success response example
 - `src/commands/graphql_api.rs`: list/show/create/update/delete/get-definition/update-definition (schema.graphql)
 - `src/commands/spark.rs`: get-settings/update-settings/list-pools/get-pool/create-pool/update-pool/delete-pool
 - `src/commands/spark_livy.rs`: INTERACTIVE Livy API (run Spark code) — `spark create-livy-session`/`run-statement`/`delete-livy-session` + the one-shot `spark run` (create→wait idle→run→output→delete). Per-lakehouse endpoint `/workspaces/{ws}/lakehouses/{lh}/livyApi/versions/2023-12-01/sessions`; DISTINCT from the read-only monitoring `list-livy-sessions`/`get-livy-session` in spark.rs. All waits bounded by --timeout.
 - `src/commands/spark_job_definition.rs`: list/show/create/update/delete/get-definition/update-definition/run
 - `src/commands/map.rs`: list/show/create/update/delete/get-definition/update-definition (geospatial Azure Maps)
 - `src/commands/plan.rs`: list/show/create/update/delete/get-definition/update-definition (connected-planning Plan item, PlanV1 / connectedPlanning/infobridge.json)
-- `src/commands/capacity.rs`: list/show (Fabric API) + suspend/resume/create/update/delete/list-skus/check-name (ARM API)
+- `src/commands/capacity.rs`: list/show/surge-protection (Fabric API) + suspend/resume/create/update/delete/list-skus/check-name (ARM API)
+- `src/commands/context/data/examples/capacity_surge_protection.json`: enabled/disabled surge-protection response shapes
 - `src/commands/connection/`: directory module (split from `connection.rs` when it crossed the 1500-line limit) — `mod.rs` (enum + execute dispatch), `crud.rs` (list/show/create/update/delete/list-supported-types + body builders + recency-aware `list_table_columns`), `roles.rs` (role assignments + test-connection), `hygiene.rs` (find-stale/find-duplicates/find-single-owner governance commands built on connection-recency signals — all read-only pure logic + unit tests)
 - `src/commands/deployment_pipeline.rs`: list/show/create/update/delete/list-stages/list-stage-items/assign-workspace/unassign-workspace/deploy
 - `src/commands/domain.rs`: list/show/create/update/delete/list-workspaces/assign-workspaces/unassign-workspaces/assign-by-capacity/assign-by-principal

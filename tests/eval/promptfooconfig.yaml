@@ -3074,3 +3074,51 @@ tests:
       - type: icontains
         value: "--sql"
         metric: snapshot-query-sql
+
+  # ============================================================
+  # FABRIC API SPEC SYNC (a070c71)
+  # ============================================================
+
+  - description: "Dataflow: list Gen1 upgrade readiness"
+    vars:
+      user_query: "Assess which Gen1 dataflows in workspace ws-1 are ready to upgrade to Gen2"
+    assert:
+      - type: icontains
+        value: "dataflow list-upgrade-readiness"
+      - type: icontains
+        value: "--workspace"
+
+  - description: "Dataflow: upgrade multiple Gen1 dataflows in place"
+    vars:
+      user_query: "Upgrade Gen1 dataflows df-1 and df-2 in workspace ws-1 to Gen2, but preview the irreversible request first"
+    assert:
+      - type: icontains
+        value: "dataflow upgrade-gen1"
+      - type: icontains
+        value: "--dry-run"
+      - type: javascript
+        value: |
+          (output.match(/--id/g) || []).length >= 2
+        metric: dataflow-upgrade-repeated-ids
+
+  - description: "Capacity: show surge protection configuration"
+    vars:
+      user_query: "Show the surge protection configuration for Fabric capacity cap-1"
+    assert:
+      - type: icontains
+        value: "capacity show-surge-protection"
+      - type: icontains
+        value: "--id"
+
+  - description: "Capacity: enable surge protection with thresholds"
+    vars:
+      user_query: "Enable surge protection on capacity cap-1, reject at 70 percent and recover at 50 percent"
+    assert:
+      - type: icontains
+        value: "capacity update-surge-protection"
+      - type: contains
+        value: "Enabled"
+      - type: javascript
+        value: |
+          output.includes('--rejection-threshold') && output.includes('--recovery-threshold')
+        metric: surge-protection-thresholds

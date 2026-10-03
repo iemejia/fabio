@@ -119,6 +119,47 @@ fn catalog_search_dry_run() {
 }
 
 #[test]
+fn catalog_search_workspace_filter_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "catalog",
+            "search",
+            "--search",
+            "revenue",
+            "--type",
+            "Report,SemanticModel",
+            "--workspace-id",
+            "7f2c8a91-3b4d-4e5f-a6b7-c8d9e0f1a2b3",
+            "--top",
+            "2",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert_eq!(
+        json["data"]["details"]["filter"],
+        "(Type eq 'Report' or Type eq 'SemanticModel') and WorkspaceId eq '7f2c8a91-3b4d-4e5f-a6b7-c8d9e0f1a2b3'"
+    );
+}
+
+#[test]
+fn catalog_search_rejects_invalid_page_size() {
+    fabio()
+        .args([
+            "--dry-run",
+            "catalog",
+            "search",
+            "--search",
+            "sales",
+            "--top",
+            "1001",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn catalog_search_content_flag_override() {

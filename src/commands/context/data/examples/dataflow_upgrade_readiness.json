@@ -1,0 +1,38 @@
+{
+  "command": "fabio dataflow list-upgrade-readiness --workspace $WS --page-size 30",
+  "description": "Lists workspace-wide Gen1-to-Gen2 upgrade assessments, including actionable reasons.",
+  "response": {
+    "data": [
+      {
+        "id": "6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b",
+        "displayName": "Sales Ingestion (Gen1)",
+        "status": "ReadyToMigrate"
+      },
+      {
+        "id": "7c2a4e3f-9b5d-4c7f-a02b-3d4e5f6a7b8c",
+        "displayName": "Marketing Blend (Gen1)",
+        "status": "NeedsAttention",
+        "reasons": [
+          {
+            "status": "NeedsAttention",
+            "code": "ExceedsGen2QueryLimit",
+            "message": "The dataflow has more load-enabled queries than Dataflow Gen2 supports."
+          }
+        ]
+      }
+    ],
+    "count": 2,
+    "continuationToken": "LDEsMTAwMDAwLDA%3D"
+  },
+  "notes": "ReadyToMigrate omits reasons. Unknown always includes reasons. The overall status is the highest reason severity in UpgradeUnavailable, NeedsAttention, ReadyToMigrate order.",
+  "query_examples": [
+    {
+      "query": "data[?status!='ReadyToMigrate']",
+      "description": "Select dataflows requiring investigation or changes"
+    },
+    {
+      "query": "data[].reasons[].code",
+      "description": "Extract stable readiness reason codes"
+    }
+  ]
+}

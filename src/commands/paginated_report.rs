@@ -58,6 +58,10 @@ pub enum PaginatedReportCommand {
         /// Sensitivity label ID to apply on creation
         #[arg(long)]
         sensitivity_label: Option<String>,
+
+        /// Folder ID; omit to create at the workspace root
+        #[arg(long)]
+        folder_id: Option<String>,
     },
     /// Update paginated report properties (name and/or description)
     #[command(display_order = 4)]
@@ -175,6 +179,7 @@ pub async fn execute(
             file,
             content,
             sensitivity_label,
+            folder_id,
         } => {
             create(
                 cli,
@@ -185,6 +190,7 @@ pub async fn execute(
                 file.as_deref(),
                 content.as_deref(),
                 sensitivity_label.as_deref(),
+                folder_id.as_deref(),
             )
             .await
         }
@@ -309,6 +315,7 @@ async fn create(
     file: Option<&str>,
     content: Option<&str>,
     sensitivity_label: Option<&str>,
+    folder_id: Option<&str>,
 ) -> Result<()> {
     // Build the definition parts from file or content. The single RDL part must
     // be named `<displayName>.rdl` (see single_rdl_part).
@@ -344,6 +351,10 @@ async fn create(
             "sensitivityLabelId": label_id
         });
     }
+    if let Some(id) = folder_id {
+        crate::client::validate_uuid(id, "folder ID")?;
+        body["folderId"] = Value::from(id);
+    }
 
     if output::dry_run_guard(
         cli,
@@ -352,7 +363,8 @@ async fn create(
             "workspace": workspace,
             "displayName": name,
             "description": description,
-            "sensitivityLabel": sensitivity_label
+            "sensitivityLabel": sensitivity_label,
+            "folderId": folder_id
         }),
     ) {
         return Ok(());

@@ -78,6 +78,31 @@ fn paginated_report_create_dry_run_with_content() {
 }
 
 #[test]
+fn paginated_report_create_dry_run_with_folder() {
+    let assert = fabio()
+        .args([
+            "paginated-report",
+            "create",
+            "--workspace",
+            "test-ws",
+            "--name",
+            "TestReport",
+            "--content",
+            "PHJlcG9ydC8+",
+            "--folder-id",
+            "11111111-2222-3333-4444-555555555555",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json: serde_json::Value = serde_json::from_slice(&assert.get_output().stdout).unwrap();
+    assert_eq!(
+        json["data"]["details"]["folderId"],
+        "11111111-2222-3333-4444-555555555555"
+    );
+}
+
+#[test]
 fn paginated_report_delete_dry_run() {
     fabio()
         .args([

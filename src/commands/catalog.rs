@@ -27,6 +27,10 @@ pub enum CatalogCommand {
         #[arg(long)]
         exclude_type: Option<String>,
 
+        /// Restrict results to workspace IDs; comma-separated (maximum 12)
+        #[arg(long)]
+        workspace_id: Option<String>,
+
         /// Maximum number of results to return
         #[arg(long)]
         top: Option<u32>,
@@ -47,6 +51,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &CatalogCommand)
             search_query,
             item_type,
             exclude_type,
+            workspace_id,
             top,
             file,
             content,
@@ -57,6 +62,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &CatalogCommand)
                 search_query.as_deref(),
                 item_type.as_deref(),
                 exclude_type.as_deref(),
+                workspace_id.as_deref(),
                 *top,
                 file.as_deref(),
                 content.as_deref(),
@@ -73,6 +79,7 @@ async fn search(
     query: Option<&str>,
     item_type: Option<&str>,
     exclude_type: Option<&str>,
+    workspace_id: Option<&str>,
     top: Option<u32>,
     file: Option<&str>,
     content: Option<&str>,
@@ -95,17 +102,19 @@ async fn search(
                 .map_err(|e| anyhow::anyhow!("Invalid JSON: {e}"))?,
             _ => {
                 // Build body from convenience flags
-                if query.is_none() && item_type.is_none() && exclude_type.is_none() {
+                if query.is_none()
+                    && item_type.is_none()
+                    && exclude_type.is_none()
+                    && workspace_id.is_none()
+                {
                     return Err(FabioError::with_hint(
                         ErrorCode::InvalidInput,
-                        "At least one of --query, --type, --file, or --content must be provided"
-                            .to_string(),
-                        "Example: fabio catalog search --query \"my lakehouse\" --type Notebook --top 10"
-                            .to_string(),
+                        "At least one search/filter input, --file, or --content must be provided",
+                        "Example: fabio catalog search --query \"my lakehouse\" --type Notebook --top 10; filter by workspace with --workspace-id <UUID>.",
                     )
                     .into());
                 }
-                build_search_body(query, item_type, exclude_type, top)
+                build_search_body(query, item_type, exclude_type, workspace_id, top)?
             }
         }
     };
@@ -161,8 +170,17 @@ fn build_search_body(
     query: Option<&str>,
     item_type: Option<&str>,
     exclude_type: Option<&str>,
+    workspace_id: Option<&str>,
     top: Option<u32>,
-) -> Value {
+) -> Result<Value> {
+    if top.is_some_and(|value| !(1..=1000).contains(&value)) {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "--top must be between 1 and 1000",
+            "Omit --top to use the server default of 50.",
+        )
+        .into());
+    }
     let mut body = serde_json::Map::new();
 
     // The `CatalogQueryRequest` fields are `search` / `pageSize` / `filter`
@@ -179,11 +197,11 @@ fn build_search_body(
     // `filter` is an OData-style string over the `Type` property, e.g.
     // "Type eq 'Report' or Type eq 'Lakehouse'". `--exclude-type` becomes
     // "Type ne 'X'" clauses ANDed with the include clause.
-    if let Some(filter) = build_type_filter(item_type, exclude_type) {
+    if let Some(filter) = build_catalog_filter(item_type, exclude_type, workspace_id)? {
         body.insert("filter".to_string(), Value::from(filter));
     }
 
-    Value::Object(body)
+    Ok(Value::Object(body))
 }
 
 /// Extract the continuation token for the NEXT page from a `/catalog/search`
@@ -201,21 +219,65 @@ fn next_page_token(data: &Value) -> Option<String> {
 /// types. Include types are joined with `or` (`Type eq 'A' or Type eq 'B'`),
 /// exclude types with `and` (`Type ne 'C' and Type ne 'D'`); when both are
 /// present they are combined with `and`. Returns `None` when neither is given. Pure.
-fn build_type_filter(item_type: Option<&str>, exclude_type: Option<&str>) -> Option<String> {
-    let include: Vec<String> = item_type
+fn build_catalog_filter(
+    item_type: Option<&str>,
+    exclude_type: Option<&str>,
+    workspace_id: Option<&str>,
+) -> Result<Option<String>> {
+    let include_values: Vec<&str> = item_type
         .into_iter()
         .flat_map(|s| s.split(','))
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .map(|t| format!("Type eq '{t}'"))
         .collect();
-    let exclude: Vec<String> = exclude_type
+    let exclude_values: Vec<&str> = exclude_type
         .into_iter()
         .flat_map(|s| s.split(','))
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .map(|t| format!("Type ne '{t}'"))
         .collect();
+    if include_values.len() + exclude_values.len() > 500 {
+        return Err(FabioError::new(
+            ErrorCode::InvalidInput,
+            "Catalog filters support at most 500 Type values",
+        )
+        .into());
+    }
+    if include_values
+        .iter()
+        .chain(&exclude_values)
+        .any(|value| value.chars().count() > 50)
+    {
+        return Err(FabioError::new(
+            ErrorCode::InvalidInput,
+            "Catalog Type filter values must not exceed 50 characters",
+        )
+        .into());
+    }
+    let include = include_values
+        .into_iter()
+        .map(|value| format!("Type eq '{value}'"))
+        .collect::<Vec<_>>();
+    let exclude = exclude_values
+        .into_iter()
+        .map(|value| format!("Type ne '{value}'"))
+        .collect::<Vec<_>>();
+    let workspaces: Vec<&str> = workspace_id
+        .into_iter()
+        .flat_map(|value| value.split(','))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .collect();
+    if workspaces.len() > 12 {
+        return Err(FabioError::new(
+            ErrorCode::InvalidInput,
+            "Catalog filters support at most 12 WorkspaceId values",
+        )
+        .into());
+    }
+    for workspace in &workspaces {
+        crate::client::validate_uuid(workspace, "catalog WorkspaceId")?;
+    }
 
     let mut clauses: Vec<String> = Vec::new();
     if !include.is_empty() {
@@ -228,10 +290,21 @@ fn build_type_filter(item_type: Option<&str>, exclude_type: Option<&str>) -> Opt
     if !exclude.is_empty() {
         clauses.push(exclude.join(" and "));
     }
+    if !workspaces.is_empty() {
+        let values = workspaces
+            .iter()
+            .map(|id| format!("WorkspaceId eq '{id}'"))
+            .collect::<Vec<_>>();
+        clauses.push(if values.len() == 1 {
+            values.into_iter().next().unwrap_or_default()
+        } else {
+            format!("({})", values.join(" or "))
+        });
+    }
     if clauses.is_empty() {
-        None
+        Ok(None)
     } else {
-        Some(clauses.join(" and "))
+        Ok(Some(clauses.join(" and ")))
     }
 }
 
@@ -241,7 +314,7 @@ mod tests {
 
     #[test]
     fn build_search_body_query_only() {
-        let body = build_search_body(Some("lakehouse"), None, None, None);
+        let body = build_search_body(Some("lakehouse"), None, None, None, None).unwrap();
         assert_eq!(body["search"], "lakehouse");
         assert!(body.get("filter").is_none());
         assert!(body.get("pageSize").is_none());
@@ -249,7 +322,14 @@ mod tests {
 
     #[test]
     fn build_search_body_with_type_filter() {
-        let body = build_search_body(Some("test"), Some("Notebook,Lakehouse"), None, Some(5));
+        let body = build_search_body(
+            Some("test"),
+            Some("Notebook,Lakehouse"),
+            None,
+            None,
+            Some(5),
+        )
+        .unwrap();
         assert_eq!(body["search"], "test");
         assert_eq!(body["pageSize"], 5);
         assert_eq!(
@@ -282,19 +362,26 @@ mod tests {
 
     #[test]
     fn build_search_body_single_type_no_parens() {
-        let body = build_search_body(None, Some("Lakehouse"), None, None);
+        let body = build_search_body(None, Some("Lakehouse"), None, None, None).unwrap();
         assert_eq!(body["filter"], "Type eq 'Lakehouse'");
     }
 
     #[test]
     fn build_search_body_with_exclude_type() {
-        let body = build_search_body(None, None, Some("Dashboard"), None);
+        let body = build_search_body(None, None, Some("Dashboard"), None, None).unwrap();
         assert_eq!(body["filter"], "Type ne 'Dashboard'");
     }
 
     #[test]
     fn build_search_body_both_filters() {
-        let body = build_search_body(Some("sales"), Some("Notebook"), Some("Lakehouse"), Some(20));
+        let body = build_search_body(
+            Some("sales"),
+            Some("Notebook"),
+            Some("Lakehouse"),
+            None,
+            Some(20),
+        )
+        .unwrap();
         assert_eq!(body["search"], "sales");
         assert_eq!(body["pageSize"], 20);
         assert_eq!(body["filter"], "Type eq 'Notebook' and Type ne 'Lakehouse'");
@@ -302,7 +389,37 @@ mod tests {
 
     #[test]
     fn build_type_filter_none_when_empty() {
-        assert!(build_type_filter(None, None).is_none());
-        assert!(build_type_filter(Some(""), Some("  ")).is_none());
+        assert!(build_catalog_filter(None, None, None).unwrap().is_none());
+        assert!(
+            build_catalog_filter(Some(""), Some("  "), None)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn build_search_body_with_workspace_filter() {
+        let body = build_search_body(
+            Some("revenue"),
+            Some("Report,SemanticModel"),
+            None,
+            Some("7f2c8a91-3b4d-4e5f-a6b7-c8d9e0f1a2b3"),
+            Some(2),
+        )
+        .unwrap();
+        assert_eq!(
+            body["filter"],
+            "(Type eq 'Report' or Type eq 'SemanticModel') and WorkspaceId eq '7f2c8a91-3b4d-4e5f-a6b7-c8d9e0f1a2b3'"
+        );
+    }
+
+    #[test]
+    fn catalog_filter_enforces_spec_limits() {
+        let too_many_workspaces = std::iter::repeat_n("7f2c8a91-3b4d-4e5f-a6b7-c8d9e0f1a2b3", 13)
+            .collect::<Vec<_>>()
+            .join(",");
+        assert!(build_catalog_filter(None, None, Some(&too_many_workspaces)).is_err());
+        assert!(build_catalog_filter(Some(&"é".repeat(51)), None, None).is_err());
+        assert!(build_catalog_filter(None, None, Some("not-a-uuid")).is_err());
     }
 }

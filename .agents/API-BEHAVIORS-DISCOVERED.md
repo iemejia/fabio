@@ -3285,3 +3285,47 @@ implemented or confirmed to require no code change.
 - **The `require_auth()` return value is a FULL `Authorization` header (`"Bearer <jwt>"`), not a raw token.** Wrapping it again (`format!("Bearer {token}")`) produces `"Bearer Bearer <jwt>"`, which the data-agent MCP endpoint rejects with **HTTP 500** (and HTTP 401 for a non-JWT value). This was a regression introduced by the Assistants→MCP migration and fixed (data-agent query/evaluate now pass the header through unchanged, matching `ontology/search`). Root-caused live: raw curl AND a raw reqwest POST with the identical token returned 200; only fabio's double-`Bearer ` request 500'd. Lesson: `McpClient::connect*(endpoint, auth_header, …)` wants the FULL header value; pass `require_auth()` straight through.
 - **The Fabric data-agent MCP endpoint is a Streamable-HTTP MCP server** named `"DataAgent MCP Server"`; it is **stateless** (no `Mcp-Session-Id` header on initialize), advertises `tools`/`resources`/`tasks` capabilities, and exposes **one tool** named `DataAgent_<agentDisplayName>` whose input schema is `{ "userQuestion": string }` (required). fabio's `primary_tool_argument` correctly selects `userQuestion` via its first-`required` fallback (none of the conventional names question/query/prompt/input/text match exactly). A `tools/call` returns `{content:[{type:text,text:…}], isError:bool}`.
 - **A published data agent whose orchestrator backend can't run returns a tool result `{isError:true, text:"The Data Agent run failed before producing a result."}`** — this is a SERVICE/CAPACITY-side failure (reproduced identically via raw curl), NOT a fabio issue; fabio surfaces it as an `ApiError` with a get-config hint. Observed on a freshly created+published Lakehouse-backed agent whose SQL analytics endpoint DID have the data (verified `SELECT COUNT(*)`), so it is independent of the data source.
+
+## Fabric REST API spec sync — a070c71 (September 2026)
+
+- **Gen1 dataflow upgrade is a Preview, workspace-wide/batch surface**:
+  `GET /workspaces/{workspaceId}/dataflows/gen1UpgradeReadinessResults` assesses every Gen1
+  dataflow in the workspace, excludes Gen2, supports only `pageSize` (1-30) and
+  `continuationToken`, and has no per-item filtering/sorting. Verdict severity is
+  `UpgradeUnavailable` > `NeedsAttention` > `ReadyToMigrate`; `Unknown` means assessment failed.
+  `POST .../dataflows/gen1Upgrade` accepts 1-50 IDs, upgrades in place while preserving IDs and
+  workspace, supports synchronous 200 or LRO 202, cannot be cancelled, and can partially succeed.
+  Authorization is evaluated per row (owner or workspace Admin), so an unauthorized item is a
+  failed migration row rather than a failed batch.
+- **Capacity surge protection** uses Fabric endpoints (not ARM):
+  `GET|PATCH /capacities/{capacityId}/surgeProtection`. Disabled responses omit thresholds.
+  Rejection threshold is 15-100; recovery is 6-99 and strictly lower. Enabling an unconfigured
+  capacity requires state plus both thresholds in one request; omitted PATCH fields are unchanged;
+  disabling clears persisted thresholds. Capacity administrator permission is required.
+- **Eventstream topology unions expanded**: source type `LakehouseChangeFeed` requires
+  `workspaceId`, Lakehouse `itemId`, and currently exactly `tableNames:["*"]`; destination type
+  `BusinessEvents` requires Event Schema Set workspace/item IDs and `businessEventTypeId`, with
+  optional `inputSerialization`. Solace PubSub now accepts `tlsSettings`. TLS certificate keys were
+  renamed from `certificate` to `certificateResource`. SQL Server-family CDC sources added
+  `heartbeatIntervalMs`, `heartbeatActionQuery`, and `storeOnlyCapturedTablesDdl`; PostgreSQL added
+  `heartbeatIntervalMs`; MySQL and Oracle added `storeOnlyCapturedTablesDdl`.
+- **Ontology generation is now explicit in item responses**: list/show/create/update expose
+  read-only `properties.generation` (`1` or `2`). A bare create without `definition` defaults to
+  generation 2; definition-backed creation resolves generation from the supplied parts.
+- **Paginated reports can be created directly in folders** through optional create-body
+  `folderId`; null/omitted still means workspace root. The former limitation claiming subfolder
+  creation was unsupported was removed.
+- **Catalog search now includes workspaces and workspace filtering**: results may have
+  `catalogEntryType:"Workspace"` and `type:"Workspace"`. `WorkspaceId` filters support up to 12
+  GUIDs; `Type` supports up to 500 values of at most 50 characters; `and` is supported. Search
+  supports quoted phrases, `*`, `?`, and `&&`; default page size is 50 (valid 1-1000).
+  Continuation tokens carry the original search/filter/page size and must not be combined with
+  `search` or `filter`. New teaching error codes distinguish malformed requests/search/filter,
+  unsupported filter properties, excessive filter values, conflicting continuation parameters,
+  invalid/oversized continuation tokens, invalid page sizes, and unknown item types
+  (`InvalidRequest`, `InvalidSearch`, `InvalidFilter`, `InvalidFilterProperty`,
+  `FilterTooManyValues`, `FilterNotSupported`, `ConflictingFilterParameters`,
+  `InvalidPageSize`, `InvalidContinuationToken`, `ContinuationTokenTooLong`, `TypeNotFound`).
+- **Platform/LRO quota descriptions increased**: the unified Platform quota is 500 calls/min;
+  workspace/item read APIs generally have a 500 calls/min API limit while mutation APIs retain
+  200 calls/min. Get Operation State/Result are now documented at 500 calls/min.
