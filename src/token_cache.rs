@@ -1438,7 +1438,7 @@ mod tests {
     fn dpapi_encrypt_empty_data() {
         let encrypted = dpapi_encrypt(b"").expect("encrypt empty should succeed");
         let decrypted = dpapi_decrypt(&encrypted).expect("decrypt should succeed");
-        assert!(decrypted.is_empty());
+        assert_eq!(decrypted, [] as [u8; 0]);
     }
 
     #[test]
