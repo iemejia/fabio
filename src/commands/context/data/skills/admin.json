@@ -16,7 +16,7 @@
   "when_to_use": [
     "Workspace lifecycle and governance: create/assign-capacity, recover or permanently delete soft-deleted items, role assignments, folders, domains, networking/firewall/encryption policies, git outbound policy, OneLake settings.",
     "Capacity lifecycle: list, resume, suspend, create, delete (ARM-scoped), plus Fabric surge-protection and overage configuration.",
-    "PolicySet governance: define ItemCreation or WorkspaceSettingsEditing rules, then activate a tenant-scoped set as a Fabric admin or a capacity-scoped set as a capacity admin.",
+    "PolicySet governance: define ItemCreation or WorkspaceSettingsEditing rules, then activate a tenant-scoped set as a Fabric admin or a capacity-scoped set as a capacity admin. `admin activate-policy-set` requires `--workspace` even though other tenant-scoped admin commands do not.",
     "Tenant-wide inventory and settings (requires Fabric admin role).",
     "Governance: domains (group workspaces), sensitivity labels.",
     "Connectivity: gateways, connections, managed private endpoints."
@@ -45,7 +45,7 @@
     "workspace delete-recoverable-item permanently removes a soft-deleted item; always inspect list-recoverable-items and use --dry-run first."
   ],
   "must": [
-    "Call tenant-scoped commands WITHOUT --workspace (capacity, connection, gateway, domain, deployment-pipeline, admin).",
+    "Call tenant-scoped commands WITHOUT --workspace (capacity, connection, gateway, domain, deployment-pipeline, admin), except `admin activate-policy-set`, which requires `--workspace`.",
     "Have a Fabric admin role before using admin commands (they FORBIDDEN otherwise)."
   ],
   "prefer": [
@@ -54,7 +54,7 @@
     "--dry-run before any destructive tenant change."
   ],
   "avoid": [
-    "Passing --workspace to tenant-scoped commands (they operate at tenant level).",
+    "Passing --workspace to tenant-scoped commands, except `admin activate-policy-set` (which requires it).",
     "Suspending capacity during business hours without warning users about interrupted jobs.",
     "Bulk tenant-setting changes without confirming the scope with the user."
   ],

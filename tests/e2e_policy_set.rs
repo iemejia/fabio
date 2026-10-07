@@ -88,7 +88,7 @@ fn test_update_definition_dry_run_uses_beta_format() {
             "--id",
             POLICY_SET,
             "--content",
-            r#"{"scope":{"type":"Tenant"},"policyRules":[]}"#,
+            r#"{"scope":{"type":"Tenant"},"policyRules":[{"displayName":"Keep rule"}]}"#,
         ])
         .assert()
         .success();
@@ -101,6 +101,169 @@ fn test_update_definition_dry_run_uses_beta_format() {
     assert_eq!(
         data["details"]["request"]["definition"]["parts"][0]["path"],
         "policySet.json"
+    );
+}
+
+#[test]
+fn test_update_definition_rejects_empty_rules_without_force() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "policy-set",
+            "update-definition",
+            "--workspace",
+            WORKSPACE,
+            "--id",
+            POLICY_SET,
+            "--content",
+            r#"{"scope":{"type":"Tenant"},"policyRules":[]}"#,
+        ])
+        .assert()
+        .failure();
+
+    let error: serde_json::Value =
+        serde_json::from_slice(&output.get_output().stderr).expect("JSON error");
+    assert_eq!(error["error"]["code"], "INVALID_INPUT");
+    assert!(error["error"]["hint"].as_str().unwrap().contains("--force"));
+}
+
+#[test]
+fn test_update_definition_force_allows_empty_rules_in_encoded_envelope() {
+    use base64::Engine;
+
+    let policy_set = base64::engine::general_purpose::STANDARD
+        .encode(r#"{"scope":{"type":"Tenant"},"policyRules":[]}"#);
+    let envelope = serde_json::json!({
+        "definition": {
+            "format": "Beta",
+            "parts": [{
+                "path": "policySet.json",
+                "payload": policy_set,
+                "payloadType": "InlineBase64"
+            }]
+        }
+    })
+    .to_string();
+    let output = fabio()
+        .args([
+            "--force",
+            "--dry-run",
+            "policy-set",
+            "update-definition",
+            "--workspace",
+            WORKSPACE,
+            "--id",
+            POLICY_SET,
+            "--content",
+            &envelope,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "policy-set update-definition");
+}
+
+#[test]
+fn test_policy_set_ids_are_validated_before_dispatch() {
+    let cases = [
+        vec!["policy-set", "list", "--workspace", "../../invalid"],
+        vec![
+            "policy-set",
+            "show",
+            "--workspace",
+            WORKSPACE,
+            "--id",
+            "../../invalid",
+        ],
+        vec![
+            "policy-set",
+            "show-rule",
+            "--workspace",
+            WORKSPACE,
+            "--id",
+            POLICY_SET,
+            "--rule-id",
+            "../../invalid",
+        ],
+    ];
+
+    for arguments in cases {
+        let output = fabio()
+            .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+            .args(arguments)
+            .assert()
+            .failure();
+        let error: serde_json::Value =
+            serde_json::from_slice(&output.get_output().stderr).expect("JSON error");
+        assert_eq!(error["error"]["code"], "INVALID_INPUT");
+    }
+}
+
+#[test]
+fn test_array_flags_accept_json_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let conditions = dir.path().join("conditions.json");
+    let effects = dir.path().join("effects.json");
+    let policy_rules = dir.path().join("policy-rules.json");
+    std::fs::write(&conditions, r#"[{"type":"Static","value":true}]"#).unwrap();
+    std::fs::write(&effects, r#"[{"type":"Allow"}]"#).unwrap();
+    std::fs::write(
+        &policy_rules,
+        r#"[{"displayName":"Allow items","conditions":[{"type":"Static","value":true}],"effects":[{"type":"Allow"}]}]"#,
+    )
+    .unwrap();
+
+    let condition_arg = format!("@{}", conditions.display());
+    let effect_arg = format!("@{}", effects.display());
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "policy-set",
+            "create-rule",
+            "--workspace",
+            WORKSPACE,
+            "--id",
+            POLICY_SET,
+            "--name",
+            "Allow items",
+            "--policy",
+            "ItemCreation",
+            "--conditions",
+            &condition_arg,
+            "--effects",
+            &effect_arg,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["details"]["conditions"][0]["value"], true);
+    assert_eq!(data["details"]["effects"][0]["type"], "Allow");
+
+    let policy_rules_arg = format!("@{}", policy_rules.display());
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "policy-set",
+            "replace-rules-by-policy",
+            "--workspace",
+            WORKSPACE,
+            "--id",
+            POLICY_SET,
+            "--policy",
+            "ItemCreation",
+            "--policy-rules",
+            &policy_rules_arg,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(
+        data["details"]["policyRules"][0]["displayName"],
+        "Allow items"
     );
 }
 

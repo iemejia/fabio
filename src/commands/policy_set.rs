@@ -1,4 +1,6 @@
 use anyhow::Result;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::{Subcommand, ValueEnum};
 use serde_json::{Value, json};
 
@@ -272,6 +274,7 @@ pub enum PolicySetCommand {
 
 #[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &PolicySetCommand) -> Result<()> {
+    validate_ids(command)?;
     match command {
         PolicySetCommand::List {
             workspace,
@@ -465,6 +468,62 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &PolicySetComman
     }
 }
 
+fn validate_ids(command: &PolicySetCommand) -> Result<()> {
+    match command {
+        PolicySetCommand::List {
+            workspace,
+            root_folder_id,
+            ..
+        } => {
+            validate_uuid(workspace, "--workspace")?;
+            if let Some(folder_id) = root_folder_id {
+                validate_uuid(folder_id, "--root-folder-id")?;
+            }
+        }
+        PolicySetCommand::Create {
+            workspace,
+            folder_id,
+            ..
+        } => {
+            validate_uuid(workspace, "--workspace")?;
+            if let Some(folder_id) = folder_id {
+                validate_uuid(folder_id, "--folder-id")?;
+            }
+        }
+        PolicySetCommand::GetActiveForCapacity { capacity_id } => {
+            validate_uuid(capacity_id, "--capacity-id")?;
+        }
+        PolicySetCommand::Show { workspace, id }
+        | PolicySetCommand::Update { workspace, id, .. }
+        | PolicySetCommand::Delete { workspace, id }
+        | PolicySetCommand::GetDefinition { workspace, id, .. }
+        | PolicySetCommand::UpdateDefinition { workspace, id, .. }
+        | PolicySetCommand::ListRules { workspace, id }
+        | PolicySetCommand::ShowRule { workspace, id, .. }
+        | PolicySetCommand::CreateRule { workspace, id, .. }
+        | PolicySetCommand::UpdateRule { workspace, id, .. }
+        | PolicySetCommand::DeleteRule { workspace, id, .. }
+        | PolicySetCommand::ReplaceRulesByPolicy { workspace, id, .. }
+        | PolicySetCommand::Activate { workspace, id, .. }
+        | PolicySetCommand::Deactivate { workspace, id } => {
+            validate_uuid(workspace, "--workspace")?;
+            validate_uuid(id, "--id")?;
+            match command {
+                PolicySetCommand::ShowRule { rule_id, .. }
+                | PolicySetCommand::UpdateRule { rule_id, .. }
+                | PolicySetCommand::DeleteRule { rule_id, .. } => {
+                    validate_uuid(rule_id, "--rule-id")?;
+                }
+                _ => {}
+            }
+            if let PolicySetCommand::Activate { capacity_id, .. } = command {
+                validate_uuid(capacity_id, "--capacity-id")?;
+            }
+        }
+    }
+    Ok(())
+}
+
 async fn list(
     cli: &Cli,
     client: &FabricClient,
@@ -650,6 +709,7 @@ async fn update_definition(
     };
     let mut body = crate::definition_spec::build_update_definition_body(&raw, "policySet.json");
     body["definition"]["format"] = Value::from("Beta");
+    validate_empty_policy_set_rules(cli.force, &body)?;
     if output::dry_run_guard(
         cli,
         "policy-set update-definition",
@@ -679,8 +739,48 @@ async fn update_definition(
     Ok(())
 }
 
+fn validate_empty_policy_set_rules(force: bool, definition: &Value) -> Result<()> {
+    let has_empty_rule_set = definition
+        .get("definition")
+        .and_then(|definition| definition.get("parts"))
+        .and_then(Value::as_array)
+        .is_some_and(|parts| {
+            parts.iter().any(|part| {
+                if part.get("path").and_then(Value::as_str) != Some("policySet.json") {
+                    return false;
+                }
+                let decoded = part
+                    .get("payload")
+                    .and_then(Value::as_str)
+                    .and_then(|payload| BASE64.decode(payload).ok())
+                    .and_then(|payload| serde_json::from_slice::<Value>(&payload).ok())
+                    .or_else(|| part.get("decodedPayload").cloned());
+                decoded
+                    .as_ref()
+                    .and_then(|value| value.get("policyRules"))
+                    .and_then(Value::as_array)
+                    .is_some_and(Vec::is_empty)
+            })
+        });
+    if has_empty_rule_set && !force {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "The policySet.json definition contains an empty policyRules array, which would remove every governance rule",
+            "Re-run with --force only after confirming that all rules should be removed.",
+        )
+        .into());
+    }
+    Ok(())
+}
+
 fn parse_array(input: &str, flag: &str) -> Result<Value> {
-    let value: Value = serde_json::from_str(input).map_err(|error| {
+    let raw = crate::commands::query_input::resolve_query_input(
+        Some(input),
+        "JSON",
+        flag,
+        &format!("Example: {flag} '[{{\"type\":\"Allow\"}}]'"),
+    )?;
+    let value: Value = serde_json::from_str(&raw).map_err(|error| {
         FabioError::with_hint(
             ErrorCode::InvalidInput,
             format!("Invalid JSON for {flag}: {error}"),
@@ -967,5 +1067,38 @@ mod tests {
         assert!(validate_replacement_rules(false, &json!([])).is_err());
         assert!(validate_replacement_rules(true, &json!([])).is_ok());
         assert!(validate_replacement_rules(false, &Value::Array(vec![json!({}); 51])).is_err());
+    }
+
+    #[test]
+    fn definition_guard_detects_empty_rules_in_raw_and_encoded_parts() {
+        let raw = crate::definition_spec::build_update_definition_body(
+            r#"{"policyRules":[]}"#,
+            "policySet.json",
+        );
+        assert!(validate_empty_policy_set_rules(false, &raw).is_err());
+        assert!(validate_empty_policy_set_rules(true, &raw).is_ok());
+
+        let encoded = BASE64.encode(br#"{"policyRules":[]}"#);
+        let envelope = json!({
+            "definition": {
+                "parts": [{
+                    "path": "policySet.json",
+                    "payload": encoded,
+                    "payloadType": "InlineBase64"
+                }]
+            }
+        });
+        assert!(validate_empty_policy_set_rules(false, &envelope).is_err());
+
+        let decoded_envelope = json!({
+            "definition": {
+                "parts": [{
+                    "path": "policySet.json",
+                    "payload": "not-base64",
+                    "decodedPayload": {"policyRules": []}
+                }]
+            }
+        });
+        assert!(validate_empty_policy_set_rules(false, &decoded_envelope).is_err());
     }
 }

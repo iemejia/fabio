@@ -24761,13 +24761,58 @@
         "mutates": true,
         "returns": "object"
       },
-      "connection": {
-        "description": "Show or manage Git connection and credentials",
+      "connection-show": {
+        "description": "Show Git connection details for the workspace",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio git connection-show --workspace $WS"
+        ]
+      },
+      "connection-settings-show": {
+        "description": "Show Git connection settings",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio git connection-settings-show --workspace $WS"
+        ]
+      },
+      "connection-settings-update": {
+        "description": "Update Git connection settings",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--additional-branch-changing-roles": {
+            "type": "enum",
+            "values": [
+              "None",
+              "MemberAndContributor"
+            ],
+            "required": true,
+            "description": "Additional workspace roles allowed to change the connected branch"
+          }
+        },
         "mutates": true,
         "returns": "object",
         "examples": [
-          "fabio git connection settings show --workspace $WS",
-          "fabio git connection settings update --workspace $WS --additional-branch-changing-roles MemberAndContributor --dry-run"
+          "fabio git connection-settings-update --workspace $WS --additional-branch-changing-roles MemberAndContributor --dry-run"
         ]
       },
       "credentials": {

@@ -644,7 +644,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Notebook format in git**: `{Name}.Notebook/.platform` + `{Name}.Notebook/notebook-content.py`. Cell separators: `# CELL ********************`.
 - **ObjectId vs LogicalId**: First commit assigns only `objectId`. After commit, items gain a `logicalId` (stored in `.platform`) for cross-workspace portability.
 - **remoteChange is null**: When there's no remote change, the field is `null` (not `"None"`), but `workspaceChange` uses string values like `"Added"`, `"Modified"`, `"None"`.
-- **Git connection state**: `fabio git connection show` returns `gitConnectionState: "ConnectedAndInitialized"` with `gitSyncDetails.head` and `lastSyncTime`.
+- **Git connection state**: `fabio git connection-show` returns `gitConnectionState: "ConnectedAndInitialized"` with `gitSyncDetails.head` and `lastSyncTime`.
 - **Commit is LRO**: Returns 202 with operation ID. With `--wait`, polls until `Succeeded`/`Failed`. Returns `percentComplete: 100` on success.
 - **Full CI/CD workflow via fabio**: Validated complete flow: `workspace create` → `workspace assign-capacity` → `lakehouse create` → `git connect` → `git init` → `git commit` → (create items) → `git commit`.
 - **Azure DevOps cross-service identity requirement**: Fabric's git integration uses the authenticated user's identity to access Azure DevOps. The user (OID from the Fabric token) must be a member of the Azure DevOps organization AND have at least Contributor access to the project/repo. Without this, `git connect` returns `InsufficientPrivileges` (403) — the error looks like a workspace permission issue but is actually Azure DevOps rejecting the identity.

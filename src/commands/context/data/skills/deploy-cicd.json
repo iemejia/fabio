@@ -7,7 +7,7 @@
     "Exporting a workspace to disk and deploying it to another environment.",
     "Planning (dry-run diff) before applying changes; converging idempotently.",
     "Git integration: connect, status, commit, pull, checkout, branch-out.",
-    "Git branch-change governance: set additional roles at connect time with --additional-branch-changing-roles, or inspect/update them with git connection settings show/update.",
+    "Git branch-change governance: set additional roles at connect time with --additional-branch-changing-roles, inspect with git connection-settings-show, or update with git connection-settings-update.",
     "Managing base/branch workspace relations as an independent resource (git relation list/create/delete), separate from the branch-out flow.",
     "Managing deployment pipelines (dev/test/prod stages).",
     "Managing variable libraries and activating environment value sets.",
