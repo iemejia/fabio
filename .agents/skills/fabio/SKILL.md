@@ -719,6 +719,12 @@ fabio lakehouse list --profile prod                                         # on
 fabio admin list-workspaces                                                 # no --workspace (tenant-level)
 fabio admin list-tenant-settings
 fabio admin list-items
+
+# PolicySet scope values are case-sensitive: Tenant or Capacity.
+fabio policy-set create --workspace $WS --name "Capacity governance" --scope Capacity
+fabio policy-set create --workspace $WS --name "Tenant governance" --scope Tenant
+# This tenant-admin operation is an exception: activation requires --workspace.
+fabio admin activate-policy-set --workspace $WS --policy-set-id $POLICY_SET
 ```
 
 **Cross-cutting: job ledger, catalog search, feedback:**

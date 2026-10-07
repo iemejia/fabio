@@ -204,6 +204,10 @@ fn git_connection_settings_update_dry_run() {
 
     let json = parse_json(&output);
     assert_eq!(
+        json["data"]["would_execute"],
+        "git connection-settings-update"
+    );
+    assert_eq!(
         json["data"]["details"]["additionalRolesAuthorizedToChangeBranch"],
         "None"
     );
@@ -268,6 +272,176 @@ fn git_connection_settings_endpoints_match_spec() {
         parse_json(&update)["data"]["additionalRolesAuthorizedToChangeBranch"],
         "MemberAndContributor"
     );
+}
+
+#[test]
+#[serial]
+fn git_connection_show_legacy_command_works() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+    let (server_uri, _server) = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(format!("/workspaces/{workspace}/git/connection")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "gitConnectionState": "Connected"
+            })))
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server_uri)
+        .args(["git", "connection", "show", "--workspace", workspace])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&output)["data"]["gitConnectionState"],
+        "Connected"
+    );
+}
+
+fn mock_git_checkout_api(fail_reconnect: bool) -> (tokio::runtime::Runtime, String, MockServer) {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+    let connection_path = format!("/workspaces/{workspace}/git/connection");
+    let credentials_path = format!("/workspaces/{workspace}/git/myGitCredentials");
+    let settings_path = format!("/workspaces/{workspace}/git/connectionSettings");
+    let disconnect_path = format!("/workspaces/{workspace}/git/disconnect");
+    let connect_path = format!("/workspaces/{workspace}/git/connect");
+    let initialize_path = format!("/workspaces/{workspace}/git/initializeConnection");
+    let settings = serde_json::json!({
+        "additionalRolesAuthorizedToChangeBranch": "MemberAndContributor"
+    });
+    let original_provider_details = serde_json::json!({
+        "gitProviderType": "AzureDevOps",
+        "organizationName": "contoso",
+        "projectName": "fabric",
+        "repositoryName": "governance",
+        "branchName": "main",
+        "directoryName": "/"
+    });
+    let mut new_provider_details = original_provider_details.clone();
+    new_provider_details["branchName"] = serde_json::Value::from("feature");
+    let reconnect_body = serde_json::json!({"gitProviderDetails": new_provider_details, "connectionSettings": settings});
+    let rollback_body = serde_json::json!({
+        "gitProviderDetails": original_provider_details,
+        "connectionSettings": settings
+    });
+
+    let (server_uri, server) = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(connection_path))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "gitProviderDetails": original_provider_details
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(credentials_path))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(settings_path))
+            .respond_with(ResponseTemplate::new(200).set_body_json(settings))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(disconnect_path))
+            .and(body_json(serde_json::json!({})))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(connect_path.clone()))
+            .and(body_json(reconnect_body))
+            .respond_with(ResponseTemplate::new(if fail_reconnect {
+                500
+            } else {
+                200
+            }))
+            .expect(1)
+            .mount(&server)
+            .await;
+        if fail_reconnect {
+            Mock::given(method("POST"))
+                .and(path(connect_path))
+                .and(body_json(rollback_body))
+                .respond_with(ResponseTemplate::new(200))
+                .expect(1)
+                .mount(&server)
+                .await;
+        } else {
+            Mock::given(method("POST"))
+                .and(path(initialize_path))
+                .respond_with(ResponseTemplate::new(200))
+                .expect(1)
+                .mount(&server)
+                .await;
+        }
+        (server.uri(), server)
+    });
+    (runtime, server_uri, server)
+}
+
+#[test]
+#[serial]
+fn git_checkout_preserves_connection_settings() {
+    let (runtime, server_uri, server) = mock_git_checkout_api(false);
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "--force",
+            "git",
+            "checkout",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--branch",
+            "feature",
+        ])
+        .assert()
+        .success();
+
+    assert_eq!(parse_json(&output)["data"]["status"], "switched");
+    runtime.block_on(server.verify());
+}
+
+#[test]
+#[serial]
+fn git_checkout_reconnect_failure_restores_connection_settings() {
+    let (runtime, server_uri, server) = mock_git_checkout_api(true);
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "--force",
+            "git",
+            "checkout",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--branch",
+            "feature",
+        ])
+        .assert()
+        .failure();
+
+    assert_ne!(output.get_output().stderr, Vec::<u8>::new());
+    runtime.block_on(server.verify());
 }
 
 // ---------------------------------------------------------------------------

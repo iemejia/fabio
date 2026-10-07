@@ -3,7 +3,7 @@ use serde_json::json;
 
 use crate::cli::Cli;
 use crate::client::{FabricClient, validate_uuid};
-use crate::errors::enrich_forbidden;
+use crate::errors::enrich_admin;
 use crate::output;
 
 pub(super) async fn activate(
@@ -41,9 +41,7 @@ pub(super) async fn activate(
             false,
         )
         .await
-        .map_err(|error| {
-            enrich_forbidden(error, "admin activate-policy-set", "Fabric administrator")
-        })?;
+        .map_err(|error| enrich_admin(error, "admin activate-policy-set"))?;
     output::render_object(
         cli,
         &json!({"id": policy_set_id, "status": "active", "scope": "Tenant"}),
@@ -74,9 +72,7 @@ pub(super) async fn deactivate(
             false,
         )
         .await
-        .map_err(|error| {
-            enrich_forbidden(error, "admin deactivate-policy-set", "Fabric administrator")
-        })?;
+        .map_err(|error| enrich_admin(error, "admin deactivate-policy-set"))?;
     output::render_object(
         cli,
         &json!({"id": policy_set_id, "status": "inactive", "scope": "Tenant"}),
@@ -89,9 +85,7 @@ pub(super) async fn get_active(cli: &Cli, client: &FabricClient) -> Result<()> {
     let data = client
         .get("/policySets/active?beta=true")
         .await
-        .map_err(|error| {
-            enrich_forbidden(error, "admin get-active-policy-set", "Fabric administrator")
-        })?;
+        .map_err(|error| enrich_admin(error, "admin get-active-policy-set"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
