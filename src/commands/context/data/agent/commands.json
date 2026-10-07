@@ -704,6 +704,59 @@
         },
         "mutates": false,
         "returns": "list"
+      },
+      "activate-policy-set": {
+        "description": "Activate a tenant-scoped policy set",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace containing the policy set"
+          },
+          "--policy-set-id": {
+            "type": "string",
+            "required": true,
+            "description": "Policy set ID"
+          },
+          "--allow-replace": {
+            "type": "bool",
+            "description": "Replace the currently active tenant policy set"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio admin activate-policy-set --workspace $WS --policy-set-id $POLICY_SET --dry-run",
+          "fabio admin activate-policy-set --workspace $WS --policy-set-id $POLICY_SET --allow-replace --dry-run"
+        ]
+      },
+      "deactivate-policy-set": {
+        "description": "Deactivate the active tenant-scoped policy set",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace containing the policy set"
+          },
+          "--policy-set-id": {
+            "type": "string",
+            "required": true,
+            "description": "Policy set ID"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio admin deactivate-policy-set --workspace $WS --policy-set-id $POLICY_SET --dry-run"
+        ]
+      },
+      "get-active-policy-set": {
+        "description": "Get the active tenant-scoped policy set and its rules (beta)",
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio admin get-active-policy-set --query \"policyRules[*].{name:displayName,policy:policy}\""
+        ]
       }
     }
   },
@@ -4664,6 +4717,49 @@
         "examples": [
           "fabio capacity update-surge-protection --id $CAPACITY_ID --state Enabled --rejection-threshold 70 --recovery-threshold 50",
           "fabio capacity update-surge-protection --id $CAPACITY_ID --state Disabled --dry-run"
+        ]
+      },
+      "get-overage-configuration": {
+        "description": "Get a capacity's overage configuration",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio capacity get-overage-configuration --id $CAPACITY_ID"
+        ]
+      },
+      "update-overage-configuration": {
+        "description": "Update a capacity's overage configuration",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          },
+          "--state": {
+            "type": "enum",
+            "values": [
+              "Enabled",
+              "Disabled"
+            ],
+            "description": "Enable or disable overage; disabling resets the threshold to 0"
+          },
+          "--threshold-capacity-unit-hours": {
+            "type": "integer",
+            "description": "Capacity-unit-hours threshold (0-240000); 0 disables overage"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio capacity update-overage-configuration --id $CAPACITY_ID --state Enabled --threshold-capacity-unit-hours 1000 --dry-run",
+          "fabio capacity update-overage-configuration --id $CAPACITY_ID --state Disabled --dry-run"
         ]
       }
     }
@@ -20155,6 +20251,471 @@
       }
     }
   },
+  "policy-set": {
+    "auth_scope": "fabric",
+    "description": "Manage governance policy sets and policy rules",
+    "subcommands": {
+      "list": {
+        "description": "List policy sets in a workspace",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--no-recursive": {
+            "type": "bool",
+            "description": "Only list policy sets directly in the root folder"
+          },
+          "--root-folder-id": {
+            "type": "string",
+            "description": "Filter to a specific root folder ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio policy-set list --workspace $WS",
+          "fabio policy-set list --workspace $WS --root-folder-id $FOLDER --no-recursive"
+        ]
+      },
+      "show": {
+        "description": "Show a policy set",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Policy set ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio policy-set show --workspace $WS --id $POLICY_SET"
+        ]
+      },
+      "create": {
+        "description": "Create a policy set",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Display name"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Description (maximum 256 characters)"
+          },
+          "--folder-id": {
+            "type": "string",
+            "description": "Folder ID (defaults to the workspace root)"
+          },
+          "--scope": {
+            "type": "enum",
+            "values": [
+              "Tenant",
+              "Capacity"
+            ],
+            "description": "Policy scope for a creation-payload request"
+          },
+          "--definition": {
+            "type": "string",
+            "description": "Full policy-set definition envelope as inline JSON"
+          },
+          "--definition-file": {
+            "type": "string",
+            "description": "Path to a full policy-set definition envelope"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio policy-set create --workspace $WS --name \"Capacity governance\" --scope Capacity --dry-run",
+          "fabio policy-set create --workspace $WS --name \"Tenant governance\" --definition-file policy-set-definition.json --dry-run"
+        ]
+      },
+      "update": {
+        "description": "Update policy-set properties",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Policy set ID"
+          },
+          "--name": {
+            "type": "string",
+            "description": "New display name"
+          },
+          "--description": {
+            "type": "string",
+            "description": "New description"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio policy-set update --workspace $WS --id $POLICY_SET --description \"Updated governance policy\" --dry-run"
+        ]
+      },
+      "delete": {
+        "description": "Delete a policy set",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Policy set ID"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true,
+        "examples": [
+          "fabio policy-set delete --workspace $WS --id $POLICY_SET --dry-run"
+        ]
+      },
+      "get-definition": {
+        "description": "Get a policy-set definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Policy set ID"
+          },
+          "--format": {
+            "type": "enum",
+            "values": [
+              "Beta"
+            ],
+            "description": "Definition format (currently Beta)"
+          },
+          "--decode": {
+            "type": "bool",
+            "description": "Decode base64 definition parts"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio policy-set get-definition --workspace $WS --id $POLICY_SET --format Beta --decode"
+        ]
+      },
+      "update-definition": {
+        "description": "Replace a policy-set definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Policy set ID"
+          },
+          "--file": {
+            "type": "string",
+            "description": "Path to a raw policySet.json part or full definition envelope"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline raw policySet.json content or full definition envelope"
+          },
+          "--update-metadata": {
+            "type": "bool",
+            "description": "Update item metadata from a supplied .platform definition part"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true,
+        "examples": [
+          "fabio policy-set update-definition --workspace $WS --id $POLICY_SET --file policySet.json --dry-run",
+          "fabio policy-set update-definition --workspace $WS --id $POLICY_SET --file definition.json --update-metadata --dry-run"
+        ]
+      },
+      "list-rules": {
+        "description": "List policy rules (beta)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Policy set ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio policy-set list-rules --workspace $WS --id $POLICY_SET"
+        ]
+      },
+      "show-rule": {
+        "description": "Show a policy rule (beta)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Policy set ID"
+          },
+          "--rule-id": {
+            "type": "string",
+            "required": true,
+            "description": "Policy rule ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio policy-set show-rule --workspace $WS --id $POLICY_SET --rule-id $RULE"
+        ]
+      },
+      "create-rule": {
+        "description": "Create a policy rule (beta)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Policy set ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Rule display name"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Rule description"
+          },
+          "--policy": {
+            "type": "enum",
+            "values": [
+              "ItemCreation",
+              "WorkspaceSettingsEditing"
+            ],
+            "required": true,
+            "description": "Policy governed by the rule"
+          },
+          "--conditions": {
+            "type": "string",
+            "required": true,
+            "description": "Conditions JSON array"
+          },
+          "--effects": {
+            "type": "string",
+            "required": true,
+            "description": "Effects JSON array"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio policy-set create-rule --workspace $WS --id $POLICY_SET --name \"Approved items\" --policy ItemCreation --conditions '[{\"type\":\"Dynamic\",\"targetProperty\":\"item.type\",\"predicate\":{\"operator\":\"AnyOf\",\"values\":[\"Lakehouse\",\"Warehouse\"]}}]' --effects '[{\"type\":\"Allow\"}]' --dry-run"
+        ]
+      },
+      "update-rule": {
+        "description": "Update a policy rule (beta)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Policy set ID"
+          },
+          "--rule-id": {
+            "type": "string",
+            "required": true,
+            "description": "Policy rule ID"
+          },
+          "--name": {
+            "type": "string",
+            "description": "New display name"
+          },
+          "--description": {
+            "type": "string",
+            "description": "New description"
+          },
+          "--conditions": {
+            "type": "string",
+            "description": "Replacement conditions JSON array"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio policy-set update-rule --workspace $WS --id $POLICY_SET --rule-id $RULE --name \"Updated rule\" --dry-run"
+        ]
+      },
+      "delete-rule": {
+        "description": "Delete a policy rule (beta)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Policy set ID"
+          },
+          "--rule-id": {
+            "type": "string",
+            "required": true,
+            "description": "Policy rule ID"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true,
+        "examples": [
+          "fabio policy-set delete-rule --workspace $WS --id $POLICY_SET --rule-id $RULE --dry-run"
+        ]
+      },
+      "replace-rules-by-policy": {
+        "description": "Replace every rule for one policy (beta)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Policy set ID"
+          },
+          "--policy": {
+            "type": "enum",
+            "values": [
+              "ItemCreation",
+              "WorkspaceSettingsEditing"
+            ],
+            "required": true,
+            "description": "Policy whose rules will be replaced"
+          },
+          "--policy-rules": {
+            "type": "string",
+            "required": true,
+            "description": "Complete replacement policyRules JSON array"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true,
+        "examples": [
+          "fabio policy-set replace-rules-by-policy --workspace $WS --id $POLICY_SET --policy ItemCreation --policy-rules '[{\"displayName\":\"Approved items\",\"conditions\":[{\"type\":\"Static\",\"value\":true}],\"effects\":[{\"type\":\"Allow\"}]}]' --dry-run"
+        ]
+      },
+      "activate": {
+        "description": "Activate a capacity-scoped policy set",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Policy set ID"
+          },
+          "--capacity-id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID on which to activate the policy set"
+          },
+          "--allow-replace": {
+            "type": "bool",
+            "description": "Replace the currently active policy set on this capacity"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio policy-set activate --workspace $WS --id $POLICY_SET --capacity-id $CAPACITY_ID --dry-run",
+          "fabio policy-set activate --workspace $WS --id $POLICY_SET --capacity-id $CAPACITY_ID --allow-replace --dry-run"
+        ]
+      },
+      "deactivate": {
+        "description": "Deactivate a capacity-scoped policy set",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Policy set ID"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio policy-set deactivate --workspace $WS --id $POLICY_SET --dry-run"
+        ]
+      },
+      "get-active-for-capacity": {
+        "description": "Show the active policy set on a capacity",
+        "flags": {
+          "--capacity-id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio policy-set get-active-for-capacity --capacity-id $CAPACITY_ID"
+        ]
+      }
+    }
+  },
   "scorecard": {
     "auth_scope": "fabric",
     "description": "Manage Power BI Goals scorecards (Power BI Metrics, not a Fabric item)",
@@ -24059,12 +24620,21 @@
           "--connection-id": {
             "type": "string",
             "description": "Connection ID for configured credentials"
+          },
+          "--additional-branch-changing-roles": {
+            "type": "enum",
+            "values": [
+              "None",
+              "MemberAndContributor"
+            ],
+            "description": "Additional workspace roles allowed to change the connected branch"
           }
         },
         "mutates": true,
         "returns": "object",
         "examples": [
-          "fabio git connect --workspace $WS --provider github --owner myorg --repo fabric-project --branch main --directory \"/\" --connection-id $GIT_CONN"
+          "fabio git connect --workspace $WS --provider github --owner myorg --repo fabric-project --branch main --directory \"/\" --connection-id $GIT_CONN",
+          "fabio git connect --workspace $WS --provider azure-devops --org $ORG --project $PROJECT --repo $REPO --branch main --additional-branch-changing-roles MemberAndContributor --dry-run"
         ]
       },
       "disconnect": {
@@ -24193,8 +24763,12 @@
       },
       "connection": {
         "description": "Show or manage Git connection and credentials",
-        "mutates": false,
-        "returns": "object"
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio git connection settings show --workspace $WS",
+          "fabio git connection settings update --workspace $WS --additional-branch-changing-roles MemberAndContributor --dry-run"
+        ]
       },
       "credentials": {
         "description": "Manage Git credentials",

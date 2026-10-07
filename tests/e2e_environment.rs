@@ -4,6 +4,90 @@ mod common;
 
 use common::{TestConfig, extract_data, fabio, parse_json};
 use serial_test::serial;
+use wiremock::matchers::{body_json, method, path, query_param};
+use wiremock::{Mock, MockServer, ResponseTemplate};
+
+const MOCK_WORKSPACE: &str = "aaaaaaaa-1111-2222-3333-444444444444";
+const MOCK_ENVIRONMENT: &str = "bbbbbbbb-1111-2222-3333-444444444444";
+
+#[test]
+#[serial]
+fn environment_staging_spark_compute_explicitly_requests_beta() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (server_uri, _server) = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/staging/sparkcompute"
+            )))
+            .and(query_param("beta", "true"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "runtimeVersion": "1.3",
+                "sparkProperties": {}
+            })))
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server_uri)
+        .args([
+            "environment",
+            "get-staging-spark-settings",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&output)["data"]["runtimeVersion"], "1.3");
+}
+
+#[test]
+#[serial]
+fn environment_update_staging_spark_compute_explicitly_requests_beta() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let body = serde_json::json!({"runtimeVersion": "2.0"});
+    let (server_uri, _server) = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .and(path(format!(
+                "/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/staging/sparkcompute"
+            )))
+            .and(query_param("beta", "true"))
+            .and(body_json(body.clone()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body))
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server_uri)
+        .args([
+            "environment",
+            "update-staging-spark-compute",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+            "--content",
+            r#"{"runtimeVersion":"2.0"}"#,
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&output)["data"]["runtimeVersion"], "2.0");
+}
 
 #[test]
 #[ignore = "requires live Fabric tenant"]

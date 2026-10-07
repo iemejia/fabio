@@ -1,0 +1,43 @@
+{
+  "type": "PolicySet",
+  "description": "Governance policy collection scoped to the tenant or a Fabric capacity.",
+  "create_command": "fabio policy-set create --workspace <WS> --name <NAME> --scope Tenant",
+  "definition_format": "Beta",
+  "definition_parts": [
+    {
+      "path": "policySet.json",
+      "description": "Policy-set scope and complete policyRules array"
+    },
+    {
+      "path": ".platform",
+      "description": "Optional item metadata; use --update-metadata when replacing a definition"
+    }
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}",
+    "creationPayload": {
+      "scope": {
+        "type": "Tenant"
+      }
+    }
+  },
+  "flags": {
+    "--scope": "Tenant or Capacity when creating without a definition",
+    "--definition": "Inline full definition with format Beta",
+    "--definition-file": "Path to a full definition with format Beta"
+  },
+  "notes": [
+    "Policy-rule endpoints are beta and fabio always sends beta=true.",
+    "Policy types are ItemCreation and WorkspaceSettingsEditing.",
+    "Conditions are discriminated by type: Static uses value; Dynamic uses targetProperty plus an AnyOf or NoneOf predicate with 1-50 values.",
+    "Only Allow effects are currently supported.",
+    "A maximum of 50 rules per policy type is allowed.",
+    "replace-rules-by-policy overwrites every rule for the selected policy."
+  ],
+  "related_commands": [
+    "fabio policy-set list --workspace <WS>",
+    "fabio policy-set list-rules --workspace <WS> --id <SET>",
+    "fabio policy-set activate --workspace <WS> --id <SET> --capacity-id <CAP>",
+    "fabio admin activate-policy-set --workspace <WS> --policy-set-id <SET>"
+  ]
+}

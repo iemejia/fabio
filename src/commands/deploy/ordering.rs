@@ -68,6 +68,7 @@ pub const DEPLOY_ORDER: &[&str] = &[
     "MLModel",        // fabio-only (after MLExperiment)
     "Map",            // fabric-cicd 29
     "Plan",           // fabio-only (after Map; standalone item)
+    "PolicySet",      // fabio-only (governance definition)
     "Connection",     // fabio-only (cross-cutting, last)
     "OrgApp",         // fabio-only
     "OrgAppAudience", // fabio-only
@@ -400,8 +401,8 @@ mod tests {
         // Guard against accidental additions/removals — update this if DEPLOY_ORDER changes
         assert_eq!(
             DEPLOY_ORDER.len(),
-            48,
-            "DEPLOY_ORDER should have 48 entries; update this test if intentionally changed"
+            49,
+            "DEPLOY_ORDER should have 49 entries; update this test if intentionally changed"
         );
     }
 

@@ -1,5 +1,6 @@
 mod domains;
 mod items;
+mod policy_sets;
 mod tags;
 mod tenant_settings;
 mod users;
@@ -495,6 +496,34 @@ pub enum AdminCommand {
         #[arg(long)]
         user_id: String,
     },
+
+    // ── Policy Sets ──────────────────────────────────────────────────────
+    /// Activate a tenant-scoped policy set
+    #[command(display_order = 80)]
+    ActivatePolicySet {
+        /// Workspace containing the policy set
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Policy set ID
+        #[arg(long)]
+        policy_set_id: String,
+        /// Replace the currently active tenant policy set
+        #[arg(long)]
+        allow_replace: bool,
+    },
+    /// Deactivate the active tenant-scoped policy set
+    #[command(display_order = 81)]
+    DeactivatePolicySet {
+        /// Workspace containing the policy set
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Policy set ID
+        #[arg(long)]
+        policy_set_id: String,
+    },
+    /// Get the active tenant-scoped policy set and its rules (beta)
+    #[command(display_order = 82)]
+    GetActivePolicySet,
 }
 
 #[allow(clippy::too_many_lines)]
@@ -755,6 +784,16 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &AdminCommand) -
         AdminCommand::ListUserAccess { user_id } => {
             users::list_user_access(cli, client, user_id).await
         }
+        AdminCommand::ActivatePolicySet {
+            workspace,
+            policy_set_id,
+            allow_replace,
+        } => policy_sets::activate(cli, client, workspace, policy_set_id, *allow_replace).await,
+        AdminCommand::DeactivatePolicySet {
+            workspace,
+            policy_set_id,
+        } => policy_sets::deactivate(cli, client, workspace, policy_set_id).await,
+        AdminCommand::GetActivePolicySet => policy_sets::get_active(cli, client).await,
     }
 }
 

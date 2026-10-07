@@ -2281,3 +2281,93 @@ fn admin_list_workspaces_capacity_filter_live() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tenant PolicySet governance
+// ---------------------------------------------------------------------------
+
+#[test]
+fn admin_activate_policy_set_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "admin",
+            "activate-policy-set",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--policy-set-id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--allow-replace",
+        ])
+        .assert()
+        .success();
+    let json: Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "admin activate-policy-set");
+    assert_eq!(json["data"]["details"]["scope"], "Tenant");
+    assert_eq!(json["data"]["destructive"], true);
+}
+
+#[test]
+fn admin_deactivate_policy_set_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "admin",
+            "deactivate-policy-set",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--policy-set-id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .success();
+    let json: Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "admin deactivate-policy-set");
+}
+
+#[test]
+#[serial]
+fn admin_get_active_policy_set_sends_required_beta() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (server_uri, _server) = rt.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/policySets/active"))
+            .and(query_param("beta", "true"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "bbbbbbbb-1111-2222-3333-444444444444",
+                "displayName": "Tenant governance",
+                "workspaceId": "aaaaaaaa-1111-2222-3333-444444444444",
+                "policyRules": []
+            })))
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server_uri)
+        .args(["admin", "get-active-policy-set"])
+        .assert()
+        .success();
+    let json: Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+    assert!(json["data"]["policyRules"].is_array());
+}
+
+#[test]
+#[ignore = "requires a live tenant and Fabric administrator role"]
+#[serial]
+fn admin_get_active_policy_set_live() {
+    let output = fabio()
+        .args(["admin", "get-active-policy-set"])
+        .output()
+        .unwrap();
+    if let Some(json) = assert_admin_output(&output) {
+        assert!(json["data"]["id"].is_string());
+        assert!(json["data"]["policyRules"].is_array());
+    }
+}

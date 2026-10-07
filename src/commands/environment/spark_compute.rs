@@ -392,7 +392,7 @@ pub(super) async fn update_staging_spark_compute(
     custom_live_pool_lifespan: Option<&str>,
     clear_custom_live_pool_settings: bool,
 ) -> Result<()> {
-    let path = format!("/workspaces/{workspace}/environments/{id}/staging/sparkcompute");
+    let path = format!("/workspaces/{workspace}/environments/{id}/staging/sparkcompute?beta=true");
 
     // Two mutually-exclusive modes:
     //   (a) raw JSON body via --file/--content (full replace of the compute body)

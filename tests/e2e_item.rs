@@ -1375,6 +1375,31 @@ fn item_bulk_import_allow_pairing_by_name_flag_dry_run() {
 }
 
 #[test]
+fn item_bulk_definition_commands_require_request_body() {
+    for command in ["bulk-export-definitions", "bulk-import-definitions"] {
+        let output = fabio()
+            .args([
+                "item",
+                command,
+                "--workspace",
+                "00000000-0000-0000-0000-000000000001",
+                "--dry-run",
+            ])
+            .assert()
+            .failure();
+        let error: serde_json::Value =
+            serde_json::from_slice(&output.get_output().stderr).expect("JSON error");
+        assert_eq!(error["error"]["code"], "INVALID_INPUT", "{command}");
+        assert!(
+            error["error"]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("--file or --content")),
+            "{command}"
+        );
+    }
+}
+
+#[test]
 fn item_bulk_import_item_options_dry_run() {
     let logical_id = "88436e65-6ed1-8185-49ff-f61077fc73d4";
     let item_options =

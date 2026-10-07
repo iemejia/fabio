@@ -48,6 +48,8 @@
 - `src/commands/git/mod.rs`: GitCommand/ConnectionCommand/CredentialsCommand enums + execute() dispatch + shared `enrich_git_connect_error` + unit tests (directory module)
 - `src/commands/git/sync.rs`: status/commit/pull/show-tracked
 - `src/commands/git/connect.rs`: connect/disconnect/init/checkout + connection & credentials subcommands
+- `src/commands/policy_set.rs`: PolicySet item CRUD/definition, beta policy-rule CRUD/replacement, and capacity activation
+- `src/commands/admin/policy_sets.rs`: tenant PolicySet activation/deactivation and beta active-set lookup
 - `src/commands/git/branch_out.rs`: branch-out (create/recycle a feature workspace from a branch)
 - `src/commands/git/relation.rs`: relation list/create/delete (Git WorkspaceRelations Preview API — base/branch links between workspaces)
 - `src/commands/ontology/mod.rs`: OntologyCommand enum + execute() dispatch + shared `read_file_or_stdin` (directory module)
@@ -111,7 +113,7 @@
 - `src/commands/spark_job_definition.rs`: list/show/create/update/delete/get-definition/update-definition/run
 - `src/commands/map.rs`: list/show/create/update/delete/get-definition/update-definition (geospatial Azure Maps)
 - `src/commands/plan.rs`: list/show/create/update/delete/get-definition/update-definition (connected-planning Plan item, PlanV1 / connectedPlanning/infobridge.json)
-- `src/commands/capacity.rs`: list/show (Fabric API) + suspend/resume/create/update/delete/list-skus/check-name (ARM API)
+- `src/commands/capacity.rs`: list/show, surge protection, and overage configuration (Fabric API) + suspend/resume/create/update/delete/list-skus/check-name (ARM API)
 - `src/commands/connection/`: directory module (split from `connection.rs` when it crossed the 1500-line limit) — `mod.rs` (enum + execute dispatch), `crud.rs` (list/show/create/update/delete/list-supported-types + body builders + recency-aware `list_table_columns`), `roles.rs` (role assignments + test-connection), `hygiene.rs` (find-stale/find-duplicates/find-single-owner governance commands built on connection-recency signals — all read-only pure logic + unit tests)
 - `src/commands/deployment_pipeline.rs`: list/show/create/update/delete/list-stages/list-stage-items/assign-workspace/unassign-workspace/deploy
 - `src/commands/domain.rs`: list/show/create/update/delete/list-workspaces/assign-workspaces/unassign-workspaces/assign-by-capacity/assign-by-principal
@@ -227,7 +229,8 @@
 - `tests/e2e_domain.rs`: Domain management tests
 - `tests/e2e_job_scheduler.rs`: Job scheduler tests (11 tests: list, dry-run, fire-and-forget, --wait with polling)
 - `tests/e2e_spark.rs`: Spark settings and pool tests
-- `tests/e2e_capacity.rs`: Capacity list/show tests + ARM dry-run tests (suspend/resume/create/update/delete)
+- `tests/e2e_capacity.rs`: Capacity list/show, surge-protection/overage wiremock, and ARM dry-run tests
+- `tests/e2e_policy_set.rs`: PolicySet dry-run, validation, beta-query, wiremock, and live active-capacity tests
 - `tests/e2e_onelake_security.rs`: OneLake security tests
 - `tests/e2e_managed_private_endpoint.rs`: Managed private endpoint tests
 - `tests/e2e_admin.rs`: Admin API tests (63 tests: listing, tag lifecycle, domain lifecycle, dry-run validations, sharing links, labels, external data shares)

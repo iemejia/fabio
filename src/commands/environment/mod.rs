@@ -619,7 +619,7 @@ async fn publish(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) ->
 
     client
         .post(
-            &format!("/workspaces/{workspace}/environments/{id}/staging/publish"),
+            &format!("/workspaces/{workspace}/environments/{id}/staging/publish?beta=true"),
             &serde_json::json!({}),
             false,
         )
@@ -669,7 +669,7 @@ async fn get_spark_settings(
 ) -> Result<()> {
     let data = client
         .get(&format!(
-            "/workspaces/{workspace}/environments/{id}/sparkcompute"
+            "/workspaces/{workspace}/environments/{id}/sparkcompute?beta=true"
         ))
         .await?;
     output::render_object(cli, &data, "instancePool");
@@ -684,7 +684,7 @@ async fn get_staging_spark_settings(
 ) -> Result<()> {
     let data = client
         .get(&format!(
-            "/workspaces/{workspace}/environments/{id}/staging/sparkcompute"
+            "/workspaces/{workspace}/environments/{id}/staging/sparkcompute?beta=true"
         ))
         .await?;
     output::render_object(cli, &data, "instancePool");
@@ -772,7 +772,7 @@ async fn update_definition(
 async fn list_libraries(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
     let data = client
         .get(&format!(
-            "/workspaces/{workspace}/environments/{id}/libraries"
+            "/workspaces/{workspace}/environments/{id}/libraries?beta=true"
         ))
         .await?;
     output::render_object(cli, &data, "customLibraries");
@@ -807,7 +807,7 @@ async fn list_staging_libraries(
 ) -> Result<()> {
     let data = client
         .get(&format!(
-            "/workspaces/{workspace}/environments/{id}/staging/libraries"
+            "/workspaces/{workspace}/environments/{id}/staging/libraries?beta=true"
         ))
         .await?;
     output::render_object(cli, &data, "customLibraries");

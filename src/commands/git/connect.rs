@@ -9,6 +9,7 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
+use super::AdditionalBranchChangingRoles;
 use super::enrich_git_connect_error;
 
 #[allow(clippy::too_many_arguments)]
@@ -25,6 +26,7 @@ pub(super) async fn connect(
     directory: Option<&str>,
     custom_domain: Option<&str>,
     connection_id: Option<&str>,
+    additional_branch_changing_roles: Option<AdditionalBranchChangingRoles>,
 ) -> Result<()> {
     let git_provider_details = match provider {
         "azure-devops" => {
@@ -105,6 +107,16 @@ pub(super) async fn connect(
             parameters: None,
         }
         .into());
+    }
+
+    if let Some(roles) = additional_branch_changing_roles {
+        body["connectionSettings"] = serde_json::json!({
+            "additionalRolesAuthorizedToChangeBranch": roles.as_str()
+        });
+    }
+
+    if output::dry_run_guard(cli, "git connect", &body) {
+        return Ok(());
     }
 
     let _data = client
@@ -227,6 +239,9 @@ pub(super) async fn checkout(
         .get(&format!("/workspaces/{workspace}/git/myGitCredentials"))
         .await
         .ok();
+    let connection_settings = client
+        .get(&format!("/workspaces/{workspace}/git/connectionSettings"))
+        .await?;
 
     // Step 3: Disconnect from current branch
     client
@@ -251,6 +266,7 @@ pub(super) async fn checkout(
     {
         connect_body["myGitCredentials"] = creds.clone();
     }
+    connect_body["connectionSettings"] = connection_settings.clone();
 
     let provider_type = provider_details
         .get("gitProviderType")
@@ -283,6 +299,7 @@ pub(super) async fn checkout(
         {
             rollback_body["myGitCredentials"] = creds.clone();
         }
+        rollback_body["connectionSettings"] = connection_settings;
         let _ = client
             .post(
                 &format!("/workspaces/{workspace}/git/connect"),
@@ -357,6 +374,40 @@ pub(super) async fn connection_show(
         .await?;
 
     output::render_object(cli, &data, "status");
+    Ok(())
+}
+
+pub(super) async fn connection_settings_show(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!("/workspaces/{workspace}/git/connectionSettings"))
+        .await?;
+    output::render_object(cli, &data, "additionalRolesAuthorizedToChangeBranch");
+    Ok(())
+}
+
+pub(super) async fn connection_settings_update(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    roles: AdditionalBranchChangingRoles,
+) -> Result<()> {
+    let body = serde_json::json!({
+        "additionalRolesAuthorizedToChangeBranch": roles.as_str()
+    });
+    if output::dry_run_guard(cli, "git connection settings update", &body) {
+        return Ok(());
+    }
+    let data = client
+        .patch(
+            &format!("/workspaces/{workspace}/git/connectionSettings"),
+            &body,
+        )
+        .await?;
+    output::render_object(cli, &data, "additionalRolesAuthorizedToChangeBranch");
     Ok(())
 }
 

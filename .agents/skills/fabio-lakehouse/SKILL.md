@@ -129,6 +129,7 @@ Manage `OneLake` data access roles (row/column-level security)
 - list-shortcuts hides DW-managed internal shortcuts (OneLake->OneLake under Tables/) by default — pass --include-managed to see them.
 - create-shortcut takes typed flags per target type (--connection-id/--location/--subpath for cloud; --target-workspace/--target-item/--target-path for OneLake; --bucket for S3); --target JSON remains a raw escape hatch.
 - create-shortcut can convert source files into a queryable Delta table via --transform: only csvToDelta is exposed by the REST API (with --csv-delimiter/--csv-no-header/--csv-keep-error-files/--transform-include-subfolders). Parquet/JSON/Excel and the AI-powered transforms are portal-only. Create the shortcut under Tables; --transform-json is a raw escape hatch. Materialization is an async Fabric Spark job (~2-min polling) and the documented sources are external (ADLS/S3/...).
+- Materialized Lake View schedule create/update/delete and on-demand refresh require Contributor or higher. These operations are no longer labeled Preview in the REST descriptions.
 
 ## Troubleshooting
 | Symptom | Fix |

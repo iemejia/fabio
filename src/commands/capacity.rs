@@ -17,6 +17,23 @@ pub enum SurgeProtectionState {
     Disabled,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum OverageState {
+    #[value(name = "Enabled")]
+    Enabled,
+    #[value(name = "Disabled")]
+    Disabled,
+}
+
+impl OverageState {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Enabled => "Enabled",
+            Self::Disabled => "Disabled",
+        }
+    }
+}
+
 impl SurgeProtectionState {
     const fn as_str(self) -> &'static str {
         match self {
@@ -173,6 +190,26 @@ pub enum CapacityCommand {
         #[arg(long, value_parser = clap::value_parser!(u8).range(6..=99))]
         recovery_threshold: Option<u8>,
     },
+    /// Get a capacity's overage configuration
+    #[command(name = "get-overage-configuration", display_order = 12)]
+    GetOverageConfiguration {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Update a capacity's overage configuration
+    #[command(name = "update-overage-configuration", display_order = 13)]
+    UpdateOverageConfiguration {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+        /// Enable or disable overage; disabling resets the threshold to 0
+        #[arg(long)]
+        state: Option<OverageState>,
+        /// Capacity-unit-hours threshold (0-240000); 0 disables overage
+        #[arg(long, value_parser = clap::value_parser!(u32).range(0..=240_000))]
+        threshold_capacity_unit_hours: Option<u32>,
+    },
 }
 
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &CapacityCommand) -> Result<()> {
@@ -257,6 +294,17 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &CapacityCommand
                 *recovery_threshold,
             )
             .await
+        }
+        CapacityCommand::GetOverageConfiguration { id } => {
+            get_overage_configuration(cli, client, id).await
+        }
+        CapacityCommand::UpdateOverageConfiguration {
+            id,
+            state,
+            threshold_capacity_unit_hours,
+        } => {
+            update_overage_configuration(cli, client, id, *state, *threshold_capacity_unit_hours)
+                .await
         }
     }
 }
@@ -370,6 +418,85 @@ async fn update_surge_protection(
             crate::errors::enrich_forbidden(
                 e,
                 "capacity update-surge-protection",
+                "Capacity administrator",
+            )
+        })?;
+    output::render_object(cli, &data, "state");
+    Ok(())
+}
+
+async fn get_overage_configuration(cli: &Cli, client: &FabricClient, id: &str) -> Result<()> {
+    validate_uuid(id, "--id")?;
+    let data = client
+        .get(&format!("/capacities/{id}/overageConfiguration"))
+        .await
+        .map_err(|e| {
+            crate::errors::enrich_forbidden(
+                e,
+                "capacity get-overage-configuration",
+                "Capacity administrator",
+            )
+        })?;
+    output::render_object(cli, &data, "state");
+    Ok(())
+}
+
+fn build_overage_configuration_update(
+    state: Option<OverageState>,
+    threshold_capacity_unit_hours: Option<u32>,
+) -> Result<Value> {
+    if state.is_none() && threshold_capacity_unit_hours.is_none() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "At least one of --state or --threshold-capacity-unit-hours is required",
+            "Enable overage with: --state Enabled --threshold-capacity-unit-hours 1000",
+        )
+        .into());
+    }
+    if state == Some(OverageState::Enabled) && threshold_capacity_unit_hours == Some(0) {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "--state Enabled conflicts with --threshold-capacity-unit-hours 0",
+            "Use a threshold greater than 0 when enabling overage, or use --state Disabled.",
+        )
+        .into());
+    }
+    let mut body = serde_json::Map::new();
+    if let Some(state) = state {
+        body.insert("state".to_string(), Value::from(state.as_str()));
+    }
+    if let Some(threshold) = threshold_capacity_unit_hours {
+        body.insert(
+            "thresholdCapacityUnitHours".to_string(),
+            Value::from(threshold),
+        );
+    }
+    Ok(Value::Object(body))
+}
+
+async fn update_overage_configuration(
+    cli: &Cli,
+    client: &FabricClient,
+    id: &str,
+    state: Option<OverageState>,
+    threshold_capacity_unit_hours: Option<u32>,
+) -> Result<()> {
+    validate_uuid(id, "--id")?;
+    let body = build_overage_configuration_update(state, threshold_capacity_unit_hours)?;
+    if output::dry_run_guard(
+        cli,
+        "capacity update-overage-configuration",
+        &json!({"capacityId": id, "request": body}),
+    ) {
+        return Ok(());
+    }
+    let data = client
+        .patch(&format!("/capacities/{id}/overageConfiguration"), &body)
+        .await
+        .map_err(|e| {
+            crate::errors::enrich_forbidden(
+                e,
+                "capacity update-overage-configuration",
                 "Capacity administrator",
             )
         })?;
@@ -677,8 +804,10 @@ mod tests {
             "CheckName",
             "GetSurgeProtection",
             "UpdateSurgeProtection",
+            "GetOverageConfiguration",
+            "UpdateOverageConfiguration",
         ];
-        assert_eq!(commands.len(), 11);
+        assert_eq!(commands.len(), 13);
     }
 
     #[test]
@@ -752,6 +881,21 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("must be lower"), "got: {error}");
+    }
+
+    #[test]
+    fn overage_enable_body_matches_spec() {
+        let body =
+            build_overage_configuration_update(Some(OverageState::Enabled), Some(1000)).unwrap();
+        assert_eq!(
+            body,
+            json!({"state": "Enabled", "thresholdCapacityUnitHours": 1000})
+        );
+    }
+
+    #[test]
+    fn overage_rejects_enabled_zero_threshold() {
+        assert!(build_overage_configuration_update(Some(OverageState::Enabled), Some(0)).is_err());
     }
 
     #[test]
