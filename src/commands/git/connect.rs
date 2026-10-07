@@ -398,7 +398,7 @@ pub(super) async fn connection_settings_update(
     let body = serde_json::json!({
         "additionalRolesAuthorizedToChangeBranch": roles.as_str()
     });
-    if output::dry_run_guard(cli, "git connection settings update", &body) {
+    if output::dry_run_guard(cli, "git connection-settings-update", &body) {
         return Ok(());
     }
     let data = client

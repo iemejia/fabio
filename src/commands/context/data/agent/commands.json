@@ -20420,6 +20420,7 @@
         },
         "mutates": false,
         "returns": "object",
+        "async": true,
         "examples": [
           "fabio policy-set get-definition --workspace $WS --id $POLICY_SET --format Beta --decode"
         ]
@@ -20452,6 +20453,7 @@
         },
         "mutates": true,
         "returns": "object",
+        "async": true,
         "destructive": true,
         "examples": [
           "fabio policy-set update-definition --workspace $WS --id $POLICY_SET --file policySet.json --dry-run",
@@ -24759,6 +24761,11 @@
           }
         },
         "mutates": true,
+        "returns": "object"
+      },
+      "connection": {
+        "description": "Legacy alias for `connection-show`",
+        "mutates": false,
         "returns": "object"
       },
       "connection-show": {

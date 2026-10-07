@@ -308,6 +308,9 @@ pub enum GitCommand {
         timeout: u64,
     },
     // ── Configuration ─────────────────────────────────────────────────────
+    /// Legacy alias for `connection-show`
+    #[command(subcommand, hide = true, display_order = 19)]
+    Connection(ConnectionCommand),
     /// Show Git connection details for the workspace
     #[command(name = "connection-show", display_order = 20)]
     ConnectionShow {
@@ -342,6 +345,16 @@ pub enum GitCommand {
     /// Show tracked items and their Git sync status
     #[command(display_order = 30)]
     ShowTracked {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ConnectionCommand {
+    /// Show Git connection details for the workspace
+    Show {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
@@ -512,7 +525,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
             )
             .await
         }
-        GitCommand::ConnectionShow { workspace } => {
+        GitCommand::Connection(ConnectionCommand::Show { workspace })
+        | GitCommand::ConnectionShow { workspace } => {
             connect::connection_show(cli, client, workspace).await
         }
         GitCommand::ConnectionSettingsShow { workspace } => {

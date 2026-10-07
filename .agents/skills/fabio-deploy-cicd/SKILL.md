@@ -51,6 +51,7 @@ Manage Git integration (connect, commit, pull, status)
 | `fabio git checkout` | yes | Switch to a different branch (disconnect + connect + init) |
 | `fabio git commit` | yes | Commit workspace changes to the connected remote branch |
 | `fabio git connect` | yes | Connect a workspace to a Git repository |
+| `fabio git connection` | no | Legacy alias for `connection-show` |
 | `fabio git connection-settings-show` | no | Show Git connection settings |
 | `fabio git connection-settings-update` | yes | Update Git connection settings |
 | `fabio git connection-show` | no | Show Git connection details for the workspace |
