@@ -40,6 +40,7 @@ const DANGEROUS_FLAGS: &[&str] = &[
     "--allow-delete-types",
     "--allow-override",
     "--allow-purge-data",
+    "--allow-replace",
     "--allow-unresolved",
     "--cancel-on-timeout",
     "--delete-orphans",

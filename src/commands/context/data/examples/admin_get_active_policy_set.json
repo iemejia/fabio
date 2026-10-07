@@ -1,0 +1,53 @@
+{
+  "command": "fabio admin get-active-policy-set",
+  "description": "Get the active tenant-scoped PolicySet and its complete rule collection.",
+  "response": {
+    "data": {
+      "id": "bbbbbbbb-1111-2222-3333-444444444444",
+      "displayName": "Tenant item governance",
+      "description": "Restricts item creation to approved item types.",
+      "workspaceId": "aaaaaaaa-1111-2222-3333-444444444444",
+      "policyRules": [
+        {
+          "id": "cccccccc-1111-2222-3333-444444444444",
+          "displayName": "Approved item types",
+          "description": "Allow only approved item types.",
+          "policy": "ItemCreation",
+          "conditions": [
+            {
+              "type": "Dynamic",
+              "targetProperty": "item.type",
+              "predicate": {
+                "operator": "AnyOf",
+                "values": [
+                  "Lakehouse",
+                  "Warehouse"
+                ]
+              }
+            }
+          ],
+          "effects": [
+            {
+              "type": "Allow"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "notes": "This beta tenant-admin endpoint requires Fabric administrator permissions. Fabio always sends beta=true. Capacity-scoped active PolicySets omit policyRules; use policy-set list-rules for their rules.",
+  "query_examples": [
+    {
+      "query": "id",
+      "description": "Extract the active PolicySet ID"
+    },
+    {
+      "query": "policyRules[*].policy",
+      "description": "List governed policy types"
+    },
+    {
+      "query": "policyRules[?policy=='ItemCreation'].displayName",
+      "description": "List item-creation rule names"
+    }
+  ]
+}

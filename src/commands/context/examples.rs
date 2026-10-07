@@ -97,6 +97,10 @@ pub(super) const fn example_entries() -> &'static [(&'static str, &'static str)]
 
 const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
+        "admin/get-active-policy-set",
+        include_str!("data/examples/admin_get_active_policy_set.json"),
+    ),
+    (
         "cosmos-db-database/import",
         include_str!("data/examples/cosmos_db_database_import.json"),
     ),

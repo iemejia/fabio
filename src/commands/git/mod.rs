@@ -2,7 +2,7 @@
 //! provider connection & credentials, and workspace Git relations.
 
 use anyhow::Result;
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
@@ -14,6 +14,23 @@ mod relation;
 mod sync;
 
 pub use relation::RelationCommand;
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum AdditionalBranchChangingRoles {
+    #[value(name = "None")]
+    None,
+    #[value(name = "MemberAndContributor")]
+    MemberAndContributor,
+}
+
+impl AdditionalBranchChangingRoles {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "None",
+            Self::MemberAndContributor => "MemberAndContributor",
+        }
+    }
+}
 
 #[derive(Debug, Subcommand)]
 #[command(
@@ -193,6 +210,10 @@ pub enum GitCommand {
         /// Connection ID for configured credentials
         #[arg(long)]
         connection_id: Option<String>,
+
+        /// Additional workspace roles allowed to change the connected branch
+        #[arg(long)]
+        additional_branch_changing_roles: Option<AdditionalBranchChangingRoles>,
     },
     /// Disconnect a workspace from Git
     #[command(display_order = 11)]
@@ -314,6 +335,30 @@ pub enum ConnectionCommand {
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
+    /// Manage connection settings for a Git-connected workspace
+    Settings {
+        #[command(subcommand)]
+        command: ConnectionSettingsCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ConnectionSettingsCommand {
+    /// Show connection settings
+    Show {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+    },
+    /// Update connection settings
+    Update {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Additional workspace roles allowed to change the connected branch
+        #[arg(long)]
+        additional_branch_changing_roles: AdditionalBranchChangingRoles,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -410,6 +455,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
             directory,
             custom_domain,
             connection_id,
+            additional_branch_changing_roles,
         } => connect::connect(
             cli,
             client,
@@ -423,6 +469,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
             directory.as_deref(),
             custom_domain.as_deref(),
             connection_id.as_deref(),
+            *additional_branch_changing_roles,
         )
         .await
         .map_err(|e| enrich_forbidden(e, "git connect", "Admin")),
@@ -482,6 +529,26 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
             ConnectionCommand::Show { workspace } => {
                 connect::connection_show(cli, client, workspace).await
             }
+            ConnectionCommand::Settings { command } => match command {
+                ConnectionSettingsCommand::Show { workspace } => {
+                    connect::connection_settings_show(cli, client, workspace)
+                        .await
+                        .map_err(|e| {
+                            enrich_forbidden(e, "git connection settings show", "Contributor")
+                        })
+                }
+                ConnectionSettingsCommand::Update {
+                    workspace,
+                    additional_branch_changing_roles,
+                } => connect::connection_settings_update(
+                    cli,
+                    client,
+                    workspace,
+                    *additional_branch_changing_roles,
+                )
+                .await
+                .map_err(|e| enrich_forbidden(e, "git connection settings update", "Admin")),
+            },
         },
         GitCommand::Credentials(sub) => match sub {
             CredentialsCommand::Show { workspace } => {

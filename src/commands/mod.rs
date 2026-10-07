@@ -64,6 +64,7 @@ pub mod org_app;
 pub mod org_app_audience;
 pub mod paginated_report;
 pub mod plan;
+pub mod policy_set;
 pub mod powerbi_export;
 pub mod powerbi_mcp;
 pub mod profile;
@@ -204,6 +205,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
         }
         Command::Map { command } => map::execute(&cli, &client, command).await,
         Command::Plan { command } => plan::execute(&cli, &client, command).await,
+        Command::PolicySet { command } => policy_set::execute(&cli, &client, command).await,
         Command::GraphQuerySet { command } => {
             graph_query_set::execute(&cli, &client, command).await
         }
@@ -463,6 +465,7 @@ fn extract_command_path(cli: &Cli) -> String {
         Command::SnowflakeDatabase { .. } => "snowflake-database",
         Command::Map { .. } => "map",
         Command::Plan { .. } => "plan",
+        Command::PolicySet { .. } => "policy-set",
         Command::Connection { .. } => "connection",
         Command::DeploymentPipeline { .. } => "deployment-pipeline",
         Command::Domain { .. } => "domain",

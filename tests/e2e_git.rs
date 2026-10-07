@@ -16,6 +16,8 @@ mod common;
 
 use common::{TestConfig, extract_data, fabio, parse_json};
 use serial_test::serial;
+use wiremock::matchers::{body_json, method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// Retry a fabio command up to 5 times with a 15-second delay between attempts.
 /// Returns the last assertion result. Used for transient "Git provider failed" errors.
@@ -103,6 +105,134 @@ fn git_connection_show() {
     let data = extract_data(&json);
     // Should have gitConnectionState field
     assert!(data.get("gitConnectionState").is_some());
+}
+
+#[test]
+fn git_connect_with_connection_settings_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "git",
+            "connect",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--provider",
+            "azure-devops",
+            "--repo",
+            "governance",
+            "--branch",
+            "main",
+            "--org",
+            "contoso",
+            "--project",
+            "fabric",
+            "--additional-branch-changing-roles",
+            "MemberAndContributor",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "git connect");
+    assert_eq!(
+        data["details"]["connectionSettings"]["additionalRolesAuthorizedToChangeBranch"],
+        "MemberAndContributor"
+    );
+}
+
+#[test]
+fn git_connection_settings_update_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "git",
+            "connection",
+            "settings",
+            "update",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--additional-branch-changing-roles",
+            "None",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    assert_eq!(
+        json["data"]["details"]["additionalRolesAuthorizedToChangeBranch"],
+        "None"
+    );
+}
+
+#[test]
+#[serial]
+fn git_connection_settings_endpoints_match_spec() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+    let endpoint = format!("/workspaces/{workspace}/git/connectionSettings");
+    let (server_uri, _server) = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(&endpoint))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "additionalRolesAuthorizedToChangeBranch": "None"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path(&endpoint))
+            .and(body_json(serde_json::json!({
+                "additionalRolesAuthorizedToChangeBranch": "MemberAndContributor"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "additionalRolesAuthorizedToChangeBranch": "MemberAndContributor"
+            })))
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let show = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "git",
+            "connection",
+            "settings",
+            "show",
+            "--workspace",
+            workspace,
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&show)["data"]["additionalRolesAuthorizedToChangeBranch"],
+        "None"
+    );
+
+    let update = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "git",
+            "connection",
+            "settings",
+            "update",
+            "--workspace",
+            workspace,
+            "--additional-branch-changing-roles",
+            "MemberAndContributor",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&update)["data"]["additionalRolesAuthorizedToChangeBranch"],
+        "MemberAndContributor"
+    );
 }
 
 // ---------------------------------------------------------------------------

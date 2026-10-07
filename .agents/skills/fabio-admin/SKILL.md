@@ -1,7 +1,7 @@
 ---
 name: fabio-admin
 description: >-
-  Intent-scoped fabio skill for Fabric administration and workspace management: workspace lifecycle/roles/folders/networking/encryption, capacity lifecycle, tenant-wide inventory and settings, domains, gateways, connections, managed private endpoints, and sensitivity labels. Use for governance, connectivity, capacity, and workspace-level administration. Triggers: "workspace", "assign capacity", "workspace roles", "network policy", "capacity", "resume capacity", "suspend capacity", "tenant settings", "domain", "gateway", "connection", "private endpoint", "sensitivity label".
+  Intent-scoped fabio skill for Fabric administration and workspace management: workspace lifecycle/roles/folders/networking/encryption, capacity lifecycle and overage, tenant-wide inventory and settings, PolicySet governance, domains, gateways, connections, managed private endpoints, and sensitivity labels. Use for governance, connectivity, capacity, and workspace-level administration. Triggers: "workspace", "assign capacity", "workspace roles", "network policy", "capacity", "overage", "resume capacity", "suspend capacity", "policy set", "tenant settings", "domain", "gateway", "connection", "private endpoint", "sensitivity label".
 license: MIT
 ---
 
@@ -13,7 +13,8 @@ license: MIT
 
 ## When to use
 - Workspace lifecycle and governance: create/assign-capacity, recover or permanently delete soft-deleted items, role assignments, folders, domains, networking/firewall/encryption policies, git outbound policy, OneLake settings.
-- Capacity lifecycle: list, resume, suspend, create, delete (ARM-scoped), plus Fabric surge-protection configuration.
+- Capacity lifecycle: list, resume, suspend, create, delete (ARM-scoped), plus Fabric surge-protection and overage configuration.
+- PolicySet governance: define ItemCreation or WorkspaceSettingsEditing rules, then activate a tenant-scoped set as a Fabric admin or a capacity-scoped set as a capacity admin.
 - Tenant-wide inventory and settings (requires Fabric admin role).
 - Governance: domains (group workspaces), sensitivity labels.
 - Connectivity: gateways, connections, managed private endpoints.
@@ -95,6 +96,7 @@ Fabric tenant administration (settings, tags, workloads, users)
 
 | Command | Mutates | Description |
 |---|---|---|
+| `fabio admin activate-policy-set` | yes | Activate a tenant-scoped policy set |
 | `fabio admin assign-domain-workspaces` | yes | Assign workspaces to a domain |
 | `fabio admin assign-domain-workspaces-by-capacities` | yes | Assign workspaces to a domain by capacities |
 | `fabio admin assign-domain-workspaces-by-principals` | yes | Assign workspaces to a domain by principals |
@@ -106,10 +108,12 @@ Fabric tenant administration (settings, tags, workloads, users)
 | `fabio admin create-domain` | yes | Create a domain |
 | `fabio admin create-tags` | yes | Bulk-create tags |
 | `fabio admin create-workload-assignment` | yes | Create a workload assignment |
+| `fabio admin deactivate-policy-set` | yes | Deactivate the active tenant-scoped policy set |
 | `fabio admin delete-capacity-tenant-override` | yes | Delete a capacity delegated tenant setting override |
 | `fabio admin delete-domain` | yes | Delete a domain |
 | `fabio admin delete-tag` | yes | Delete a tag |
 | `fabio admin delete-workload-assignment` | yes | Delete a workload assignment |
+| `fabio admin get-active-policy-set` | no | Get the active tenant-scoped policy set and its rules (beta) |
 | `fabio admin grant-admin-access` | yes | Grant temporary admin access to a workspace |
 | `fabio admin list-capacities-tenant-overrides` | no | List all capacities' delegated tenant setting overrides |
 | `fabio admin list-capacity-tenant-overrides` | no | List delegated tenant setting overrides for a capacity |
@@ -153,6 +157,7 @@ List and inspect Fabric capacities
 | `fabio capacity check-name` | no | Check if a capacity name is available (ARM API) |
 | `fabio capacity create` | yes | Create a new Fabric capacity (ARM API) |
 | `fabio capacity delete` | yes | Delete a Fabric capacity (ARM API) |
+| `fabio capacity get-overage-configuration` | no | Get a capacity's overage configuration |
 | `fabio capacity get-surge-protection` | no | Get a capacity's background-operation surge protection configuration |
 | `fabio capacity list` | no | List capacities available to the caller (Fabric API) |
 | `fabio capacity list-skus` | no | List available SKUs for Fabric capacities (ARM API) |
@@ -160,6 +165,7 @@ List and inspect Fabric capacities
 | `fabio capacity show` | no | Show details of a specific capacity (Fabric API) |
 | `fabio capacity suspend` | yes | Suspend (pause) a capacity (ARM API) |
 | `fabio capacity update` | yes | Update an existing Fabric capacity (ARM API) |
+| `fabio capacity update-overage-configuration` | yes | Update a capacity's overage configuration |
 | `fabio capacity update-surge-protection` | yes | Update a capacity's background-operation surge protection configuration |
 
 ### fabio domain
@@ -240,6 +246,28 @@ List and resolve sensitivity labels (from Microsoft Purview via Graph API)
 |---|---|---|
 | `fabio label list` | no | List available sensitivity labels (from Microsoft Purview via Graph API) |
 
+### fabio policy-set
+Manage governance policy sets and policy rules
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio policy-set activate` | yes | Activate a capacity-scoped policy set |
+| `fabio policy-set create` | yes | Create a policy set |
+| `fabio policy-set create-rule` | yes | Create a policy rule (beta) |
+| `fabio policy-set deactivate` | yes | Deactivate a capacity-scoped policy set |
+| `fabio policy-set delete` | yes | Delete a policy set |
+| `fabio policy-set delete-rule` | yes | Delete a policy rule (beta) |
+| `fabio policy-set get-active-for-capacity` | no | Show the active policy set on a capacity |
+| `fabio policy-set get-definition` | no | Get a policy-set definition |
+| `fabio policy-set list` | no | List policy sets in a workspace |
+| `fabio policy-set list-rules` | no | List policy rules (beta) |
+| `fabio policy-set replace-rules-by-policy` | yes | Replace every rule for one policy (beta) |
+| `fabio policy-set show` | no | Show a policy set |
+| `fabio policy-set show-rule` | no | Show a policy rule (beta) |
+| `fabio policy-set update` | yes | Update policy-set properties |
+| `fabio policy-set update-definition` | yes | Replace a policy-set definition |
+| `fabio policy-set update-rule` | yes | Update a policy rule (beta) |
+
 ## Must / Prefer / Avoid
 ### MUST
 - Call tenant-scoped commands WITHOUT --workspace (capacity, connection, gateway, domain, deployment-pipeline, admin).
@@ -258,6 +286,8 @@ List and resolve sensitivity labels (from Microsoft Purview via Graph API)
 ## Key gotchas
 - capacity suspend/resume/create/delete use the ARM scope (management.azure.com), not the Fabric scope.
 - capacity get-surge-protection/update-surge-protection use the Fabric scope and require capacity administrator permissions. Enabling an unconfigured capacity needs rejection and recovery thresholds; disabling clears persisted thresholds.
+- capacity get-overage-configuration/update-overage-configuration are preview Fabric APIs requiring capacity admin. Thresholds are 0-240000 CU-hours; zero disables overage, and Disabled resets the threshold to zero.
+- PolicySet rule APIs and tenant active lookup require beta=true; fabio supplies it. PolicySet definitions require format Beta and policySet.json. A set supports at most 50 rules per policy type.
 - label list resolves UUIDs to names via Microsoft Graph (needs M365 E5 + InformationProtection.Read).
 - workspace recover-item can partially succeed: a failed child and its descendants remain soft-deleted while independent branches may recover.
 - Customer-Managed Key (CMK) governance: enable/rotate per workspace with 'workspace assign-encryption --key-identifier <versionless Key Vault key URI>' (rotation reuses assign since the URI is versionless), inspect with 'workspace get-encryption', revert to Microsoft-managed keys with 'workspace reset-encryption'. For a tenant-wide audit, 'admin list-workspaces --include encryption' returns each workspace's encryption state and accepts '--encryption-status' (Active/EnableInProgress/DisableInProgress/Failed/Disabled) and '--capacity-id' to scope the view (e.g. find workspaces mid-enablement on one capacity).
@@ -274,6 +304,8 @@ List and resolve sensitivity labels (from Microsoft Purview via Graph API)
 ## Safety
 - capacity suspend interrupts ALL running workloads (notebooks, pipelines, Spark jobs) on that capacity — warn about in-flight jobs.
 - Disabling capacity surge protection clears its persisted thresholds; preview update-surge-protection with --dry-run.
+- PolicySet update-definition and replace-rules-by-policy overwrite governance configuration. An empty replacement removes every rule for that policy and requires --force.
+- --allow-replace on PolicySet activation replaces the currently active set; preview it with --dry-run and confirm the governance change.
 - Tenant setting changes are broad — confirm scope before applying.
 - Deleting a workspace is permanent and removes ALL items inside — warn and suggest --dry-run.
 - workspace delete-recoverable-item permanently removes a soft-deleted item; always inspect list-recoverable-items and use --dry-run first.
