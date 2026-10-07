@@ -90,6 +90,74 @@ fn environment_update_staging_spark_compute_explicitly_requests_beta() {
 }
 
 #[test]
+#[serial]
+fn environment_transition_endpoints_explicitly_request_beta() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (server_uri, _server) = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/staging/publish"
+            )))
+            .and(query_param("beta", "true"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/sparkcompute"
+            )))
+            .and(query_param("beta", "true"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "sparkProperties": {}
+            })))
+            .mount(&server)
+            .await;
+        for endpoint_path in [
+            format!("/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/libraries"),
+            format!(
+                "/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/staging/libraries"
+            ),
+        ] {
+            Mock::given(method("GET"))
+                .and(path(endpoint_path))
+                .and(query_param("beta", "true"))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_json(serde_json::json!({"customLibraries": []})),
+                )
+                .mount(&server)
+                .await;
+        }
+        (server.uri(), server)
+    });
+
+    for arguments in [
+        vec!["publish"],
+        vec!["get-spark-settings"],
+        vec!["list-libraries"],
+        vec!["list-staging-libraries"],
+    ] {
+        fabio()
+            .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+            .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+            .args([
+                "environment",
+                arguments[0],
+                "--workspace",
+                MOCK_WORKSPACE,
+                "--id",
+                MOCK_ENVIRONMENT,
+            ])
+            .assert()
+            .success();
+    }
+}
+
+#[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn environment_list_returns_array() {

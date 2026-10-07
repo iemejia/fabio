@@ -308,14 +308,35 @@ pub enum GitCommand {
         timeout: u64,
     },
     // ── Configuration ─────────────────────────────────────────────────────
-    /// Show or manage Git connection and credentials
-    #[command(subcommand, display_order = 20)]
-    Connection(ConnectionCommand),
+    /// Show Git connection details for the workspace
+    #[command(name = "connection-show", display_order = 20)]
+    ConnectionShow {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+    },
+    /// Show Git connection settings
+    #[command(name = "connection-settings-show", display_order = 21)]
+    ConnectionSettingsShow {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+    },
+    /// Update Git connection settings
+    #[command(name = "connection-settings-update", display_order = 22)]
+    ConnectionSettingsUpdate {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Additional workspace roles allowed to change the connected branch
+        #[arg(long)]
+        additional_branch_changing_roles: AdditionalBranchChangingRoles,
+    },
     /// Manage Git credentials
-    #[command(subcommand, display_order = 21)]
+    #[command(subcommand, display_order = 23)]
     Credentials(CredentialsCommand),
     /// Manage workspace relations (base/branch links between workspaces, Preview)
-    #[command(subcommand, display_order = 22)]
+    #[command(subcommand, display_order = 24)]
     Relation(RelationCommand),
     // ── Inspection ───────────────────────────────────────────────────────
     /// Show tracked items and their Git sync status
@@ -324,40 +345,6 @@ pub enum GitCommand {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
-    },
-}
-
-#[derive(Debug, Subcommand)]
-pub enum ConnectionCommand {
-    /// Show Git connection details for the workspace
-    Show {
-        /// Workspace ID
-        #[arg(short, long, env = "FABIO_WORKSPACE")]
-        workspace: String,
-    },
-    /// Manage connection settings for a Git-connected workspace
-    Settings {
-        #[command(subcommand)]
-        command: ConnectionSettingsCommand,
-    },
-}
-
-#[derive(Debug, Subcommand)]
-pub enum ConnectionSettingsCommand {
-    /// Show connection settings
-    Show {
-        /// Workspace ID
-        #[arg(short, long, env = "FABIO_WORKSPACE")]
-        workspace: String,
-    },
-    /// Update connection settings
-    Update {
-        /// Workspace ID
-        #[arg(short, long, env = "FABIO_WORKSPACE")]
-        workspace: String,
-        /// Additional workspace roles allowed to change the connected branch
-        #[arg(long)]
-        additional_branch_changing_roles: AdditionalBranchChangingRoles,
     },
 }
 
@@ -525,31 +512,25 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
             )
             .await
         }
-        GitCommand::Connection(sub) => match sub {
-            ConnectionCommand::Show { workspace } => {
-                connect::connection_show(cli, client, workspace).await
-            }
-            ConnectionCommand::Settings { command } => match command {
-                ConnectionSettingsCommand::Show { workspace } => {
-                    connect::connection_settings_show(cli, client, workspace)
-                        .await
-                        .map_err(|e| {
-                            enrich_forbidden(e, "git connection settings show", "Contributor")
-                        })
-                }
-                ConnectionSettingsCommand::Update {
-                    workspace,
-                    additional_branch_changing_roles,
-                } => connect::connection_settings_update(
-                    cli,
-                    client,
-                    workspace,
-                    *additional_branch_changing_roles,
-                )
+        GitCommand::ConnectionShow { workspace } => {
+            connect::connection_show(cli, client, workspace).await
+        }
+        GitCommand::ConnectionSettingsShow { workspace } => {
+            connect::connection_settings_show(cli, client, workspace)
                 .await
-                .map_err(|e| enrich_forbidden(e, "git connection settings update", "Admin")),
-            },
-        },
+                .map_err(|e| enrich_forbidden(e, "git connection settings show", "Contributor"))
+        }
+        GitCommand::ConnectionSettingsUpdate {
+            workspace,
+            additional_branch_changing_roles,
+        } => connect::connection_settings_update(
+            cli,
+            client,
+            workspace,
+            *additional_branch_changing_roles,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "git connection settings update", "Admin")),
         GitCommand::Credentials(sub) => match sub {
             CredentialsCommand::Show { workspace } => {
                 connect::credentials_show(cli, client, workspace).await

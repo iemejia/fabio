@@ -126,7 +126,7 @@ pub(super) async fn commit(
             .ok_or_else(|| FabioError::with_hint(
                 ErrorCode::ApiError,
                 "Could not determine workspaceHead from status",
-                "Ensure the workspace is connected to Git and initialized: fabio git connection show --workspace <WS>",
+                "Ensure the workspace is connected to Git and initialized: fabio git connection-show --workspace <WS>",
             ))?
             .to_string()
     };
@@ -351,7 +351,7 @@ pub(super) async fn pull(
             .ok_or_else(|| FabioError::with_hint(
                 ErrorCode::ApiError,
                 "Could not determine workspaceHead from status",
-                "Ensure the workspace is connected to Git and initialized: fabio git connection show --workspace <WS>",
+                "Ensure the workspace is connected to Git and initialized: fabio git connection-show --workspace <WS>",
             ))?;
         let r = remote_commit_hash
             .map(String::from)

@@ -19,6 +19,52 @@ use serial_test::serial;
 use wiremock::matchers::{body_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+#[test]
+fn git_connection_settings_are_direct_schema_commands() {
+    let output = fabio()
+        .args(["context", "agent", "--group", "git"])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    let subcommands = &json["data"]["group_details"]["subcommands"];
+    assert_eq!(
+        subcommands["connection-show"]["flags"]["--workspace"]["required"],
+        true
+    );
+    assert_eq!(
+        subcommands["connection-settings-show"]["flags"]["--workspace"]["required"],
+        true
+    );
+    assert_eq!(
+        subcommands["connection-settings-update"]["flags"]["--additional-branch-changing-roles"]["required"],
+        true
+    );
+    assert_eq!(subcommands["connection-show"]["mutates"], false);
+    assert_eq!(subcommands["connection-settings-show"]["mutates"], false);
+    assert_eq!(subcommands["connection-settings-update"]["mutates"], true);
+
+    for (subcommand, needs_roles) in [
+        ("connection-settings-show", false),
+        ("connection-settings-update", true),
+    ] {
+        let policy = format!("git.{subcommand}");
+        let mut arguments = vec![
+            "--disable-commands",
+            &policy,
+            "git",
+            subcommand,
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+        ];
+        if needs_roles {
+            arguments.extend(["--additional-branch-changing-roles", "None"]);
+        }
+        let output = fabio().args(arguments).assert().failure();
+        let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+        assert!(stderr.contains(&format!("git.{subcommand}")), "{stderr}");
+    }
+}
+
 /// Retry a fabio command up to 5 times with a 15-second delay between attempts.
 /// Returns the last assertion result. Used for transient "Git provider failed" errors.
 fn retry_on_failure<F>(f: F) -> assert_cmd::assert::Assert
@@ -147,9 +193,7 @@ fn git_connection_settings_update_dry_run() {
         .args([
             "--dry-run",
             "git",
-            "connection",
-            "settings",
-            "update",
+            "connection-settings-update",
             "--workspace",
             "aaaaaaaa-1111-2222-3333-444444444444",
             "--additional-branch-changing-roles",
@@ -199,14 +243,7 @@ fn git_connection_settings_endpoints_match_spec() {
     let show = fabio()
         .env("FABIO_ACCESS_TOKEN", "fake-test-token")
         .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
-        .args([
-            "git",
-            "connection",
-            "settings",
-            "show",
-            "--workspace",
-            workspace,
-        ])
+        .args(["git", "connection-settings-show", "--workspace", workspace])
         .assert()
         .success();
     assert_eq!(
@@ -219,9 +256,7 @@ fn git_connection_settings_endpoints_match_spec() {
         .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
         .args([
             "git",
-            "connection",
-            "settings",
-            "update",
+            "connection-settings-update",
             "--workspace",
             workspace,
             "--additional-branch-changing-roles",
@@ -723,7 +758,7 @@ fn git_connect_init_status_disconnect_lifecycle() {
 
     // Verify disconnected state
     let assert = fabio()
-        .args(["git", "connection", "show", "--workspace", workspace])
+        .args(["git", "connection-show", "--workspace", workspace])
         .assert()
         .success();
 
@@ -762,7 +797,7 @@ fn git_connect_init_status_disconnect_lifecycle() {
 
     // Verify connected state
     let assert = fabio()
-        .args(["git", "connection", "show", "--workspace", workspace])
+        .args(["git", "connection-show", "--workspace", workspace])
         .assert()
         .success();
 
@@ -917,7 +952,7 @@ fn git_connect_init_status_disconnect_lifecycle() {
 
     // Verify disconnected
     let assert = fabio()
-        .args(["git", "connection", "show", "--workspace", workspace])
+        .args(["git", "connection-show", "--workspace", workspace])
         .assert()
         .success();
 
@@ -1441,7 +1476,7 @@ fn git_feature_branch_workflow() {
 
     // Verify we're on the feature branch
     let assert = fabio()
-        .args(["git", "connection", "show", "--workspace", workspace])
+        .args(["git", "connection-show", "--workspace", workspace])
         .assert()
         .success();
 
@@ -1537,7 +1572,7 @@ fn git_feature_branch_workflow() {
 
     // Verify we're on main
     let assert = fabio()
-        .args(["git", "connection", "show", "--workspace", workspace])
+        .args(["git", "connection-show", "--workspace", workspace])
         .assert()
         .success();
 
@@ -2397,7 +2432,7 @@ fn git_checkout_nonexistent_branch_gives_hint_and_rollback() {
 
     // Verify rollback: workspace should still be connected (to original branch)
     let assert = fabio()
-        .args(["git", "connection", "show", "--workspace", workspace])
+        .args(["git", "connection-show", "--workspace", workspace])
         .assert()
         .success();
 
@@ -2840,7 +2875,7 @@ fn git_azdo_connect_init_status_disconnect_lifecycle() {
 
     // Verify disconnected state
     let assert = fabio()
-        .args(["git", "connection", "show", "--workspace", workspace])
+        .args(["git", "connection-show", "--workspace", workspace])
         .assert()
         .success();
 
@@ -2888,7 +2923,7 @@ fn git_azdo_connect_init_status_disconnect_lifecycle() {
 
     // Verify connected state
     let assert = fabio()
-        .args(["git", "connection", "show", "--workspace", workspace])
+        .args(["git", "connection-show", "--workspace", workspace])
         .assert()
         .success();
 
@@ -2976,7 +3011,7 @@ fn git_table_not_tracked_but_notebook_is() {
 
     // Check if workspace is already connected to git
     let assert = fabio()
-        .args(["git", "connection", "show", "--workspace", &workspace])
+        .args(["git", "connection-show", "--workspace", &workspace])
         .assert()
         .success();
     let json = parse_json(&assert);

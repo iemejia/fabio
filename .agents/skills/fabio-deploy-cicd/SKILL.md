@@ -15,7 +15,7 @@ license: MIT
 - Exporting a workspace to disk and deploying it to another environment.
 - Planning (dry-run diff) before applying changes; converging idempotently.
 - Git integration: connect, status, commit, pull, checkout, branch-out.
-- Git branch-change governance: set additional roles at connect time with --additional-branch-changing-roles, or inspect/update them with git connection settings show/update.
+- Git branch-change governance: set additional roles at connect time with --additional-branch-changing-roles, inspect with git connection-settings-show, or update with git connection-settings-update.
 - Managing base/branch workspace relations as an independent resource (git relation list/create/delete), separate from the branch-out flow.
 - Managing deployment pipelines (dev/test/prod stages).
 - Managing variable libraries and activating environment value sets.
@@ -51,7 +51,9 @@ Manage Git integration (connect, commit, pull, status)
 | `fabio git checkout` | yes | Switch to a different branch (disconnect + connect + init) |
 | `fabio git commit` | yes | Commit workspace changes to the connected remote branch |
 | `fabio git connect` | yes | Connect a workspace to a Git repository |
-| `fabio git connection` | yes | Show or manage Git connection and credentials |
+| `fabio git connection-settings-show` | no | Show Git connection settings |
+| `fabio git connection-settings-update` | yes | Update Git connection settings |
+| `fabio git connection-show` | no | Show Git connection details for the workspace |
 | `fabio git credentials` | no | Manage Git credentials |
 | `fabio git disconnect` | yes | Disconnect a workspace from Git |
 | `fabio git init` | yes | Initialize a workspace Git connection (required after connect) |
