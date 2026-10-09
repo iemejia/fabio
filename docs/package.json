@@ -14,12 +14,15 @@
   },
   "type": "module",
   "dependencies": {
-    "@astrojs/starlight": "0.42.5",
-    "astro": "7.3.5",
+    "@astrojs/starlight": "0.42.6",
+    "astro": "7.3.8",
     "starlight-blog": "0.30.0"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",
     "typescript": "6.0.3"
+  },
+  "overrides": {
+    "postcss-selector-parser": "7.1.6"
   }
 }

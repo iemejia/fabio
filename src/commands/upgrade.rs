@@ -413,7 +413,7 @@ fn extract_binary(archive: &[u8]) -> Result<Vec<u8>> {
 
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
-        let name = file.name().to_string();
+        let name = file.name()?;
         if name == "fabio.exe" || name.ends_with("/fabio.exe") {
             let mut buf = Vec::new();
             file.read_to_end(&mut buf)?;
@@ -749,5 +749,42 @@ mod tests {
         let archive = encoder.finish().unwrap();
 
         assert!(extract_binary(&archive).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_extract_binary_from_zip() {
+        use std::io::Write;
+
+        let mut archive = Cursor::new(Vec::new());
+        {
+            let mut writer = zip::ZipWriter::new(&mut archive);
+            writer
+                .start_file("fabio.exe", zip::write::SimpleFileOptions::default())
+                .unwrap();
+            writer.write_all(b"windows-binary").unwrap();
+            writer.finish().unwrap();
+        }
+
+        let binary = extract_binary(archive.get_ref()).unwrap();
+        assert_eq!(binary, b"windows-binary");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_extract_binary_missing_from_zip() {
+        use std::io::Write;
+
+        let mut archive = Cursor::new(Vec::new());
+        {
+            let mut writer = zip::ZipWriter::new(&mut archive);
+            writer
+                .start_file("not-fabio.exe", zip::write::SimpleFileOptions::default())
+                .unwrap();
+            writer.write_all(b"data").unwrap();
+            writer.finish().unwrap();
+        }
+
+        assert!(extract_binary(archive.get_ref()).is_err());
     }
 }
