@@ -547,7 +547,7 @@ pub fn enrich_admin(err: anyhow::Error, operation: &str) -> anyhow::Error {
                 "'{operation}' requires the Tenant.Read.All or Tenant.ReadWrite.All delegated scope. \
                  Ensure the authenticated identity has Fabric Admin role assigned in the \
                  Microsoft 365 Admin Center > Roles > Fabric Administrator. \
-                 Re-authenticate with: fabio auth login"
+                  Re-authenticate with: az login, then fabio auth login"
             )
         } else {
             format!(
@@ -555,7 +555,7 @@ pub fn enrich_admin(err: anyhow::Error, operation: &str) -> anyhow::Error {
                  This is NOT a workspace role — it must be assigned in the Microsoft 365 \
                  Admin Center > Roles > Fabric Administrator (or Power BI Administrator). \
                  Verify with: fabio admin list-workspaces (if this also fails, you lack admin access). \
-                 Re-authenticate with: fabio auth login"
+                  Re-authenticate with: az login, then fabio auth login"
             )
         };
         return fabio_err.with_replaced_hint(hint, None).into();
@@ -596,13 +596,13 @@ fn auth_required_hint(message: &str, body: &str) -> String {
                 only enables read access). If you are using a user account, re-running \
                 'fabio auth login' will NOT help — the account lacks permission for this \
                 action. Otherwise, if the token has expired, re-authenticate with: \
-                fabio auth login"
+                 az login, then fabio auth login"
             .to_string();
     }
 
     "Not authenticated. Your token may be missing or expired. \
-     Re-authenticate with: fabio auth login (or 'fabio auth login --service-principal' \
-     for non-interactive auth)."
+     Re-authenticate with: az login, then fabio auth login (or use \
+     'fabio auth login --service-principal' for non-interactive auth)."
         .to_string()
 }
 
@@ -619,7 +619,7 @@ fn forbidden_hint(message: &str, body: &str) -> String {
     {
         return "Insufficient tenant-level scopes. This operation requires Fabric Administrator \
                 role assigned in the Microsoft 365 Admin Center > Roles > Fabric Administrator. \
-                Re-authenticate with: fabio auth login"
+                 Re-authenticate with: az login, then fabio auth login"
             .to_string();
     }
 
@@ -674,7 +674,7 @@ fn forbidden_hint(message: &str, body: &str) -> String {
      (2) The API scope in your token lacks the required permission. \
      (3) A tenant admin policy restricts this operation. \
      Check your role with: fabio workspace show --id <workspace-id>. \
-     Re-authenticate with: fabio auth login."
+     Re-authenticate with: az login, then fabio auth login."
         .to_string()
 }
 

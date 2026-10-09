@@ -40,16 +40,18 @@ fabio --version
 
 ## 2. Sign in
 
-Use device-code authentication:
+Use Azure CLI for local user authentication, then ask Fabio to validate that session:
 
 ```bash
+az login --allow-no-subscriptions
 fabio auth login
 ```
 
-Follow the URL shown in the structured response and enter the device code. To use a browser redirect instead:
+Fabio intentionally has no compiled Entra client ID because the project does not yet have a stable publisher-owned Entra registration. If your organization owns a public-client registration, you can use Fabio's native interactive flows explicitly:
 
 ```bash
-fabio auth login --browser
+fabio auth login --device-code --client-id <public-client-id>
+fabio auth login --browser --client-id <public-client-id>
 ```
 
 For CI, use a service principal or workload identity rather than an interactive login. See [Authentication](../guides/authentication/).

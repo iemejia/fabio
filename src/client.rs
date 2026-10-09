@@ -264,7 +264,7 @@ pub struct PaginatedResponse {
 pub enum CredentialSource {
     /// Pre-existing bearer token injected via `FABIO_ACCESS_TOKEN` env var.
     AccessToken,
-    /// Fabio's own cached token (from `fabio auth login` device code flow).
+    /// Fabio-managed cached token from an explicit interactive or service-principal login.
     FabioCache,
     /// Service principal via `AZURE_TENANT_ID` + `AZURE_CLIENT_ID` + `AZURE_CLIENT_SECRET` env vars.
     Environment,
@@ -280,7 +280,7 @@ impl std::fmt::Display for CredentialSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::AccessToken => write!(f, "access token (FABIO_ACCESS_TOKEN)"),
-            Self::FabioCache => write!(f, "fabio cache (device code)"),
+            Self::FabioCache => write!(f, "fabio token cache"),
             Self::Environment => write!(f, "environment (service principal)"),
             Self::ManagedIdentity => write!(f, "managed identity"),
             Self::AzureCli => write!(f, "Azure CLI"),
@@ -3179,7 +3179,7 @@ impl FabricClient {
 
 /// Acquire an access token using the credential chain:
 /// 0. Static token (`FABIO_ACCESS_TOKEN` env var — raw bearer token, highest priority)
-/// 1. Fabio cache (`fabio auth login`)
+/// 1. Fabio cache (explicit Fabio-managed login)
 /// 2. Environment (service principal via `AZURE_TENANT_ID` + `AZURE_CLIENT_ID` + `AZURE_CLIENT_SECRET`)
 /// 3. Managed Identity (for Azure-hosted workloads)
 /// 4. Developer Tools (Azure CLI, then Azure Developer CLI)
@@ -3196,17 +3196,6 @@ async fn acquire_token(scope: &str) -> Result<(CachedToken, CredentialSource)> {
     // 1. Try fabio's own cached token (from `fabio auth login`)
     if let Some(result) = try_fabio_cache(scope).await {
         return result;
-    }
-
-    // If the user explicitly logged out, do NOT fall back to other credential sources.
-    // They must run `fabio auth login` to re-authenticate.
-    if crate::token_cache::is_explicitly_logged_out() {
-        return Err(FabioError::with_hint(
-            ErrorCode::AuthRequired,
-            "Not authenticated. You have explicitly logged out.",
-            "Run 'fabio auth login' to authenticate.".to_string(),
-        )
-        .into());
     }
 
     // 1. Try environment credentials (service principal)
@@ -3298,7 +3287,7 @@ fn try_access_token_env(scope: &str) -> Option<Result<(CachedToken, CredentialSo
     )))
 }
 
-/// Try fabio's own persistent token cache (from `fabio auth login`).
+/// Try Fabio's persistent token cache from an explicit managed login.
 /// Returns None if no cached token is available, Some(Ok/Err) if a token was found.
 async fn try_fabio_cache(scope: &str) -> Option<Result<(CachedToken, CredentialSource)>> {
     use crate::token_cache;
@@ -3399,12 +3388,9 @@ async fn try_managed_identity_credential(
 /// Try developer tools credentials (Azure CLI, then Azure Developer CLI).
 async fn try_developer_tools_credential(scope: &str) -> Result<(CachedToken, CredentialSource)> {
     // Try Azure CLI first
-    if let Ok(credential) = azure_identity::AzureCliCredential::new(None)
-        && let Ok(token) = credential.get_token(&[scope], None).await
-    {
-        let expires_on = std::time::SystemTime::from(token.expires_on);
+    if let Ok((token, expires_on)) = acquire_azure_cli_token(None, scope).await {
         return Ok((
-            CachedToken::new(token.token.secret().to_string(), expires_on),
+            CachedToken::new(token, expires_on),
             CredentialSource::AzureCli,
         ));
     }
@@ -3426,6 +3412,49 @@ async fn try_developer_tools_credential(scope: &str) -> Result<(CachedToken, Cre
         "Run 'az login', set FABIO_ACCESS_TOKEN to a bearer token, or set AZURE_TENANT_ID + AZURE_CLIENT_ID + AZURE_CLIENT_SECRET environment variables.".to_string(),
     )
     .into())
+}
+
+/// Validate the current Azure CLI session for a specific tenant and scope.
+///
+/// This intentionally does not use the broader credential chain: plain `auth login`
+/// must prove that Azure CLI itself can acquire the token it will provide to Fabio.
+pub async fn validate_azure_cli(
+    tenant: Option<&str>,
+    scope: &str,
+) -> Result<std::time::SystemTime> {
+    acquire_azure_cli_token(tenant, scope)
+        .await
+        .map(|(_, expires_on)| expires_on)
+}
+
+async fn acquire_azure_cli_token(
+    tenant: Option<&str>,
+    scope: &str,
+) -> Result<(String, std::time::SystemTime)> {
+    use azure_identity::AzureCliCredentialOptions;
+
+    let options = AzureCliCredentialOptions {
+        tenant_id: tenant.map(str::to_owned),
+        ..Default::default()
+    };
+    let credential = azure_identity::AzureCliCredential::new(Some(options)).map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::AuthRequired,
+            format!("Failed to initialize Azure CLI authentication: {e}"),
+            "Install Azure CLI and run 'az login', then retry 'fabio auth login'.".to_string(),
+        )
+    })?;
+    let token = credential.get_token(&[scope], None).await.map_err(|e| {
+        FabioError::with_hint(
+            ErrorCode::AuthRequired,
+            format!("Azure CLI authentication failed: {e}"),
+            "Run 'az login --tenant <TENANT_ID> --allow-no-subscriptions', then retry 'fabio auth login'. To use a customer-managed public client instead, run 'fabio auth login --device-code --client-id <PUBLIC_CLIENT_ID>'.".to_string(),
+        )
+    })?;
+    Ok((
+        token.token.secret().to_string(),
+        std::time::SystemTime::from(token.expires_on),
+    ))
 }
 
 /// Handle an HTTP response, converting errors to `FabioError`.
@@ -4547,7 +4576,7 @@ mod tests {
     fn credential_source_display_fabio_cache() {
         assert_eq!(
             CredentialSource::FabioCache.to_string(),
-            "fabio cache (device code)"
+            "fabio token cache"
         );
     }
 

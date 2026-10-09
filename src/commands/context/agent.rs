@@ -29,7 +29,8 @@ struct Flag {
 struct EnvVar {
     name: &'static str,
     description: &'static str,
-    default: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default: Option<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -1126,47 +1127,62 @@ fn environment_variables() -> Vec<EnvVar> {
         EnvVar {
             name: "FABIO_FABRIC_API_ENDPOINT",
             description: "Override the Fabric REST API base URL (for sovereign clouds or private link)",
-            default: "https://api.fabric.microsoft.com/v1",
+            default: Some("https://api.fabric.microsoft.com/v1"),
         },
         EnvVar {
             name: "FABIO_ONELAKE_DFS_ENDPOINT",
             description: "Override the OneLake DFS base URL",
-            default: "https://onelake.dfs.fabric.microsoft.com",
+            default: Some("https://onelake.dfs.fabric.microsoft.com"),
         },
         EnvVar {
             name: "FABIO_ONELAKE_BLOB_ENDPOINT",
             description: "Override the OneLake Blob base URL",
-            default: "https://onelake.blob.fabric.microsoft.com",
+            default: Some("https://onelake.blob.fabric.microsoft.com"),
         },
         EnvVar {
             name: "FABIO_ARM_ENDPOINT",
             description: "Override the Azure Resource Manager base URL",
-            default: "https://management.azure.com",
+            default: Some("https://management.azure.com"),
         },
         EnvVar {
             name: "FABIO_FABRIC_SCOPE",
             description: "Override the Fabric API token scope",
-            default: "https://api.fabric.microsoft.com/.default",
+            default: Some("https://api.fabric.microsoft.com/.default"),
         },
         EnvVar {
             name: "FABIO_STORAGE_SCOPE",
             description: "Override the Azure Storage token scope",
-            default: "https://storage.azure.com/.default",
+            default: Some("https://storage.azure.com/.default"),
         },
         EnvVar {
             name: "FABIO_SQL_SCOPE",
             description: "Override the SQL/TDS token scope",
-            default: "https://database.windows.net/.default",
+            default: Some("https://database.windows.net/.default"),
         },
         EnvVar {
             name: "FABIO_ARM_SCOPE",
             description: "Override the Azure Resource Manager token scope",
-            default: "https://management.azure.com/.default",
+            default: Some("https://management.azure.com/.default"),
+        },
+        EnvVar {
+            name: "FABIO_GRAPH_SCOPE",
+            description: "Override the Microsoft Graph token scope",
+            default: Some("https://graph.microsoft.com/.default"),
+        },
+        EnvVar {
+            name: "FABIO_COSMOS_SCOPE",
+            description: "Override the Azure Cosmos DB token scope",
+            default: Some("https://cosmos.azure.com/.default"),
+        },
+        EnvVar {
+            name: "FABIO_CLIENT_ID",
+            description: "Customer-owned public-client ID used only by explicit --device-code, --browser, or --wam login when --client-id is omitted",
+            default: None,
         },
         EnvVar {
             name: "FABIO_POWERBI_ENDPOINT",
             description: "Override the Power BI REST API base URL (used by --api powerbi)",
-            default: "https://api.powerbi.com/v1.0/myorg",
+            default: Some("https://api.powerbi.com/v1.0/myorg"),
         },
     ]
 }
@@ -1175,7 +1191,7 @@ fn error_codes() -> Vec<ErrorCodeInfo> {
     vec![
         ErrorCodeInfo {
             code: "AUTH_REQUIRED",
-            description: "No valid credentials found. Run 'fabio auth login'.",
+            description: "No valid credentials found. Run 'az login' then 'fabio auth login', or configure an explicit workload/public-client credential.",
             exit_code: 1,
         },
         ErrorCodeInfo {
@@ -1451,6 +1467,13 @@ fn generate_subcommands(
         }
         if !sc_obj.contains_key("destructive") && infer_destructive(&sc_name) {
             sc_obj.insert("destructive".to_owned(), serde_json::json!(true));
+        }
+
+        // Local auth login/logout change persisted credential selection and both
+        // return structured status objects; command-name inference cannot express this.
+        if group.get_name() == "auth" && matches!(sc_name.as_str(), "login" | "logout") {
+            sc_obj.insert("mutates".to_owned(), serde_json::json!(true));
+            sc_obj.insert("returns".to_owned(), serde_json::json!("object"));
         }
 
         subcommands.insert(sc_name, serde_json::Value::Object(sc_obj));

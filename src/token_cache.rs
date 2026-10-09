@@ -8,7 +8,6 @@
 //!
 //! Supports the Microsoft Identity Platform device code flow and token refresh.
 
-use std::borrow::Cow;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -16,39 +15,6 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::errors::{ErrorCode, FabioError};
-
-/// Fabio CLI's own Entra ID app registration (multitenant, public client).
-/// Users see "Fabio CLI" in the consent screen and audit logs — independent from
-/// Azure CLI or Azure PowerShell identity.
-///
-/// This is the compile-time default. It is generated/updated by
-/// `scripts/create-fabio-app.sh`, which re-registers the app (e.g. after a tenant
-/// migration) and patches this value in place. At runtime it can be overridden
-/// with the `FABIO_CLIENT_ID` environment variable without recompiling.
-const DEFAULT_PUBLIC_CLIENT_ID: &str = "c64f25d2-cdce-4b90-b4dd-0287378d37ce";
-
-/// Environment variable that overrides the compiled-in public client ID.
-const CLIENT_ID_ENV: &str = "FABIO_CLIENT_ID";
-
-/// Resolve the public client ID used for interactive user authentication.
-///
-/// Honors the `FABIO_CLIENT_ID` environment variable (trimmed, non-empty) so the
-/// app registration can be switched at runtime — e.g. to recover from a lost
-/// tenant — falling back to the compiled-in [`DEFAULT_PUBLIC_CLIENT_ID`].
-fn public_client_id() -> Cow<'static, str> {
-    resolve_client_id(std::env::var(CLIENT_ID_ENV).ok())
-}
-
-/// Pure resolution of the public client ID from an optional override value.
-///
-/// Kept separate from [`public_client_id`] so the override precedence can be
-/// unit-tested without mutating process environment variables.
-fn resolve_client_id(override_value: Option<String>) -> Cow<'static, str> {
-    match override_value {
-        Some(v) if !v.trim().is_empty() => Cow::Owned(v.trim().to_string()),
-        _ => Cow::Borrowed(DEFAULT_PUBLIC_CLIENT_ID),
-    }
-}
 
 /// Default tenant for multi-tenant auth.
 const DEFAULT_TENANT: &str = "common";
@@ -70,6 +36,37 @@ pub struct TokenData {
     pub tenant: String,
     /// The scope used for authentication.
     pub scope: String,
+    /// Authentication method that created this cache entry. Absent on legacy caches.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_method: Option<AuthMethod>,
+    /// Client that owns the refresh token. Required before any refresh-token exchange.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    /// Where the public client ID was configured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id_source: Option<ClientIdSource>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthMethod {
+    DeviceCode,
+    BrowserPkce,
+    Wam,
+    ServicePrincipalClientSecret,
+    ServicePrincipalCertificate,
+    ServicePrincipalFederatedToken,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClientIdSource {
+    CliFlag,
+    FabioClientIdEnv,
+    #[serde(other)]
+    Unknown,
 }
 
 impl TokenData {
@@ -80,6 +77,13 @@ impl TokenData {
             .unwrap_or_default()
             .as_secs();
         self.expires_on.saturating_sub(REFRESH_MARGIN.as_secs()) <= now
+    }
+
+    const fn can_refresh(&self) -> bool {
+        matches!(
+            self.auth_method,
+            Some(AuthMethod::DeviceCode | AuthMethod::BrowserPkce)
+        ) && self.client_id.is_some()
     }
 }
 
@@ -143,12 +147,6 @@ fn logout_marker_path() -> Result<PathBuf> {
         )
     })?;
     Ok(home.join(".fabio").join(".logged_out"))
-}
-
-/// Check if the user has explicitly logged out.
-/// When true, the credential chain should NOT fall back to Azure CLI or other sources.
-pub fn is_explicitly_logged_out() -> bool {
-    logout_marker_path().is_ok_and(|p| p.exists())
 }
 
 /// Load cached token from disk.
@@ -232,19 +230,20 @@ pub fn save_token(data: &TokenData) -> Result<()> {
     Ok(())
 }
 
-/// Delete the token cache file and write a logout marker.
+/// Delete Fabio-managed cached credentials.
+///
+/// A legacy logout marker is also removed. Ambient credentials such as Azure CLI,
+/// environment service principals, and managed identity are intentionally untouched.
 pub fn clear_cache() -> Result<()> {
     let path = cache_path()?;
     if path.exists() {
         std::fs::remove_file(&path)?;
     }
 
-    // Write logout marker so credential chain doesn't fall back to Azure CLI
     let marker = logout_marker_path()?;
-    if let Some(parent) = marker.parent() {
-        std::fs::create_dir_all(parent)?;
+    if marker.exists() {
+        std::fs::remove_file(marker)?;
     }
-    std::fs::write(&marker, "")?;
 
     Ok(())
 }
@@ -260,37 +259,55 @@ pub async fn get_valid_token() -> Option<TokenData> {
 
     // Try refreshing with the refresh token
     let refresh_token = cached.refresh_token.as_ref()?;
-    refresh_access_token(refresh_token, &cached.tenant, &cached.scope)
-        .await
-        .ok()
-        .inspect(|new_data| {
-            save_token(new_data).ok();
-        })
+    let client_id = cached.client_id.as_deref()?;
+    if !cached.can_refresh() {
+        return None;
+    }
+    refresh_access_token(
+        refresh_token,
+        &cached.tenant,
+        &cached.scope,
+        client_id,
+        &cached,
+    )
+    .await
+    .ok()
+    .inspect(|new_data| {
+        save_token(new_data).ok();
+    })
 }
 
 /// Attempt to get a valid access token for a specific scope (e.g., storage, SQL).
 /// Uses the refresh token from the cached session to acquire a token for the requested scope.
 pub async fn get_token_for_scope(scope: &str) -> Option<TokenData> {
     let cached = load_cached_token()?;
-    let refresh_token = cached.refresh_token.as_ref()?;
 
     // If the cached token already covers this scope and is valid, return it
     if cached.scope == scope && !cached.is_expired() {
         return Some(cached);
     }
 
+    let refresh_token = cached.refresh_token.as_ref()?;
+    let client_id = cached.client_id.as_deref()?;
+    if !cached.can_refresh() {
+        return None;
+    }
     // Use the refresh token to get a token for the specific scope
-    refresh_access_token(refresh_token, &cached.tenant, scope)
+    refresh_access_token(refresh_token, &cached.tenant, scope, client_id, &cached)
         .await
         .ok()
 }
 
 /// Run the `OAuth2` device code flow interactively.
 #[allow(clippy::too_many_lines)]
-pub async fn device_code_login(tenant: Option<&str>, scope: Option<&str>) -> Result<TokenData> {
+pub async fn device_code_login(
+    tenant: Option<&str>,
+    scope: Option<&str>,
+    client_id: &str,
+    client_id_source: ClientIdSource,
+) -> Result<TokenData> {
     let tenant = tenant.unwrap_or(DEFAULT_TENANT);
     let scope = scope.unwrap_or(FABRIC_SCOPE);
-    let client_id = public_client_id();
 
     // Disable redirects on token endpoint client to prevent credential forwarding
     let http = crate::client::http_client_builder()
@@ -305,7 +322,7 @@ pub async fn device_code_login(tenant: Option<&str>, scope: Option<&str>) -> Res
     let resp = http
         .post(&device_code_url)
         .form(&[
-            ("client_id", client_id.as_ref()),
+            ("client_id", client_id),
             ("scope", &format!("{scope} offline_access")),
         ])
         .send()
@@ -383,7 +400,7 @@ pub async fn device_code_login(tenant: Option<&str>, scope: Option<&str>) -> Res
         let resp = http
             .post(&token_url)
             .form(&[
-                ("client_id", client_id.as_ref()),
+                ("client_id", client_id),
                 ("device_code", dc.device_code.as_str()),
                 ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
             ])
@@ -415,6 +432,9 @@ pub async fn device_code_login(tenant: Option<&str>, scope: Option<&str>) -> Res
                 expires_on: now + token_resp.expires_in,
                 tenant: tenant.to_string(),
                 scope: scope.to_string(),
+                auth_method: Some(AuthMethod::DeviceCode),
+                client_id: Some(client_id.to_string()),
+                client_id_source: Some(client_id_source),
             };
 
             save_token(&data)?;
@@ -440,7 +460,7 @@ pub async fn device_code_login(tenant: Option<&str>, scope: Option<&str>) -> Res
                 "expired_token" => {
                     return Err(FabioError::new(
                         ErrorCode::Timeout,
-                        "Device code expired. Please try 'fabio auth login' again.",
+                        "Device code expired. Retry 'fabio auth login --device-code --client-id <PUBLIC_CLIENT_ID>'.",
                     )
                     .into());
                 }
@@ -471,19 +491,23 @@ pub async fn device_code_login(tenant: Option<&str>, scope: Option<&str>) -> Res
 }
 
 /// Refresh an access token using a refresh token.
-async fn refresh_access_token(refresh_token: &str, tenant: &str, scope: &str) -> Result<TokenData> {
+async fn refresh_access_token(
+    refresh_token: &str,
+    tenant: &str,
+    scope: &str,
+    client_id: &str,
+    cached: &TokenData,
+) -> Result<TokenData> {
     // Disable redirects to prevent credential forwarding via POST body
     let http = crate::client::http_client_builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .expect("Failed to build HTTP client for token refresh");
     let token_url = format!("https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token");
-    let client_id = public_client_id();
-
     let resp = http
         .post(&token_url)
         .form(&[
-            ("client_id", client_id.as_ref()),
+            ("client_id", client_id),
             ("grant_type", "refresh_token"),
             ("refresh_token", refresh_token),
             ("scope", &format!("{scope} offline_access")),
@@ -533,6 +557,9 @@ async fn refresh_access_token(refresh_token: &str, tenant: &str, scope: &str) ->
         expires_on: now + token_resp.expires_in,
         tenant: tenant.to_string(),
         scope: scope.to_string(),
+        auth_method: cached.auth_method,
+        client_id: cached.client_id.clone(),
+        client_id_source: cached.client_id_source,
     })
 }
 
@@ -579,6 +606,9 @@ pub async fn sp_login_secret(
         expires_on,
         tenant: tenant.to_string(),
         scope: scope.to_string(),
+        auth_method: Some(AuthMethod::ServicePrincipalClientSecret),
+        client_id: Some(client_id.to_string()),
+        client_id_source: Some(ClientIdSource::CliFlag),
     };
 
     save_token(&data)?;
@@ -651,6 +681,9 @@ pub async fn sp_login_certificate(
         expires_on,
         tenant: tenant.to_string(),
         scope: scope.to_string(),
+        auth_method: Some(AuthMethod::ServicePrincipalCertificate),
+        client_id: Some(client_id.to_string()),
+        client_id_source: Some(ClientIdSource::CliFlag),
     };
 
     save_token(&data)?;
@@ -720,6 +753,9 @@ pub async fn sp_login_federated(
         expires_on,
         tenant: tenant.to_string(),
         scope: scope.to_string(),
+        auth_method: Some(AuthMethod::ServicePrincipalFederatedToken),
+        client_id: Some(client_id.to_string()),
+        client_id_source: Some(ClientIdSource::CliFlag),
     };
 
     save_token(&data)?;
@@ -750,7 +786,12 @@ impl azure_identity::ClientAssertion for StaticAssertion {
 /// the Microsoft Enterprise SSO Extension installed, this provides transparent
 /// SSO without password entry.
 #[allow(clippy::too_many_lines)]
-pub async fn browser_login(tenant: Option<&str>, scope: Option<&str>) -> Result<TokenData> {
+pub async fn browser_login(
+    tenant: Option<&str>,
+    scope: Option<&str>,
+    client_id: &str,
+    client_id_source: ClientIdSource,
+) -> Result<TokenData> {
     use base64::Engine;
     use sha2::Digest;
     use tokio::io::AsyncWriteExt;
@@ -758,7 +799,6 @@ pub async fn browser_login(tenant: Option<&str>, scope: Option<&str>) -> Result<
 
     let tenant = tenant.unwrap_or(DEFAULT_TENANT);
     let scope = scope.unwrap_or(FABRIC_SCOPE);
-    let client_id = public_client_id();
 
     // Step 1: Generate PKCE challenge
     let mut verifier_bytes = [0u8; 32];
@@ -791,7 +831,7 @@ pub async fn browser_login(tenant: Option<&str>, scope: Option<&str>) -> Result<
          &scope={scope}+offline_access\
          &code_challenge={code_challenge}\
          &code_challenge_method=S256",
-        client_id = urlencoding::encode(client_id.as_ref()),
+        client_id = urlencoding::encode(client_id),
         redirect_uri = urlencoding::encode(&redirect_uri),
         scope = urlencoding::encode(scope),
         code_challenge = urlencoding::encode(&code_challenge),
@@ -889,7 +929,7 @@ pub async fn browser_login(tenant: Option<&str>, scope: Option<&str>) -> Result<
     let resp = http
         .post(&token_url)
         .form(&[
-            ("client_id", client_id.as_ref()),
+            ("client_id", client_id),
             ("grant_type", "authorization_code"),
             ("code", &code),
             ("redirect_uri", &redirect_uri),
@@ -937,6 +977,9 @@ pub async fn browser_login(tenant: Option<&str>, scope: Option<&str>) -> Result<
         expires_on: now + token_resp.expires_in,
         tenant: tenant.to_string(),
         scope: scope.to_string(),
+        auth_method: Some(AuthMethod::BrowserPkce),
+        client_id: Some(client_id.to_string()),
+        client_id_source: Some(client_id_source),
     };
 
     save_token(&data)?;
@@ -969,21 +1012,21 @@ fn open_browser(url: &str) {
 /// WAM provides SSO with the Windows account — no browser or device code flow needed.
 /// Tries silent token acquisition first (cached SSO), falls back to interactive UI.
 ///
-/// The `client_id` should be the Fabio CLI app registration (public client).
+/// The `client_id` must identify a customer-managed public client registration.
 /// The `authority` is the AAD tenant (e.g., `"organizations"` for multi-tenant).
 #[cfg(windows)]
 #[allow(clippy::unused_async, clippy::too_many_lines)]
 pub async fn wam_login(
     tenant: Option<&str>,
     scope: Option<&str>,
-    client_id: Option<&str>,
+    client_id: &str,
+    client_id_source: ClientIdSource,
 ) -> Result<TokenData> {
     use windows::Security::Authentication::Web::Core::{
         WebAuthenticationCoreManager, WebTokenRequest, WebTokenRequestStatus,
     };
     let tenant = tenant.unwrap_or("organizations");
     let scope = scope.unwrap_or(FABRIC_SCOPE);
-    let client_id = resolve_client_id(client_id.map(str::to_owned));
 
     // Step 1: Find the AAD WAM provider
     let authority = format!("https://login.microsoftonline.com/{tenant}");
@@ -1011,7 +1054,7 @@ pub async fn wam_login(
     let request = WebTokenRequest::Create(
         &provider,
         &windows::core::HSTRING::from(scope),
-        &windows::core::HSTRING::from(client_id.as_ref()),
+        &windows::core::HSTRING::from(client_id),
     )
     .map_err(|e| {
         FabioError::new(
@@ -1127,6 +1170,9 @@ pub async fn wam_login(
         expires_on: now + 3600,
         tenant: tenant.to_string(),
         scope: scope.to_string(),
+        auth_method: Some(AuthMethod::Wam),
+        client_id: Some(client_id.to_string()),
+        client_id_source: Some(client_id_source),
     };
 
     save_token(&data)?;
@@ -1253,6 +1299,9 @@ mod tests {
                 + 3600, // 1 hour from now
             tenant: "test".to_string(),
             scope: "test".to_string(),
+            auth_method: None,
+            client_id: None,
+            client_id_source: None,
         };
         assert!(!data.is_expired());
     }
@@ -1265,6 +1314,9 @@ mod tests {
             expires_on: 0, // epoch = definitely expired
             tenant: "test".to_string(),
             scope: "test".to_string(),
+            auth_method: None,
+            client_id: None,
+            client_id_source: None,
         };
         assert!(data.is_expired());
     }
@@ -1282,6 +1334,9 @@ mod tests {
                 + 240,
             tenant: "test".to_string(),
             scope: "test".to_string(),
+            auth_method: None,
+            client_id: None,
+            client_id_source: None,
         };
         assert!(data.is_expired());
     }
@@ -1299,6 +1354,9 @@ mod tests {
                 + 360,
             tenant: "test".to_string(),
             scope: "test".to_string(),
+            auth_method: None,
+            client_id: None,
+            client_id_source: None,
         };
         assert!(!data.is_expired());
     }
@@ -1311,12 +1369,17 @@ mod tests {
             expires_on: 1_700_000_000,
             tenant: "my-tenant".to_string(),
             scope: "https://api.fabric.microsoft.com/.default".to_string(),
+            auth_method: Some(AuthMethod::DeviceCode),
+            client_id: Some("11111111-2222-3333-4444-555555555555".to_string()),
+            client_id_source: Some(ClientIdSource::CliFlag),
         };
         let json = serde_json::to_value(&data).unwrap();
         assert_eq!(json["access_token"], "abc123");
         assert_eq!(json["refresh_token"], "refresh456");
         assert_eq!(json["expires_on"], 1_700_000_000);
         assert_eq!(json["tenant"], "my-tenant");
+        assert_eq!(json["auth_method"], "device_code");
+        assert_eq!(json["client_id_source"], "cli_flag");
     }
 
     #[test]
@@ -1332,6 +1395,9 @@ mod tests {
         assert_eq!(data.access_token, "xyz");
         assert!(data.refresh_token.is_none());
         assert_eq!(data.expires_on, 9_999_999_999);
+        assert_eq!(data.auth_method, None);
+        assert_eq!(data.client_id, None);
+        assert_eq!(data.client_id_source, None);
     }
 
     #[test]
@@ -1343,6 +1409,9 @@ mod tests {
             expires_on: 1_700_000_000,
             tenant: "sp-tenant".to_string(),
             scope: "https://api.fabric.microsoft.com/.default".to_string(),
+            auth_method: Some(AuthMethod::ServicePrincipalClientSecret),
+            client_id: Some("11111111-2222-3333-4444-555555555555".to_string()),
+            client_id_source: Some(ClientIdSource::CliFlag),
         };
         assert!(data.refresh_token.is_none());
     }
@@ -1362,25 +1431,38 @@ mod tests {
     }
 
     #[test]
-    fn resolve_client_id_falls_back_to_default_when_unset() {
-        assert_eq!(resolve_client_id(None).as_ref(), DEFAULT_PUBLIC_CLIENT_ID);
+    fn legacy_cache_cannot_refresh() {
+        let data: TokenData = serde_json::from_str(
+            r#"{"access_token":"old","refresh_token":"refresh","expires_on":0,"tenant":"t","scope":"s"}"#,
+        )
+        .unwrap();
+        assert!(!data.can_refresh());
     }
 
     #[test]
-    fn resolve_client_id_falls_back_to_default_when_blank() {
-        assert_eq!(
-            resolve_client_id(Some("   ".to_string())).as_ref(),
-            DEFAULT_PUBLIC_CLIENT_ID
-        );
+    fn public_client_cache_can_refresh() {
+        let data = TokenData {
+            access_token: "token".to_string(),
+            refresh_token: Some("refresh".to_string()),
+            expires_on: 0,
+            tenant: "tenant".to_string(),
+            scope: "scope".to_string(),
+            auth_method: Some(AuthMethod::BrowserPkce),
+            client_id: Some("11111111-2222-3333-4444-555555555555".to_string()),
+            client_id_source: Some(ClientIdSource::FabioClientIdEnv),
+        };
+        assert!(data.can_refresh());
     }
 
     #[test]
-    fn resolve_client_id_uses_override_and_trims() {
-        let custom = "11111111-2222-3333-4444-555555555555";
-        assert_eq!(
-            resolve_client_id(Some(format!("  {custom}  "))).as_ref(),
-            custom
-        );
+    fn future_cache_provenance_values_degrade_safely() {
+        let data: TokenData = serde_json::from_str(
+            r#"{"access_token":"token","refresh_token":"refresh","expires_on":0,"tenant":"t","scope":"s","auth_method":"future_method","client_id":"11111111-2222-3333-4444-555555555555","client_id_source":"future_source"}"#,
+        )
+        .unwrap();
+        assert_eq!(data.auth_method, Some(AuthMethod::Unknown));
+        assert_eq!(data.client_id_source, Some(ClientIdSource::Unknown));
+        assert!(!data.can_refresh());
     }
 
     #[tokio::test]
@@ -1420,6 +1502,9 @@ mod tests {
             expires_on: 1_700_000_000,
             tenant: "f32b018c-68ee-40d8-9e1a-d7ab42193a10".to_string(),
             scope: "https://api.fabric.microsoft.com/.default".to_string(),
+            auth_method: Some(AuthMethod::DeviceCode),
+            client_id: Some("11111111-2222-3333-4444-555555555555".to_string()),
+            client_id_source: Some(ClientIdSource::CliFlag),
         };
         let json = serde_json::to_string_pretty(&data).unwrap();
         let encrypted = dpapi_encrypt(json.as_bytes()).expect("encrypt should succeed");
@@ -1472,6 +1557,9 @@ mod tests {
                 + 7200,
             tenant: "test-tenant".to_string(),
             scope: "https://api.fabric.microsoft.com/.default".to_string(),
+            auth_method: Some(AuthMethod::Wam),
+            client_id: Some("11111111-2222-3333-4444-555555555555".to_string()),
+            client_id_source: Some(ClientIdSource::CliFlag),
         };
         save_token(&data).expect("save should succeed");
         let loaded = load_cached_token().expect("load should return saved token");

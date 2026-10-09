@@ -34,7 +34,8 @@ fn sql_scope_token_hint_for(has_generic: bool, has_sql: bool) -> Option<String> 
         "This looks like a SQL auth failure: FABIO_ACCESS_TOKEN is Fabric-scoped, but TDS \
          needs a SQL-audience token. Set FABIO_SQL_ACCESS_TOKEN=$(az account get-access-token \
          --resource https://database.windows.net --query accessToken -o tsv), or unset \
-         FABIO_ACCESS_TOKEN to use `az login` / `fabio auth login` (which mint a correct \
+         FABIO_ACCESS_TOKEN to use `az login` followed by `fabio auth login` (which validates \
+         Azure CLI so it can mint a correct \
          token per audience)."
             .to_string()
     })

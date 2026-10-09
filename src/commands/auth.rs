@@ -10,9 +10,9 @@ use crate::token_cache;
     after_help = "For complete flag reference, run: fabio context agent\nReturns machine-readable JSON schema of all commands, flags, and types."
 )]
 pub enum AuthCommand {
-    /// Log in to Microsoft Fabric via device code flow, service principal, or WAM broker
+    /// Validate Azure CLI authentication, or use an explicit interactive/workload flow
     Login {
-        /// Azure AD tenant ID (defaults to "common" for multi-tenant; required for --service-principal)
+        /// Microsoft Entra tenant ID (uses Azure CLI's current tenant by default)
         #[arg(long)]
         tenant: Option<String>,
 
@@ -21,42 +21,46 @@ pub enum AuthCommand {
         scope: Option<String>,
 
         /// Authenticate as a service principal (requires --tenant and --client-id)
-        #[arg(long)]
+        #[arg(long, conflicts_with_all = ["device_code", "wam", "browser"])]
         service_principal: bool,
 
-        /// Use Windows Web Account Manager (WAM) broker for SSO (Windows only)
-        #[arg(long)]
+        /// Use device-code login with a customer-managed public client
+        #[arg(long, conflicts_with_all = ["browser", "wam"])]
+        device_code: bool,
+
+        /// Use Windows WAM with a customer-managed public client (Windows only)
+        #[arg(long, conflicts_with_all = ["device_code", "browser"])]
         wam: bool,
 
-        /// Use browser-based login with PKCE (opens system browser, supports macOS Enterprise SSO)
-        #[arg(long)]
+        /// Use browser PKCE with a customer-managed public client
+        #[arg(long, conflicts_with_all = ["device_code", "wam"])]
         browser: bool,
 
-        /// Application (client) ID of the service principal
+        /// Public-client ID for interactive login, or application ID for a service principal
         #[arg(long)]
         client_id: Option<String>,
 
         /// Client secret for service principal authentication
-        #[arg(long)]
+        #[arg(long, conflicts_with_all = ["device_code", "wam", "browser"])]
         client_secret: Option<String>,
 
         /// Path to a PEM or PFX certificate file for service principal authentication
-        #[arg(long)]
+        #[arg(long, conflicts_with_all = ["device_code", "wam", "browser"])]
         certificate: Option<String>,
 
         /// Password for the certificate file (PFX/PKCS12)
-        #[arg(long)]
+        #[arg(long, conflicts_with_all = ["device_code", "wam", "browser"])]
         certificate_password: Option<String>,
 
         /// Federated token (OIDC assertion) for workload identity authentication
-        #[arg(long)]
+        #[arg(long, conflicts_with_all = ["device_code", "wam", "browser"])]
         federated_token: Option<String>,
 
         /// Path to a file containing the federated token (OIDC assertion)
-        #[arg(long)]
+        #[arg(long, conflicts_with_all = ["device_code", "wam", "browser"])]
         federated_token_file: Option<String>,
     },
-    /// Log out and clear cached credentials
+    /// Clear Fabio-managed cached credentials (ambient credentials remain available)
     Logout,
     /// Show current authentication status and credential source
     Status,
@@ -72,12 +76,14 @@ const fn implies_service_principal(
     service_principal: bool,
     client_secret: Option<&str>,
     certificate: Option<&str>,
+    certificate_password: Option<&str>,
     federated_token: Option<&str>,
     federated_token_file: Option<&str>,
 ) -> bool {
     service_principal
         || client_secret.is_some()
         || certificate.is_some()
+        || certificate_password.is_some()
         || federated_token.is_some()
         || federated_token_file.is_some()
 }
@@ -88,6 +94,7 @@ pub async fn execute(cli: &Cli, command: &AuthCommand) -> Result<()> {
             tenant,
             scope,
             service_principal,
+            device_code,
             wam,
             browser,
             client_id,
@@ -105,6 +112,7 @@ pub async fn execute(cli: &Cli, command: &AuthCommand) -> Result<()> {
                 *service_principal,
                 client_secret.as_deref(),
                 certificate.as_deref(),
+                certificate_password.as_deref(),
                 federated_token.as_deref(),
                 federated_token_file.as_deref(),
             );
@@ -121,18 +129,48 @@ pub async fn execute(cli: &Cli, command: &AuthCommand) -> Result<()> {
                     federated_token_file.as_deref(),
                 )
                 .await
-            } else if *wam {
-                login_wam(
-                    cli,
-                    tenant.as_deref(),
-                    scope.as_deref(),
+            } else if *device_code || *wam || *browser {
+                let (public_client_id, client_id_source) = resolve_public_client_id(
                     client_id.as_deref(),
+                    std::env::var("FABIO_CLIENT_ID").ok().as_deref(),
+                )?;
+                if *wam {
+                    login_wam(
+                        cli,
+                        tenant.as_deref(),
+                        scope.as_deref(),
+                        &public_client_id,
+                        client_id_source,
+                    )
+                    .await
+                } else if *browser {
+                    login_browser(
+                        cli,
+                        tenant.as_deref(),
+                        scope.as_deref(),
+                        &public_client_id,
+                        client_id_source,
+                    )
+                    .await
+                } else {
+                    login_device_code(
+                        cli,
+                        tenant.as_deref(),
+                        scope.as_deref(),
+                        &public_client_id,
+                        client_id_source,
+                    )
+                    .await
+                }
+            } else if client_id.is_some() {
+                Err(crate::errors::FabioError::with_hint(
+                    crate::errors::ErrorCode::InvalidInput,
+                    "--client-id requires an explicit authentication mode.",
+                    "Use --device-code, --browser, --wam, or --service-principal. Plain 'fabio auth login' validates Azure CLI authentication.".to_string(),
                 )
-                .await
-            } else if *browser {
-                login_browser(cli, tenant.as_deref(), scope.as_deref()).await
+                .into())
             } else {
-                login(cli, tenant.as_deref(), scope.as_deref()).await
+                login_azure_cli(cli, tenant.as_deref(), scope.as_deref()).await
             }
         }
         AuthCommand::Logout => logout(cli),
@@ -140,8 +178,55 @@ pub async fn execute(cli: &Cli, command: &AuthCommand) -> Result<()> {
     }
 }
 
-async fn login(cli: &Cli, tenant: Option<&str>, scope: Option<&str>) -> Result<()> {
-    let data = token_cache::device_code_login(tenant, scope).await?;
+fn resolve_public_client_id(
+    cli_value: Option<&str>,
+    env_value: Option<&str>,
+) -> Result<(String, token_cache::ClientIdSource)> {
+    let (value, source) = if let Some(value) = cli_value.filter(|value| !value.trim().is_empty()) {
+        (value.trim(), token_cache::ClientIdSource::CliFlag)
+    } else if let Some(value) = env_value.filter(|value| !value.trim().is_empty()) {
+        (value.trim(), token_cache::ClientIdSource::FabioClientIdEnv)
+    } else {
+        return Err(crate::errors::FabioError::with_hint(
+            crate::errors::ErrorCode::InvalidInput,
+            "Fabio-managed interactive login requires a customer-owned public-client ID.",
+            "Pass --client-id <PUBLIC_CLIENT_ID> or set FABIO_CLIENT_ID. To use the default Azure CLI path, run 'az login' followed by 'fabio auth login'.".to_string(),
+        )
+        .into());
+    };
+    crate::client::validate_uuid(value, "--client-id")?;
+    Ok((value.to_string(), source))
+}
+
+async fn login_azure_cli(cli: &Cli, tenant: Option<&str>, scope: Option<&str>) -> Result<()> {
+    let scope = scope.unwrap_or("https://api.fabric.microsoft.com/.default");
+    let token_expiry = crate::client::validate_azure_cli(tenant, scope).await?;
+    token_cache::clear_cache()?;
+    let expires_in = token_expiry
+        .duration_since(std::time::SystemTime::now())
+        .unwrap_or_default()
+        .as_secs();
+    let obj = serde_json::json!({
+        "status": "logged_in",
+        "credential_source": "azure_cli",
+        "method": "azure_cli",
+        "tenant": tenant,
+        "scope": scope,
+        "expires_in_seconds": expires_in,
+        "message": "Azure CLI authentication validated. Fabio-managed cached credentials were cleared; subsequent commands will use Azure CLI unless a higher-priority credential is configured."
+    });
+    output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+async fn login_device_code(
+    cli: &Cli,
+    tenant: Option<&str>,
+    scope: Option<&str>,
+    client_id: &str,
+    client_id_source: token_cache::ClientIdSource,
+) -> Result<()> {
+    let data = token_cache::device_code_login(tenant, scope, client_id, client_id_source).await?;
 
     let expires_in = data.expires_on.saturating_sub(
         std::time::SystemTime::now()
@@ -153,6 +238,9 @@ async fn login(cli: &Cli, tenant: Option<&str>, scope: Option<&str>) -> Result<(
     let obj = serde_json::json!({
         "status": "logged_in",
         "credential_source": "fabio_device_code",
+        "method": "device_code",
+        "client_id": client_id,
+        "client_id_source": client_id_source,
         "tenant": data.tenant,
         "expires_in_seconds": expires_in,
         "message": "Successfully authenticated via device code flow. Token cached at ~/.fabio/token_cache.json"
@@ -166,11 +254,12 @@ async fn login_wam(
     cli: &Cli,
     tenant: Option<&str>,
     scope: Option<&str>,
-    client_id: Option<&str>,
+    client_id: &str,
+    client_id_source: token_cache::ClientIdSource,
 ) -> Result<()> {
     #[cfg(windows)]
     {
-        let data = token_cache::wam_login(tenant, scope, client_id).await?;
+        let data = token_cache::wam_login(tenant, scope, client_id, client_id_source).await?;
 
         let expires_in = data.expires_on.saturating_sub(
             std::time::SystemTime::now()
@@ -182,6 +271,9 @@ async fn login_wam(
         let obj = serde_json::json!({
             "status": "logged_in",
             "credential_source": "wam_broker",
+            "method": "wam",
+            "client_id": client_id,
+            "client_id_source": client_id_source,
             "tenant": data.tenant,
             "expires_in_seconds": expires_in,
             "message": "Successfully authenticated via Windows WAM broker (SSO). Token cached at ~/.fabio/token_cache.json"
@@ -194,19 +286,24 @@ async fn login_wam(
     {
         use crate::errors::{ErrorCode, FabioError};
         // Suppress unused variable warnings
-        let _ = (cli, tenant, scope, client_id);
+        let _ = (cli, tenant, scope, client_id, client_id_source);
         Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
             "--wam is only supported on Windows.",
-            "Use 'fabio auth login' (device code) or --service-principal on this platform."
-                .to_string(),
+            "Use plain 'fabio auth login' with Azure CLI, or --device-code/--browser with a customer public-client ID.".to_string(),
         )
         .into())
     }
 }
 
-async fn login_browser(cli: &Cli, tenant: Option<&str>, scope: Option<&str>) -> Result<()> {
-    let data = token_cache::browser_login(tenant, scope).await?;
+async fn login_browser(
+    cli: &Cli,
+    tenant: Option<&str>,
+    scope: Option<&str>,
+    client_id: &str,
+    client_id_source: token_cache::ClientIdSource,
+) -> Result<()> {
+    let data = token_cache::browser_login(tenant, scope, client_id, client_id_source).await?;
 
     let expires_in = data.expires_on.saturating_sub(
         std::time::SystemTime::now()
@@ -218,6 +315,9 @@ async fn login_browser(cli: &Cli, tenant: Option<&str>, scope: Option<&str>) -> 
     let obj = serde_json::json!({
         "status": "logged_in",
         "credential_source": "browser_pkce",
+        "method": "browser_pkce",
+        "client_id": client_id,
+        "client_id_source": client_id_source,
         "tenant": data.tenant,
         "expires_in_seconds": expires_in,
         "message": "Successfully authenticated via browser (PKCE). Token cached at ~/.fabio/token_cache.json"
@@ -357,7 +457,7 @@ fn logout(cli: &Cli) -> Result<()> {
 
     let obj = serde_json::json!({
         "status": "logged_out",
-        "message": "Token cache cleared. Run 'fabio auth login' to authenticate again."
+        "message": "Fabio-managed token cache cleared. Azure CLI, environment, managed identity, and Azure Developer CLI credentials were not signed out and may still authenticate commands."
     });
     output::render_object(cli, &obj, "status");
     Ok(())
@@ -379,18 +479,25 @@ async fn status(cli: &Cli) -> Result<()> {
                 CredentialSource::AzureDeveloperCli => "azure_developer_cli",
             });
             let source_display = source.map_or_else(|| "unknown".to_string(), |s| s.to_string());
-            let obj = serde_json::json!({
+            let mut obj = serde_json::json!({
                 "status": "authenticated",
                 "credential_source": source_type,
                 "message": format!("Token acquired successfully via {source_display}")
             });
+            if source == Some(CredentialSource::FabioCache)
+                && let Some(cached) = token_cache::load_cached_token()
+            {
+                obj["method"] = serde_json::json!(cached.auth_method);
+                obj["client_id"] = serde_json::json!(cached.client_id);
+                obj["client_id_source"] = serde_json::json!(cached.client_id_source);
+            }
             output::render_object(cli, &obj, "status");
         }
         Err(e) => {
             let obj = serde_json::json!({
                 "status": "not_authenticated",
                 "message": e.to_string(),
-                "hint": "Run 'fabio auth login' to authenticate via device code flow, or use --service-principal for non-interactive auth."
+                "hint": "Run 'az login' then 'fabio auth login'. Alternatively, use --device-code/--browser/--wam with a customer public-client ID, or --service-principal for automation."
             });
             output::render_object(cli, &obj, "status");
         }
@@ -400,11 +507,14 @@ async fn status(cli: &Cli) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::implies_service_principal;
+    use super::{implies_service_principal, resolve_public_client_id};
+    use crate::token_cache::ClientIdSource;
 
     #[test]
     fn explicit_flag_implies_sp() {
-        assert!(implies_service_principal(true, None, None, None, None));
+        assert!(implies_service_principal(
+            true, None, None, None, None, None
+        ));
     }
 
     #[test]
@@ -416,6 +526,7 @@ mod tests {
             Some("secret"),
             None,
             None,
+            None,
             None
         ));
         assert!(implies_service_principal(
@@ -423,10 +534,20 @@ mod tests {
             None,
             Some("cert.pem"),
             None,
+            None,
             None
         ));
         assert!(implies_service_principal(
             false,
+            None,
+            None,
+            Some("password"),
+            None,
+            None
+        ));
+        assert!(implies_service_principal(
+            false,
+            None,
             None,
             None,
             Some("oidc.jwt"),
@@ -437,14 +558,40 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some("/tok")
         ));
     }
 
     #[test]
-    fn no_credential_stays_interactive() {
-        // Plain `auth login` (and --client-id alone, which is not passed here) stays
-        // on the interactive/device-code path.
-        assert!(!implies_service_principal(false, None, None, None, None));
+    fn no_credential_does_not_imply_service_principal() {
+        assert!(!implies_service_principal(
+            false, None, None, None, None, None
+        ));
+    }
+
+    #[test]
+    fn public_client_cli_flag_takes_precedence() {
+        let (id, source) = resolve_public_client_id(
+            Some(" 11111111-2222-3333-4444-555555555555 "),
+            Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+        )
+        .unwrap();
+        assert_eq!(id, "11111111-2222-3333-4444-555555555555");
+        assert_eq!(source, ClientIdSource::CliFlag);
+    }
+
+    #[test]
+    fn public_client_uses_environment_fallback() {
+        let (id, source) =
+            resolve_public_client_id(None, Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")).unwrap();
+        assert_eq!(id, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+        assert_eq!(source, ClientIdSource::FabioClientIdEnv);
+    }
+
+    #[test]
+    fn public_client_requires_explicit_configuration() {
+        assert!(resolve_public_client_id(None, None).is_err());
+        assert!(resolve_public_client_id(Some("  "), Some(" ")).is_err());
     }
 }

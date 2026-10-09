@@ -2,7 +2,7 @@
 name: fabio
 description: "Manage Microsoft Fabric artifacts and data using the fabio CLI - an agent-native command-line tool with 856+ subcommands across 80 groups, structured JSON output, composable piping, and machine-readable errors. Use when working with Fabric workspaces, lakehouses, warehouses, notebooks, eventhouses, semantic models, reports, data pipelines, KQL databases, eventstreams, deploy CI/CD, REST passthrough, Power BI API, capacity lifecycle, app-backend (Power Apps), data-build-tool-job (dbt), org-app (Organizational App), azure-databricks-storage (Azure Databricks integration), or any Fabric REST API resource. Covers CRUD operations, file upload/download, SQL/DAX/KQL queries, execution plans, query monitoring and insights, Git integration, deployment pipelines, CI/CD deploy (plan/apply/export/validate/config-file/git-diff), natural language to KQL, KQL schema discovery and diagnostics, and administration."
 license: MIT
-compatibility: "Requires fabio binary (Linux/macOS/Windows x64/arm64). Authentication via `fabio auth login`, `FABIO_ACCESS_TOKEN` env var, or Azure CLI fallback (uses same Microsoft Identity platform as Azure CLI). Network access to api.fabric.microsoft.com, api.powerbi.com, and onelake.dfs.fabric.microsoft.com required."
+compatibility: "Requires fabio binary (Linux/macOS/Windows x64/arm64). Default local authentication uses Azure CLI (`az login`, then `fabio auth login`); workload identities and explicit customer-owned public clients are also supported. Network access to api.fabric.microsoft.com, api.powerbi.com, and onelake.dfs.fabric.microsoft.com required."
 metadata:
   author: iemejia
   version: "0.31.0-dev"
@@ -34,7 +34,8 @@ bash scripts/install.sh
 # Upgrade if already installed
 fabio upgrade
 
-# Authenticate (no Azure CLI dependency)
+# Authenticate locally through Azure CLI
+az login --allow-no-subscriptions
 fabio auth login
 fabio auth status
 ```
@@ -182,7 +183,7 @@ A jq-shaped or malformed `--query` now **fails fast** with `INVALID_INPUT` (`hin
 Error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITED`, `CAPACITY_INACTIVE`, `INVALID_INPUT`, `API_ERROR`, `TIMEOUT`, `NETWORK_ERROR`, `READONLY_MODE`
 
 **Error recovery patterns:**
-- `AUTH_REQUIRED` (exit 3): Run `fabio auth login`
+- `AUTH_REQUIRED` (exit 3): Run `az login`, then `fabio auth login`
 - `FORBIDDEN` (exit 4): Need Member or Admin role on workspace. Delete requires Member+.
 - `CAPACITY_INACTIVE` (exit 7): Resume capacity with `fabio capacity resume --id $CAP`
 - `RATE_LIMITED` (exit 7): Retry automatically handled; reduce concurrency if persistent
@@ -296,11 +297,13 @@ fabio mcp serve --list-tools                                 # inspect tool surf
 ## Authentication
 
 ```bash
-# Device code (headless/SSH)
+# Default local user path
+az login --allow-no-subscriptions
 fabio auth login
 
-# Browser PKCE (faster, SSO on macOS)
-fabio auth login --browser
+# Customer-owned public client (Fabio ships no default client ID)
+fabio auth login --device-code --client-id <PUBLIC_CLIENT_ID>
+fabio auth login --browser --client-id <PUBLIC_CLIENT_ID>
 
 # Service principal (CI/CD)
 fabio auth login --service-principal --tenant <T> --client-id <C> --client-secret <S>
@@ -308,14 +311,16 @@ fabio auth login --service-principal --tenant <T> --client-id <C> --client-secre
 # Service principal with federated token (GitHub Actions OIDC)
 fabio auth login --service-principal --tenant <T> --client-id <C> --federated-token-file <path>
 
-# Windows WAM broker
-fabio auth login --wam
+# Windows WAM broker with a customer-owned public client
+fabio auth login --wam --client-id <PUBLIC_CLIENT_ID>
 
 # Static access token (Fabric Notebooks, environments with pre-existing tokens)
 export FABIO_ACCESS_TOKEN=$(notebookutils.credentials.getToken("pbi"))  # in Fabric Notebooks
 ```
 
 Credential chain: FABIO_ACCESS_TOKEN > fabio cache > env vars > managed identity > Azure CLI > Azure Developer CLI
+
+`fabio auth logout` clears only Fabio's cache; ambient Azure CLI/environment/managed-identity credentials remain available. `FABIO_CLIENT_ID` is an alternative to `--client-id` only for explicit `--device-code`, `--browser`, or `--wam` flows.
 
 **CI/CD:** Use `azure/login@v3` with OIDC (recommended) or service principal env vars. Do NOT use `FABIO_ACCESS_TOKEN` for CI/CD.
 

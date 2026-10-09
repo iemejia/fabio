@@ -26586,11 +26586,11 @@
     "description": "Manage authentication",
     "subcommands": {
       "login": {
-        "description": "Log in to Microsoft Fabric via device code flow, service principal, or WAM broker",
+        "description": "Validate Azure CLI authentication, or use an explicit interactive/workload flow",
         "flags": {
           "--tenant": {
             "type": "string",
-            "description": "Azure AD tenant ID (defaults to \"common\" for multi-tenant; required for --service-principal)"
+            "description": "Microsoft Entra tenant ID (uses Azure CLI's current tenant by default)"
           },
           "--scope": {
             "type": "string",
@@ -26600,17 +26600,21 @@
             "type": "bool",
             "description": "Authenticate as a service principal (requires --tenant and --client-id)"
           },
+          "--device-code": {
+            "type": "bool",
+            "description": "Use device-code login with a customer-managed public client"
+          },
           "--wam": {
             "type": "bool",
-            "description": "Use Windows Web Account Manager (WAM) broker for SSO (Windows only)"
+            "description": "Use Windows WAM with a customer-managed public client (Windows only)"
           },
           "--browser": {
             "type": "bool",
-            "description": "Use browser-based login with PKCE (opens system browser, supports macOS Enterprise SSO)"
+            "description": "Use browser PKCE with a customer-managed public client"
           },
           "--client-id": {
             "type": "string",
-            "description": "Application (client) ID of the service principal"
+            "description": "Public-client ID for interactive login, or application ID for a service principal"
           },
           "--client-secret": {
             "type": "string",
@@ -26633,13 +26637,13 @@
             "description": "Path to a file containing the federated token (OIDC assertion)"
           }
         },
-        "mutates": false,
+        "mutates": true,
         "returns": "object"
       },
       "logout": {
-        "description": "Log out and clear cached credentials",
+        "description": "Clear Fabio-managed cached credentials (ambient credentials remain available)",
         "mutates": true,
-        "returns": "void"
+        "returns": "object"
       },
       "status": {
         "description": "Show current authentication status and credential source",

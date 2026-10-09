@@ -195,6 +195,7 @@ base (~20MB) with no shell or package manager. Authentication options inside the
 
 ```bash
 # 1. Sign in
+az login --allow-no-subscriptions
 fabio auth login
 
 # 2. Create a workspace and assign compute capacity
@@ -388,14 +389,16 @@ Every Fabric workload command group is covered by a sub-skill family or persona.
 
 ## Authentication
 
-Fabio authenticates with its own dedicated Entra ID application ("Fabio CLI"). It supports multiple authentication methods for both interactive and non-interactive scenarios.
+Fabio supports local user, workload, managed-identity, and pre-existing-token authentication. Fabio does **not** ship a default Entra application ID because the project does not yet have a stable, long-lived Entra tenant and publisher registration that can be safely operated for every installation. Plain `auth login` therefore validates the supported Azure CLI credential path.
 
 ```bash
-# Device code flow (interactive, any platform — works in headless/SSH)
+# Default local login: Azure CLI owns browser/WAM/device-code auth and token refresh
+az login --allow-no-subscriptions
 fabio auth login
 
-# Browser-based PKCE (opens system browser; SSO on macOS with Enterprise SSO Extension)
-fabio auth login --browser
+# Customer-owned public client: explicit device code or browser PKCE
+fabio auth login --device-code --client-id <PUBLIC_CLIENT_ID>
+fabio auth login --browser --client-id <PUBLIC_CLIENT_ID>
 
 # Service principal with client secret (CI/CD, automation)
 fabio auth login --service-principal --tenant <TENANT_ID> --client-id <CLIENT_ID> --client-secret <SECRET>
@@ -408,8 +411,8 @@ fabio auth login --service-principal --tenant <TENANT_ID> --client-id <CLIENT_ID
 fabio auth login --service-principal --tenant <TENANT_ID> --client-id <CLIENT_ID> --federated-token <JWT>
 fabio auth login --service-principal --tenant <TENANT_ID> --client-id <CLIENT_ID> --federated-token-file <PATH>
 
-# Windows WAM broker SSO (Windows only — uses OS-level sign-in)
-fabio auth login --wam
+# Windows WAM broker with a customer-owned public client
+fabio auth login --wam --client-id <PUBLIC_CLIENT_ID>
 
 # Static access token (Fabric Notebooks, environments with pre-existing tokens)
 export FABIO_ACCESS_TOKEN=<token>
@@ -420,33 +423,35 @@ fabio auth status
 
 Supported credential sources (in priority order):
 1. Static access token (`FABIO_ACCESS_TOKEN` env var — for Fabric Notebooks and pre-existing tokens)
-2. Fabio CLI identity (`fabio auth login` -- recommended for interactive use)
+2. Fabio-managed cache from an explicit public-client or service-principal login
 3. Environment variables (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`)
 4. Managed Identity (when running on Azure)
-5. Azure CLI (`az login` -- recommended for CI/CD with `azure/login` action)
+5. Azure CLI (`az login` -- default local-user path and supported by `azure/login`)
 6. Azure Developer CLI (`azd auth login`)
 
 **Windows-specific features:**
 - Token cache encrypted with DPAPI (`CryptProtectData`, user scope) — matches Azure CLI behavior
 - WAM broker SSO via `--wam` flag — uses Windows OS-level sign-in, no browser needed
 
-### Custom app registration (`FABIO_CLIENT_ID`)
+### Customer-owned app registration (`FABIO_CLIENT_ID`)
 
-Interactive sign-in (device code, browser PKCE, WAM) uses fabio's own multitenant public-client Entra ID app ("Fabio CLI"). You can point fabio at a **different** app registration — for example to run under your own tenant's app, or to recover if the default app becomes unavailable — by setting the `FABIO_CLIENT_ID` environment variable:
+Device code, browser PKCE, and WAM require a customer-owned public-client registration. Pass `--client-id` directly or set `FABIO_CLIENT_ID`:
 
 ```bash
 export FABIO_CLIENT_ID=<your-app-client-id>
-fabio auth login
+fabio auth login --device-code
 ```
 
-When unset, fabio falls back to the compiled-in default. This only affects the interactive user flows; service-principal auth already takes its client ID from `--client-id` / `AZURE_CLIENT_ID`.
+`--client-id` takes precedence over `FABIO_CLIENT_ID`. `AZURE_CLIENT_ID` is reserved for workload identities and is never treated as an interactive public-client fallback. Plain `fabio auth login` ignores `FABIO_CLIENT_ID` and validates Azure CLI.
 
-To create a compatible app registration (multitenant, public client, correct redirect URIs and Fabric delegated permissions), use the helper script — it can also patch the compiled-in default for a from-source build:
+The helper creates a compatible registration with redirects and delegated permissions for Fabric, Storage, SQL, ARM, Kusto, Graph, and Cosmos. It prints the new client ID and never edits Fabio source:
 
 ```bash
 # Requires az CLI with permission to create app registrations
 ./scripts/create-fabio-app.sh --name "Fabio CLI" --admin-consent
 ```
+
+`fabio auth logout` clears only Fabio's token cache. It does not sign out Azure CLI, managed identity, environment credentials, or Azure Developer CLI; run `az logout` separately when needed. Legacy Fabio caches without issuing-client metadata can serve an unexpired token for its original scope, but Fabio will not refresh them under a different application ID.
 
 ## Shell Completions
 

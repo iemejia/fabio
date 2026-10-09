@@ -468,7 +468,18 @@ tests:
       user_query: "How do I log in to fabio?"
     assert:
       - type: icontains
+        value: "az login"
+      - type: icontains
         value: "fabio auth login"
+
+  - description: "Authenticate with customer public client"
+    vars:
+      user_query: "Azure CLI is not available. Log me in to fabio with device code using my public client ID app-123."
+    assert:
+      - type: icontains
+        value: "fabio auth login --device-code"
+      - type: icontains
+        value: "--client-id"
 
   - description: "Check auth status"
     vars:

@@ -7,25 +7,27 @@ Fabio resolves credentials from several sources so local development and automat
 
 ## Interactive sign-in
 
-Device code is the portable default:
+Azure CLI is the default local-user credential. It owns browser/WAM/device-code authentication, MFA, Conditional Access, refresh tokens, and its secure cache:
 
 ```bash
+az login --allow-no-subscriptions
 fabio auth login
 ```
 
-For a browser redirect:
+Fabio does not ship a default Entra client ID because the project does not yet have a stable, long-lived Entra tenant and publisher registration. For native Fabio login, use a customer-owned public-client registration:
 
 ```bash
-fabio auth login --browser
+fabio auth login --device-code --client-id <public-client-id>
+fabio auth login --browser --client-id <public-client-id>
 ```
 
 On Windows, Web Account Manager provides native single sign-on:
 
 ```powershell
-fabio auth login --wam
+fabio auth login --wam --client-id <public-client-id>
 ```
 
-Inspect or clear the local session with `fabio auth status` and `fabio auth logout`.
+`--client-id` takes precedence over `FABIO_CLIENT_ID`; `AZURE_CLIENT_ID` remains reserved for workload identities. Create a compatible customer registration with `./scripts/create-fabio-app.sh`. Inspect authentication with `fabio auth status`. `fabio auth logout` clears only Fabio's cache; it does not sign out Azure CLI or other ambient credentials.
 
 ## Service principal
 
@@ -72,7 +74,7 @@ Alternatively, run `azure/login@v3` with OIDC first — Fabio's credential chain
 
 ## Credential precedence
 
-Fabio checks an explicit `FABIO_ACCESS_TOKEN`, its encrypted login cache, Azure environment credentials, managed identity, Azure CLI, and Azure Developer CLI. A command may require a separate audience for Fabric, OneLake storage, SQL, ARM, Kusto, or Microsoft Graph.
+Fabio checks an explicit `FABIO_ACCESS_TOKEN`, its managed-login cache, Azure environment credentials, managed identity, Azure CLI, and Azure Developer CLI. A command may require a separate audience for Fabric, OneLake storage, SQL, ARM, Kusto, Microsoft Graph, or Cosmos. Legacy caches without an issuing client ID are never refreshed under a replacement app.
 
 ## Per-scope static tokens
 
@@ -87,6 +89,7 @@ To use a static token with a non-Fabric command, set the matching scope-specific
 | `FABIO_STORAGE_ACCESS_TOKEN` | Azure Storage | OneLake file operations, when the Fabric token is not accepted |
 | `FABIO_ARM_ACCESS_TOKEN` | Azure Resource Manager | Capacity lifecycle |
 | `FABIO_GRAPH_ACCESS_TOKEN` | Microsoft Graph | `label list` |
+| `FABIO_COSMOS_ACCESS_TOKEN` | Azure Cosmos DB | Cosmos database data-plane commands |
 
 In a Fabric Notebook, obtain each token with `notebookutils.credentials.getToken(<resource>)` and set the matching variable. If a T-SQL command fails with a login error while only `FABIO_ACCESS_TOKEN` is set, Fabio's error hint tells you to set `FABIO_SQL_ACCESS_TOKEN`.
 

@@ -73,12 +73,12 @@ fn auth_login_validates_credentials() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     assert_eq!(data["status"], "logged_in");
-    // Should report credential source
-    assert!(data["credential_source"].is_string());
+    assert_eq!(data["credential_source"], "azure_cli");
+    assert_eq!(data["method"], "azure_cli");
     // Message should say successful
     let msg = data["message"].as_str().unwrap_or("");
     assert!(
-        msg.contains("Successfully authenticated via"),
+        msg.contains("Azure CLI authentication validated"),
         "Expected success message, got: {msg}"
     );
 }
@@ -99,6 +99,84 @@ fn sp_login_bare_service_principal_flag_requires_params() {
 }
 
 #[test]
+fn device_code_requires_customer_public_client() {
+    let assert = fabio()
+        .env_remove("FABIO_CLIENT_ID")
+        .args(["auth", "login", "--device-code"])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("customer-owned public-client ID"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("FABIO_CLIENT_ID"), "{stderr}");
+}
+
+#[test]
+fn browser_requires_customer_public_client_before_opening_browser() {
+    let assert = fabio()
+        .env_remove("FABIO_CLIENT_ID")
+        .args(["auth", "login", "--browser"])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("customer-owned public-client ID"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn interactive_login_rejects_malformed_public_client() {
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--device-code",
+            "--client-id",
+            "not-a-uuid",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(stderr.contains("must be a valid UUID"), "{stderr}");
+}
+
+#[test]
+fn client_id_alone_requires_explicit_mode() {
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--client-id",
+            "11111111-2222-3333-4444-555555555555",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("requires an explicit authentication mode"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn auth_login_help_explains_azure_cli_default() {
+    let assert = fabio().args(["auth", "login", "--help"]).assert().success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        stdout.contains("Validate Azure CLI authentication"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("--device-code"), "{stdout}");
+    assert!(
+        stdout.contains("customer-managed public client"),
+        "{stdout}"
+    );
+}
+
+#[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn auth_logout_succeeds() {
@@ -107,6 +185,30 @@ fn auth_logout_succeeds() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     assert_eq!(data["status"], "logged_out");
+}
+
+#[test]
+fn auth_logout_removes_fabio_cache_and_legacy_marker() {
+    let home = tempfile::tempdir().unwrap();
+    let fabio_dir = home.path().join(".fabio");
+    std::fs::create_dir_all(&fabio_dir).unwrap();
+    let cache = fabio_dir.join("token_cache.json");
+    let marker = fabio_dir.join(".logged_out");
+    std::fs::write(&cache, "{}").unwrap();
+    std::fs::write(&marker, "").unwrap();
+
+    let assert = fabio()
+        .env("HOME", home.path())
+        .env("USERPROFILE", home.path())
+        .args(["auth", "logout"])
+        .assert()
+        .success();
+    let data = parse_json(&assert);
+    let data = extract_data(&data);
+    assert_eq!(data["status"], "logged_out");
+    assert!(!cache.exists());
+    assert!(!marker.exists());
+    assert!(data["message"].as_str().unwrap().contains("not signed out"));
 }
 
 #[test]
@@ -1363,7 +1465,15 @@ fn dpapi_logout_removes_encrypted_cache() {
 fn wam_flag_accepted_by_parser() {
     // The --wam flag should be accepted (not rejected by clap)
     // On non-Windows it returns an error but does NOT crash
-    let assert = fabio().args(["auth", "login", "--wam"]).assert();
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--wam",
+            "--client-id",
+            "11111111-2222-3333-4444-555555555555",
+        ])
+        .assert();
     // On Linux/macOS: failure with INVALID_INPUT
     // On Windows: would attempt WAM (may succeed or fail depending on sign-in state)
     #[cfg(not(windows))]
@@ -1375,7 +1485,16 @@ fn wam_flag_accepted_by_parser() {
 #[test]
 #[cfg(not(windows))]
 fn wam_rejected_on_non_windows() {
-    let assert = fabio().args(["auth", "login", "--wam"]).assert().failure();
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--wam",
+            "--client-id",
+            "11111111-2222-3333-4444-555555555555",
+        ])
+        .assert()
+        .failure();
 
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     assert!(
@@ -1391,19 +1510,27 @@ fn wam_rejected_on_non_windows() {
 #[test]
 #[cfg(not(windows))]
 fn wam_error_suggests_alternatives() {
-    let assert = fabio().args(["auth", "login", "--wam"]).assert().failure();
+    let assert = fabio()
+        .args([
+            "auth",
+            "login",
+            "--wam",
+            "--client-id",
+            "11111111-2222-3333-4444-555555555555",
+        ])
+        .assert()
+        .failure();
 
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     assert!(
-        stderr.contains("device code") || stderr.contains("--service-principal"),
+        stderr.contains("Azure CLI") || stderr.contains("--device-code"),
         "error hint should suggest alternatives, got: {stderr}"
     );
 }
 
 #[test]
 #[cfg(not(windows))]
-fn wam_with_service_principal_prefers_sp() {
-    // --service-principal takes precedence over --wam (checked first in the if chain)
+fn wam_conflicts_with_service_principal() {
     let assert = fabio()
         .args([
             "auth",
@@ -1421,10 +1548,9 @@ fn wam_with_service_principal_prefers_sp() {
         .failure();
 
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
-    // Should fail at SP auth (reaching Azure), not at --wam platform check
     assert!(
-        stderr.contains("AUTH_REQUIRED"),
-        "--service-principal should take precedence over --wam, got: {stderr}"
+        stderr.contains("cannot be used with") || stderr.contains("conflict"),
+        "mixed auth modes should be rejected by clap, got: {stderr}"
     );
 }
 
@@ -1435,7 +1561,11 @@ fn wam_with_service_principal_prefers_sp() {
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn wam_login_produces_structured_output() {
-    let assert = fabio().args(["auth", "login", "--wam"]).assert();
+    let client_id = std::env::var("FABIO_TEST_PUBLIC_CLIENT_ID")
+        .expect("FABIO_TEST_PUBLIC_CLIENT_ID is required for WAM live tests");
+    let assert = fabio()
+        .args(["auth", "login", "--wam", "--client-id", &client_id])
+        .assert();
 
     // WAM may succeed (if user is signed in) or fail (if not)
     let output = &assert.get_output();
@@ -1461,8 +1591,18 @@ fn wam_login_produces_structured_output() {
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn wam_login_with_tenant_override() {
+    let client_id = std::env::var("FABIO_TEST_PUBLIC_CLIENT_ID")
+        .expect("FABIO_TEST_PUBLIC_CLIENT_ID is required for WAM live tests");
     let assert = fabio()
-        .args(["auth", "login", "--wam", "--tenant", "organizations"])
+        .args([
+            "auth",
+            "login",
+            "--wam",
+            "--client-id",
+            &client_id,
+            "--tenant",
+            "organizations",
+        ])
         .assert();
 
     // Just verify it doesn't crash — result depends on Windows sign-in state
@@ -1502,11 +1642,11 @@ fn browser_flag_visible_in_help() {
         stdout.contains("PKCE") || stdout.contains("browser"),
         "expected PKCE/browser description in help"
     );
+    assert!(stdout.contains("customer-managed public client"));
 }
 
 #[test]
-fn browser_and_service_principal_sp_wins() {
-    // --service-principal takes precedence over --browser
+fn browser_conflicts_with_service_principal() {
     let assert = fabio()
         .args([
             "auth",
@@ -1524,9 +1664,8 @@ fn browser_and_service_principal_sp_wins() {
         .failure();
 
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
-    // Should fail at SP auth (Azure), not at browser flow
     assert!(
-        stderr.contains("AUTH_REQUIRED"),
-        "--service-principal should take precedence over --browser, got: {stderr}"
+        stderr.contains("cannot be used with") || stderr.contains("conflict"),
+        "mixed auth modes should be rejected by clap, got: {stderr}"
     );
 }

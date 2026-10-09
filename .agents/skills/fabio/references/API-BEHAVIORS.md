@@ -49,21 +49,24 @@ Example hint-driven recovery:
 
 ### Authentication Methods
 
-All login methods share the same `~/.fabio/token_cache.json` cache. On Windows, the cache is encrypted with DPAPI (matching Azure CLI behavior).
+Explicit Fabio-managed login methods share `~/.fabio/token_cache.json`. On Windows, the cache is encrypted with DPAPI. Plain login validates Azure CLI and clears the Fabio cache so subsequent commands use Azure CLI.
 
 | Method | Command / Env Var | Notes |
 |--------|---------|-------|
-| Device code | `fabio auth login` | Headless/SSH; user must visit URL and enter code |
-| Browser PKCE | `fabio auth login --browser` | Faster; SSO on macOS with Enterprise Extension |
+| Azure CLI | `az login --allow-no-subscriptions && fabio auth login` | Default local path; Azure CLI owns MFA, refresh, and cache |
+| Device code | `fabio auth login --device-code --client-id C` | Customer-owned public client; headless/SSH |
+| Browser PKCE | `fabio auth login --browser --client-id C` | Customer-owned public client; system browser |
 | Service principal (secret) | `fabio auth login --service-principal --tenant T --client-id C --client-secret S` | CI/CD |
 | Service principal (cert PEM) | `fabio auth login --service-principal --tenant T --client-id C --certificate /path/cert.pem` | |
 | Service principal (cert PFX) | `fabio auth login --service-principal --tenant T --client-id C --certificate /path/cert.pfx --certificate-password pw` | |
 | Federated token (OIDC) | `fabio auth login --service-principal --tenant T --client-id C --federated-token <jwt>` | GitHub Actions OIDC |
 | Federated token file | `fabio auth login --service-principal --tenant T --client-id C --federated-token-file /path/token` | File is trimmed of whitespace |
-| Windows WAM broker | `fabio auth login --wam` | Windows only; SSO with current Windows account; no browser/code |
+| Windows WAM broker | `fabio auth login --wam --client-id C` | Windows only; customer-owned public client |
 | Static access token | `FABIO_ACCESS_TOKEN=<token>` | Fabric Notebooks and environments with pre-existing tokens; same token for all scopes |
 
 **SP error handling**: Empty strings for `--tenant`, `--client-id`, `--client-secret`, `--certificate`, `--federated-token` are treated as "not provided" with structured JSON error output.
+
+Fabio ships no default Entra client ID because the project does not yet have a stable publisher-owned registration. `--client-id` overrides `FABIO_CLIENT_ID` for explicit interactive flows; `AZURE_CLIENT_ID` is never reused as a public-client fallback. Cached refresh tokens record their issuing client ID, and legacy caches without provenance are not refreshed. `auth logout` never signs out ambient credentials.
 
 **Security**: `--verbose` output and `--dry-run` previews automatically redact sensitive JSON fields (password, client_secret, credentials, access_token, key, connectionString, etc.) before logging. Redaction is recursive and case-insensitive.
 
@@ -132,7 +135,7 @@ result = subprocess.run(
 workspaces = json.loads(result.stdout)
 ```
 
-> **Note:** `FABIO_ACCESS_TOKEN` uses the same token for ALL API scopes (Fabric, Storage, SQL, ARM, Graph). The `pbi` scope from `notebookutils.credentials.getToken("pbi")` covers Fabric REST API calls. For OneLake storage operations, you may need a separate token with the storage scope.
+> **Note:** `FABIO_ACCESS_TOKEN` uses the same token for ALL API scopes (Fabric, Storage, SQL, ARM, Graph, Cosmos). The `pbi` scope from `notebookutils.credentials.getToken("pbi")` covers Fabric REST API calls. For other audiences, set the matching scope-specific token variable.
 
 ## Query Filtering (--query / JMESPath)
 
