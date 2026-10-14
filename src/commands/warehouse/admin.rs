@@ -6,6 +6,16 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
+const SQL_POOLS_CONFIGURATION_PATH: &str = "warehouses/sqlPoolsConfiguration";
+
+fn sql_pools_configuration_path(workspace: &str) -> String {
+    format!("/workspaces/{workspace}/{SQL_POOLS_CONFIGURATION_PATH}")
+}
+
+fn parse_sql_pools_configuration(content: &str) -> Result<Value> {
+    Ok(serde_json::from_str(content)?)
+}
+
 pub(super) async fn connection_string(
     cli: &Cli,
     client: &FabricClient,
@@ -41,11 +51,9 @@ pub(super) async fn get_sql_pools_config(
     workspace: &str,
 ) -> Result<()> {
     let data = client
-        .get(&format!(
-            "/workspaces/{workspace}/warehouses/sqlPoolsConfiguration?beta=true"
-        ))
+        .get(&sql_pools_configuration_path(workspace))
         .await
-        .map_err(|e| enrich_forbidden(e, "warehouse get-sql-pools-config", "Viewer"))?;
+        .map_err(|e| enrich_forbidden(e, "warehouse get-sql-pools-config", "Admin"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -62,9 +70,9 @@ pub(super) async fn update_sql_pools_config(
             let text = std::fs::read_to_string(f).map_err(|e| {
                 FabioError::not_found(format!("Configuration file not found: {f}: {e}"))
             })?;
-            serde_json::from_str(&text)?
+            parse_sql_pools_configuration(&text)?
         }
-        (_, Some(c)) => serde_json::from_str(c)?,
+        (_, Some(c)) => parse_sql_pools_configuration(c)?,
         _ => {
             return Err(FabioError::with_hint(
                 ErrorCode::InvalidInput,
@@ -81,12 +89,9 @@ pub(super) async fn update_sql_pools_config(
     }
 
     let data = client
-        .patch(
-            &format!("/workspaces/{workspace}/warehouses/sqlPoolsConfiguration?beta=true"),
-            &body,
-        )
+        .patch(&sql_pools_configuration_path(workspace), &body)
         .await
-        .map_err(|e| enrich_forbidden(e, "warehouse update-sql-pools-config", "Contributor"))?;
+        .map_err(|e| enrich_forbidden(e, "warehouse update-sql-pools-config", "Admin"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -176,4 +181,43 @@ pub(super) async fn set_audit_actions(
         .map_err(|e| enrich_forbidden(e, "warehouse set-audit-actions", "Contributor"))?;
     output::render_object(cli, &data, "id");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sql_pools_path_no_longer_uses_beta_query_parameter() {
+        assert_eq!(
+            sql_pools_configuration_path("workspace-id"),
+            "/workspaces/workspace-id/warehouses/sqlPoolsConfiguration"
+        );
+    }
+
+    #[test]
+    fn sql_pools_configuration_accepts_statement_type_classifier() {
+        let body = parse_sql_pools_configuration(
+            r#"{
+                "customSQLPoolsEnabled": true,
+                "customSQLPools": [{
+                    "name": "Read workloads",
+                    "classifier": {
+                        "type": "Statement Type",
+                        "value": ["SELECT"]
+                    }
+                }]
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            body["customSQLPools"][0]["classifier"]["type"],
+            "Statement Type"
+        );
+        assert_eq!(
+            body["customSQLPools"][0]["classifier"]["value"][0],
+            "SELECT"
+        );
+    }
 }

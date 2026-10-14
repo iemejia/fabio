@@ -222,6 +222,53 @@ fn reflex_dry_run_create() {
     assert_eq!(json["data"]["would_execute"], "reflex create");
 }
 
+#[test]
+fn test_reflex_query_activations_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "reflex",
+            "query-activations",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--kql",
+            ".show tables",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    assert_eq!(json["data"]["would_execute"], "reflex query-activations");
+    assert_eq!(json["data"]["details"]["query"], ".show tables");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with a reflex"]
+#[serial]
+fn test_reflex_query_activations_live() {
+    let cfg = TestConfig::from_env();
+    let reflex_id = std::env::var("FABIO_TEST_REFLEX_ID").expect("FABIO_TEST_REFLEX_ID required");
+
+    let assert = fabio()
+        .args([
+            "reflex",
+            "query-activations",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &reflex_id,
+            "--kql",
+            ".show tables",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    assert!(json["data"]["tables"].is_array());
+}
+
 // ─── Definition Tests ────────────────────────────────────────────────────────
 
 #[test]

@@ -1468,6 +1468,11 @@ fn generate_subcommands(
         if !sc_obj.contains_key("destructive") && infer_destructive(&sc_name) {
             sc_obj.insert("destructive".to_owned(), serde_json::json!(true));
         }
+        if !sc_obj.contains_key("examples")
+            && let Some(examples) = generated_examples(group.get_name(), &sc_name)
+        {
+            sc_obj.insert("examples".to_owned(), serde_json::json!(examples));
+        }
 
         // Local auth login/logout change persisted credential selection and both
         // return structured status objects; command-name inference cannot express this.
@@ -1480,6 +1485,20 @@ fn generate_subcommands(
     }
 
     subcommands
+}
+
+#[cfg(test)]
+fn generated_examples(group: &str, subcommand: &str) -> Option<&'static [&'static str]> {
+    match (group, subcommand) {
+        ("copy-job", "list-instances") => {
+            Some(&["fabio copy-job list-instances --workspace $WS --id $COPY_JOB --all"])
+        }
+        ("reflex", "query-activations") => Some(&[
+            "fabio reflex query-activations --workspace $WS --id $REFLEX --kql \".show tables\"",
+            "fabio reflex query-activations --workspace $WS --id $REFLEX --kql \"union ruleactivations_<RULE1>, ruleactivations_<RULE2> | summarize count() by System.RuleId\"",
+        ]),
+        _ => None,
+    }
 }
 
 /// Generate flag entries for a single subcommand from clap arg metadata.
@@ -1715,6 +1734,17 @@ fn infer_destructive(cmd_name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generated_examples_cover_new_spec_commands() {
+        let copy_job = generated_examples("copy-job", "list-instances").unwrap();
+        assert_eq!(copy_job.len(), 1);
+        assert!(copy_job[0].contains("--all"));
+
+        let reflex = generated_examples("reflex", "query-activations").unwrap();
+        assert_eq!(reflex.len(), 2);
+        assert!(reflex[0].contains(".show tables"));
+    }
 
     #[test]
     fn query_matches_term_or_alias_boosts_term_and_aliases() {

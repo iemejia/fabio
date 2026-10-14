@@ -527,6 +527,7 @@ async fn run(
             op: "data-pipeline run",
             label: "Pipeline run",
             job_type: "Pipeline",
+            trigger_path: None,
             role: "Contributor",
         },
     )

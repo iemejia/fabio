@@ -943,6 +943,30 @@ fn warehouse_set_retention_dry_run() {
 }
 
 #[test]
+fn test_warehouse_update_sql_pools_statement_type_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "update-sql-pools-config",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--content",
+            r#"{"customSQLPoolsEnabled":true,"customSQLPools":[{"name":"Read workloads","classifier":{"type":"Statement Type","value":["SELECT"]}}]}"#,
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "warehouse update-sql-pools-config");
+    assert_eq!(
+        data["details"]["customSQLPools"][0]["classifier"]["type"],
+        "Statement Type"
+    );
+}
+
+#[test]
 fn warehouse_set_retention_rejects_out_of_range() {
     let assert = fabio()
         .args([

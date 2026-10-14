@@ -44,7 +44,7 @@ Manage warehouses and run SQL queries
 | `fabio warehouse describe-table` | no | Describe the columns of a table (from `INFORMATION_SCHEMA.COLUMNS`) |
 | `fabio warehouse get-audit-settings` | no | Get SQL audit settings for a warehouse |
 | `fabio warehouse get-retention` | no | Report the configured data-retention (time-travel) period, in days |
-| `fabio warehouse get-sql-pools-config` | no | Get SQL pools configuration for a workspace |
+| `fabio warehouse get-sql-pools-config` | no | Get SQL pools configuration for a workspace (requires workspace Admin) |
 | `fabio warehouse list` | no | List warehouses in a workspace |
 | `fabio warehouse list-restore-points` | no | List restore points for a warehouse |
 | `fabio warehouse list-tables` | no | List tables and views in a warehouse (from `INFORMATION_SCHEMA.TABLES`) |
@@ -70,7 +70,7 @@ Manage warehouses and run SQL queries
 | `fabio warehouse update` | yes | Update warehouse properties (name and/or description) |
 | `fabio warehouse update-audit-settings` | yes | Update SQL audit settings for a warehouse |
 | `fabio warehouse update-restore-point` | yes | Update a restore point |
-| `fabio warehouse update-sql-pools-config` | yes | Update SQL pools configuration for a workspace |
+| `fabio warehouse update-sql-pools-config` | yes | Update SQL pools configuration for a workspace (requires workspace Admin) |
 
 ### fabio sql-database
 Manage SQL databases (Fabric-native transactional databases)
@@ -203,7 +203,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 | `fabio context best-practices throttling` | fabio transparently handles 429 (Too Many Requests) and gateway errors. Agents do NOT need to implement retry logic. |
 | `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |
 | `fabio context best-practices lro` | Many Fabric operations are async (return 202). fabio polls them automatically. Use --wait for job operations. |
-| `fabio context best-practices custom-sql-pools` | Custom SQL Pools cap the maximum share of warehouse compute a workload can consume (application-based classification), for workload ISOLATION and predictable resource usage — NOT a spending limit. Read the config with 'warehouse get-sql-pools-config' and apply one with 'warehouse update-sql-pools-config' (a beta JSON passthrough endpoint). Good candidates: ETL/data-loading, background processing, and Power BI reporting that must not starve other workloads. Under allocation-based billing, capping a bursty workload's peak allocation can indirectly reduce consumption (it runs longer at a lower vNode peak). |
+| `fabio context best-practices custom-sql-pools` | Custom SQL Pools cap the maximum share of warehouse compute a workload can consume (application-name, regex, or SQL statement-type classification), for workload ISOLATION and predictable resource usage — NOT a spending limit. Read the config with 'warehouse get-sql-pools-config' and apply one with 'warehouse update-sql-pools-config'. Good candidates: ETL/data-loading, background processing, and Power BI reporting that must not starve other workloads. Under allocation-based billing, capping a bursty workload's peak allocation can indirectly reduce consumption (it runs longer at a lower vNode peak). |
 
 ## See also
 - fabio context persona data-engineer
