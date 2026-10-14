@@ -43,7 +43,7 @@ pub(super) async fn get_sql_pools_config(
     let data = client
         .get(&sql_pools_config_path(workspace))
         .await
-        .map_err(|e| enrich_forbidden(e, "warehouse get-sql-pools-config", "Viewer"))?;
+        .map_err(|e| enrich_forbidden(e, "warehouse get-sql-pools-config", "Admin"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -81,7 +81,7 @@ pub(super) async fn update_sql_pools_config(
     let data = client
         .patch(&sql_pools_config_path(workspace), &body)
         .await
-        .map_err(|e| enrich_forbidden(e, "warehouse update-sql-pools-config", "Contributor"))?;
+        .map_err(|e| enrich_forbidden(e, "warehouse update-sql-pools-config", "Admin"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -194,11 +194,11 @@ mod tests {
     #[test]
     fn statement_type_classifier_is_preserved() {
         let body: Value = serde_json::from_str(
-            r#"{"customSQLPoolsEnabled":true,"customSQLPools":[{"name":"etl","classifiers":[{"type":"Statement Type","value":"SELECT"}]}]}"#,
+            r#"{"customSQLPoolsEnabled":true,"customSQLPools":[{"name":"etl","isDefault":true,"classifier":{"type":"Statement Type","value":["SELECT"]}}]}"#,
         )
         .unwrap();
         assert_eq!(
-            body["customSQLPools"][0]["classifiers"][0]["type"],
+            body["customSQLPools"][0]["classifier"]["type"],
             "Statement Type"
         );
     }

@@ -5700,7 +5700,7 @@
         ]
       },
       "get-sql-pools-config": {
-        "description": "Get SQL pools configuration for a workspace",
+        "description": "Get SQL pools configuration for a workspace (requires workspace Admin)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -5712,7 +5712,7 @@
         "returns": "object"
       },
       "update-sql-pools-config": {
-        "description": "Update SQL pools configuration for a workspace",
+        "description": "Update SQL pools configuration for a workspace (requires workspace Admin)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -5721,11 +5721,11 @@
           },
           "--file": {
             "type": "string",
-            "description": "Path to JSON file with configuration (prefix with @)"
+            "description": "Path to JSON configuration file. Classifier types include `Application Name`, `Application Name Regex`, and `Statement Type`"
           },
           "--content": {
             "type": "string",
-            "description": "Inline JSON content"
+            "description": "Inline JSON configuration. Classifier types include `Application Name`, `Application Name Regex`, and `Statement Type`"
           }
         },
         "mutates": true,
@@ -16339,8 +16339,7 @@
           },
           "--kql": {
             "type": "string",
-            "required": true,
-            "description": "KQL query (maximum 1,048,576 characters; wildcard `union *` is unsupported)"
+            "description": "KQL text (inline, `@file`, or omit to read from stdin). Maximum 1,048,576 characters; wildcard `union *` is unsupported"
           }
         },
         "mutates": false,

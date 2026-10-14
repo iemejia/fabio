@@ -109,11 +109,11 @@
 - `src/commands/kql_queryset.rs`: CRUD + get-definition/update-definition + run (fetch definition, select tab, execute against Kusto REST API)
 - `src/commands/kql_dashboard.rs`: list/show/create/update/delete/get-definition/update-definition (RealTimeDashboard.json)
 - `src/commands/mirrored_database.rs`: list/show/create/update/delete/get-definition/update-definition/start/stop/status/table-status
-- `src/commands/reflex.rs`: list/show/create/update/delete/get-definition/update-definition/create-trigger (Data Activator)
+- `src/commands/reflex.rs`: list/show/create/update/delete/get-definition/update-definition/query-activations/create-trigger (Data Activator)
 - `src/commands/reflex_mcp.rs`: Activator remote MCP server — `mcp-url` + native rule management (list-rules/start-rule/stop-rule/delete-rule/rule-activations) via the generic MCP client
 - `src/commands/ml_model.rs`: list/show/create/update/delete (CRUD only)
 - `src/commands/ml_experiment.rs`: list/show/create/update/delete (CRUD only)
-- `src/commands/copy_job.rs`: list/show/create/update/delete/get-definition/update-definition/reset
+- `src/commands/copy_job.rs`: list/show/create/update/delete/get-definition/update-definition/reset/run/list-runs
 - `src/commands/dataflow.rs`: list/show/create/update/delete/get-definition/update-definition/discover-parameters/run/execute-query
 - `src/commands/graphql_api.rs`: list/show/create/update/delete/get-definition/update-definition (schema.graphql)
 - `src/commands/spark.rs`: get-settings/update-settings/list-pools/get-pool/create-pool/update-pool/delete-pool
@@ -204,7 +204,7 @@
 - `tests/e2e_lakehouse_shortcuts.rs`: Shortcut create/get/delete tests
 - `tests/e2e_lakehouse_iceberg.rs`: Iceberg REST Catalog tests (config, namespaces, tables, schema)
 - `tests/e2e_notebook.rs`: Notebook create/get-definition/run/run --wait/status/stop/delete/strip-output tests
-- `tests/e2e_warehouse.rs`: Warehouse list/show/query/query-stdin/plan/queries-running/queries-frequent/queries-long-running/queries-history/queries-kill/statistics-list/statistics-create/statistics-update/statistics-delete tests
+- `tests/e2e_warehouse.rs`: Warehouse list/show/query/query-stdin/plan/queries-running/queries-frequent/queries-long-running/queries-history/queries-kill/statistics-list/statistics-create/statistics-update/statistics-delete tests; opt-in live SQL Pools classifier round-trip (`FABIO_TEST_SQL_POOLS_WORKSPACE`) restores the baseline configuration before assertions
 - `tests/e2e_sql_database.rs`: SQL Database CRUD + query + import + revalidate-cmk dry-run tests
 - `tests/e2e_dataagent.rs`: Data agent tests (CRUD, query, multi-turn, visuals extraction, definition, publish, datasource lifecycle, fewshot lifecycle, elements lifecycle, config, CSV upload, dry-run validations)
 - `tests/e2e_git.rs`: Git command group tests
@@ -222,11 +222,11 @@
 - `tests/e2e_kql_queryset.rs`: KQL queryset tests
 - `tests/e2e_kql_dashboard.rs`: KQL dashboard tests
 - `tests/e2e_mirrored_database.rs`: Mirrored database tests
-- `tests/e2e_reflex.rs`: Reflex CRUD + definition (get/update with simulator pipeline) tests
+- `tests/e2e_reflex.rs`: Reflex CRUD, definition, and activation-query tests
 - `tests/e2e_graphql_api.rs`: GraphQL API CRUD tests
 - `tests/e2e_ml_model.rs`: ML model CRUD tests
 - `tests/e2e_ml_experiment.rs`: ML experiment CRUD tests
-- `tests/e2e_copy_job.rs`: Copy job CRUD + reset tests
+- `tests/e2e_copy_job.rs`: Copy job CRUD, reset, run, and instance-list tests
 - `tests/e2e_dataflow.rs`: Dataflow CRUD + run + execute-query tests
 - `tests/e2e_report.rs`: Report CRUD tests
 - `tests/e2e_semantic_model.rs`: Semantic model CRUD tests + Direct Lake generate (dry-run + generate→frame→DAX lifecycle)

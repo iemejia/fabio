@@ -229,14 +229,98 @@ fn warehouse_sql_pools_accept_statement_type_classifier_dry_run() {
             "--workspace",
             "00000000-0000-0000-0000-000000000000",
             "--content",
-            r#"{"customSQLPoolsEnabled":true,"customSQLPools":[{"name":"select-pool","classifiers":[{"type":"Statement Type","value":"SELECT"}]}]}"#,
+            r#"{"customSQLPoolsEnabled":true,"customSQLPools":[{"name":"select-pool","isDefault":true,"classifier":{"type":"Statement Type","value":["SELECT"]}}]}"#,
         ])
         .assert()
         .success();
     let json = parse_json(&assert);
     assert_eq!(
-        json["data"]["details"]["customSQLPools"][0]["classifiers"][0]["type"],
+        json["data"]["details"]["customSQLPools"][0]["classifier"]["type"],
         "Statement Type"
+    );
+}
+
+/// This replaces configuration temporarily, so require a dedicated opt-in
+/// workspace instead of defaulting to the shared source workspace. Restore the
+/// baseline before checking assertions, including when the update was rejected.
+#[test]
+#[ignore = "requires FABIO_TEST_SQL_POOLS_WORKSPACE: an isolated workspace with a warehouse and Admin access"]
+#[serial]
+fn warehouse_sql_pools_statement_type_live_roundtrip() {
+    let workspace = std::env::var("FABIO_TEST_SQL_POOLS_WORKSPACE")
+        .expect("FABIO_TEST_SQL_POOLS_WORKSPACE required (isolated test workspace only)");
+    let baseline_output = fabio()
+        .args([
+            "warehouse",
+            "get-sql-pools-config",
+            "--workspace",
+            &workspace,
+        ])
+        .assert()
+        .success();
+    let baseline = extract_data(&parse_json(&baseline_output)).clone();
+    let request = serde_json::json!({
+        "customSQLPoolsEnabled": true,
+        "customSQLPools": [{
+            "name": common::unique_name("pr159_sql_pool"),
+            "isDefault": true,
+            "maxResourcePercentage": 20,
+            "classifier": {"type": "Statement Type", "value": ["SELECT"]}
+        }]
+    });
+    let update = fabio()
+        .args([
+            "warehouse",
+            "update-sql-pools-config",
+            "--workspace",
+            &workspace,
+            "--content",
+            &request.to_string(),
+        ])
+        .assert();
+    let read = fabio()
+        .args([
+            "warehouse",
+            "get-sql-pools-config",
+            "--workspace",
+            &workspace,
+        ])
+        .assert();
+
+    fabio()
+        .args([
+            "warehouse",
+            "update-sql-pools-config",
+            "--workspace",
+            &workspace,
+            "--content",
+            &baseline.to_string(),
+        ])
+        .assert()
+        .success();
+    let restored = fabio()
+        .args([
+            "warehouse",
+            "get-sql-pools-config",
+            "--workspace",
+            &workspace,
+        ])
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&restored)), &baseline);
+
+    update.success();
+    let read = read.success();
+    let data = extract_data(&parse_json(&read)).clone();
+    assert_eq!(data["customSQLPoolsEnabled"], true);
+    assert_eq!(data["customSQLPools"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        data["customSQLPools"][0]["name"],
+        request["customSQLPools"][0]["name"]
+    );
+    assert_eq!(
+        data["customSQLPools"][0]["classifier"],
+        request["customSQLPools"][0]["classifier"]
     );
 }
 
