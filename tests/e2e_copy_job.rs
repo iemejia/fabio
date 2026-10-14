@@ -4,6 +4,199 @@ mod common;
 
 use common::{TestConfig, extract_data, fabio, parse_json};
 use serial_test::serial;
+use wiremock::matchers::{header, method, path};
+use wiremock::{Mock, MockServer, Request, ResponseTemplate};
+
+const WORKSPACE: &str = "aaaaaaaa-1111-2222-3333-444444444444";
+const COPY_JOB: &str = "bbbbbbbb-1111-2222-3333-444444444444";
+const INSTANCE: &str = "cccccccc-1111-2222-3333-444444444444";
+
+#[test]
+fn copy_job_run_retries_with_empty_body_and_returns_location_without_waiting() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let server = runtime.block_on(async {
+        let server = MockServer::start().await;
+        let attempts = AtomicUsize::new(0);
+        let accepted = ResponseTemplate::new(202)
+            .insert_header(
+                "Location",
+                format!(
+                    "{}/workspaces/{WORKSPACE}/items/{COPY_JOB}/jobs/instances/{INSTANCE}",
+                    server.uri()
+                ),
+            )
+            .insert_header("Retry-After", "60");
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/workspaces/{WORKSPACE}/copyJobs/{COPY_JOB}/jobs/execute/instances"
+            )))
+            .and(|request: &Request| request.body.is_empty())
+            .and(header("content-length", "0"))
+            .respond_with(move |_: &Request| {
+                if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                    ResponseTemplate::new(401)
+                } else {
+                    accepted.clone()
+                }
+            })
+            .expect(2)
+            .mount(&server)
+            .await;
+        server
+    });
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
+        .args([
+            "copy-job",
+            "run",
+            "--workspace",
+            WORKSPACE,
+            "--id",
+            COPY_JOB,
+        ])
+        .timeout(std::time::Duration::from_secs(5))
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&output)).clone();
+    assert_eq!(data["jobInstanceId"], INSTANCE);
+    assert_eq!(data["status"], "started");
+}
+
+#[test]
+fn copy_job_wait_respects_retry_after_before_first_poll() {
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let triggered_at = Arc::new(Mutex::new(None));
+    let polled_at = Arc::new(Mutex::new(None));
+    let server = runtime.block_on(async {
+        let server = MockServer::start().await;
+        let trigger_time = Arc::clone(&triggered_at);
+        let response = ResponseTemplate::new(202)
+            .insert_header(
+                "Location",
+                format!(
+                    "{}/workspaces/{WORKSPACE}/items/{COPY_JOB}/jobs/instances/{INSTANCE}",
+                    server.uri()
+                ),
+            )
+            .insert_header("Retry-After", "1");
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/workspaces/{WORKSPACE}/copyJobs/{COPY_JOB}/jobs/execute/instances"
+            )))
+            .and(|request: &Request| request.body.is_empty())
+            .and(header("content-length", "0"))
+            .respond_with(move |_: &Request| {
+                *trigger_time.lock().unwrap() = Some(Instant::now());
+                response.clone()
+            })
+            .expect(1)
+            .mount(&server)
+            .await;
+        let poll_time = Arc::clone(&polled_at);
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/workspaces/{WORKSPACE}/items/{COPY_JOB}/jobs/instances/{INSTANCE}"
+            )))
+            .respond_with(move |_: &Request| {
+                *poll_time.lock().unwrap() = Some(Instant::now());
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"id": INSTANCE, "status": "Completed"}))
+            })
+            .expect(1)
+            .mount(&server)
+            .await;
+        server
+    });
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
+        .args([
+            "copy-job",
+            "run",
+            "--workspace",
+            WORKSPACE,
+            "--id",
+            COPY_JOB,
+            "--wait",
+            "--timeout",
+            "10",
+        ])
+        .timeout(Duration::from_secs(15))
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&output))["status"], "Completed");
+    let elapsed = polled_at
+        .lock()
+        .unwrap()
+        .unwrap()
+        .duration_since(triggered_at.lock().unwrap().unwrap());
+    assert!(
+        elapsed >= Duration::from_secs(1),
+        "polled after {elapsed:?}"
+    );
+}
+
+#[test]
+fn copy_job_timeout_never_polls_before_retry_after_and_preserves_cancellation() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    for cancel in [false, true] {
+        let server = runtime.block_on(async {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path(format!("/workspaces/{WORKSPACE}/copyJobs/{COPY_JOB}/jobs/execute/instances")))
+                .respond_with(ResponseTemplate::new(202)
+                    .insert_header("Location", format!("{}/workspaces/{WORKSPACE}/items/{COPY_JOB}/jobs/instances/{INSTANCE}", server.uri()))
+                    .insert_header("Retry-After", "60"))
+                .expect(1)
+                .mount(&server)
+                .await;
+            Mock::given(method("GET"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"status": "Completed"})))
+                .expect(0)
+                .mount(&server)
+                .await;
+            Mock::given(method("POST"))
+                .and(path(format!("/workspaces/{WORKSPACE}/items/{COPY_JOB}/jobs/instances/{INSTANCE}/cancel")))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+                .expect(u64::from(cancel))
+                .mount(&server)
+                .await;
+            server
+        });
+        let mut command = fabio();
+        command
+            .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+            .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
+            .args([
+                "copy-job",
+                "run",
+                "--workspace",
+                WORKSPACE,
+                "--id",
+                COPY_JOB,
+                "--wait",
+                "--timeout",
+                "1",
+            ])
+            .timeout(std::time::Duration::from_secs(5));
+        if cancel {
+            command.arg("--cancel-on-timeout");
+        }
+        let output = command.assert().failure();
+        let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+        let error: serde_json::Value = stderr
+            .lines()
+            .find_map(|line| serde_json::from_str(line).ok())
+            .unwrap_or_else(|| panic!("expected a structured error: {stderr}"));
+        assert_eq!(error["error"]["code"], "TIMEOUT");
+    }
+}
 
 #[test]
 #[ignore = "requires live Fabric tenant"]
@@ -190,7 +383,8 @@ fn copy_job_dry_run_run() {
 #[ignore = "requires live Fabric tenant with a copy job"]
 #[serial]
 fn copy_job_run_and_wait() {
-    let cfg = TestConfig::from_env();
+    let workspace =
+        std::env::var("FABIO_TEST_SOURCE_WORKSPACE").expect("FABIO_TEST_SOURCE_WORKSPACE required");
     let copy_job_id =
         std::env::var("FABIO_TEST_COPY_JOB_ID").expect("FABIO_TEST_COPY_JOB_ID required");
 
@@ -200,7 +394,7 @@ fn copy_job_run_and_wait() {
             "copy-job",
             "run",
             "--workspace",
-            &cfg.source_workspace,
+            &workspace,
             "--id",
             &copy_job_id,
             "--wait",
@@ -213,26 +407,35 @@ fn copy_job_run_and_wait() {
     let json = parse_json(&assert);
     let data = extract_data(&json);
     assert_eq!(data["status"], "Completed");
-    assert!(data.get("jobInstanceId").is_some());
+    assert_eq!(data["itemId"], copy_job_id);
+    assert!(uuid::Uuid::parse_str(data["id"].as_str().unwrap()).is_ok());
 }
 
 #[test]
 #[ignore = "requires live Fabric tenant with a copy job"]
 #[serial]
 fn copy_job_list_runs_returns_execute_instances() {
-    let cfg = TestConfig::from_env();
+    let workspace =
+        std::env::var("FABIO_TEST_SOURCE_WORKSPACE").expect("FABIO_TEST_SOURCE_WORKSPACE required");
     let copy_job_id =
         std::env::var("FABIO_TEST_COPY_JOB_ID").expect("FABIO_TEST_COPY_JOB_ID required");
     let assert = fabio()
         .args([
+            "--readonly",
             "copy-job",
             "list-runs",
             "--workspace",
-            &cfg.source_workspace,
+            &workspace,
             "--id",
             &copy_job_id,
         ])
         .assert()
         .success();
-    assert!(extract_data(&parse_json(&assert)).is_array());
+    let json = parse_json(&assert);
+    let instances = extract_data(&json).as_array().unwrap();
+    for instance in instances {
+        assert_eq!(instance["itemId"], copy_job_id);
+        assert!(uuid::Uuid::parse_str(instance["id"].as_str().unwrap()).is_ok());
+        assert!(instance["status"].is_string());
+    }
 }

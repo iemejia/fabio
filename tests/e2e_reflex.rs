@@ -226,24 +226,191 @@ fn reflex_dry_run_create() {
 #[ignore = "requires live Fabric tenant with a Reflex containing activation records"]
 #[serial]
 fn reflex_query_activations_show_tables() {
-    let cfg = TestConfig::from_env();
+    let workspace =
+        std::env::var("FABIO_TEST_SOURCE_WORKSPACE").expect("FABIO_TEST_SOURCE_WORKSPACE required");
     let reflex_id = std::env::var("FABIO_TEST_REFLEX_ID").expect("FABIO_TEST_REFLEX_ID required");
-    let assert = fabio()
-        .args([
+    let directory = tempfile::tempdir().unwrap();
+    let query_file = directory.path().join("activations.kql");
+    std::fs::write(&query_file, ".show tables").unwrap();
+
+    for source in ["inline", "file", "stdin"] {
+        let mut command = fabio();
+        command.args([
+            "--readonly",
             "reflex",
             "query-activations",
             "--workspace",
-            &cfg.source_workspace,
+            &workspace,
             "--id",
             &reflex_id,
+        ]);
+        match source {
+            "inline" => {
+                command.args(["--kql", ".show tables"]);
+            }
+            "file" => {
+                command.args(["--kql", &format!("@{}", query_file.display())]);
+            }
+            _ => {
+                command.write_stdin(".show tables");
+            }
+        }
+        let output = command.assert().success();
+        let json = parse_json(&output);
+        let tables = extract_data(&json)["tables"].as_array().unwrap();
+        assert_ne!(tables.len(), 0, "input source: {source}");
+        assert!(tables[0]["columns"].is_array());
+        assert!(tables[0]["rows"].is_array());
+    }
+
+    let invalid = fabio()
+        .args([
+            "--readonly",
+            "reflex",
+            "query-activations",
+            "--workspace",
+            &workspace,
+            "--id",
+            &reflex_id,
+            "--kql",
+            "print value = 1",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&invalid.get_output().stderr);
+    let error: serde_json::Value = stderr
+        .lines()
+        .find_map(|line| serde_json::from_str(line).ok())
+        .unwrap_or_else(|| panic!("expected a structured error: {stderr}"));
+    assert_eq!(error["error"]["code"], "API_ERROR");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("InvalidQuery")
+    );
+}
+
+#[test]
+fn test_reflex_query_activations_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "reflex",
+            "query-activations",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
             "--kql",
             ".show tables",
         ])
         .assert()
         .success();
+
     let json = parse_json(&assert);
-    let data = extract_data(&json);
-    assert!(data["tables"].is_array());
+    assert_eq!(json["data"]["would_execute"], "reflex query-activations");
+    assert_eq!(json["data"]["details"]["query"], ".show tables");
+}
+
+#[test]
+fn reflex_query_activations_readonly_accepts_file_and_stdin_and_preserves_results() {
+    use wiremock::matchers::{body_json, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let expected = serde_json::json!({
+        "requestId": "trace",
+        "tables": [{
+            "tableName": "PrimaryResult",
+            "columns": [{"columnName": "active", "columnType": "Bool", "nullable": false}],
+            "rows": [[true]],
+            "extra": "preserved"
+        }]
+    });
+    let server = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/workspaces/aaaaaaaa-1111-2222-3333-444444444444/reflexes/bbbbbbbb-1111-2222-3333-444444444444/queryActivations"))
+            .and(body_json(serde_json::json!({"query": ".show tables"})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&expected))
+            .expect(2)
+            .mount(&server)
+            .await;
+        server
+    });
+    let directory = tempfile::tempdir().unwrap();
+    let query_file = directory.path().join("query.kql");
+    std::fs::write(&query_file, ".show tables").unwrap();
+    for from_file in [false, true] {
+        let mut command = fabio();
+        command
+            .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+            .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
+            .args([
+                "--readonly",
+                "reflex",
+                "query-activations",
+                "--workspace",
+                "aaaaaaaa-1111-2222-3333-444444444444",
+                "--id",
+                "bbbbbbbb-1111-2222-3333-444444444444",
+            ]);
+        if from_file {
+            command.args(["--kql", &format!("@{}", query_file.display())]);
+        } else {
+            command.write_stdin(".show tables");
+        }
+        let output = command.assert().success();
+        assert_eq!(extract_data(&parse_json(&output)), &expected);
+    }
+}
+
+#[test]
+fn reflex_query_activations_validates_input_before_dry_run() {
+    let directory = tempfile::tempdir().unwrap();
+    let query_file = directory.path().join("query.kql");
+    let file_arg = format!("@{}", query_file.display());
+    for (count, accepted) in [(1_048_576, true), (1_048_577, false)] {
+        std::fs::write(&query_file, "é".repeat(count)).unwrap();
+        let output = fabio()
+            .args([
+                "--dry-run",
+                "reflex",
+                "query-activations",
+                "--workspace",
+                "aaaaaaaa-1111-2222-3333-444444444444",
+                "--id",
+                "bbbbbbbb-1111-2222-3333-444444444444",
+                "--kql",
+                &file_arg,
+            ])
+            .assert();
+        if accepted {
+            let output = output.success();
+            assert_eq!(extract_data(&parse_json(&output))["dry_run"], true);
+        } else {
+            let output = output.failure();
+            let error: serde_json::Value =
+                serde_json::from_slice(&output.get_output().stderr).unwrap();
+            assert_eq!(error["error"]["code"], "INVALID_INPUT");
+        }
+    }
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "reflex",
+            "query-activations",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+        ])
+        .write_stdin("")
+        .assert()
+        .failure();
+    let error: serde_json::Value = serde_json::from_slice(&output.get_output().stderr).unwrap();
+    assert_eq!(error["error"]["code"], "INVALID_INPUT");
 }
 
 // ─── Definition Tests ────────────────────────────────────────────────────────

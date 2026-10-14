@@ -380,6 +380,10 @@ fabio monitoring enable-data-collection --workspace <WS> --id <MONITORING_ID>
 # Query Reflex activation records directly with KQL
 fabio reflex query-activations --workspace <WS> --id <REFLEX_ID> \
   --kql '.show tables'
+
+# Queries remain available in read-only mode; use @file or omit --kql for stdin
+fabio --readonly reflex query-activations --workspace <WS> --id <REFLEX_ID> \
+  --kql @activations.kql
 ```
 
 Workspace inbound External Data Shares policy (ETag round trip):

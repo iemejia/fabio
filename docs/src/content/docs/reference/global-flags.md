@@ -28,7 +28,7 @@ Global flags apply across Fabio's command surface. They can appear before or aft
 | --- | --- |
 | `--dry-run` | Preview supported mutations without sending them. |
 | `--force` | Skip confirmation on destructive operations. Safety-bypass — agents should not add it without explicit human approval. |
-| `--readonly` | Block all mutating operations (POST/PUT/PATCH/DELETE) before network dispatch; read-only calls are unaffected. Also set with `FABIO_READONLY`. |
+| `--readonly` | Block all mutating operations before network dispatch; read-only calls, including the Reflex activation-query POST, are unaffected. Also set with `FABIO_READONLY`. |
 | `--wrap-untrusted` | Wrap API-returned free-text fields (`displayName`, `description`, `message`) with untrusted-content markers to prevent prompt injection. Also set with `FABIO_WRAP_UNTRUSTED`. |
 | `--enable-commands <paths>` | Allow only these comma-separated command paths; unlisted commands are blocked. Also set with `FABIO_ENABLE_COMMANDS`. |
 | `--disable-commands <paths>` | Block these comma-separated command paths; deny overrides allow. Also set with `FABIO_DISABLE_COMMANDS`. |

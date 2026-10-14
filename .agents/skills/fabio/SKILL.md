@@ -485,6 +485,8 @@ fabio reflex create-rule --workspace $WS --id $RX --name "Too hot" \
   --action email --recipients ops@contoso.com   # NOTE: --kql-database-id is the KQL DB item id, NOT the eventhouse id
 fabio reflex list-rules --workspace $WS --id $RX
 fabio reflex start-rule --workspace $WS --id $RX --rule-id $RULE   # / stop-rule / delete-rule / rule-activations
+fabio reflex query-activations --workspace $WS --id $RX --kql ".show tables"  # REST activation history/schema
+fabio --readonly reflex query-activations --workspace $WS --id $RX --kql @activations.kql # or omit --kql and pipe stdin
 ```
 
 **Shortcuts (ADLS Gen2, S3, Dataverse, OneLake):**
@@ -629,6 +631,8 @@ fabio dataflow upgrade-gen1 --workspace $WS --id $DF1 --id $DF2 --dry-run # in-p
 fabio data-pipeline create --workspace $WS --name "Daily-ETL"
 fabio data-pipeline run --workspace $WS --id $DP --wait                    # trigger + wait
 fabio data-pipeline create-schedule --workspace $WS --id $DP --content '{"enabled":true,...}'
+fabio copy-job run --workspace $WS --id $CJ --wait
+fabio copy-job list-runs --workspace $WS --id $CJ --all
 fabio job-scheduler run-on-demand --workspace $WS --id $ITEM --job-type Pipeline \
   --wait --timeout 300 --cancel-on-timeout                                 # generic job runner
 fabio spark-job-definition run --workspace $WS --id $SJD --wait --timeout 600

@@ -47,6 +47,36 @@ defaultTest:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
 tests:
+  - description: "Data engineering: list copy job execution history"
+    vars:
+      user_query: "List every execute job instance for copy job CJ in workspace WS"
+    assert:
+      - type: icontains
+        value: "copy-job list-runs"
+      - type: icontains
+        value: "--workspace"
+      - type: icontains
+        value: "--id"
+      - type: icontains
+        value: "--all"
+
+  - description: "Real-time: read-only Reflex activation query from file"
+    vars:
+      user_query: "Query Reflex RX in workspace WS using KQL from activations.kql, and keep read-only mode enabled"
+    assert:
+      - type: icontains
+        value: "reflex query-activations"
+      - type: icontains
+        value: "--workspace"
+      - type: icontains
+        value: "--id"
+      - type: icontains
+        value: "--kql"
+      - type: icontains
+        value: "@activations.kql"
+      - type: icontains
+        value: "--readonly"
+
   - description: "Dataflows: assess then upgrade Gen1 dataflows in place"
     vars:
       user_query: "Assess all Gen1 dataflows in my workspace, then preview upgrading DF1 and DF2 to Gen2"

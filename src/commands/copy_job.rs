@@ -269,6 +269,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &CopyJobCommand)
 
 // ─── Run ─────────────────────────────────────────────────────────────────────
 
+/// Run a copy job on demand through its dedicated execute-job endpoint.
 async fn run(
     cli: &Cli,
     client: &FabricClient,
@@ -292,7 +293,7 @@ async fn run(
             label: "Copy job run",
             job_type: "Execute",
             trigger_path: Some(&trigger_path),
-            role: "Contributor",
+            role: "Member",
         },
     )
     .await

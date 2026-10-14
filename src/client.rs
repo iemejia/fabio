@@ -5,7 +5,7 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use anyhow::Result;
-use reqwest::header::AUTHORIZATION;
+use reqwest::header::{AUTHORIZATION, CONTENT_LENGTH, HeaderMap};
 use reqwest::{Client, Response, StatusCode};
 use serde_json::Value;
 use tokio::time::sleep;
@@ -258,6 +258,21 @@ pub struct PaginatedResponse {
     pub continuation_token: Option<String>,
 }
 
+/// Metadata returned by an accepted item-job trigger.
+#[derive(Debug)]
+pub struct TriggeredJob {
+    pub id: String,
+    pub retry_after: Option<Duration>,
+}
+
+fn retry_after_from_headers(headers: &HeaderMap) -> Option<Duration> {
+    headers
+        .get("Retry-After")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(Duration::from_secs)
+}
+
 /// Which credential source successfully provided a token.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -384,7 +399,8 @@ impl FabricClient {
     }
 
     /// Enable readonly mode — all mutating HTTP requests (POST/PUT/PATCH/DELETE) are
-    /// blocked before network dispatch. Read-only operations (GET/HEAD) are unaffected.
+    /// blocked before network dispatch. GET/HEAD and explicit semantically
+    /// read-only POST helpers are unaffected.
     pub const fn with_readonly(mut self, readonly: bool) -> Self {
         self.readonly = readonly;
         self
@@ -1533,18 +1549,24 @@ impl FabricClient {
     /// Retries once on 401 with a fresh token.
     /// Retries up to 3 times on 429/430 (rate limited) with exponential backoff.
     pub async fn post(&self, path: &str, body: &Value, poll: bool) -> Result<Value> {
+        self.guard_readonly("POST", path)?;
         self.post_impl(path, Some(body), poll).await
     }
 
     /// POST request to Fabric REST API without a request body.
     pub async fn post_empty(&self, path: &str, poll: bool) -> Result<Value> {
+        self.guard_readonly("POST", path)?;
         self.post_impl(path, None, poll).await
+    }
+
+    /// POST request for a semantically read-only API such as query execution.
+    pub async fn post_readonly(&self, path: &str, body: &Value) -> Result<Value> {
+        self.post_impl(path, Some(body), false).await
     }
 
     async fn post_impl(&self, path: &str, body: Option<&Value>, poll: bool) -> Result<Value> {
         const MAX_RATE_LIMIT_RETRIES: u32 = 3;
         const MAX_TRANSIENT_RETRIES: u32 = 3;
-        self.guard_readonly("POST", path)?;
         let url = self.fabric_url(path);
         let mut attempt: u32 = 0;
         let mut transient_attempt: u32 = 0;
@@ -1565,7 +1587,7 @@ impl FabricClient {
             let request = self.http.post(&url).header(AUTHORIZATION, &token);
             let request = match body {
                 Some(value) => request.json(value),
-                None => request,
+                None => request.header(CONTENT_LENGTH, "0"),
             };
             let resp = request
                 .send()
@@ -1580,7 +1602,7 @@ impl FabricClient {
                 let request = self.http.post(&url).header(AUTHORIZATION, &token);
                 let request = match body {
                     Some(value) => request.json(value),
-                    None => request,
+                    None => request.header(CONTENT_LENGTH, "0"),
                 };
                 let resp = request
                     .send()
@@ -2961,6 +2983,18 @@ impl FabricClient {
     /// Trigger a job at a specific URL path (for item types that use path-based
     /// job endpoints instead of `?jobType=` query parameter).
     pub async fn trigger_item_job_at(&self, path: &str, body: Option<&Value>) -> Result<String> {
+        Ok(self
+            .trigger_item_job_at_with_retry_after(path, body)
+            .await?
+            .id)
+    }
+
+    /// Trigger a path-based item job and preserve its first-poll delay.
+    pub async fn trigger_item_job_at_with_retry_after(
+        &self,
+        path: &str,
+        body: Option<&Value>,
+    ) -> Result<TriggeredJob> {
         self.guard_readonly("POST", path)?;
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
@@ -2968,7 +3002,7 @@ impl FabricClient {
         let request = self.http.post(&url).header(AUTHORIZATION, &token);
         let request = match body {
             Some(value) => request.json(value),
-            None => request,
+            None => request.header(CONTENT_LENGTH, "0"),
         };
         let resp = request
             .send()
@@ -2981,16 +3015,22 @@ impl FabricClient {
             let request = self.http.post(&url).header(AUTHORIZATION, &token);
             let request = match body {
                 Some(value) => request.json(value),
-                None => request,
+                None => request.header(CONTENT_LENGTH, "0"),
             };
             let resp = request
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            return Self::extract_job_id_from_response(resp).await;
+            return Self::extract_job_trigger_from_response(resp).await;
         }
 
-        Self::extract_job_id_from_response(resp).await
+        Self::extract_job_trigger_from_response(resp).await
+    }
+
+    async fn extract_job_trigger_from_response(resp: Response) -> Result<TriggeredJob> {
+        let retry_after = retry_after_from_headers(resp.headers());
+        let id = Self::extract_job_id_from_response(resp).await?;
+        Ok(TriggeredJob { id, retry_after })
     }
 
     /// Poll a long-running operation until completion.
@@ -3982,6 +4022,47 @@ pub fn validate_uuid(value: &str, param_name: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retry_after_header_parses_delta_seconds() {
+        let mut headers = HeaderMap::new();
+        assert_eq!(retry_after_from_headers(&headers), None);
+        headers.insert("Retry-After", "60".parse().unwrap());
+        assert_eq!(
+            retry_after_from_headers(&headers),
+            Some(Duration::from_secs(60))
+        );
+
+        headers.insert("Retry-After", "invalid".parse().unwrap());
+        assert_eq!(retry_after_from_headers(&headers), None);
+
+        headers.insert("Retry-After", "0".parse().unwrap());
+        assert_eq!(retry_after_from_headers(&headers), Some(Duration::ZERO));
+
+        for invalid in ["-1", "18446744073709551616"] {
+            headers.insert("Retry-After", invalid.parse().unwrap());
+            assert_eq!(retry_after_from_headers(&headers), None);
+        }
+    }
+
+    #[tokio::test]
+    async fn readonly_guards_bodyless_and_json_posts_before_authentication() {
+        let client = FabricClient::new().with_readonly(true);
+        let body = serde_json::json!({});
+        for error in [
+            client.post("/mutate", &body, false).await.unwrap_err(),
+            client.post_empty("/mutate", false).await.unwrap_err(),
+            client
+                .trigger_item_job_at("/mutate", None)
+                .await
+                .unwrap_err(),
+        ] {
+            assert_eq!(
+                error.downcast_ref::<FabioError>().unwrap().code,
+                ErrorCode::ReadonlyMode
+            );
+        }
+    }
 
     #[test]
     fn error_body_message_extraction_handles_both_envelope_shapes() {

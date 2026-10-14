@@ -2,6 +2,7 @@ use anyhow::Result;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Subcommand;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -386,9 +387,10 @@ pub enum ReflexCommand {
         #[arg(long)]
         id: String,
 
-        /// KQL query (maximum 1,048,576 characters; wildcard `union *` is unsupported)
+        /// KQL text (inline, `@file`, or omit to read from stdin). Maximum
+        /// 1,048,576 characters; wildcard `union *` is unsupported.
         #[arg(long)]
-        kql: String,
+        kql: Option<String>,
     },
 }
 
@@ -581,21 +583,58 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReflexCommand) 
             .await
         }
         ReflexCommand::QueryActivations { workspace, id, kql } => {
-            query_activations(cli, client, workspace, id, kql).await
+            query_activations(cli, client, workspace, id, kql.as_deref()).await
         }
     }
 }
 
-fn build_query_activations_body(query: &str) -> Result<Value> {
-    if query.len() > 1_048_576 {
+const MAX_ACTIVATIONS_QUERY_CHARS: usize = 1_048_576;
+
+#[derive(Debug, Serialize)]
+struct QueryActivationsRequest<'a> {
+    query: &'a str,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QueryActivationsResponse {
+    tables: Vec<ActivationsTable>,
+    #[serde(flatten)]
+    additional_properties: serde_json::Map<String, Value>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ActivationsTable {
+    table_name: String,
+    columns: Vec<ActivationsColumn>,
+    rows: Vec<Vec<Value>>,
+    #[serde(flatten)]
+    additional_properties: serde_json::Map<String, Value>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ActivationsColumn {
+    column_name: String,
+    column_type: String,
+    #[serde(flatten)]
+    additional_properties: serde_json::Map<String, Value>,
+}
+
+fn build_query_activations_request(query: &str) -> Result<Value> {
+    let char_count = query.chars().count();
+    if char_count > MAX_ACTIVATIONS_QUERY_CHARS {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
-            "Activation query exceeds the 1,048,576-character API limit",
-            "Shorten --kql. Wildcard `union *` is not supported; name activation tables explicitly.",
+            format!(
+                "Activation query is {char_count} characters; the maximum is {MAX_ACTIVATIONS_QUERY_CHARS}."
+            ),
+            "Shorten the KQL query and retry. Wildcard 'union *' is not supported.".to_string(),
         )
         .into());
     }
-    Ok(serde_json::json!({ "query": query }))
+    Ok(serde_json::to_value(QueryActivationsRequest { query })?)
 }
 
 async fn query_activations(
@@ -603,18 +642,29 @@ async fn query_activations(
     client: &FabricClient,
     workspace: &str,
     id: &str,
-    query: &str,
+    kql: Option<&str>,
 ) -> Result<()> {
-    let body = build_query_activations_body(query)?;
+    let query = crate::commands::query_input::resolve_query_input(
+        kql,
+        "KQL",
+        "--kql",
+        "Example: fabio reflex query-activations --workspace <WS> --id <ID> --kql \".show tables\"",
+    )?;
+    let body = build_query_activations_request(&query)?;
+
+    if output::dry_run_guard(cli, "reflex query-activations", &body) {
+        return Ok(());
+    }
+
     let data = client
-        .post(
+        .post_readonly(
             &format!("/workspaces/{workspace}/reflexes/{id}/queryActivations"),
             &body,
-            false,
         )
         .await
         .map_err(|e| enrich_forbidden(e, "reflex query-activations", "Viewer"))?;
-    output::render_object(cli, &data, "tables");
+    let response: QueryActivationsResponse = serde_json::from_value(data)?;
+    output::render_object(cli, &serde_json::to_value(response)?, "tables");
     Ok(())
 }
 
@@ -1107,33 +1157,59 @@ mod tests {
     use super::*;
 
     #[test]
-    fn activation_query_body_matches_spec() {
-        let body = build_query_activations_body(".show tables").unwrap();
-        assert_eq!(body, serde_json::json!({ "query": ".show tables" }));
+    fn query_activations_request_matches_spec() {
+        let body = build_query_activations_request(".show tables").unwrap();
+        assert_eq!(body, serde_json::json!({"query": ".show tables"}));
     }
 
     #[test]
-    fn activation_query_enforces_spec_length_limit() {
-        let query = "x".repeat(1_048_577);
-        assert!(build_query_activations_body(&query).is_err());
+    fn query_activations_rejects_text_over_spec_limit() {
+        let query = "x".repeat(MAX_ACTIVATIONS_QUERY_CHARS + 1);
+        let error = build_query_activations_request(&query).unwrap_err();
+        assert!(error.to_string().contains("maximum"));
     }
 
     #[test]
-    fn activation_response_preserves_typed_positional_rows() {
-        let response = serde_json::json!({
+    fn query_activations_counts_unicode_characters_not_bytes() {
+        let query = "é".repeat(MAX_ACTIVATIONS_QUERY_CHARS);
+        assert!(build_query_activations_request(&query).is_ok());
+    }
+
+    #[test]
+    fn query_activations_response_deserializes_spec_example() {
+        let response: QueryActivationsResponse = serde_json::from_value(serde_json::json!({
             "tables": [{
                 "tableName": "PrimaryResult",
                 "columns": [
-                    {"columnName": "enabled", "columnType": "Bool"},
+                    {"columnName": "___time", "columnType": "DateTime"},
+                    {"columnName": "count_", "columnType": "Long"}
+                ],
+                "rows": [["2026-04-29T11:00:00Z", 8]]
+            }]
+        }))
+        .unwrap();
+
+        assert_eq!(response.tables.len(), 1);
+        assert_eq!(response.tables[0].table_name, "PrimaryResult");
+        assert_eq!(response.tables[0].columns[1].column_type, "Long");
+        assert_eq!(response.tables[0].rows[0][1], 8);
+    }
+
+    #[test]
+    fn activation_response_preserves_types_and_extension_fields() {
+        let data = serde_json::json!({
+            "requestId": "trace",
+            "tables": [{
+                "tableName": "PrimaryResult",
+                "extra": true,
+                "columns": [
+                    {"columnName": "enabled", "columnType": "Bool", "nullable": false},
                     {"columnName": "duration", "columnType": "TimeSpan"}
                 ],
                 "rows": [[true, "00:01:00"]]
             }]
         });
-        assert_eq!(response["tables"][0]["rows"][0][0], true);
-        assert_eq!(
-            response["tables"][0]["columns"][1]["columnType"],
-            "TimeSpan"
-        );
+        let response: QueryActivationsResponse = serde_json::from_value(data.clone()).unwrap();
+        assert_eq!(serde_json::to_value(response).unwrap(), data);
     }
 }
