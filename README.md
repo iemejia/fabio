@@ -78,6 +78,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 - **Data orchestration** — `--post-run-item` triggers a pipeline or notebook after deployment to populate lakehouses
 - **Dataflow modernization** — assess every Gen1 dataflow for upgrade readiness and migrate 1-50 items to Gen2 in place with per-row results
 - **Capacity governance** — inspect and configure surge protection and preview overage thresholds with structured dry-run previews
+- **Tenant settings as YAML** — export settings, review a change plan, then apply it sequentially; resume throttled work with `--continue` without replaying acknowledged updates
 - **Policy sets** — create tenant- or capacity-scoped governance definitions, manage beta policy rules, and activate them with admin-aware safety guardrails
 - **Git branch governance** — control whether members and contributors may change the connected branch, at connect time or through connection settings
 - **Parallel execution** — bounded-concurrency async deployment (default 8 parallel ops per type)
@@ -115,6 +116,44 @@ fabio deploy apply --source ./export --workspace "Production (empty)" --env prod
 - **Context-aware** -- `fabio context tenant` builds a workspace relationship graph for agent memory; exports as OWL RDF/XML or JSON-LD for Fabric Ontology import
 - **Ontology round-trip** -- `fabio ontology import/export` converts between OWL (RDF/XML, JSON-LD) and Fabric format; compatible with [Ontology Playground](https://github.com/microsoft/Ontology-Playground)
 - **Throttling-aware** -- Bulk/batch APIs preferred; parallel execution with rate-limit retry
+
+## Manage tenant settings as configuration
+
+Fabric administrators can export tenant settings to YAML, edit the desired values,
+and review a plan before changing the tenant:
+
+```bash
+fabio admin export-tenant-settings --out tenant-settings.yaml
+# Edit the exported configuration, keeping the original as a backup.
+fabio admin plan-tenant-settings --file tenant-settings.yaml --out tenant-plan.yaml
+fabio admin apply-tenant-settings --file tenant-plan.yaml --dry-run
+# After reviewing and approving the tenant-wide changes:
+fabio admin apply-tenant-settings --file tenant-plan.yaml --continuation-file apply-state.yaml
+```
+
+These commands are **tenant-scoped**: do not pass `--workspace`. YAML goes to the
+named file; stdout remains a structured summary. Unchanged settings require no
+updates, and settings omitted from the desired configuration are left unmanaged.
+Edit the exported `values`: this workflow supports `enabled` and the enabled/excluded
+security-group lists. Other fields, including delegation and advanced properties,
+are retained as read-only metadata.
+
+The settings API has a low hourly quota. On `RATE_LIMITED`, retain the continuation
+file, wait as instructed, and resume the **same** operation:
+
+```bash
+fabio admin apply-tenant-settings --continue apply-state.yaml
+```
+
+Export and plan support `--continue` too. Do not substitute `--continuation-token`,
+edit checkpoint contents, or restart a partially applied plan from scratch.
+Changes already acknowledged are not replayed; conflicting live changes require
+replanning. Application is not transactional and does not automatically roll back.
+Keep backups and continuation files private: they contain tenant configuration,
+although they do not store authentication credentials.
+
+See the [tenant configuration guide](https://ismaelmejia.com/fabio/guides/github-actions-cicd/#tenant-settings-as-reviewed-configuration)
+and `fabio context best-practices tenant-settings` for recovery and safety details.
 
 ## Installation
 

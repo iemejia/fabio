@@ -8,6 +8,68 @@
         "mutates": false,
         "returns": "list"
       },
+      "export-tenant-settings": {
+        "description": "Export all tenant settings to reviewable YAML, with resumable pagination",
+        "flags": {
+          "--out": {
+            "type": "string",
+            "description": "Destination YAML file (must not already exist)"
+          },
+          "--continue": {
+            "type": "string",
+            "description": "Resume this operation from its checkpoint file"
+          },
+          "--continuation-file": {
+            "type": "string",
+            "description": "Checkpoint destination for a fresh operation"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "plan-tenant-settings": {
+        "description": "Compare desired tenant settings YAML with the live tenant without changing settings",
+        "flags": {
+          "--file": {
+            "type": "string",
+            "description": "Desired settings YAML (an edited export)"
+          },
+          "--out": {
+            "type": "string",
+            "description": "Destination plan YAML file (must not already exist)"
+          },
+          "--continue": {
+            "type": "string",
+            "description": "Resume this operation from its checkpoint file"
+          },
+          "--continuation-file": {
+            "type": "string",
+            "description": "Checkpoint destination for a fresh operation"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "apply-tenant-settings": {
+        "description": "Apply a reviewed tenant settings plan sequentially (tenant-wide governance changes)",
+        "flags": {
+          "--file": {
+            "type": "string",
+            "description": "Reviewed plan YAML, not a desired-state export"
+          },
+          "--continue": {
+            "type": "string",
+            "description": "Resume this operation from its checkpoint file"
+          },
+          "--continuation-file": {
+            "type": "string",
+            "description": "Checkpoint destination for a fresh operation"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
       "update-tenant-setting": {
         "description": "Update a tenant setting",
         "flags": {

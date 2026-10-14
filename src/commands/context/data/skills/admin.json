@@ -26,6 +26,8 @@
     "Workspace-scoped item CRUD -> use the specific workload skill."
   ],
   "key_gotchas": [
+    "Tenant settings YAML workflow: admin export-tenant-settings --out settings.yaml; edit desired values, then admin plan-tenant-settings --file settings.yaml --out plan.yaml; preview admin apply-tenant-settings --file plan.yaml --dry-run before applying. Files contain configuration; stdout remains a structured summary.",
+    "Tenant settings export/plan/apply stop on throttling and checkpoint progress for the low hourly quota. Resume the same command with --continue <checkpoint-file>, not --continuation-token or a fresh --file run. A fresh run accepts --continuation-file to choose the state path. Keep input/plan files unchanged and use the same tenant.",
     "capacity suspend/resume/create/delete use the ARM scope (management.azure.com), not the Fabric scope.",
     "capacity get-surge-protection/update-surge-protection use the Fabric scope and require capacity administrator permissions. Enabling an unconfigured capacity needs rejection and recovery thresholds; disabling clears persisted thresholds.",
     "capacity get-overage-configuration/update-overage-configuration are preview Fabric APIs requiring capacity admin. Thresholds are 0-240000 CU-hours; zero disables overage, and Disabled resets the threshold to zero.",
@@ -40,7 +42,7 @@
     "Disabling capacity surge protection clears its persisted thresholds; preview update-surge-protection with --dry-run.",
     "PolicySet update-definition and replace-rules-by-policy overwrite governance configuration. An empty replacement removes every rule for that policy and requires --force.",
     "--allow-replace on PolicySet activation replaces the currently active set; preview it with --dry-run and confirm the governance change.",
-    "Tenant setting changes are broad — confirm scope before applying.",
+    "Tenant setting changes are broad — confirm scope before applying. apply-tenant-settings is sequential, not transactional: preserve the original export and checkpoint, and do not automatically roll back partial success or bypass live conflicts with --force.",
     "Deleting a workspace is permanent and removes ALL items inside — warn and suggest --dry-run.",
     "workspace delete-recoverable-item permanently removes a soft-deleted item; always inspect list-recoverable-items and use --dry-run first."
   ],
@@ -59,6 +61,14 @@
     "Bulk tenant-setting changes without confirming the scope with the user."
   ],
   "troubleshooting": [
+    {
+      "symptom": "Tenant settings export, plan, or apply returns RATE_LIMITED",
+      "fix": "Wait as instructed, then resume the same operation with --continue <checkpoint-file> from its error hint. Do not restart the original command or replay acknowledged updates. Keep the checkpoint private."
+    },
+    {
+      "symptom": "Tenant settings apply rejects a changed baseline or mismatched plan",
+      "fix": "Review the live changes and generate a new plan with a new output path. Do not modify checkpoint contents or use --force to bypass the review boundary."
+    },
     {
       "symptom": "admin commands return FORBIDDEN",
       "fix": "You need the Fabric administrator role; these are tenant-scoped operations."
@@ -83,6 +93,7 @@
     "sensitivity-labels",
     "tags",
     "tenant-feature-gates",
+    "tenant-settings",
     "workspace-oap",
     "connection-hygiene"
   ],

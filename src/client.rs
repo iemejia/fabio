@@ -321,6 +321,8 @@ impl CachedToken {
 #[derive(Clone)]
 pub struct FabricClient {
     http: Client,
+    #[cfg(test)]
+    fabric_base_url_for_test: Option<String>,
     fabric_token: Arc<tokio::sync::RwLock<Option<CachedToken>>>,
     storage_token: Arc<tokio::sync::RwLock<Option<CachedToken>>>,
     sql_token: Arc<tokio::sync::RwLock<Option<CachedToken>>>,
@@ -351,6 +353,8 @@ impl FabricClient {
 
         Self {
             http,
+            #[cfg(test)]
+            fabric_base_url_for_test: None,
             fabric_token: Arc::new(tokio::sync::RwLock::new(None)),
             storage_token: Arc::new(tokio::sync::RwLock::new(None)),
             sql_token: Arc::new(tokio::sync::RwLock::new(None)),
@@ -421,6 +425,11 @@ impl FabricClient {
     /// If `FABIO_FABRIC_API_ENDPOINT` is set, that value is used directly (no private link
     /// transform applied — the env var is assumed to contain the full desired base URL).
     fn fabric_url(&self, path: &str) -> String {
+        #[cfg(test)]
+        if let Some(base) = &self.fabric_base_url_for_test {
+            return format!("{base}{path}");
+        }
+
         if std::env::var("FABIO_FABRIC_API_ENDPOINT").is_ok() {
             return format!("{}{path}", *FABRIC_BASE_URL);
         }
@@ -432,6 +441,11 @@ impl FabricClient {
                 format!("https://{no_dashes}.z{z_prefix}.w.api.fabric.microsoft.com/v1{path}")
             },
         )
+    }
+
+    /// Effective Fabric API base URL, including configured private-link routing.
+    pub fn fabric_endpoint(&self) -> String {
+        self.fabric_url("").trim_end_matches('/').to_owned()
     }
 
     /// Construct a `OneLake` DFS URL, applying private link transform if configured.
@@ -535,6 +549,12 @@ impl FabricClient {
         drop(src_guard);
 
         Ok(bearer)
+    }
+
+    /// Tenant UUID from the effective Fabric bearer token, never profile defaults.
+    /// Decodes only the identity claim; this is not token signature verification.
+    pub async fn tenant_identity(&self) -> Result<String> {
+        tenant_from_bearer(&self.require_auth().await?)
     }
 
     /// Get a storage token for `OneLake` operations (auto-refreshes if near expiry).
@@ -1306,6 +1326,58 @@ impl FabricClient {
     pub async fn get(&self, path: &str) -> Result<Value> {
         let resp = self.get_raw_response(path).await?;
         handle_response(resp).await
+    }
+
+    /// GET without transient retries. Only a 401 permits one token refresh.
+    pub async fn get_once(&self, path: &str) -> Result<Value> {
+        self.request_once(path, None).await
+    }
+
+    /// POST without transient retries or LRO polling. Only a 401 permits one
+    /// token refresh; callers must checkpoint before attempting a mutation.
+    pub async fn post_once(&self, path: &str, body: &Value) -> Result<Value> {
+        self.guard_readonly("POST", path)?;
+        self.request_once(path, Some(body)).await
+    }
+
+    async fn request_once(&self, path: &str, body: Option<&Value>) -> Result<Value> {
+        validate_once_path(path)?;
+        let url = self.fabric_url(path);
+        validate_trusted_url(&url, "Fabric request URL")?;
+        let token = self.require_auth().await?;
+        let mut resp = send_once_request(&url, &token, body).await?;
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let refreshed = self.require_auth().await?;
+            if let Ok(tenant) = tenant_from_bearer(&token)
+                && tenant_from_bearer(&refreshed).ok().as_deref() != Some(tenant.as_str())
+            {
+                return Err(FabioError::auth_required("The authenticated tenant changed during token refresh; resume with the original tenant").into());
+            }
+            resp = send_once_request(&url, &refreshed, body).await?;
+        }
+
+        let status = resp.status().as_u16();
+        let retry = resp
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| parse_retry_after(value, chrono::Utc::now()));
+        handle_response(resp)
+            .await
+            .map_err(|err| match err.downcast::<FabioError>() {
+                Ok(mut err) => {
+                    if status == 430 {
+                        err.code = ErrorCode::RateLimited;
+                    }
+                    if let Some((retry_after, retry_at)) = retry {
+                        err.retry_after = Some(retry_after);
+                        err.retry_at = Some(retry_at);
+                    }
+                    err.into()
+                }
+                Err(err) => err,
+            })
     }
 
     /// GET request to Fabric REST API that merges the response `ETag` header
@@ -3457,6 +3529,113 @@ async fn acquire_azure_cli_token(
     ))
 }
 
+fn tenant_from_bearer(bearer: &str) -> Result<String> {
+    let invalid = || {
+        FabioError::with_hint(
+            ErrorCode::AuthRequired,
+            "The effective Fabric access token must contain a valid tenant UUID (tid claim).",
+            "Authenticate to the intended tenant with 'fabio auth login --tenant <TENANT_ID>', or supply a valid FABIO_ACCESS_TOKEN.",
+        )
+    };
+    let token = bearer.strip_prefix("Bearer ").ok_or_else(invalid)?;
+    let mut parts = token.split('.');
+    let header = parts.next().ok_or_else(invalid)?;
+    let payload = parts.next().ok_or_else(invalid)?;
+    let signature = parts.next().ok_or_else(invalid)?;
+    if header.is_empty() || signature.is_empty() || parts.next().is_some() {
+        return Err(invalid().into());
+    }
+    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload)
+        .map_err(|_| invalid())?;
+    let claims: Value = serde_json::from_slice(&bytes).map_err(|_| invalid())?;
+    let tenant = claims
+        .get("tid")
+        .and_then(Value::as_str)
+        .ok_or_else(invalid)?;
+    validate_uuid(tenant, "tid").map_err(|_| invalid())?;
+    if uuid::Uuid::parse_str(tenant).is_ok_and(|id| id.is_nil()) {
+        return Err(invalid().into());
+    }
+    Ok(tenant.to_ascii_lowercase())
+}
+
+fn validate_once_path(path: &str) -> Result<()> {
+    let resource_path = path.split('?').next().unwrap_or_default();
+    let decoded = urlencoding::decode(resource_path).map_err(|_| {
+        FabioError::invalid_input("Fabric request path contains invalid URL encoding.")
+    })?;
+    if !path.starts_with('/')
+        || path.starts_with("//")
+        || path.contains(['#', '\\'])
+        || path.chars().any(char::is_whitespace)
+        || path.chars().any(char::is_control)
+        || decoded.contains('\\')
+        || decoded.split('/').any(|part| matches!(part, "." | ".."))
+    {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Expected a Fabric-relative request path without traversal or a fragment.",
+            "Use a path such as '/admin/workspaces'; absolute URLs are not accepted.",
+        )
+        .into());
+    }
+    Ok(())
+}
+
+async fn send_once_request(url: &str, token: &str, body: Option<&Value>) -> Result<Response> {
+    // A separate transport disables even reqwest's protocol-level replay policy,
+    // without changing the existing client's retry behavior.
+    static HTTP: LazyLock<Client> = LazyLock::new(|| {
+        http_client_builder()
+            .timeout(Duration::from_mins(1))
+            .redirect(reqwest::redirect::Policy::none())
+            .retry(reqwest::retry::never())
+            .user_agent(concat!("fabio/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .expect("Failed to build HTTP client: TLS initialization error")
+    });
+    let (method, request) = body.map_or_else(
+        || ("GET", HTTP.get(url)),
+        |body| ("POST", HTTP.post(url).json(body)),
+    );
+    let body_text = body.filter(|_| verbose::is_enabled()).map(Value::to_string);
+    verbose::trace_request(method, url, body_text.as_deref());
+    let start = std::time::Instant::now();
+    let response = request
+        .header(AUTHORIZATION, token)
+        .send()
+        .await
+        .map_err(|err| FabioError::new(ErrorCode::NetworkError, err.to_string()))?;
+    verbose::trace_response(response.status().as_u16(), url, start.elapsed().as_millis());
+    Ok(response)
+}
+
+fn parse_retry_after(value: &str, now: chrono::DateTime<chrono::Utc>) -> Option<(String, String)> {
+    if value.is_empty()
+        || value.len() > 128
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_graphic() || byte == b' ')
+    {
+        return None;
+    }
+    let trimmed = value.trim();
+    let retry_at = if !trimmed.is_empty() && trimmed.bytes().all(|byte| byte.is_ascii_digit()) {
+        let delay = chrono::TimeDelta::try_seconds(trimmed.parse().ok()?)?;
+        now.checked_add_signed(delay)?
+    } else {
+        chrono::DateTime::parse_from_rfc2822(trimmed)
+            .ok()?
+            .with_timezone(&chrono::Utc)
+            .max(now)
+    };
+    Some((
+        value.to_string(),
+        retry_at.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true),
+    ))
+}
+
 /// Handle an HTTP response, converting errors to `FabioError`.
 #[allow(clippy::too_many_lines)]
 async fn handle_response(resp: Response) -> Result<Value> {
@@ -3971,6 +4150,275 @@ pub fn validate_uuid(value: &str, param_name: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod once_tests {
+        use super::*;
+        use serde_json::json;
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        fn bearer(claims: &Value) -> String {
+            format!(
+                "{} header.{}.signature",
+                "Bearer",
+                base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(claims.to_string())
+            )
+        }
+
+        async fn client_for(server: &MockServer) -> FabricClient {
+            let mut client = FabricClient::new();
+            client.fabric_base_url_for_test = Some(format!("{}/v1", server.uri()));
+            *client.fabric_token.write().await = Some(CachedToken::new(
+                "once-test-token".to_string(),
+                std::time::SystemTime::now() + Duration::from_hours(1),
+            ));
+            client
+        }
+
+        fn now() -> chrono::DateTime<chrono::Utc> {
+            chrono::DateTime::parse_from_rfc3339("2026-10-13T05:00:00Z")
+                .unwrap()
+                .with_timezone(&chrono::Utc)
+        }
+
+        #[test]
+        fn retry_after_preserves_full_delay_and_http_date() {
+            assert_eq!(
+                parse_retry_after(" 003600 ", now()),
+                Some((" 003600 ".to_string(), "2026-10-13T06:00:00Z".to_string()))
+            );
+            assert_eq!(
+                parse_retry_after("Tue, 13 Oct 2026 06:00:00 GMT", now()),
+                Some((
+                    "Tue, 13 Oct 2026 06:00:00 GMT".to_string(),
+                    "2026-10-13T06:00:00Z".to_string()
+                ))
+            );
+        }
+
+        #[test]
+        fn retry_after_zero_and_past_date_are_eligible_now() {
+            for raw in ["0", "Tue, 13 Oct 2026 04:00:00 GMT"] {
+                assert_eq!(
+                    parse_retry_after(raw, now()).unwrap().1,
+                    "2026-10-13T05:00:00Z"
+                );
+            }
+        }
+
+        #[test]
+        fn retry_after_rejects_malformed_or_unsafe_values() {
+            for raw in [
+                "",
+                " ",
+                "-1",
+                "+1",
+                "1.5",
+                "tomorrow",
+                "60\r\nHeader: value",
+                "60\t",
+                "é",
+                "999999999999999999999999999999999",
+            ] {
+                assert_eq!(parse_retry_after(raw, now()), None, "{raw:?}");
+            }
+            assert_eq!(parse_retry_after(&"9".repeat(129), now()), None);
+        }
+
+        #[test]
+        fn tenant_claim_requires_a_non_nil_uuid() {
+            assert_eq!(
+                tenant_from_bearer(&bearer(&json!({
+                    "tid": "A1234567-ABCD-4BCD-8BCD-ABCDEF123456"
+                })))
+                .unwrap(),
+                "a1234567-abcd-4bcd-8bcd-abcdef123456"
+            );
+            for claims in [
+                json!({}),
+                json!({"tid": null}),
+                json!({"tid": 123}),
+                json!({"tid": "../another-tenant"}),
+                json!({"tid": "00000000-0000-0000-0000-000000000000"}),
+            ] {
+                let err = tenant_from_bearer(&bearer(&claims)).unwrap_err();
+                let err = err.downcast_ref::<FabioError>().unwrap();
+                assert_eq!(err.code, ErrorCode::AuthRequired);
+                assert!(!err.message.contains("../another-tenant"));
+            }
+        }
+
+        #[test]
+        fn tenant_claim_rejects_malformed_tokens_without_echoing_them() {
+            for suffix in [
+                "opaque-secret",
+                "header.bad%payload.signature",
+                "header.e30.signature.extra",
+                "header.e30.",
+                ".e30.signature",
+                "header..signature",
+                "header.bm90LWpzb24.signature",
+            ] {
+                let token = format!("{} {suffix}", "Bearer");
+                let err = tenant_from_bearer(&token).unwrap_err();
+                assert_eq!(
+                    err.downcast_ref::<FabioError>().unwrap().code,
+                    ErrorCode::AuthRequired
+                );
+                assert!(!err.to_string().contains(&token));
+            }
+        }
+
+        #[tokio::test]
+        async fn tenant_identity_uses_effective_cached_bearer_without_api_calls() {
+            let server = MockServer::start().await;
+            let client = client_for(&server).await;
+            let tenant = "a1234567-abcd-4bcd-8bcd-abcdef123456";
+            let token = bearer(&json!({"tid": tenant}));
+            *client.fabric_token.write().await = Some(CachedToken::new(
+                token.strip_prefix("Bearer ").unwrap().to_string(),
+                std::time::SystemTime::now() + Duration::from_hours(1),
+            ));
+            assert_eq!(client.tenant_identity().await.unwrap(), tenant);
+            assert_eq!(server.received_requests().await.unwrap().len(), 0);
+        }
+
+        #[tokio::test]
+        async fn once_does_not_replay_throttles_or_server_errors() {
+            for verb in ["GET", "POST"] {
+                for status in [429, 430, 500, 502, 503, 504] {
+                    let server = MockServer::start().await;
+                    Mock::given(method(verb))
+                        .and(path("/v1/admin/workspaces"))
+                        .and(header(
+                            "Authorization",
+                            format!("{} once-test-token", "Bearer"),
+                        ))
+                        .respond_with(
+                            ResponseTemplate::new(status)
+                                .insert_header("Retry-After", "3600")
+                                .set_body_json(json!({"error": {
+                                    "message": "unavailable",
+                                    "requestId": "request-once"
+                                }})),
+                        )
+                        .expect(1)
+                        .mount(&server)
+                        .await;
+                    let client = client_for(&server).await;
+                    let err = match verb {
+                        "GET" => client.get_once("/admin/workspaces").await,
+                        _ => client.post_once("/admin/workspaces", &json!({})).await,
+                    }
+                    .unwrap_err();
+                    let err = err.downcast_ref::<FabioError>().unwrap();
+                    assert_eq!(
+                        err.code,
+                        if status < 500 {
+                            ErrorCode::RateLimited
+                        } else {
+                            ErrorCode::ApiError
+                        }
+                    );
+                    assert_eq!(err.retry_after.as_deref(), Some("3600"));
+                    assert!(
+                        chrono::DateTime::parse_from_rfc3339(err.retry_at.as_deref().unwrap())
+                            .is_ok()
+                    );
+                    assert_eq!(err.request_id.as_deref(), Some("request-once"));
+                    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn once_preserves_http_date_and_does_not_follow_redirects_or_poll() {
+            for status in [202, 302, 429] {
+                let server = MockServer::start().await;
+                Mock::given(method("POST"))
+                    .respond_with(
+                        ResponseTemplate::new(status)
+                            .insert_header("Retry-After", "Thu, 01 Jan 2099 00:00:00 GMT")
+                            .insert_header("Location", format!("{}/next", server.uri()))
+                            .set_body_json(json!({"id": "accepted"})),
+                    )
+                    .expect(1)
+                    .mount(&server)
+                    .await;
+                let client = client_for(&server).await;
+                let result = client.post_once("/admin/workspaces", &json!({})).await;
+                if status == 202 {
+                    assert_eq!(result.unwrap()["id"], "accepted");
+                } else {
+                    let err = result.unwrap_err();
+                    let err = err.downcast_ref::<FabioError>().unwrap();
+                    assert_eq!(
+                        err.retry_after.as_deref(),
+                        Some("Thu, 01 Jan 2099 00:00:00 GMT")
+                    );
+                    assert_eq!(err.retry_at.as_deref(), Some("2099-01-01T00:00:00Z"));
+                }
+                assert_eq!(server.received_requests().await.unwrap().len(), 1);
+            }
+        }
+
+        #[tokio::test]
+        async fn once_rejects_unsafe_paths_and_readonly_posts_before_auth() {
+            let client = FabricClient::new();
+            for path in [
+                "https://api.fabric.microsoft.com/v1/admin/workspaces",
+                "//evil.example/path",
+                "/../admin",
+                "/%2e%2e/admin",
+                "/admin#fragment",
+                "/admin\\other",
+                "/admin\nother",
+                "admin/workspaces",
+            ] {
+                let err = client.get_once(path).await.unwrap_err();
+                assert_eq!(
+                    err.downcast_ref::<FabioError>().unwrap().code,
+                    ErrorCode::InvalidInput
+                );
+            }
+            let err = client
+                .with_readonly(true)
+                .post_once("/admin/workspaces", &json!({}))
+                .await
+                .unwrap_err();
+            assert_eq!(
+                err.downcast_ref::<FabioError>().unwrap().code,
+                ErrorCode::ReadonlyMode
+            );
+            assert!(validate_once_path("/admin/workspaces?continuationToken=a%2Fb%3D").is_ok());
+        }
+
+        #[tokio::test]
+        async fn legacy_methods_still_retry_transient_failures() {
+            for (verb, status) in [("GET", 503), ("POST", 429), ("POST", 430), ("POST", 503)] {
+                let server = MockServer::start().await;
+                Mock::given(method(verb))
+                    .respond_with(ResponseTemplate::new(status).insert_header("Retry-After", "0"))
+                    .up_to_n_times(1)
+                    .with_priority(1)
+                    .mount(&server)
+                    .await;
+                Mock::given(method(verb))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true})))
+                    .with_priority(2)
+                    .mount(&server)
+                    .await;
+                let client = client_for(&server).await;
+                let result = match verb {
+                    "GET" => client.get("/admin/workspaces").await,
+                    _ => client.post("/admin/workspaces", &json!({}), false).await,
+                }
+                .unwrap();
+                assert_eq!(result["ok"], true);
+                assert_eq!(server.received_requests().await.unwrap().len(), 2);
+            }
+        }
+    }
 
     #[test]
     fn error_body_message_extraction_handles_both_envelope_shapes() {

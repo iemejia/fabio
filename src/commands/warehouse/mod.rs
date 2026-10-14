@@ -1044,6 +1044,9 @@ pub async fn get_connection_string(
         more_details: None,
         related_resource: None,
         parameters: None,
+        retry_after: None,
+        retry_at: None,
+        progress: None,
     }.into())
 }
 
