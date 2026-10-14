@@ -1,7 +1,7 @@
 {
   "topic": "custom-sql-pools",
   "title": "Custom SQL Pools for Fabric Data Warehouse (workload governance)",
-  "summary": "Custom SQL Pools cap the maximum share of warehouse compute a workload can consume (application-based classification), for workload ISOLATION and predictable resource usage — NOT a spending limit. Read the config with 'warehouse get-sql-pools-config' and apply one with 'warehouse update-sql-pools-config' (a beta JSON passthrough endpoint). Good candidates: ETL/data-loading, background processing, and Power BI reporting that must not starve other workloads. Under allocation-based billing, capping a bursty workload's peak allocation can indirectly reduce consumption (it runs longer at a lower vNode peak).",
+  "summary": "Custom SQL Pools cap the maximum share of warehouse compute a workload can consume (application-name, regex, or SQL statement-type classification), for workload ISOLATION and predictable resource usage — NOT a spending limit. Read the config with 'warehouse get-sql-pools-config' and apply one with 'warehouse update-sql-pools-config'. Good candidates: ETL/data-loading, background processing, and Power BI reporting that must not starve other workloads. Under allocation-based billing, capping a bursty workload's peak allocation can indirectly reduce consumption (it runs longer at a lower vNode peak).",
   "what_it_is": "A governance boundary that limits the maximum percentage of warehouse resources a classified workload can access. Its primary purpose is workload isolation (keep a business-critical Power BI dashboard from contending with an aggressive ETL job); with allocation-based billing, governing allocation also affects consumption.",
   "what_it_is_not": [
     "NOT a spending limit, monthly budget cap, or '$X/month maximum' — it does not stop charges after a threshold.",
@@ -20,7 +20,7 @@
     "preview": "fabio warehouse update-sql-pools-config --workspace $WS --file pools.json --dry-run"
   },
   "config_shape": {
-    "note": "The endpoint (POST/GET /workspaces/{ws}/warehouses/sqlPoolsConfiguration?beta=true) is workspace-scoped (governs all warehouses in the workspace), currently in preview/beta. The top-level shape is verified live; the per-pool classifier schema is defined by the beta API/portal and MUST NOT be hand-invented.",
+    "note": "The endpoint (PATCH/GET /workspaces/{ws}/warehouses/sqlPoolsConfiguration) is workspace-scoped (governs all warehouses in the workspace). It no longer requires the former beta=true query parameter. Classifier type accepts Application Name, Application Name Regex, or Statement Type.",
     "verified_get_response": {"customSQLPoolsEnabled": false, "customSQLPools": []},
     "toggle": "customSQLPoolsEnabled (bool) turns the feature on/off; customSQLPools is the array of pool definitions."
   },
@@ -32,7 +32,8 @@
   ],
   "gotchas": [
     "The config is WORKSPACE-scoped (sqlPoolsConfiguration lives under /warehouses/, not a single warehouse id) — it governs all warehouses in the workspace.",
-    "It is a beta endpoint (?beta=true); the pool/classifier schema may change before GA.",
+    "The former required ?beta=true query parameter was removed when this API graduated from beta.",
+    "Classifier type is case-sensitive and accepts `Application Name`, `Application Name Regex`, or `Statement Type`; Statement Type values are SQL statement names such as `SELECT`.",
     "Updating requires Contributor+ on the workspace; get requires Viewer.",
     "Looking ahead (per Microsoft): identity-based classifiers and configurable built-in SELECT/NONSELECT workload groups are planned — future config shapes may add those."
   ],

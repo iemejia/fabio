@@ -282,6 +282,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/warehouse_get_sql_pools_config.json"),
     ),
     (
+        "reflex/query-activations",
+        include_str!("data/examples/reflex_query_activations.json"),
+    ),
+    (
         "semantic-model/query",
         include_str!("data/examples/semantic_model_query.json"),
     ),

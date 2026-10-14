@@ -5700,7 +5700,7 @@
         ]
       },
       "get-sql-pools-config": {
-        "description": "Get SQL pools configuration for a workspace",
+        "description": "Get SQL pools configuration for a workspace (requires workspace Admin)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -5712,7 +5712,7 @@
         "returns": "object"
       },
       "update-sql-pools-config": {
-        "description": "Update SQL pools configuration for a workspace",
+        "description": "Update SQL pools configuration for a workspace (requires workspace Admin)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -5721,11 +5721,11 @@
           },
           "--file": {
             "type": "string",
-            "description": "Path to JSON file with configuration (prefix with @)"
+            "description": "Path to JSON configuration file. Classifier types include `Application Name`, `Application Name Regex`, and `Statement Type`"
           },
           "--content": {
             "type": "string",
-            "description": "Inline JSON content"
+            "description": "Inline JSON configuration. Classifier types include `Application Name`, `Application Name Regex`, and `Statement Type`"
           }
         },
         "mutates": true,
@@ -9949,6 +9949,26 @@
         "mutates": true,
         "returns": "void",
         "async": true
+      },
+      "list-instances": {
+        "description": "List execute job instances for a copy job",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Copy job ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio copy-job list-instances --workspace $WS --id $COPY_JOB --all"
+        ]
       },
       "run": {
         "description": "Run a copy job on demand",
@@ -15970,6 +15990,31 @@
         "mutates": true,
         "returns": "void",
         "async": true
+      },
+      "query-activations": {
+        "description": "Execute KQL against this reflex's activation records",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Reflex ID"
+          },
+          "--kql": {
+            "type": "string",
+            "description": "KQL text (inline, `@file`, or omit to read from stdin). Supports data queries, `union`, `.show tables`, and `.show table <name> cslschema`. Wildcard `union *` is not supported"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio reflex query-activations --workspace $WS --id $REFLEX --kql \".show tables\"",
+          "fabio reflex query-activations --workspace $WS --id $REFLEX --kql \"union ruleactivations_<RULE1>, ruleactivations_<RULE2> | summarize count() by System.RuleId\""
+        ]
       },
       "create-trigger": {
         "description": "Create a trigger with auto-generated Reflex definition (KQL source + email/Teams alert)",

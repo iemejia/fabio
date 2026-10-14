@@ -215,3 +215,27 @@ fn copy_job_run_and_wait() {
     assert_eq!(data["status"], "Completed");
     assert!(data.get("jobInstanceId").is_some());
 }
+
+#[test]
+#[ignore = "requires live Fabric tenant with a copy job"]
+#[serial]
+fn test_copy_job_list_instances() {
+    let cfg = TestConfig::from_env();
+    let copy_job_id =
+        std::env::var("FABIO_TEST_COPY_JOB_ID").expect("FABIO_TEST_COPY_JOB_ID required");
+
+    let assert = fabio()
+        .args([
+            "copy-job",
+            "list-instances",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &copy_job_id,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(json["data"].is_array());
+    assert!(json["count"].is_number());
+}

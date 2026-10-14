@@ -1,0 +1,40 @@
+{
+  "command": "fabio reflex query-activations --workspace <WS> --id <REFLEX_ID> --kql \".show tables\"",
+  "description": "Execute KQL against a Reflex's activation records. Each query statement produces one table in source-text order.",
+  "response": {
+    "data": {
+      "tables": [
+        {
+          "tableName": "PrimaryResult",
+          "columns": [
+            {
+              "columnName": "TableName",
+              "columnType": "String"
+            },
+            {
+              "columnName": "DatabaseName",
+              "columnType": "String"
+            }
+          ],
+          "rows": [
+            [
+              "ruleactivations_341301deecbd499ca5e60fcdc17ca3e2",
+              ""
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "notes": "Rows are positional arrays aligned with columns. Standard KQL data queries, explicit union queries, .show tables, and .show table <name> cslschema are supported. Wildcard union * is not supported. Query text is limited to 1,048,576 characters and may time out after approximately 30 seconds.",
+  "query_examples": [
+    {
+      "query": "tables[0].columns[].columnName",
+      "description": "List the first result table's column names"
+    },
+    {
+      "query": "tables[0].rows",
+      "description": "Extract the first result table's positional rows"
+    }
+  ]
+}

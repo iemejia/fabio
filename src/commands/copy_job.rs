@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::Subcommand;
+use serde::Deserialize;
 use serde_json::Value;
 
 use crate::cli::Cli;
@@ -141,8 +142,20 @@ pub enum CopyJobCommand {
         content: Option<String>,
     },
 
+    /// List execute job instances for a copy job
+    #[command(name = "list-instances", display_order = 10)]
+    ListInstances {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Copy job ID
+        #[arg(long)]
+        id: String,
+    },
+
     /// Run a copy job on demand
-    #[command(display_order = 10)]
+    #[command(display_order = 11)]
     Run {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
@@ -234,6 +247,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &CopyJobCommand)
             )
             .await
         }
+        CopyJobCommand::ListInstances { workspace, id } => {
+            list_instances(cli, client, workspace, id).await
+        }
         CopyJobCommand::Run {
             workspace,
             id,
@@ -257,9 +273,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &CopyJobCommand)
 
 // ─── Run ─────────────────────────────────────────────────────────────────────
 
-/// Run a copy job on demand. Uses the Job Scheduler `jobType=Execute` trigger
-/// (the copy-job on-demand run type); the resulting instance's own `jobType` is
-/// reported by the API as `CopyJob`.
+/// Run a copy job on demand through its dedicated execute-job endpoint.
 async fn run(
     cli: &Cli,
     client: &FabricClient,
@@ -269,6 +283,7 @@ async fn run(
     timeout_secs: u64,
     cancel_on_timeout: bool,
 ) -> Result<()> {
+    let trigger_path = execute_instances_path(workspace, id);
     crate::commands::item_job::run_and_wait(
         cli,
         client,
@@ -281,10 +296,66 @@ async fn run(
             op: "copy-job run",
             label: "Copy job run",
             job_type: "Execute",
-            role: "Contributor",
+            trigger_path: Some(&trigger_path),
+            role: "Member",
         },
     )
     .await
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+struct CopyJobExecuteJobInstance {
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    item_id: Option<String>,
+    #[serde(default)]
+    job_type: Option<String>,
+    #[serde(default)]
+    invoke_type: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    root_activity_id: Option<String>,
+    #[serde(default)]
+    start_time_utc: Option<String>,
+    #[serde(default)]
+    end_time_utc: Option<String>,
+    #[serde(default)]
+    failure_reason: Option<Value>,
+    #[serde(flatten)]
+    additional_properties: serde_json::Map<String, Value>,
+}
+
+fn execute_instances_path(workspace: &str, id: &str) -> String {
+    format!("/workspaces/{workspace}/copyJobs/{id}/jobs/execute/instances")
+}
+
+async fn list_instances(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let response = client
+        .get_list(
+            &execute_instances_path(workspace, id),
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "copy-job list-instances", "Viewer"))?;
+    for item in &response.items {
+        serde_json::from_value::<CopyJobExecuteJobInstance>(item.clone())?;
+    }
+
+    output::render_list_with_token(
+        cli,
+        &response.items,
+        &["id", "status", "invokeType", "startTimeUtc", "endTimeUtc"],
+        &["ID", "STATUS", "INVOKE", "START", "END"],
+        "id",
+        response.continuation_token.as_deref(),
+    );
+    Ok(())
 }
 
 // ─── CRUD ────────────────────────────────────────────────────────────────────
@@ -541,5 +612,33 @@ mod tests {
     fn reset_body_no_flags_errors() {
         let result = build_reset_body(false, &[]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn execute_instances_url_matches_spec() {
+        assert_eq!(
+            execute_instances_path("workspace-id", "copy-job-id"),
+            "/workspaces/workspace-id/copyJobs/copy-job-id/jobs/execute/instances"
+        );
+    }
+
+    #[test]
+    fn execute_job_instance_deserializes_spec_example() {
+        let instance: CopyJobExecuteJobInstance = serde_json::from_value(serde_json::json!({
+            "id": "aaaaaaaa-0000-1111-2222-bbbbbbbbbbbb",
+            "itemId": "dddddddd-9999-0000-1111-eeeeeeeeeeee",
+            "jobType": "execute",
+            "invokeType": "Manual",
+            "status": "Completed",
+            "rootActivityId": "11111111-2222-3333-4444-555555555555",
+            "startTimeUtc": "2024-06-22T06:35:00.7812154",
+            "endTimeUtc": "2024-06-22T06:35:00.8033333",
+            "failureReason": null
+        }))
+        .unwrap();
+
+        assert_eq!(instance.status.as_deref(), Some("Completed"));
+        assert_eq!(instance.invoke_type.as_deref(), Some("Manual"));
+        assert_eq!(instance.failure_reason, None);
     }
 }

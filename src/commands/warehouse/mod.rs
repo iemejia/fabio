@@ -248,25 +248,27 @@ pub enum WarehouseCommand {
         #[arg(long)]
         private_link_type: Option<String>,
     },
-    /// Get SQL pools configuration for a workspace
+    /// Get SQL pools configuration for a workspace (requires workspace Admin)
     #[command(display_order = 20)]
     GetSqlPoolsConfig {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
     },
-    /// Update SQL pools configuration for a workspace
+    /// Update SQL pools configuration for a workspace (requires workspace Admin)
     #[command(display_order = 21)]
     UpdateSqlPoolsConfig {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
 
-        /// Path to JSON file with configuration (prefix with @)
+        /// Path to JSON configuration file. Classifier types include
+        /// `Application Name`, `Application Name Regex`, and `Statement Type`.
         #[arg(long, group = "input")]
         file: Option<String>,
 
-        /// Inline JSON content
+        /// Inline JSON configuration. Classifier types include
+        /// `Application Name`, `Application Name Regex`, and `Statement Type`.
         #[arg(long, group = "input")]
         content: Option<String>,
     },

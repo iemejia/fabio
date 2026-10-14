@@ -5,7 +5,7 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use anyhow::Result;
-use reqwest::header::AUTHORIZATION;
+use reqwest::header::{AUTHORIZATION, HeaderMap};
 use reqwest::{Client, Response, StatusCode};
 use serde_json::Value;
 use tokio::time::sleep;
@@ -256,6 +256,20 @@ pub struct PaginatedResponse {
     pub items: Vec<Value>,
     /// If present, there are more pages available. Pass this token to fetch the next page.
     pub continuation_token: Option<String>,
+}
+
+/// Metadata returned by an accepted item-job trigger.
+pub struct TriggeredJob {
+    pub id: String,
+    pub retry_after: Option<Duration>,
+}
+
+fn retry_after_from_headers(headers: &HeaderMap) -> Option<Duration> {
+    headers
+        .get("Retry-After")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(Duration::from_secs)
 }
 
 /// Which credential source successfully provided a token.
@@ -1533,9 +1547,18 @@ impl FabricClient {
     /// Retries once on 401 with a fresh token.
     /// Retries up to 3 times on 429/430 (rate limited) with exponential backoff.
     pub async fn post(&self, path: &str, body: &Value, poll: bool) -> Result<Value> {
+        self.guard_readonly("POST", path)?;
+        self.post_impl(path, body, poll).await
+    }
+
+    /// POST request for a semantically read-only API such as query execution.
+    pub async fn post_readonly(&self, path: &str, body: &Value) -> Result<Value> {
+        self.post_impl(path, body, false).await
+    }
+
+    async fn post_impl(&self, path: &str, body: &Value, poll: bool) -> Result<Value> {
         const MAX_RATE_LIMIT_RETRIES: u32 = 3;
         const MAX_TRANSIENT_RETRIES: u32 = 3;
-        self.guard_readonly("POST", path)?;
         let url = self.fabric_url(path);
         let mut attempt: u32 = 0;
         let mut transient_attempt: u32 = 0;
@@ -2950,36 +2973,52 @@ impl FabricClient {
     /// Trigger a job at a specific URL path (for item types that use path-based
     /// job endpoints instead of `?jobType=` query parameter).
     pub async fn trigger_item_job_at(&self, path: &str, body: Option<&Value>) -> Result<String> {
+        Ok(self
+            .trigger_item_job_at_with_retry_after(path, body)
+            .await?
+            .id)
+    }
+
+    /// Trigger a path-based item job and preserve its first-poll delay.
+    pub async fn trigger_item_job_at_with_retry_after(
+        &self,
+        path: &str,
+        body: Option<&Value>,
+    ) -> Result<TriggeredJob> {
         self.guard_readonly("POST", path)?;
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
-        let request_body = body.cloned().unwrap_or_else(|| serde_json::json!({}));
-
-        let resp = self
-            .http
-            .post(&url)
-            .header(AUTHORIZATION, &token)
-            .json(&request_body)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+        let request = self.http.post(&url).header(AUTHORIZATION, &token);
+        let resp = match body {
+            Some(request_body) => request.json(request_body),
+            None => request,
+        }
+        .send()
+        .await
+        .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
 
         if resp.status() == StatusCode::UNAUTHORIZED {
             self.invalidate_fabric_token().await;
             let token = self.require_auth().await?;
-            let resp = self
-                .http
-                .post(&url)
-                .header(AUTHORIZATION, &token)
-                .json(&request_body)
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            return Self::extract_job_id_from_response(resp).await;
+            let request = self.http.post(&url).header(AUTHORIZATION, &token);
+            let resp = match body {
+                Some(request_body) => request.json(request_body),
+                None => request,
+            }
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return Self::extract_job_trigger_from_response(resp).await;
         }
 
-        Self::extract_job_id_from_response(resp).await
+        Self::extract_job_trigger_from_response(resp).await
+    }
+
+    async fn extract_job_trigger_from_response(resp: Response) -> Result<TriggeredJob> {
+        let retry_after = retry_after_from_headers(resp.headers());
+        let id = Self::extract_job_id_from_response(resp).await?;
+        Ok(TriggeredJob { id, retry_after })
     }
 
     /// Poll a long-running operation until completion.
@@ -3971,6 +4010,19 @@ pub fn validate_uuid(value: &str, param_name: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retry_after_header_parses_delta_seconds() {
+        let mut headers = HeaderMap::new();
+        headers.insert("Retry-After", "60".parse().unwrap());
+        assert_eq!(
+            retry_after_from_headers(&headers),
+            Some(Duration::from_secs(60))
+        );
+
+        headers.insert("Retry-After", "invalid".parse().unwrap());
+        assert_eq!(retry_after_from_headers(&headers), None);
+    }
 
     #[test]
     fn error_body_message_extraction_handles_both_envelope_shapes() {
