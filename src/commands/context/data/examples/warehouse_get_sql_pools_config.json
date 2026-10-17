@@ -7,7 +7,7 @@
       "customSQLPools": []
     }
   },
-  "notes": "Verified live: a workspace with no custom pools returns {customSQLPoolsEnabled:false, customSQLPools:[]}. The endpoint is workspace-scoped and beta (GET/POST /workspaces/{ws}/warehouses/sqlPoolsConfiguration?beta=true). 'customSQLPoolsEnabled' toggles the feature; 'customSQLPools' holds the pool definitions (each pool caps a classified workload to a percentage of warehouse resources). Because the per-pool classifier schema is beta and not publicly documented, the reliable pattern is: configure pools ONCE in the Fabric Portal, then capture the working JSON with this command (get-sql-pools-config -o json > pools.json), version it, and re-apply it elsewhere with 'warehouse update-sql-pools-config --file pools.json --dry-run' first. See the 'custom-sql-pools' best-practice (fabio context best-practices custom-sql-pools).",
+  "notes": "A workspace with no custom pools returns {customSQLPoolsEnabled:false, customSQLPools:[]}. The stable endpoint is workspace-scoped (GET/PATCH /workspaces/{ws}/warehouses/sqlPoolsConfiguration) and must not include ?beta=true. 'customSQLPoolsEnabled' toggles the feature; 'customSQLPools' holds pool definitions. Classifier type accepts the exact values 'Application Name', 'Application Name Regex', and 'Statement Type'. Capture working JSON with this command, version it, and re-apply it elsewhere with 'warehouse update-sql-pools-config --file pools.json --dry-run' first. See 'fabio context best-practices custom-sql-pools'.",
   "query_examples": [
     "fabio warehouse get-sql-pools-config --workspace <WS> --query customSQLPoolsEnabled -o plain",
     "fabio warehouse get-sql-pools-config --workspace <WS> -o json > pools.json"

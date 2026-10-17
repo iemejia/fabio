@@ -41,11 +41,9 @@ pub(super) async fn get_sql_pools_config(
     workspace: &str,
 ) -> Result<()> {
     let data = client
-        .get(&format!(
-            "/workspaces/{workspace}/warehouses/sqlPoolsConfiguration?beta=true"
-        ))
+        .get(&sql_pools_config_path(workspace))
         .await
-        .map_err(|e| enrich_forbidden(e, "warehouse get-sql-pools-config", "Viewer"))?;
+        .map_err(|e| enrich_forbidden(e, "warehouse get-sql-pools-config", "Admin"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -81,14 +79,15 @@ pub(super) async fn update_sql_pools_config(
     }
 
     let data = client
-        .patch(
-            &format!("/workspaces/{workspace}/warehouses/sqlPoolsConfiguration?beta=true"),
-            &body,
-        )
+        .patch(&sql_pools_config_path(workspace), &body)
         .await
-        .map_err(|e| enrich_forbidden(e, "warehouse update-sql-pools-config", "Contributor"))?;
+        .map_err(|e| enrich_forbidden(e, "warehouse update-sql-pools-config", "Admin"))?;
     output::render_object(cli, &data, "id");
     Ok(())
+}
+
+fn sql_pools_config_path(workspace: &str) -> String {
+    format!("/workspaces/{workspace}/warehouses/sqlPoolsConfiguration")
 }
 
 pub(super) async fn get_audit_settings(
@@ -176,4 +175,40 @@ pub(super) async fn set_audit_actions(
         .map_err(|e| enrich_forbidden(e, "warehouse set-audit-actions", "Contributor"))?;
     output::render_object(cli, &data, "id");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sql_pools_path_no_longer_has_beta_parameter() {
+        assert_eq!(
+            sql_pools_config_path("workspace-1"),
+            "/workspaces/workspace-1/warehouses/sqlPoolsConfiguration"
+        );
+    }
+
+    #[test]
+    fn statement_type_classifier_round_trips() {
+        let config = serde_json::json!({
+            "customSQLPoolsEnabled": true,
+            "customSQLPools": [{
+                "name": "Reads",
+                "isDefault": false,
+                "maxResourcePercentage": 40,
+                "optimizeForReads": true,
+                "classifier": {
+                    "type": "Statement Type",
+                    "value": ["SELECT"]
+                }
+            }]
+        });
+        let serialized = serde_json::to_string(&config).unwrap();
+        let round_trip: Value = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(
+            round_trip["customSQLPools"][0]["classifier"]["type"],
+            "Statement Type"
+        );
+    }
 }

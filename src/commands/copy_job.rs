@@ -164,6 +164,18 @@ pub enum CopyJobCommand {
         #[arg(long)]
         cancel_on_timeout: bool,
     },
+
+    /// List execute job instances for a copy job
+    #[command(name = "list-instances", display_order = 11)]
+    ListInstances {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Copy job ID
+        #[arg(long)]
+        id: String,
+    },
 }
 
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &CopyJobCommand) -> Result<()> {
@@ -252,14 +264,15 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &CopyJobCommand)
             )
             .await
         }
+        CopyJobCommand::ListInstances { workspace, id } => {
+            list_instances(cli, client, workspace, id).await
+        }
     }
 }
 
 // ─── Run ─────────────────────────────────────────────────────────────────────
 
-/// Run a copy job on demand. Uses the Job Scheduler `jobType=Execute` trigger
-/// (the copy-job on-demand run type); the resulting instance's own `jobType` is
-/// reported by the API as `CopyJob`.
+/// Run a copy job on demand through its dedicated execute endpoint.
 async fn run(
     cli: &Cli,
     client: &FabricClient,
@@ -281,10 +294,33 @@ async fn run(
             op: "copy-job run",
             label: "Copy job run",
             job_type: "Execute",
-            role: "Contributor",
+            path_collection: Some("copyJobs"),
+            role: "Member",
         },
     )
     .await
+}
+
+async fn list_instances(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let response = client
+        .get_list(
+            &format!("/workspaces/{workspace}/copyJobs/{id}/jobs/execute/instances"),
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "copy-job list-instances", "Viewer"))?;
+
+    output::render_list_with_token(
+        cli,
+        &response.items,
+        &["id", "status", "invokeType", "startTimeUtc", "endTimeUtc"],
+        &["ID", "STATUS", "INVOKE", "START", "END"],
+        "id",
+        response.continuation_token.as_deref(),
+    );
+    Ok(())
 }
 
 // ─── CRUD ────────────────────────────────────────────────────────────────────
@@ -541,5 +577,17 @@ mod tests {
     fn reset_body_no_flags_errors() {
         let result = build_reset_body(false, &[]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn execute_instances_path_matches_spec() {
+        let path = format!(
+            "/workspaces/{}/copyJobs/{}/jobs/execute/instances",
+            "workspace-1", "copy-job-1"
+        );
+        assert_eq!(
+            path,
+            "/workspaces/workspace-1/copyJobs/copy-job-1/jobs/execute/instances"
+        );
     }
 }

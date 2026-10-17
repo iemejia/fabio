@@ -5,8 +5,86 @@ mod common;
 use common::{TestConfig, extract_data, fabio, parse_json};
 use predicates::prelude::*;
 use serial_test::serial;
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{body_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+
+#[test]
+#[serial]
+fn warehouse_sql_pools_uses_stable_endpoint_and_statement_type_classifier() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+    let route = format!("/workspaces/{workspace}/warehouses/sqlPoolsConfiguration");
+    let body = serde_json::json!({
+        "customSQLPoolsEnabled": true,
+        "customSQLPools": [{
+            "name": "Reads",
+            "isDefault": false,
+            "maxResourcePercentage": 40,
+            "optimizeForReads": true,
+            "classifier": {
+                "type": "Statement Type",
+                "value": ["SELECT"]
+            }
+        }]
+    });
+    let (server_uri, server) = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(&route))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body.clone()))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path(&route))
+            .and(body_json(body.clone()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body.clone()))
+            .expect(1)
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let get_assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "warehouse",
+            "get-sql-pools-config",
+            "--workspace",
+            workspace,
+        ])
+        .assert()
+        .success();
+    let get_data = extract_data(&parse_json(&get_assert)).clone();
+    assert_eq!(
+        get_data["customSQLPools"][0]["classifier"]["type"],
+        "Statement Type"
+    );
+
+    fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "warehouse",
+            "update-sql-pools-config",
+            "--workspace",
+            workspace,
+            "--content",
+            &body.to_string(),
+        ])
+        .assert()
+        .success();
+
+    let requests = runtime
+        .block_on(server.received_requests())
+        .expect("request recording enabled");
+    assert_eq!(requests.len(), 2);
+    assert!(requests.iter().all(|request| request.url.query().is_none()));
+}
 
 #[test]
 #[ignore = "requires live Fabric tenant"]

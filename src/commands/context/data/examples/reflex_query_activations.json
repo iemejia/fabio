@@ -1,0 +1,40 @@
+{
+  "command": "fabio reflex query-activations --workspace <WS> --id <REFLEX_ID> --kql '.show tables'",
+  "description": "Query Reflex activation records with KQL. The response contains one positional table per query statement.",
+  "response": {
+    "data": {
+      "tables": [
+        {
+          "tableName": "PrimaryResult",
+          "columns": [
+            {
+              "columnName": "TableName",
+              "columnType": "String"
+            },
+            {
+              "columnName": "DatabaseName",
+              "columnType": "String"
+            }
+          ],
+          "rows": [
+            [
+              "ruleactivations_341301deecbd499ca5e60fcdc17ca3e2",
+              ""
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "notes": "Rows are arrays whose values align positionally with columns. Current columnType values are Bool, DateTime, Decimal, Dynamic, Guid, Int, Long, Real, String, and TimeSpan; additional values may appear over time. Standard KQL data queries, explicit union across activation tables, '.show tables', and '.show table <name> cslschema' are supported. 'union *' and other management commands are rejected. Query text is limited to 1,048,576 characters and may time out after about 30 seconds.",
+  "query_examples": [
+    {
+      "query": "data.tables[0].columns[].columnName",
+      "description": "List column names for the first result table"
+    },
+    {
+      "query": "data.tables[0].rows",
+      "description": "Extract the positional rows from the first statement"
+    }
+  ]
+}

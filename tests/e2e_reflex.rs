@@ -4,6 +4,8 @@ mod common;
 
 use common::{TestConfig, extract_data, fabio, parse_json};
 use serial_test::serial;
+use wiremock::matchers::{body_json, method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// Build a minimal simulator-based Reflex definition with an `AttributeTrigger` rule.
 /// This is a self-contained definition (no external data sources) that exercises:
@@ -220,6 +222,102 @@ fn reflex_dry_run_create() {
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(json["data"]["would_execute"], "reflex create");
+}
+
+#[test]
+fn reflex_query_activations_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "reflex",
+            "query-activations",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--kql",
+            ".show tables",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert_eq!(json["data"]["would_execute"], "reflex query-activations");
+    assert_eq!(json["data"]["details"]["query"], ".show tables");
+}
+
+#[test]
+#[serial]
+fn reflex_query_activations_sends_kql_and_renders_tables() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+    let reflex = "bbbbbbbb-1111-2222-3333-444444444444";
+    let route = format!("/workspaces/{workspace}/reflexes/{reflex}/queryActivations");
+    let (server_uri, _server) = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(&route))
+            .and(body_json(serde_json::json!({"query": ".show tables"})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "tables": [{
+                    "tableName": "PrimaryResult",
+                    "columns": [
+                        {"columnName": "TableName", "columnType": "String"},
+                        {"columnName": "DatabaseName", "columnType": "String"}
+                    ],
+                    "rows": [["ruleactivations_1234", ""]]
+                }]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server_uri)
+        .args([
+            "reflex",
+            "query-activations",
+            "--workspace",
+            workspace,
+            "--id",
+            reflex,
+            "--kql",
+            ".show tables",
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&assert)).clone();
+    assert_eq!(data["tables"][0]["tableName"], "PrimaryResult");
+    assert_eq!(data["tables"][0]["columns"][0]["columnType"], "String");
+    assert_eq!(data["tables"][0]["rows"][0][0], "ruleactivations_1234");
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant with a reflex that has activation records"]
+#[serial]
+fn reflex_query_activations_live_show_tables() {
+    let cfg = TestConfig::from_env();
+    let reflex_id = std::env::var("FABIO_TEST_REFLEX_ID").expect("FABIO_TEST_REFLEX_ID required");
+    let assert = fabio()
+        .args([
+            "reflex",
+            "query-activations",
+            "--workspace",
+            &cfg.source_workspace,
+            "--id",
+            &reflex_id,
+            "--kql",
+            ".show tables",
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&assert)).clone();
+    assert!(data["tables"].is_array());
 }
 
 // ─── Definition Tests ────────────────────────────────────────────────────────

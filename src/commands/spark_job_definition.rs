@@ -519,6 +519,7 @@ async fn run(
             op: "spark-job-definition run",
             label: "Spark job",
             job_type: "sparkjob",
+            path_collection: None,
             role: "Contributor",
         },
     )

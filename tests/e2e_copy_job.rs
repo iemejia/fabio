@@ -4,6 +4,8 @@ mod common;
 
 use common::{TestConfig, extract_data, fabio, parse_json};
 use serial_test::serial;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[test]
 #[ignore = "requires live Fabric tenant"]
@@ -214,4 +216,111 @@ fn copy_job_run_and_wait() {
     let data = extract_data(&json);
     assert_eq!(data["status"], "Completed");
     assert!(data.get("jobInstanceId").is_some());
+}
+
+#[test]
+#[serial]
+fn copy_job_run_uses_dedicated_execute_endpoint() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+    let copy_job = "bbbbbbbb-1111-2222-3333-444444444444";
+    let instance = "cccccccc-1111-2222-3333-444444444444";
+    let route = format!("/workspaces/{workspace}/copyJobs/{copy_job}/jobs/execute/instances");
+    let (server_uri, server) = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(&route))
+            .respond_with(
+                ResponseTemplate::new(202)
+                    .insert_header(
+                        "Location",
+                        format!(
+                            "{}/workspaces/{workspace}/items/{copy_job}/jobs/instances/{instance}",
+                            server.uri()
+                        ),
+                    )
+                    .insert_header("Retry-After", "60"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server_uri)
+        .args([
+            "copy-job",
+            "run",
+            "--workspace",
+            workspace,
+            "--id",
+            copy_job,
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&assert)).clone();
+    assert_eq!(data["jobInstanceId"], instance);
+    assert_eq!(data["status"], "started");
+    let requests = runtime
+        .block_on(server.received_requests())
+        .expect("request recording enabled");
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].body.len(), 0);
+}
+
+#[test]
+#[serial]
+fn copy_job_list_instances_uses_paginated_endpoint() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+    let copy_job = "bbbbbbbb-1111-2222-3333-444444444444";
+    let route = format!("/workspaces/{workspace}/copyJobs/{copy_job}/jobs/execute/instances");
+    let (server_uri, _server) = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(&route))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [{
+                    "id": "cccccccc-1111-2222-3333-444444444444",
+                    "itemId": copy_job,
+                    "jobType": "execute",
+                    "invokeType": "Manual",
+                    "status": "Completed",
+                    "rootActivityId": "dddddddd-1111-2222-3333-444444444444",
+                    "startTimeUtc": "2024-06-22T06:35:00.7812154",
+                    "endTimeUtc": "2024-06-22T06:35:00.8033333",
+                    "failureReason": null
+                }]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let assert = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server_uri)
+        .args([
+            "copy-job",
+            "list-instances",
+            "--workspace",
+            workspace,
+            "--id",
+            copy_job,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert_eq!(json["count"], 1);
+    assert_eq!(json["data"][0]["status"], "Completed");
+    assert_eq!(json["data"][0]["invokeType"], "Manual");
 }
