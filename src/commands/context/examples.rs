@@ -246,6 +246,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/reflex_create_trigger.json"),
     ),
     (
+        "reflex/query-activations",
+        include_str!("data/examples/reflex_query_activations.json"),
+    ),
+    (
         "ontology/import",
         include_str!("data/examples/ontology_import.json"),
     ),

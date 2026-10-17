@@ -23,6 +23,8 @@ pub struct RunSpec<'a> {
     pub label: &'a str,
     /// The `trigger_item_job` on-demand job type (e.g. `"Execute"`).
     pub job_type: &'a str,
+    /// Item collection for a path-based execute endpoint, when the API exposes one.
+    pub path_collection: Option<&'a str>,
     /// Minimum role named in the permission-error hint.
     pub role: &'a str,
 }
@@ -51,11 +53,21 @@ pub async fn run_and_wait(
         return Ok(());
     }
 
-    // `trigger_item_job` reads the new instance id from the 202 `Location` header.
-    let job_id = client
-        .trigger_item_job(workspace, id, spec.job_type, None)
-        .await
-        .map_err(|e| enrich_forbidden(e, spec.op, spec.role))?;
+    // Job trigger helpers read the instance id from the 202 `Location` header.
+    let (job_id, first_poll_delay) = if let Some(collection) = spec.path_collection {
+        let path = format!("/workspaces/{workspace}/{collection}/{id}/jobs/execute/instances");
+        let trigger = client
+            .trigger_item_job_at_with_retry_after(&path, None)
+            .await
+            .map_err(|e| enrich_forbidden(e, spec.op, spec.role))?;
+        (trigger.job_id, trigger.retry_after)
+    } else {
+        let job_id = client
+            .trigger_item_job(workspace, id, spec.job_type, None)
+            .await
+            .map_err(|e| enrich_forbidden(e, spec.op, spec.role))?;
+        (job_id, None)
+    };
 
     if !wait {
         let obj = serde_json::json!({ "itemId": id, "jobInstanceId": job_id, "status": "started" });
@@ -64,11 +76,13 @@ pub async fn run_and_wait(
     }
 
     let poll_interval = std::time::Duration::from_secs(5);
+    let mut next_poll_delay = first_poll_delay.unwrap_or(poll_interval);
     let max_wait = std::time::Duration::from_secs(timeout_secs);
     let start = std::time::Instant::now();
 
     loop {
-        if start.elapsed() > max_wait {
+        let elapsed = start.elapsed();
+        if elapsed >= max_wait || next_poll_delay > max_wait.saturating_sub(elapsed) {
             if cancel_on_timeout && !job_id.is_empty() {
                 let cancel_path =
                     format!("/workspaces/{workspace}/items/{id}/jobs/instances/{job_id}/cancel");
@@ -87,7 +101,8 @@ pub async fn run_and_wait(
             .into());
         }
 
-        tokio::time::sleep(poll_interval).await;
+        tokio::time::sleep(next_poll_delay).await;
+        next_poll_delay = poll_interval;
 
         let status_path = format!("/workspaces/{workspace}/items/{id}/jobs/instances/{job_id}");
         if let Ok(ref status_data) = client.get(&status_path).await {

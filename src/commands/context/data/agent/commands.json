@@ -9979,6 +9979,27 @@
         "mutates": true,
         "returns": "object",
         "async": true
+      },
+      "list-instances": {
+        "description": "List execute job instances for a copy job",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Copy job ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio copy-job list-instances --workspace $WS --id $COPY_JOB -o table",
+          "fabio copy-job list-instances --workspace $WS --id $COPY_JOB --all --query 'data[].{id:id,status:status}'"
+        ]
       }
     }
   },
@@ -16302,6 +16323,32 @@
         "returns": "list",
         "examples": [
           "fabio reflex rule-activations --workspace $WS --id $REFLEX --rule-id $RULE --max-results 50"
+        ]
+      },
+      "query-activations": {
+        "description": "Run KQL against this reflex's activation records",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Reflex ID"
+          },
+          "--kql": {
+            "type": "string",
+            "required": true,
+            "description": "KQL data query, `.show tables`, or `.show table <name> cslschema`"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio reflex query-activations --workspace $WS --id $REFLEX --kql '.show tables'",
+          "fabio reflex query-activations --workspace $WS --id $REFLEX --kql 'union ruleactivations_rule1, ruleactivations_rule2 | summarize count() by System.RuleId'"
         ]
       }
     }

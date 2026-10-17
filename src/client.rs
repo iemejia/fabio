@@ -337,6 +337,14 @@ pub struct FabricClient {
     readonly: bool,
 }
 
+/// Metadata returned when an on-demand job is accepted.
+pub struct JobTrigger {
+    /// Job instance identifier parsed from the response `Location` header.
+    pub job_id: String,
+    /// Minimum delay before the first status poll, when supplied by the service.
+    pub retry_after: Option<Duration>,
+}
+
 impl FabricClient {
     pub fn new() -> Self {
         // Disable automatic redirect following to prevent bearer token leakage.
@@ -2922,7 +2930,7 @@ impl FabricClient {
     /// Extract the job instance ID from a job trigger response's Location
     /// header. Returns an error if the response indicates failure or if no
     /// job ID can be found.
-    async fn extract_job_id_from_response(resp: Response) -> Result<String> {
+    async fn extract_job_trigger_from_response(resp: Response) -> Result<JobTrigger> {
         let status = resp.status();
         if status != StatusCode::ACCEPTED && status != StatusCode::OK {
             // Route job-trigger failures through the shared metadata-preserving path
@@ -2930,6 +2938,13 @@ impl FabricClient {
             return Err(error_from_failed_response(resp).await.into());
         }
 
+        let retry_after = resp
+            .headers()
+            .get("Retry-After")
+            .or_else(|| resp.headers().get("retry-after"))
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<u64>().ok())
+            .map(Duration::from_secs);
         let location = resp
             .headers()
             .get("location")
@@ -2944,23 +2959,41 @@ impl FabricClient {
             );
         }
 
-        Ok(job_id)
+        Ok(JobTrigger {
+            job_id,
+            retry_after,
+        })
+    }
+
+    async fn extract_job_id_from_response(resp: Response) -> Result<String> {
+        Ok(Self::extract_job_trigger_from_response(resp).await?.job_id)
     }
 
     /// Trigger a job at a specific URL path (for item types that use path-based
     /// job endpoints instead of `?jobType=` query parameter).
     pub async fn trigger_item_job_at(&self, path: &str, body: Option<&Value>) -> Result<String> {
+        Ok(self
+            .trigger_item_job_at_with_retry_after(path, body)
+            .await?
+            .job_id)
+    }
+
+    /// Trigger a path-based item job and preserve the server's first-poll delay.
+    pub async fn trigger_item_job_at_with_retry_after(
+        &self,
+        path: &str,
+        body: Option<&Value>,
+    ) -> Result<JobTrigger> {
         self.guard_readonly("POST", path)?;
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
-        let request_body = body.cloned().unwrap_or_else(|| serde_json::json!({}));
-
-        let resp = self
-            .http
-            .post(&url)
-            .header(AUTHORIZATION, &token)
-            .json(&request_body)
+        let request = self.http.post(&url).header(AUTHORIZATION, &token);
+        let request = match body {
+            Some(value) => request.json(value),
+            None => request,
+        };
+        let resp = request
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
@@ -2968,18 +3001,19 @@ impl FabricClient {
         if resp.status() == StatusCode::UNAUTHORIZED {
             self.invalidate_fabric_token().await;
             let token = self.require_auth().await?;
-            let resp = self
-                .http
-                .post(&url)
-                .header(AUTHORIZATION, &token)
-                .json(&request_body)
+            let request = self.http.post(&url).header(AUTHORIZATION, &token);
+            let request = match body {
+                Some(value) => request.json(value),
+                None => request,
+            };
+            let resp = request
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            return Self::extract_job_id_from_response(resp).await;
+            return Self::extract_job_trigger_from_response(resp).await;
         }
 
-        Self::extract_job_id_from_response(resp).await
+        Self::extract_job_trigger_from_response(resp).await
     }
 
     /// Poll a long-running operation until completion.
@@ -3971,6 +4005,31 @@ pub fn validate_uuid(value: &str, param_name: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn job_trigger_preserves_location_id_and_retry_after() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(
+                ResponseTemplate::new(202)
+                    .insert_header(
+                        "Location",
+                        format!("{}/jobs/instances/instance-123", server.uri()),
+                    )
+                    .insert_header("Retry-After", "60"),
+            )
+            .mount(&server)
+            .await;
+        let response = reqwest::get(server.uri()).await.unwrap();
+        let trigger = FabricClient::extract_job_trigger_from_response(response)
+            .await
+            .unwrap();
+        assert_eq!(trigger.job_id, "instance-123");
+        assert_eq!(trigger.retry_after, Some(Duration::from_secs(60)));
+    }
 
     #[test]
     fn error_body_message_extraction_handles_both_envelope_shapes() {

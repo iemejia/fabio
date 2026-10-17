@@ -20,11 +20,13 @@
     "updateDefinition returns 200 immediately (not LRO) for valid definitions",
     "Hierarchy: Container -> Source -> Event View -> Object -> Attributes + Rules",
     "Rule actions: TeamsMessage, EmailMessage, FabricItemInvocation",
-    "Use AttributeTrigger for programmatic rules (EventTrigger requires portal setup)"
+    "Use AttributeTrigger for programmatic rules (EventTrigger requires portal setup)",
+    "Activation records can be queried with KQL via query-activations; rows align positionally with the returned columns array"
   ],
   "related_commands": [
     "fabio reflex get-definition --workspace <WS> --id <ID>",
     "fabio reflex update-definition --workspace <WS> --id <ID> --file <FILE>",
+    "fabio reflex query-activations --workspace <WS> --id <ID> --kql '.show tables'",
     "fabio reflex list --workspace <WS>",
     "fabio reflex delete --workspace <WS> --id <ID>"
   ]
