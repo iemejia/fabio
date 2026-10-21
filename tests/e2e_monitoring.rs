@@ -38,7 +38,7 @@ fn monitoring_create_dry_run_includes_all_optional_fields() {
 #[test]
 fn monitoring_update_definition_dry_run_includes_metadata_flag() {
     let assert = fabio()
-        .env("COPILOT_AGENT_SESSION", "1")
+        .env("COPILOT_CLI", "1")
         .args([
             "--dry-run",
             "monitoring",
@@ -89,7 +89,7 @@ fn monitoring_data_collection_mutations_are_dry_run_guarded() {
 #[test]
 fn monitoring_delete_dry_run_is_destructive() {
     let assert = fabio()
-        .env("COPILOT_AGENT_SESSION", "1")
+        .env("COPILOT_CLI", "1")
         .args([
             "--dry-run",
             "monitoring",
