@@ -375,6 +375,21 @@ pub enum ReflexCommand {
         #[arg(long)]
         max_results: Option<u32>,
     },
+    /// Execute KQL against this Reflex's activation records
+    #[command(name = "query-activations", display_order = 36)]
+    QueryActivations {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Reflex ID
+        #[arg(long)]
+        id: String,
+
+        /// KQL query (maximum 1,048,576 characters; wildcard `union *` is unsupported)
+        #[arg(long)]
+        kql: String,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -565,7 +580,42 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReflexCommand) 
             )
             .await
         }
+        ReflexCommand::QueryActivations { workspace, id, kql } => {
+            query_activations(cli, client, workspace, id, kql).await
+        }
     }
+}
+
+fn build_query_activations_body(query: &str) -> Result<Value> {
+    if query.len() > 1_048_576 {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Activation query exceeds the 1,048,576-character API limit",
+            "Shorten --kql. Wildcard `union *` is not supported; name activation tables explicitly.",
+        )
+        .into());
+    }
+    Ok(serde_json::json!({ "query": query }))
+}
+
+async fn query_activations(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    query: &str,
+) -> Result<()> {
+    let body = build_query_activations_body(query)?;
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/reflexes/{id}/queryActivations"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "reflex query-activations", "Viewer"))?;
+    output::render_object(cli, &data, "tables");
+    Ok(())
 }
 
 async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
@@ -1050,4 +1100,40 @@ fn build_trigger_entities(
             }
         }
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn activation_query_body_matches_spec() {
+        let body = build_query_activations_body(".show tables").unwrap();
+        assert_eq!(body, serde_json::json!({ "query": ".show tables" }));
+    }
+
+    #[test]
+    fn activation_query_enforces_spec_length_limit() {
+        let query = "x".repeat(1_048_577);
+        assert!(build_query_activations_body(&query).is_err());
+    }
+
+    #[test]
+    fn activation_response_preserves_typed_positional_rows() {
+        let response = serde_json::json!({
+            "tables": [{
+                "tableName": "PrimaryResult",
+                "columns": [
+                    {"columnName": "enabled", "columnType": "Bool"},
+                    {"columnName": "duration", "columnType": "TimeSpan"}
+                ],
+                "rows": [[true, "00:01:00"]]
+            }]
+        });
+        assert_eq!(response["tables"][0]["rows"][0][0], true);
+        assert_eq!(
+            response["tables"][0]["columns"][1]["columnType"],
+            "TimeSpan"
+        );
+    }
 }

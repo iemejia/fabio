@@ -1,0 +1,81 @@
+{
+  "type": "Monitoring",
+  "description": "Workspace observability item that routes Fabric workspace diagnostics to an Eventhouse and Eventstream and can enable an Operations Agent.",
+  "create_command": "fabio monitoring create --workspace <WS> --name <NAME> [--file MonitoringProperties.json]",
+  "definition_format": "MonitoringV1",
+  "definition_parts": [
+    {
+      "path": "MonitoringProperties.json",
+      "description": "Data collection source/destination mapping and optional Operations Agent state."
+    },
+    {
+      "path": ".platform",
+      "description": "Optional Git-integration metadata. Use update-definition --update-metadata to apply it."
+    }
+  ],
+  "definition_content_template": {
+    "MonitoringProperties.json": {
+      "dataCollectionSettings": [
+        {
+          "sources": {
+            "workspaceDiagnostics": {
+              "mode": "All"
+            }
+          },
+          "destinations": {
+            "eventhouse": {
+              "mode": "Auto"
+            },
+            "eventStream": {
+              "customEndpoint": {
+                "enabled": false
+              }
+            }
+          }
+        }
+      ],
+      "operationsAgent": {
+        "enabled": false
+      }
+    }
+  },
+  "creation_body_template": {
+    "displayName": "Monitoring_1",
+    "description": "Workspace diagnostics monitoring",
+    "definition": {
+      "format": "MonitoringV1",
+      "parts": [
+        {
+          "path": "MonitoringProperties.json",
+          "payload": "<base64 JSON>",
+          "payloadType": "InlineBase64"
+        }
+      ]
+    }
+  },
+  "flags": {
+    "--name": "Required display name: 2-128 ASCII letters, digits, underscores, periods, or hyphens; no spaces or leading/trailing double underscore.",
+    "--folder-id": "Optional folder; omitted means the workspace root.",
+    "--file/--content": "Optional full definition JSON or raw MonitoringProperties.json.",
+    "--sensitivity-label": "Optional sensitivity label ID."
+  },
+  "notes": [
+    "Monitoring is preview.",
+    "Only one Monitoring item per workspace can have data collection enabled; enabling another returns WSMDataCollectionAlreadyEnabledInWorkspace.",
+    "Enable/disable are idempotent and do not alter the definition.",
+    "dataCollectionSettings, when present, must contain exactly one complete source/destination mapping.",
+    "Eventhouse mode and a linked parent Monitoring reference cannot be changed or removed after configuration.",
+    "operationsAgent requires dataCollectionSettings and an explicit enabled value. Once enabled, it cannot be disabled or removed.",
+    "Get-definition requires usage rights to remove an encrypted sensitivity label.",
+    "Validate offline before pushing: fabio item validate-definition --type Monitoring --dir <folder>."
+  ],
+  "related_commands": [
+    "fabio monitoring list --workspace <WS>",
+    "fabio monitoring show --workspace <WS> --id <ID>",
+    "fabio monitoring get-definition --workspace <WS> --id <ID> --decode",
+    "fabio monitoring update-definition --workspace <WS> --id <ID> --file MonitoringProperties.json",
+    "fabio monitoring enable-data-collection --workspace <WS> --id <ID>",
+    "fabio monitoring disable-data-collection --workspace <WS> --id <ID>",
+    "fabio monitoring delete --workspace <WS> --id <ID>"
+  ]
+}

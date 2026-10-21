@@ -57,6 +57,7 @@ pub const DEPLOY_ORDER: &[&str] = &[
     "ApacheAirflowJob",                      // fabric-cicd 24
     "MountedDataFactory",                    // fabric-cicd 25
     "OperationsAgent",                       // fabio-only (RTI)
+    "Monitoring",                            // fabio-only (workspace observability)
     "AnomalyDetector",                       // fabio-only (RTI)
     "Ontology",                              // fabric-cicd 26
     "GraphModel",                            // fabio-only (after Ontology; a DataAgent data source)
@@ -98,7 +99,7 @@ pub fn deploy_priority(item_type: &str) -> usize {
 /// - Tier 4: Reports, jobs & `KQLDatabase` (`Report`..`KQLDatabase`)
 /// - Tier 5: Reactive & streaming (`KQLQueryset`..`KQLDashboard`)
 /// - Tier 6: APIs & integration (`GraphQLApi`..`MountedDataFactory`)
-/// - Tier 7: RTI agents (`OperationsAgent`, `AnomalyDetector`)
+/// - Tier 7: RTI agents and Monitoring (`OperationsAgent`..`AnomalyDetector`)
 /// - Tier 8: `Ontology`
 /// - Tier 9: Graph (`GraphModel`..`DigitalTwinBuilderFlow`)
 /// - Tier 10: `DataAgent` (binds any data source; must come after all of them)
@@ -115,11 +116,11 @@ pub fn deploy_tier(item_type: &str) -> usize {
         17..=22 => 4, // Reports, jobs & KQLDatabase: Report..KQLDatabase
         23..=29 => 5, // Reactive: KQLQueryset..KQLDashboard
         30..=32 => 6, // APIs: GraphQLApi..MountedDataFactory
-        33..=34 => 7, // RTI agents: OperationsAgent, AnomalyDetector
-        35 => 8,      // Ontology
-        36..=39 => 9, // Graph: GraphModel..DigitalTwinBuilderFlow
-        40 => 10,     // DataAgent: binds any data source, must come after all of them
-        41 => 11,     // MLExperiment
+        33..=35 => 7, // RTI agents and Monitoring: OperationsAgent..AnomalyDetector
+        36 => 8,      // Ontology
+        37..=40 => 9, // Graph: GraphModel..DigitalTwinBuilderFlow
+        41 => 10,     // DataAgent: binds any data source, must come after all of them
+        42 => 11,     // MLExperiment
         _ => 12,      // MLModel, Map, Connection, OrgApp, OrgAppAudience + unknown
     }
 }
@@ -401,8 +402,8 @@ mod tests {
         // Guard against accidental additions/removals — update this if DEPLOY_ORDER changes
         assert_eq!(
             DEPLOY_ORDER.len(),
-            49,
-            "DEPLOY_ORDER should have 49 entries; update this test if intentionally changed"
+            50,
+            "DEPLOY_ORDER should have 50 entries; update this test if intentionally changed"
         );
     }
 

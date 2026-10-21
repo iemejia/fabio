@@ -17,6 +17,7 @@ license: MIT
 - KQL schema discovery (list-entities), ingestion, querying, and query monitoring (running/journal/completed).
 - Building eventstream topologies (sources, destinations, connection strings).
 - Creating reflex/activator triggers for event-driven alerts.
+- Configuring workspace Monitoring items that collect diagnostics into Eventhouse/Eventstream and optionally enable an Operations Agent.
 - Authoring AI operations agents that monitor an eventhouse/ontology and recommend actions (operations-agent create/update-definition/start/stop/status).
 - Translating natural language to KQL (rti nl-to-kql).
 
@@ -154,6 +155,7 @@ Manage Reflex items (Data Activator triggers and alerts)
 | `fabio reflex list` | no | List reflexes in a workspace |
 | `fabio reflex list-rules` | no | List monitoring rules in a reflex (via the Activator MCP server) |
 | `fabio reflex mcp-url` | no | Print the Activator remote MCP server URL for this reflex |
+| `fabio reflex query-activations` | no | Execute KQL against this Reflex's activation records |
 | `fabio reflex rule-activations` | no | Show the activation (fired-alert) history for a rule (via the Activator MCP server) |
 | `fabio reflex show` | no | Show details of a reflex |
 | `fabio reflex start-rule` | yes | Start (enable) a monitoring rule (via the Activator MCP server) |
@@ -197,6 +199,21 @@ Manage operations agents (AI-powered operations)
 | `fabio operations-agent update` | yes | Update operations agent properties |
 | `fabio operations-agent update-definition` | yes | Update the definition of a operations agent |
 
+### fabio monitoring
+Manage workspace Monitoring items and Fabric data collection
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio monitoring create` | yes | Create a Monitoring item |
+| `fabio monitoring delete` | yes | Delete a Monitoring item |
+| `fabio monitoring disable-data-collection` | yes | Disable data collection without changing the Monitoring definition |
+| `fabio monitoring enable-data-collection` | yes | Enable data collection using the configured Monitoring definition |
+| `fabio monitoring get-definition` | no | Get a Monitoring definition |
+| `fabio monitoring list` | no | List Monitoring items in a workspace |
+| `fabio monitoring show` | no | Show a Monitoring item |
+| `fabio monitoring update` | yes | Update Monitoring item properties |
+| `fabio monitoring update-definition` | yes | Update a Monitoring definition |
+
 ## Must / Prefer / Avoid
 ### MUST
 - Create the eventhouse first; kql-database create requires --eventhouse-id.
@@ -230,6 +247,7 @@ Manage operations agents (AI-powered operations)
 - kql-queryset add-tab --kql-database <kqlDbId> authors a tab bound to a Fabric KQL DB without hand-crafting RealTimeQueryset.json (it resolves queryServiceUri + display name and uses a type:'Fabric' data source with databaseItemName). A Fabric data source that omits databaseItemName makes 'run' fall back to NetDefaultDB and fail with EntityNotFound.
 - 'kql-database query' auto-routes a leading-SELECT (T-SQL) to the Kusto SQL endpoint; '.'-prefixed commands go to /mgmt. eventhouse create --min-consumption-units sets an always-on minimum capacity; a KQL data source in a queryset/reflex uses the KQL DATABASE item id (queryServiceUri), not the eventhouse id.
 - The Fabric Eventhouse remote MCP server (preview) is addressed PER KQL DATABASE — the URL is /mcp/dataPlane/workspaces/{ws}/items/{kqlDatabaseId}/kqlEndpoint and carries a KQL-DATABASE item id, NOT the eventhouse id. `eventhouse mcp-url` resolves the eventhouse's databases and prints the correct per-database URL for each (use it when you only have the eventhouse id); `kql-database mcp-url` prints the URL for one database directly. Both also surface the workspace/item-agnostic globalEndpoint (/mcp/dataPlane/kqlEndpoint), which takes workspaceId + itemId as tool-call arguments instead.
+- Monitoring: only one item per workspace can collect data at a time. enable-data-collection is idempotent but conflicts if another item is enabled. Definition updates cannot change/remove Eventhouse mode or a linked parent Monitoring reference, and an enabled operationsAgent cannot be disabled or removed.
 
 ## Troubleshooting
 | Symptom | Fix |
@@ -252,7 +270,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 | `fabio context best-practices throttling` | fabio transparently handles 429 (Too Many Requests) and gateway errors. Agents do NOT need to implement retry logic. |
 | `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |
 | `fabio context best-practices lro` | Many Fabric operations are async (return 202). fabio polls them automatically. Use --wait for job operations. |
-| `fabio context best-practices workspace-monitoring` | Workspace Monitoring provisions a read-only monitoring Eventhouse/KQL database that collects diagnostic logs + metrics from Fabric items (eventstreams, pipelines, copy jobs, GraphQL APIs, semantic models, eventhouses, mirrored databases, Real-Time hub job events). There is NO public REST API to enable/configure it or the per-eventstream 'Log Eventstream activity' toggle — both are PORTAL-ONLY. Enablement is gated by the tenant setting PlatformMonitoringTenantSetting (fabio can toggle THAT). Once enabled, query the monitoring tables with fabio's existing 'kql-database query' — there is no 'fabio workspace-monitoring' command and there does not need to be. |
+| `fabio context best-practices workspace-monitoring` | Workspace Monitoring provisions a read-only monitoring Eventhouse/KQL database that collects diagnostic logs and metrics from Fabric items. The preview Monitoring REST API is exposed through 'fabio monitoring' for item CRUD, definitions, and data-collection enable/disable; query the destination data with 'fabio kql-database query'. |
 
 ## See also
 - fabio context persona rti-engineer

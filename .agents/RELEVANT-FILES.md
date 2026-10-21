@@ -23,7 +23,12 @@
  - `src/commands/mod.rs`: Command dispatch
  - `src/commands/crud.rs`: **Shared item-type CRUD helpers** — `list`/`show`/`create`/`update`/`delete`/`get_definition`/`update_definition` parameterized by op-name group, collection segment, role, and (for definitions) part filename. Definition-backed item modules (`map`, `plan`, `reflex`, `notebook`, …) delegate to these one-line; the helper rebuilds the canonical `"<group> <subcommand>"` op-name internally so dry-run/destructive markers fire. Only write bespoke handlers for genuine variance (extra create fields, cascade deletes, custom URL builders, per-type hints)
  - `src/commands/tds_stats.rs`: **Shared T-SQL statistics** (`list`/`show`/`create`/`update`/`delete`) for `warehouse` ↔ `sql-database`; takes a LAZY `(server, database)` resolver closure (invoked only after the dry-run guard) + backend label. Holds the shared `sys.stats` SQL once
- - `src/commands/item_job.rs`: **Shared on-demand job run+poll+cancel loop** (`run_and_wait` + `RunSpec`{op,label,job_type,role}); used by `copy-job`/`data-pipeline`/`spark-job-definition` `run`. Dry-run guarded; cancels the instance on `--wait` timeout when `--cancel-on-timeout`
+ - `src/commands/item_job.rs`: **Shared on-demand job run+poll+cancel loop** (`run_and_wait` + `RunSpec`{op,label,job_type,trigger_path,role}); used by `copy-job`/`data-pipeline`/`spark-job-definition` `run`. `trigger_path` selects specialized execute endpoints while preserving generic item-job polling. Dry-run guarded; cancels the instance on `--wait` timeout when `--cancel-on-timeout`
+ - `src/commands/monitoring.rs`: Monitoring item CRUD/definition commands plus idempotent workspace data-collection enable/disable operations
+ - `tests/e2e_monitoring.rs`: Monitoring dry-run guardrails, validation, and live CRUD coverage
+ - `src/commands/context/data/schemas/monitoring.json`: Agent-discoverable `MonitoringV1` definition contract and immutability rules
+ - `src/commands/context/data/examples/reflex_query_activations.json`: Positional typed-table response example for Reflex activation KQL
+ - `src/commands/context/data/best_practices/workspace_monitoring.json`: Monitoring setup, one-collector constraint, and KQL consumption guidance
  - `src/commands/item_options.rs`: Shared JSON parser/validator for generic definition options and per-item option arrays keyed by logicalId/sourceItemId
  - `src/commands/sql_audit.rs`: Shared SQL audit predicate validation (no WHERE keyword, 3000-character limit)
 - `src/commands/auth.rs`: Azure CLI validation login; explicit customer public-client device code/browser PKCE/WAM; service principal secret/certificate/federated token; logout and status

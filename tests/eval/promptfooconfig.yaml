@@ -345,6 +345,37 @@ tests:
       - type: icontains
         value: "--wait"
 
+  - description: "List copy job execute instances"
+    vars:
+      user_query: "List the recent execute runs for copy job cj-777 in workspace ws-456"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('copy-job list-runs')
+        metric: copy-job-list-runs-command
+
+  - description: "Create and enable workspace Monitoring"
+    vars:
+      user_query: "Create a Fabric Monitoring item named Monitoring_1 in workspace ws-456 from MonitoringProperties.json, then enable its data collection"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('monitoring create') &&
+          output.includes('--file') &&
+          output.includes('monitoring enable-data-collection')
+        metric: monitoring-create-enable-sequence
+
+  - description: "Query Reflex activation records with KQL"
+    vars:
+      user_query: "Use KQL '.show tables' to inspect activation tables in Reflex rx-123 in workspace ws-456"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('reflex query-activations')
+        metric: reflex-query-activations-command
+      - type: icontains
+        value: "--kql"
+
   # ------------------------------------------------------------
   # INTERACTIVE SPARK (Livy API): run code, HC packing, async control
   # ------------------------------------------------------------

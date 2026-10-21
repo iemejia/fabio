@@ -1533,6 +1533,15 @@ impl FabricClient {
     /// Retries once on 401 with a fresh token.
     /// Retries up to 3 times on 429/430 (rate limited) with exponential backoff.
     pub async fn post(&self, path: &str, body: &Value, poll: bool) -> Result<Value> {
+        self.post_impl(path, Some(body), poll).await
+    }
+
+    /// POST request to Fabric REST API without a request body.
+    pub async fn post_empty(&self, path: &str, poll: bool) -> Result<Value> {
+        self.post_impl(path, None, poll).await
+    }
+
+    async fn post_impl(&self, path: &str, body: Option<&Value>, poll: bool) -> Result<Value> {
         const MAX_RATE_LIMIT_RETRIES: u32 = 3;
         const MAX_TRANSIENT_RETRIES: u32 = 3;
         self.guard_readonly("POST", path)?;
@@ -1542,7 +1551,7 @@ impl FabricClient {
 
         // Trace the body once (avoid re-tracing on retries)
         let body_str = if verbose::is_enabled() {
-            Some(serde_json::to_string(body).unwrap_or_default())
+            body.map(|value| serde_json::to_string(value).unwrap_or_default())
         } else {
             None
         };
@@ -1553,11 +1562,12 @@ impl FabricClient {
             verbose::trace_request("POST", &url, body_str.as_deref());
             let start = std::time::Instant::now();
 
-            let resp = self
-                .http
-                .post(&url)
-                .header(AUTHORIZATION, &token)
-                .json(body)
+            let request = self.http.post(&url).header(AUTHORIZATION, &token);
+            let request = match body {
+                Some(value) => request.json(value),
+                None => request,
+            };
+            let resp = request
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
@@ -1567,11 +1577,12 @@ impl FabricClient {
             if resp.status() == StatusCode::UNAUTHORIZED {
                 self.invalidate_fabric_token().await;
                 let token = self.require_auth().await?;
-                let resp = self
-                    .http
-                    .post(&url)
-                    .header(AUTHORIZATION, &token)
-                    .json(body)
+                let request = self.http.post(&url).header(AUTHORIZATION, &token);
+                let request = match body {
+                    Some(value) => request.json(value),
+                    None => request,
+                };
+                let resp = request
                     .send()
                     .await
                     .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
@@ -2954,13 +2965,12 @@ impl FabricClient {
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
-        let request_body = body.cloned().unwrap_or_else(|| serde_json::json!({}));
-
-        let resp = self
-            .http
-            .post(&url)
-            .header(AUTHORIZATION, &token)
-            .json(&request_body)
+        let request = self.http.post(&url).header(AUTHORIZATION, &token);
+        let request = match body {
+            Some(value) => request.json(value),
+            None => request,
+        };
+        let resp = request
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
@@ -2968,11 +2978,12 @@ impl FabricClient {
         if resp.status() == StatusCode::UNAUTHORIZED {
             self.invalidate_fabric_token().await;
             let token = self.require_auth().await?;
-            let resp = self
-                .http
-                .post(&url)
-                .header(AUTHORIZATION, &token)
-                .json(&request_body)
+            let request = self.http.post(&url).header(AUTHORIZATION, &token);
+            let request = match body {
+                Some(value) => request.json(value),
+                None => request,
+            };
+            let resp = request
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;

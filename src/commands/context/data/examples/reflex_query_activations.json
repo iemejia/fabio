@@ -1,0 +1,45 @@
+{
+  "command": "fabio reflex query-activations --workspace $WS --id $REFLEX_ID --kql 'ruleactivations_<RULE_ID> | where ___time > ago(24h) | take 10'",
+  "description": "Execute KQL against Reflex activation records and return typed positional tables.",
+  "response": {
+    "data": {
+      "tables": [
+        {
+          "tableName": "PrimaryResult",
+          "columns": [
+            {
+              "columnName": "___time",
+              "columnType": "DateTime"
+            },
+            {
+              "columnName": "System.RuleName",
+              "columnType": "String"
+            },
+            {
+              "columnName": "count_",
+              "columnType": "Long"
+            }
+          ],
+          "rows": [
+            [
+              "2026-04-29T11:00:00Z",
+              "High Temperature Alert",
+              8
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "notes": "Rows are positional arrays aligned with columns. Standard KQL data queries, explicit-table union, .show tables, and .show table <name> cslschema are supported. Wildcard union * is rejected. Queries are limited to 1,048,576 characters and may time out after about 30 seconds.",
+  "query_examples": [
+    {
+      "query": "data.tables[0].columns[*].columnName",
+      "description": "Extract the ordered column names."
+    },
+    {
+      "query": "data.tables[0].rows",
+      "description": "Extract positional result rows."
+    }
+  ]
+}

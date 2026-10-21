@@ -9979,6 +9979,26 @@
         "mutates": true,
         "returns": "object",
         "async": true
+      },
+      "list-runs": {
+        "description": "List execute job instances for a copy job",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Copy job ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio copy-job list-runs --workspace $WS --id $COPY_JOB"
+        ]
       }
     }
   },
@@ -16303,6 +16323,32 @@
         "examples": [
           "fabio reflex rule-activations --workspace $WS --id $REFLEX --rule-id $RULE --max-results 50"
         ]
+      },
+      "query-activations": {
+        "description": "Execute KQL against this Reflex's activation records",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Reflex ID"
+          },
+          "--kql": {
+            "type": "string",
+            "required": true,
+            "description": "KQL query (maximum 1,048,576 characters; wildcard `union *` is unsupported)"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio reflex query-activations --workspace $WS --id $REFLEX --kql '.show tables'",
+          "fabio reflex query-activations --workspace $WS --id $REFLEX --kql 'union Activations_Rule1, Activations_Rule2 | take 50'"
+        ]
       }
     }
   },
@@ -20247,6 +20293,250 @@
         "destructive": true,
         "examples": [
           "fabio plan update-definition --workspace $WS --id $PLAN_ID --file connectedPlanning/infobridge.json"
+        ]
+      }
+    }
+  },
+  "monitoring": {
+    "auth_scope": "fabric",
+    "description": "Manage workspace Monitoring items and Fabric data collection",
+    "subcommands": {
+      "list": {
+        "description": "List Monitoring items in a workspace",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--no-recursive": {
+            "type": "bool",
+            "description": "Only list Monitoring items directly in the root folder"
+          },
+          "--root-folder-id": {
+            "type": "string",
+            "description": "Filter Monitoring items to a specific root folder ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio monitoring list --workspace $WS",
+          "fabio monitoring list --workspace $WS --root-folder-id $FOLDER --no-recursive"
+        ]
+      },
+      "show": {
+        "description": "Show a Monitoring item",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Monitoring item ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio monitoring show --workspace $WS --id $MONITORING"
+        ]
+      },
+      "create": {
+        "description": "Create a Monitoring item",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Display name (2-128 ASCII letters, digits, underscores, periods, or hyphens)"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Optional description (maximum 256 characters)"
+          },
+          "--folder-id": {
+            "type": "string",
+            "description": "Folder ID (defaults to the workspace root)"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
+          },
+          "--file": {
+            "type": "string",
+            "description": "Monitoring definition file (full definition JSON or raw MonitoringProperties.json)"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline Monitoring definition (full definition JSON or raw MonitoringProperties.json)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "async": true,
+        "examples": [
+          "fabio monitoring create --workspace $WS --name Monitoring_1",
+          "fabio monitoring create --workspace $WS --name Monitoring_1 --file MonitoringProperties.json --folder-id $FOLDER"
+        ]
+      },
+      "update": {
+        "description": "Update Monitoring item properties",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Monitoring item ID"
+          },
+          "--name": {
+            "type": "string",
+            "description": "New display name (maximum 128 characters)"
+          },
+          "--description": {
+            "type": "string",
+            "description": "New description (maximum 256 characters)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio monitoring update --workspace $WS --id $MONITORING --description 'Workspace diagnostics'"
+        ]
+      },
+      "delete": {
+        "description": "Delete a Monitoring item",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Monitoring item ID"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true,
+        "examples": [
+          "fabio monitoring delete --workspace $WS --id $MONITORING --dry-run"
+        ]
+      },
+      "get-definition": {
+        "description": "Get a Monitoring definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Monitoring item ID"
+          },
+          "--format": {
+            "type": "string",
+            "description": "Definition format (currently `MonitoringV1`)"
+          },
+          "--decode": {
+            "type": "bool",
+            "description": "Decode base64 payloads inline"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "async": true,
+        "examples": [
+          "fabio monitoring get-definition --workspace $WS --id $MONITORING --decode"
+        ]
+      },
+      "update-definition": {
+        "description": "Update a Monitoring definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Monitoring item ID"
+          },
+          "--file": {
+            "type": "string",
+            "description": "Definition file (full definition JSON or raw MonitoringProperties.json)"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline definition (full definition JSON or raw MonitoringProperties.json)"
+          },
+          "--update-metadata": {
+            "type": "bool",
+            "description": "Update item metadata from a supplied .platform definition part"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "async": true,
+        "destructive": true,
+        "examples": [
+          "fabio monitoring update-definition --workspace $WS --id $MONITORING --file MonitoringProperties.json --dry-run"
+        ]
+      },
+      "enable-data-collection": {
+        "description": "Enable data collection using the configured Monitoring definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Monitoring item ID"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio monitoring enable-data-collection --workspace $WS --id $MONITORING --dry-run"
+        ]
+      },
+      "disable-data-collection": {
+        "description": "Disable data collection without changing the Monitoring definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Monitoring item ID"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio monitoring disable-data-collection --workspace $WS --id $MONITORING --dry-run"
         ]
       }
     }

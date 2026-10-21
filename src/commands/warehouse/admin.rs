@@ -41,9 +41,7 @@ pub(super) async fn get_sql_pools_config(
     workspace: &str,
 ) -> Result<()> {
     let data = client
-        .get(&format!(
-            "/workspaces/{workspace}/warehouses/sqlPoolsConfiguration?beta=true"
-        ))
+        .get(&sql_pools_config_path(workspace))
         .await
         .map_err(|e| enrich_forbidden(e, "warehouse get-sql-pools-config", "Viewer"))?;
     output::render_object(cli, &data, "id");
@@ -81,14 +79,15 @@ pub(super) async fn update_sql_pools_config(
     }
 
     let data = client
-        .patch(
-            &format!("/workspaces/{workspace}/warehouses/sqlPoolsConfiguration?beta=true"),
-            &body,
-        )
+        .patch(&sql_pools_config_path(workspace), &body)
         .await
         .map_err(|e| enrich_forbidden(e, "warehouse update-sql-pools-config", "Contributor"))?;
     output::render_object(cli, &data, "id");
     Ok(())
+}
+
+fn sql_pools_config_path(workspace: &str) -> String {
+    format!("/workspaces/{workspace}/warehouses/sqlPoolsConfiguration")
 }
 
 pub(super) async fn get_audit_settings(
@@ -176,4 +175,31 @@ pub(super) async fn set_audit_actions(
         .map_err(|e| enrich_forbidden(e, "warehouse set-audit-actions", "Contributor"))?;
     output::render_object(cli, &data, "id");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sql_pools_configuration_is_ga_path() {
+        let path = sql_pools_config_path("workspace");
+        assert_eq!(
+            path,
+            "/workspaces/workspace/warehouses/sqlPoolsConfiguration"
+        );
+        assert!(!path.contains("beta"));
+    }
+
+    #[test]
+    fn statement_type_classifier_is_preserved() {
+        let body: Value = serde_json::from_str(
+            r#"{"customSQLPoolsEnabled":true,"customSQLPools":[{"name":"etl","classifiers":[{"type":"Statement Type","value":"SELECT"}]}]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            body["customSQLPools"][0]["classifiers"][0]["type"],
+            "Statement Type"
+        );
+    }
 }

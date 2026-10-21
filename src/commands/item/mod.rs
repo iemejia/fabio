@@ -981,6 +981,7 @@ const KNOWN_ITEM_TYPES: &[&str] = &[
     "Map",
     "MirroredDatabase",
     "MirroredWarehouse",
+    "Monitoring",
     "MountedDataFactory",
     "Notebook",
     "Ontology",

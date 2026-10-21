@@ -97,6 +97,10 @@ pub(super) const fn example_entries() -> &'static [(&'static str, &'static str)]
 
 const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
+        "reflex/query-activations",
+        include_str!("data/examples/reflex_query_activations.json"),
+    ),
+    (
         "admin/get-active-policy-set",
         include_str!("data/examples/admin_get_active_policy_set.json"),
     ),

@@ -219,6 +219,27 @@ fn warehouse_query_table_output() {
         .stdout(predicate::str::contains("test"));
 }
 
+#[test]
+fn warehouse_sql_pools_accept_statement_type_classifier_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "update-sql-pools-config",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--content",
+            r#"{"customSQLPoolsEnabled":true,"customSQLPools":[{"name":"select-pool","classifiers":[{"type":"Statement Type","value":"SELECT"}]}]}"#,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert_eq!(
+        json["data"]["details"]["customSQLPools"][0]["classifiers"][0]["type"],
+        "Statement Type"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // warehouse show for non-existent ID returns error
 // ---------------------------------------------------------------------------

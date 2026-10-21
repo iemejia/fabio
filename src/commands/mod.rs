@@ -55,6 +55,7 @@ pub mod mirrored_google_lakehouse_catalog;
 pub mod mirrored_warehouse;
 pub mod ml_experiment;
 pub mod ml_model;
+pub mod monitoring;
 pub mod mounted_data_factory;
 pub mod notebook;
 pub mod onelake_security;
@@ -205,6 +206,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
         }
         Command::Map { command } => map::execute(&cli, &client, command).await,
         Command::Plan { command } => plan::execute(&cli, &client, command).await,
+        Command::Monitoring { command } => monitoring::execute(&cli, &client, command).await,
         Command::PolicySet { command } => policy_set::execute(&cli, &client, command).await,
         Command::GraphQuerySet { command } => {
             graph_query_set::execute(&cli, &client, command).await
@@ -465,6 +467,7 @@ fn extract_command_path(cli: &Cli) -> String {
         Command::SnowflakeDatabase { .. } => "snowflake-database",
         Command::Map { .. } => "map",
         Command::Plan { .. } => "plan",
+        Command::Monitoring { .. } => "monitoring",
         Command::PolicySet { .. } => "policy-set",
         Command::Connection { .. } => "connection",
         Command::DeploymentPipeline { .. } => "deployment-pipeline",

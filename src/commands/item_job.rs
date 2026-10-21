@@ -23,6 +23,9 @@ pub struct RunSpec<'a> {
     pub label: &'a str,
     /// The `trigger_item_job` on-demand job type (e.g. `"Execute"`).
     pub job_type: &'a str,
+    /// Optional item-type-specific trigger path. When absent, use the generic
+    /// item scheduler endpoint with `job_type`.
+    pub trigger_path: Option<&'a str>,
     /// Minimum role named in the permission-error hint.
     pub role: &'a str,
 }
@@ -52,10 +55,14 @@ pub async fn run_and_wait(
     }
 
     // `trigger_item_job` reads the new instance id from the 202 `Location` header.
-    let job_id = client
-        .trigger_item_job(workspace, id, spec.job_type, None)
-        .await
-        .map_err(|e| enrich_forbidden(e, spec.op, spec.role))?;
+    let job_id = if let Some(path) = spec.trigger_path {
+        client.trigger_item_job_at(path, None).await
+    } else {
+        client
+            .trigger_item_job(workspace, id, spec.job_type, None)
+            .await
+    }
+    .map_err(|e| enrich_forbidden(e, spec.op, spec.role))?;
 
     if !wait {
         let obj = serde_json::json!({ "itemId": id, "jobInstanceId": job_id, "status": "started" });

@@ -19,7 +19,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 | Design philosophy | Interactive-first (shell with `cd`/`ls`) | Agent-native (non-interactive, structured output) |
 | CI/CD deployment | Wraps fabric-cicd library | Native engine with content-hash diffing |
 | Default output | Human text | JSON (machine-parseable by default) |
-| Item type coverage | ~20 commands | 80 command groups |
+| Item type coverage | ~20 commands | 81 command groups |
 | SQL query execution | No | Warehouse, SQL Database, Lakehouse (T-SQL via TDS) |
 | Query plan capture | No | Estimated execution plan (SHOWPLAN_XML) without executing |
 | Query performance monitoring | No | Running/frequent/long-running queries, kill sessions |
@@ -57,7 +57,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 | Post-deploy convergence audit | No | `apply --verify` re-checks applied items converged to source (report-only) |
 | Deployment strategy | Single (always deploys all) | `--strategy default\|bulk\|sequential` (per-item, bulk API, or serial) |
 | Output format | Python logs | JSON envelope (stdout/stderr separation) |
-| Item types supported | 27 (deploy only) | 47 (deploy) + 80 command groups (full CRUD, query, run) |
+| Item types supported | 27 (deploy only) | 48 (deploy) + 81 command groups (full CRUD, query, run) |
 | Selective filtering | Feature-flagged, limited | `--exclude-regex`, `--include-items`, `--include-folders` |
 | Runtime | Python 3.9+ (pip install) | Single Rust binary, no runtime |
 
@@ -332,7 +332,7 @@ Error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITE
 
 ## Commands
 
-80 command groups with 850+ subcommands covering the full Fabric REST API surface. Use the built-in introspection to discover commands:
+81 command groups with 860+ subcommands covering the full Fabric REST API surface. Use the built-in introspection to discover commands:
 
 ```bash
 # Compact index of all groups + subcommand names
@@ -365,6 +365,21 @@ fabio context blueprint medallion       # also: lambda, event-analytics, event-m
 
 # Resolve an overloaded Fabric term to the right artifact + command group
 fabio context disambiguate "materialized view"   # also: dataflow, semantic-model, sql-endpoint, mirroring, model
+```
+
+Workspace Monitoring (preview):
+
+```bash
+# Create a Monitoring item from the canonical definition part
+fabio monitoring create --workspace <WS> --name Monitoring_1 \
+  --file MonitoringProperties.json
+
+# Exactly one Monitoring item per workspace can collect data at a time
+fabio monitoring enable-data-collection --workspace <WS> --id <MONITORING_ID>
+
+# Query Reflex activation records directly with KQL
+fabio reflex query-activations --workspace <WS> --id <REFLEX_ID> \
+  --kql '.show tables'
 ```
 
 Workspace inbound External Data Shares policy (ETag round trip):
@@ -465,7 +480,7 @@ The helper creates a compatible registration with redirects and delegated permis
 
 ## Shell Completions
 
-Generate tab-completion scripts for your shell. Completions cover all 80 command groups, 850+ subcommands, and their flags.
+Generate tab-completion scripts for your shell. Completions cover all 81 command groups, 860+ subcommands, and their flags.
 
 ### Bash
 
@@ -900,7 +915,7 @@ Configuration: [`prek.toml`](prek.toml)
 
 ### Project Stats
 
-- **80 command groups** with **850+ subcommands**
+- **81 command groups** with **860+ subcommands**
 - **8 orchestrator personas**, **12 architecture blueprints**, **7 term disambiguations**, **15 generated intent-scoped sub-skills**, **15 workflow recipes**, **17 best-practice topics** — the layered agent knowledge base
 - **1562 tests** (841 unit + 721 offline/E2E integration)
 - Zero clippy warnings, zero unsafe code
