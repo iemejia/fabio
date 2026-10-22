@@ -3,6 +3,7 @@ mod items;
 mod policy_sets;
 mod tags;
 mod tenant_settings;
+mod tenant_workflow;
 mod users;
 mod workloads;
 mod workspaces;
@@ -24,6 +25,45 @@ pub enum AdminCommand {
     /// List all tenant settings
     #[command(display_order = 1)]
     ListTenantSettings,
+    /// Export all tenant settings to reviewable YAML, with resumable pagination
+    ExportTenantSettings {
+        /// Destination YAML file (must not already exist)
+        #[arg(long, required_unless_present = "resume", conflicts_with = "resume")]
+        out: Option<String>,
+        /// Resume this operation from its checkpoint file
+        #[arg(long = "continue", conflicts_with = "continuation_file")]
+        resume: Option<String>,
+        /// Checkpoint destination for a fresh operation
+        #[arg(long)]
+        continuation_file: Option<String>,
+    },
+    /// Compare desired tenant settings YAML with the live tenant without changing settings
+    PlanTenantSettings {
+        /// Desired settings YAML (an edited export)
+        #[arg(long, required_unless_present = "resume", conflicts_with = "resume")]
+        file: Option<String>,
+        /// Destination plan YAML file (must not already exist)
+        #[arg(long, required_unless_present = "resume", conflicts_with = "resume")]
+        out: Option<String>,
+        /// Resume this operation from its checkpoint file
+        #[arg(long = "continue", conflicts_with = "continuation_file")]
+        resume: Option<String>,
+        /// Checkpoint destination for a fresh operation
+        #[arg(long)]
+        continuation_file: Option<String>,
+    },
+    /// Apply a reviewed tenant settings plan sequentially (tenant-wide governance changes)
+    ApplyTenantSettings {
+        /// Reviewed plan YAML, not a desired-state export
+        #[arg(long, required_unless_present = "resume", conflicts_with = "resume")]
+        file: Option<String>,
+        /// Resume this operation from its checkpoint file
+        #[arg(long = "continue", conflicts_with = "continuation_file")]
+        resume: Option<String>,
+        /// Checkpoint destination for a fresh operation
+        #[arg(long)]
+        continuation_file: Option<String>,
+    },
     /// Update a tenant setting
     #[command(display_order = 2)]
     UpdateTenantSetting {
@@ -532,6 +572,55 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &AdminCommand) -
         // Tenant Settings
         AdminCommand::ListTenantSettings => {
             tenant_settings::list_tenant_settings(cli, client).await
+        }
+        AdminCommand::ExportTenantSettings {
+            out,
+            resume,
+            continuation_file,
+        } => {
+            tenant_workflow::execute(
+                cli,
+                client,
+                tenant_workflow::Operation::Export,
+                None,
+                out.as_deref(),
+                resume.as_deref(),
+                continuation_file.as_deref(),
+            )
+            .await
+        }
+        AdminCommand::PlanTenantSettings {
+            file,
+            out,
+            resume,
+            continuation_file,
+        } => {
+            tenant_workflow::execute(
+                cli,
+                client,
+                tenant_workflow::Operation::Plan,
+                file.as_deref(),
+                out.as_deref(),
+                resume.as_deref(),
+                continuation_file.as_deref(),
+            )
+            .await
+        }
+        AdminCommand::ApplyTenantSettings {
+            file,
+            resume,
+            continuation_file,
+        } => {
+            tenant_workflow::execute(
+                cli,
+                client,
+                tenant_workflow::Operation::Apply,
+                file.as_deref(),
+                None,
+                resume.as_deref(),
+                continuation_file.as_deref(),
+            )
+            .await
         }
         AdminCommand::UpdateTenantSetting {
             setting_name,

@@ -97,6 +97,7 @@ Fabric tenant administration (settings, tags, workloads, users)
 | Command | Mutates | Description |
 |---|---|---|
 | `fabio admin activate-policy-set` | yes | Activate a tenant-scoped policy set |
+| `fabio admin apply-tenant-settings` | yes | Apply a reviewed tenant settings plan sequentially (tenant-wide governance changes) |
 | `fabio admin assign-domain-workspaces` | yes | Assign workspaces to a domain |
 | `fabio admin assign-domain-workspaces-by-capacities` | yes | Assign workspaces to a domain by capacities |
 | `fabio admin assign-domain-workspaces-by-principals` | yes | Assign workspaces to a domain by principals |
@@ -113,6 +114,7 @@ Fabric tenant administration (settings, tags, workloads, users)
 | `fabio admin delete-domain` | yes | Delete a domain |
 | `fabio admin delete-tag` | yes | Delete a tag |
 | `fabio admin delete-workload-assignment` | yes | Delete a workload assignment |
+| `fabio admin export-tenant-settings` | no | Export all tenant settings to reviewable YAML, with resumable pagination |
 | `fabio admin get-active-policy-set` | no | Get the active tenant-scoped policy set and its rules (beta) |
 | `fabio admin grant-admin-access` | yes | Grant temporary admin access to a workspace |
 | `fabio admin list-capacities-tenant-overrides` | no | List all capacities' delegated tenant setting overrides |
@@ -134,6 +136,7 @@ Fabric tenant administration (settings, tags, workloads, users)
 | `fabio admin list-workspace-users` | no | List users in a workspace (admin view) |
 | `fabio admin list-workspaces` | no | List workspaces (admin view) |
 | `fabio admin list-workspaces-tenant-overrides` | no | List all workspaces' delegated tenant setting overrides |
+| `fabio admin plan-tenant-settings` | no | Compare desired tenant settings YAML with the live tenant without changing settings |
 | `fabio admin remove-admin-access` | yes | Remove temporary admin access from a workspace |
 | `fabio admin remove-all-sharing-links` | yes | Remove all sharing links for specified items |
 | `fabio admin restore-workspace` | yes | Restore a deleted workspace |
@@ -284,6 +287,8 @@ Manage governance policy sets and policy rules
 - Bulk tenant-setting changes without confirming the scope with the user.
 
 ## Key gotchas
+- Tenant settings YAML workflow: admin export-tenant-settings --out settings.yaml; edit desired values, then admin plan-tenant-settings --file settings.yaml --out plan.yaml; preview admin apply-tenant-settings --file plan.yaml --dry-run before applying. Files contain configuration; stdout remains a structured summary.
+- Tenant settings export/plan/apply stop on throttling and checkpoint progress for the low hourly quota. Resume the same command with --continue <checkpoint-file>, not --continuation-token or a fresh --file run. A fresh run accepts --continuation-file to choose the state path. Keep input/plan files unchanged and use the same tenant.
 - capacity suspend/resume/create/delete use the ARM scope (management.azure.com), not the Fabric scope.
 - capacity get-surge-protection/update-surge-protection use the Fabric scope and require capacity administrator permissions. Enabling an unconfigured capacity needs rejection and recovery thresholds; disabling clears persisted thresholds.
 - capacity get-overage-configuration/update-overage-configuration are preview Fabric APIs requiring capacity admin. Thresholds are 0-240000 CU-hours; zero disables overage, and Disabled resets the threshold to zero.
@@ -296,6 +301,8 @@ Manage governance policy sets and policy rules
 ## Troubleshooting
 | Symptom | Fix |
 |---|---|
+| Tenant settings export, plan, or apply returns RATE_LIMITED | Wait as instructed, then resume the same operation with --continue <checkpoint-file> from its error hint. Do not restart the original command or replay acknowledged updates. Keep the checkpoint private. |
+| Tenant settings apply rejects a changed baseline or mismatched plan | Review the live changes and generate a new plan with a new output path. Do not modify checkpoint contents or use --force to bypass the review boundary. |
 | admin commands return FORBIDDEN | You need the Fabric administrator role; these are tenant-scoped operations. |
 | Operations fail with CAPACITY_INACTIVE | Resume the capacity (fabio capacity resume --id $CAP) before running workloads on it. |
 | label list shows UUIDs instead of names | Name resolution needs M365 E5 + InformationProtection.Read via Microsoft Graph. |
@@ -306,7 +313,7 @@ Manage governance policy sets and policy rules
 - Disabling capacity surge protection clears its persisted thresholds; preview update-surge-protection with --dry-run.
 - PolicySet update-definition and replace-rules-by-policy overwrite governance configuration. An empty replacement removes every rule for that policy and requires --force.
 - --allow-replace on PolicySet activation replaces the currently active set; preview it with --dry-run and confirm the governance change.
-- Tenant setting changes are broad — confirm scope before applying.
+- Tenant setting changes are broad — confirm scope before applying. apply-tenant-settings is sequential, not transactional: preserve the original export and checkpoint, and do not automatically roll back partial success or bypass live conflicts with --force.
 - Deleting a workspace is permanent and removes ALL items inside — warn and suggest --dry-run.
 - workspace delete-recoverable-item permanently removes a soft-deleted item; always inspect list-recoverable-items and use --dry-run first.
 
@@ -316,11 +323,12 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 | Reference | Covers |
 |---|---|
 | `fabio context best-practices admin-apis` | fabio has both workspace-scoped commands (for regular users) and admin commands (for Fabric administrators). Use admin commands only when explicitly needed. |
-| `fabio context best-practices throttling` | fabio transparently handles 429 (Too Many Requests) and gateway errors. Agents do NOT need to implement retry logic. |
+| `fabio context best-practices throttling` | fabio handles ordinary throttling retries. Tenant settings export/plan/apply instead checkpoint and return RATE_LIMITED; wait and resume with --continue. |
 | `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |
 | `fabio context best-practices sensitivity-labels` | Sensitivity labels from Microsoft Purview Information Protection are now returned inline by the Fabric Items API. Use them for governance automation, AI agent guardrails, and compliance inventory. |
 | `fabio context best-practices tags` | Fabric organizational tags enable multi-dimensional classification of workspaces and items. Tags are returned inline in item/workspace responses and can be used for governance, inventory, and agent-based filtering. |
 | `fabio context best-practices tenant-feature-gates` | Many Fabric features are gated by a tenant setting an admin can toggle. When a setting is disabled the API returns an opaque 403 FeatureNotAvailable; fabio turns this into an admin-aware teaching error that names the exact setting and (for admins) the command to enable it. Do NOT blindly retry a feature-disabled error. |
+| `fabio context best-practices tenant-settings` | Export tenant settings to YAML, plan field-level differences, and apply reviewed updates sequentially. Resume throttled export, plan, or apply operations with --continue rather than replaying completed requests. |
 | `fabio context best-practices workspace-oap` | Outbound Access Protection is a workspace 'default deny' model for outbound connections from workspace items. It now (preview) governs Operations Agent actions and Fabric Maps data sources (Lakehouse, KQL, Ontology, and external WMS/WMTS/WFS geospatial services). Configure allow-lists with fabio workspace set-outbound-* rules + connection create; audit tenant-wide with admin list-network-policies. |
 | `fabio context best-practices connection-hygiene` | Use the connection-recency signals (createdDateTime, lastBoundDateTime, lastCredentialUsedDateTime) exposed by 'connection list' plus the derived 'connection find-stale / find-duplicates / find-single-owner' commands to find and safely retire stale/duplicate connections and fix single-owner orphan risk. Gateways cap at 1,000 connections, so hygiene keeps you under the limit. |
 

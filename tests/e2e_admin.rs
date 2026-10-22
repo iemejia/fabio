@@ -11,6 +11,8 @@
 //! - Tier 2: Dry-run validations for destructive commands
 
 mod common;
+#[path = "e2e_admin/tenant_workflow.rs"]
+mod tenant_workflow;
 
 use common::{TestConfig, fabio, unique_name};
 use serde_json::Value;

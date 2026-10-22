@@ -1638,6 +1638,9 @@ fn infer_mutates(cmd_name: &str) -> bool {
         "iceberg-",
         "table-schema",
     ];
+    if matches!(cmd_name, "export-tenant-settings" | "plan-tenant-settings") {
+        return false;
+    }
 
     for prefix in READ_ONLY_PREFIXES {
         if cmd_name.starts_with(prefix) || cmd_name == *prefix {
@@ -1709,7 +1712,9 @@ fn infer_returns(cmd_name: &str) -> &'static str {
 #[cfg(test)]
 #[allow(dead_code)]
 fn infer_destructive(cmd_name: &str) -> bool {
-    cmd_name.starts_with("delete") || cmd_name.starts_with("remove") || cmd_name == "vacuum-table"
+    cmd_name.starts_with("delete")
+        || cmd_name.starts_with("remove")
+        || matches!(cmd_name, "vacuum-table" | "apply-tenant-settings")
 }
 
 #[cfg(test)]

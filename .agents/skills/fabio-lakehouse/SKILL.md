@@ -150,7 +150,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 
 | Reference | Covers |
 |---|---|
-| `fabio context best-practices throttling` | fabio transparently handles 429 (Too Many Requests) and gateway errors. Agents do NOT need to implement retry logic. |
+| `fabio context best-practices throttling` | fabio handles ordinary throttling retries. Tenant settings export/plan/apply instead checkpoint and return RATE_LIMITED; wait and resume with --continue. |
 | `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |
 | `fabio context best-practices lro` | Many Fabric operations are async (return 202). fabio polls them automatically. Use --wait for job operations. |
 | `fabio context best-practices shortcuts` | OneLake shortcuts virtualize external/other-OneLake storage into a lakehouse. Create with TYPED flags per target type (9 supported: OneLake, AdlsGen2, AmazonS3, AzureBlobStorage, GoogleCloudStorage, S3Compatible, Dataverse, ExternalDataShare, OneDriveSharePoint); cloud targets need a connection first. list-shortcuts enumerates them (DW-managed internal shortcuts hidden unless --include-managed). load-table resolves shortcut paths even when list-files does not show their contents. |

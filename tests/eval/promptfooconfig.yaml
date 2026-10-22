@@ -47,6 +47,52 @@ defaultTest:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
 tests:
+  - description: "Administration: export and review tenant settings YAML"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-admin/SKILL.md"
+      user_query: "Export all tenant settings to settings.yaml, then compare my edited copy against the tenant and save a reviewable plan to plan.yaml. Do not apply it."
+    assert:
+      - type: icontains
+        value: "admin export-tenant-settings"
+      - type: icontains
+        value: "--out settings.yaml"
+      - type: icontains
+        value: "admin plan-tenant-settings"
+      - type: icontains
+        value: "--file settings.yaml"
+      - type: icontains
+        value: "--out plan.yaml"
+      - type: not-icontains
+        value: "--workspace"
+
+  - description: "Administration: preview tenant-wide plan before applying"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-admin/SKILL.md"
+      user_query: "Preview the tenant settings plan in plan.yaml without changing anything."
+    assert:
+      - type: icontains
+        value: "admin apply-tenant-settings"
+      - type: icontains
+        value: "--file plan.yaml"
+      - type: icontains
+        value: "--dry-run"
+      - type: not-icontains
+        value: "--force"
+
+  - description: "Administration: resume a throttled tenant settings apply"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-admin/SKILL.md"
+      user_query: "My approved tenant settings apply was rate-limited after some updates succeeded. Its hint says to wait and resume with checkpoint apply-state.yaml. The wait has elapsed; resume without reapplying the completed updates."
+    assert:
+      - type: icontains
+        value: "admin apply-tenant-settings"
+      - type: icontains
+        value: "--continue apply-state.yaml"
+      - type: not-icontains
+        value: "--continuation-token"
+      - type: not-icontains
+        value: "--force"
+
   - description: "Dataflows: assess then upgrade Gen1 dataflows in place"
     vars:
       user_query: "Assess all Gen1 dataflows in my workspace, then preview upgrading DF1 and DF2 to Gen2"
