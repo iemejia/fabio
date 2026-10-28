@@ -1,6 +1,6 @@
 [package]
 name = "fabio"
-version = "0.80.0-dev"
+version = "0.80.0"
 edition = "2024"
 rust-version = "1.99.1"
 description = "Agent-first CLI for managing Microsoft Fabric artifacts and data"
@@ -108,7 +108,7 @@ predicates = "3"
 tempfile = "3"
 wiremock = "0.6"
 serial_test = "4"
-jsonschema = "0.60.1"
+jsonschema = "0.60.2"
 
 [profile.dev]
 debug = "line-tables-only"     # ~60-70% smaller debuginfo; backtraces still work

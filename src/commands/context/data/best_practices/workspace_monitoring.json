@@ -20,6 +20,7 @@
     "other_workloads": ["Data Factory: Pipeline activity run logs; Copy job activity run details", "Data Engineering: GraphQL metrics + operation logs", "Real-Time Intelligence: Eventhouse metric/command/data-operation/ingestion-results logs", "Mirroring: Mirrored database execution logs", "Power BI: Semantic model operation logs", "Real-Time hub: Job Events"]
   },
   "constraints": [
+    "Monitoring create names must be 2-128 ASCII letters, digits, underscores, periods, or hyphens, with no spaces or leading/trailing double underscore. Descriptions must not exceed 256 characters.",
     "Only one Monitoring item per workspace can collect data at a time. Enabling another returns WSMDataCollectionAlreadyEnabledInWorkspace; disable the current item first.",
     "Enable and disable are idempotent and leave MonitoringProperties.json unchanged.",
     "A Monitoring definition uses format MonitoringV1 and the MonitoringProperties.json part. dataCollectionSettings, when present, must contain exactly one complete source/destination mapping.",

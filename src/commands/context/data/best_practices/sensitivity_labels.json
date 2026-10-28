@@ -7,7 +7,8 @@
     "api_behavior": "The sensitivityLabel field (containing the label UUID) is returned on items that have a label assigned. Items without labels omit the field entirely.",
     "no_include_needed": "Unlike other optional fields (e.g., DefaultIdentity), sensitivity labels are returned by default — no --include parameter needed.",
     "only_uuid_returned": "The Fabric API returns only the label UUID (not the name). Label definitions (names, descriptions, classification levels) are managed in Purview and queryable only via Microsoft Graph.",
-    "cannot_update_existing": "The PATCH /items/{id} endpoint does NOT support changing sensitivity labels. Labels can only be set at creation time (workspace-scoped) or via admin bulk operations."
+    "cannot_update_existing": "The PATCH /items/{id} endpoint does NOT support changing sensitivity labels. Labels can only be set at creation time (workspace-scoped) or via admin bulk operations.",
+    "encrypted_definition_access": "get-definition can retrieve definitions protected by an encrypted sensitivity label when the caller has sufficient Microsoft Purview usage rights to remove the label. Authorization is enforced by Fabric; the returned definition omits the sensitivity label. Check the item's label separately before exporting or sharing a definition."
   },
   "resolving_label_names": {
     "why_needed": "The Fabric API only returns label UUIDs. To make classification decisions (e.g., block access to Highly Confidential items), agents need the UUID-to-name mapping.",
