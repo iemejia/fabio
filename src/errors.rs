@@ -157,6 +157,12 @@ pub struct FabioError {
     pub related_resource: Option<RelatedResource>,
     /// Additional machine-readable context (from `error.parameters`).
     pub parameters: Option<Vec<ErrorParameter>>,
+    /// Validated Retry-After header, without truncating a server-requested delay.
+    pub retry_after: Option<String>,
+    /// Earliest eligible retry time, as an RFC3339 UTC timestamp.
+    pub retry_at: Option<String>,
+    /// Checkpoint location and completed-work counts for resumable operations.
+    pub progress: Option<serde_json::Value>,
 }
 
 impl FabioError {
@@ -172,6 +178,9 @@ impl FabioError {
             more_details: None,
             related_resource: None,
             parameters: None,
+            retry_after: None,
+            retry_at: None,
+            progress: None,
         }
     }
 
@@ -192,6 +201,9 @@ impl FabioError {
             more_details: None,
             related_resource: None,
             parameters: None,
+            retry_after: None,
+            retry_at: None,
+            progress: None,
         }
     }
 
@@ -215,6 +227,9 @@ impl FabioError {
             more_details: None,
             related_resource: None,
             parameters: None,
+            retry_after: None,
+            retry_at: None,
+            progress: None,
         }
     }
 
@@ -283,9 +298,16 @@ impl FabioError {
         self
     }
 
+    #[must_use]
+    pub fn set_progress(mut self, progress: serde_json::Value) -> Self {
+        self.progress = Some(progress);
+        self
+    }
+
     /// Return a copy of this error with its hint (and hint type) replaced while
     /// preserving all API-derived metadata (`code`, `parameters`, `more_details`,
-    /// `related_resource`, `request_id`, `retriable`, `verify_after`).
+    /// `related_resource`, `request_id`, `retriable`, `verify_after`) and resumable
+    /// operation state (`retry_after`, `retry_at`, `progress`).
     ///
     /// The enrichers (`enrich_forbidden`, `enrich_admin`,
     /// `enrich_ontology_definition_error`) use this instead of rebuilding a bare
@@ -305,6 +327,9 @@ impl FabioError {
             more_details: self.more_details.clone(),
             related_resource: self.related_resource.clone(),
             parameters: self.parameters.clone(),
+            retry_after: self.retry_after.clone(),
+            retry_at: self.retry_at.clone(),
+            progress: self.progress.clone(),
         }
     }
 
@@ -312,7 +337,7 @@ impl FabioError {
     /// error `code`. Use this in enrichers that reclassify the error (e.g. an opaque
     /// `ApiError` into a more specific `InvalidInput`) while still preserving all
     /// API-derived metadata (`parameters`, `more_details`, `related_resource`,
-    /// `request_id`, `retriable`, `verify_after`).
+    /// `request_id`, `retriable`, `verify_after`) and resumable operation state.
     #[must_use]
     pub fn with_code_and_hint(
         &self,
@@ -384,6 +409,9 @@ impl FabioError {
             more_details: None,
             related_resource: None,
             parameters: None,
+            retry_after: None,
+            retry_at: None,
+            progress: None,
         }
     }
 }
@@ -706,6 +734,29 @@ fn conflict_hint(message: &str, body: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn enrichers_preserve_retry_schedule_and_checkpoint_progress() {
+        for admin in [false, true] {
+            let mut err = FabioError::new(ErrorCode::Forbidden, "access denied")
+                .set_progress(serde_json::json!({"checkpoint": "scan.json", "completed": 7}));
+            err.retry_after = Some("3600".to_string());
+            err.retry_at = Some("2026-10-13T06:00:00Z".to_string());
+            let enriched = if admin {
+                enrich_admin(err.into(), "admin list-workspaces")
+            } else {
+                enrich_forbidden(err.into(), "item create", "Member")
+            };
+            let err = enriched.downcast_ref::<FabioError>().unwrap();
+            let err = err.with_code_and_hint(ErrorCode::ApiError, "Resume the scan.", None);
+            assert_eq!(err.retry_after.as_deref(), Some("3600"));
+            assert_eq!(err.retry_at.as_deref(), Some("2026-10-13T06:00:00Z"));
+            assert_eq!(
+                err.progress,
+                Some(serde_json::json!({"checkpoint": "scan.json", "completed": 7}))
+            );
+        }
+    }
 
     #[test]
     fn error_code_display() {

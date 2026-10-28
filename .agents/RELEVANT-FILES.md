@@ -58,6 +58,10 @@
 - `src/commands/git/connect.rs`: connect/disconnect/init/checkout + connection & credentials subcommands
 - `src/commands/policy_set.rs`: PolicySet item CRUD/definition, beta policy-rule CRUD/replacement, and capacity activation
 - `src/commands/admin/policy_sets.rs`: tenant PolicySet activation/deactivation and beta active-set lookup
+- `/home/runner/work/fabio/fabio/src/commands/context/data/best_practices/tenant_settings.json`: authored tenant settings YAML review, quota, continuation, and partial-failure guidance
+- `/home/runner/work/fabio/fabio/src/commands/context/data/workflows/tenant_settings.json`: export → edit → plan → dry-run → apply recipe with checkpoint recovery
+- `/home/runner/work/fabio/fabio/src/commands/admin/tenant_workflow/`: typed YAML model, export/plan/apply orchestration, atomic checkpoint persistence and locking, and uncertain-write reconciliation
+- `/home/runner/work/fabio/fabio/tests/e2e_admin/tenant_workflow.rs`: hermetic workflow/resume request-count tests and an explicitly opted-in live snapshot/restore test
 - `src/commands/git/branch_out.rs`: branch-out (create/recycle a feature workspace from a branch)
 - `src/commands/git/relation.rs`: relation list/create/delete (Git WorkspaceRelations Preview API — base/branch links between workspaces)
 - `src/commands/ontology/mod.rs`: OntologyCommand enum + execute() dispatch + shared `read_file_or_stdin` (directory module)

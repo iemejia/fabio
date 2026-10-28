@@ -79,7 +79,7 @@ struct ErrorEnvelope {
     error: ErrorBody,
 }
 
-#[derive(Serialize)]
+#[derive(Default, Serialize)]
 struct ErrorBody {
     code: String,
     message: String,
@@ -99,6 +99,12 @@ struct ErrorBody {
     related_resource: Option<RelatedResource>,
     #[serde(skip_serializing_if = "Option::is_none")]
     parameters: Option<Vec<ErrorParameter>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    retry_after: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    retry_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    progress: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "agentNotice")]
     agent_notice: Option<String>,
 }
@@ -395,6 +401,19 @@ pub fn render_object(cli: &Cli, obj: &Value, plain_key: &str) {
 /// (safety-bypass) flag, an `agentNotice` field is appended to warn the
 /// agent not to retry with that flag without explicit user approval.
 pub fn render_error(err: &FabioError) {
+    let envelope = error_envelope(err);
+    eprintln!(
+        "{}",
+        serde_json::to_string(&envelope).unwrap_or_else(|_| {
+            format!(
+                r#"{{"error":{{"code":"{}","message":"(serialization failed)"}}}}"#,
+                err.code
+            )
+        })
+    );
+}
+
+fn error_envelope(err: &FabioError) -> ErrorEnvelope {
     // Resolve the effective hint type: use explicit if set, otherwise infer.
     let effective_hint_type = err.hint.as_ref().map(|hint| {
         err.hint_type
@@ -410,7 +429,7 @@ pub fn render_error(err: &FabioError) {
         None
     };
 
-    let envelope = ErrorEnvelope {
+    ErrorEnvelope {
         error: ErrorBody {
             code: err.code.to_string(),
             message: err.message.clone(),
@@ -422,18 +441,12 @@ pub fn render_error(err: &FabioError) {
             more_details: err.more_details.clone(),
             related_resource: err.related_resource.clone(),
             parameters: err.parameters.clone(),
+            retry_after: err.retry_after.clone(),
+            retry_at: err.retry_at.clone(),
+            progress: err.progress.clone(),
             agent_notice,
         },
-    };
-    eprintln!(
-        "{}",
-        serde_json::to_string(&envelope).unwrap_or_else(|_| {
-            format!(
-                r#"{{"error":{{"code":"{}","message":"(serialization failed)"}}}}"#,
-                err.code
-            )
-        })
-    );
+    }
 }
 
 /// Infer the hint type from the error code and hint text content.
@@ -1280,9 +1293,23 @@ mod tests {
             related_resource: None,
             parameters: None,
             agent_notice: None,
+            ..ErrorBody::default()
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""retriable":true"#));
+    }
+
+    #[test]
+    fn error_envelope_preserves_retry_schedule_and_checkpoint_progress() {
+        let mut err = FabioError::new(ErrorCode::RateLimited, "throttled")
+            .set_progress(serde_json::json!({"checkpoint": "scan.json", "completed": 3}));
+        err.retry_after = Some("3600".to_string());
+        err.retry_at = Some("2026-10-13T06:00:00Z".to_string());
+        let value = serde_json::to_value(error_envelope(&err)).unwrap();
+        assert_eq!(value["error"]["retry_after"], "3600");
+        assert_eq!(value["error"]["retry_at"], "2026-10-13T06:00:00Z");
+        assert_eq!(value["error"]["progress"]["checkpoint"], "scan.json");
+        assert_eq!(value["error"]["progress"]["completed"], 3);
     }
 
     #[test]
@@ -1299,6 +1326,7 @@ mod tests {
             related_resource: None,
             parameters: None,
             agent_notice: None,
+            ..ErrorBody::default()
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(!json.contains("retriable"));
@@ -1318,6 +1346,7 @@ mod tests {
             related_resource: None,
             parameters: None,
             agent_notice: None,
+            ..ErrorBody::default()
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""requestId":"cfafbeb1-8037-4d0c-896e-a46fb27ff227""#));
@@ -1337,6 +1366,7 @@ mod tests {
             related_resource: None,
             parameters: None,
             agent_notice: None,
+            ..ErrorBody::default()
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(!json.contains("requestId"));
@@ -1365,6 +1395,7 @@ mod tests {
             related_resource: None,
             parameters: None,
             agent_notice: None,
+            ..ErrorBody::default()
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""moreDetails""#));
@@ -1389,6 +1420,7 @@ mod tests {
             }),
             parameters: None,
             agent_notice: None,
+            ..ErrorBody::default()
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""relatedResource""#));
@@ -1414,6 +1446,7 @@ mod tests {
                 message: Some("The conflicting item".to_string()),
             }]),
             agent_notice: None,
+            ..ErrorBody::default()
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""parameters""#));
@@ -1435,6 +1468,7 @@ mod tests {
             related_resource: None,
             parameters: None,
             agent_notice: None,
+            ..ErrorBody::default()
         };
         let json = serde_json::to_string(&body).unwrap();
         // Should only have code and message
@@ -1446,6 +1480,9 @@ mod tests {
         assert!(!json.contains("moreDetails"));
         assert!(!json.contains("relatedResource"));
         assert!(!json.contains("agentNotice"));
+        assert!(!json.contains("retry_after"));
+        assert!(!json.contains("retry_at"));
+        assert!(!json.contains("progress"));
     }
 
     #[test]
@@ -1465,6 +1502,7 @@ mod tests {
                 "Note for AI agents (Claude Code): do not retry with the safety-bypass flag"
                     .to_string(),
             ),
+            ..ErrorBody::default()
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""agentNotice""#));
@@ -1486,6 +1524,7 @@ mod tests {
             related_resource: None,
             parameters: None,
             agent_notice: None,
+            ..ErrorBody::default()
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(!json.contains("agentNotice"));
@@ -1508,6 +1547,7 @@ mod tests {
             related_resource: None,
             parameters: None,
             agent_notice: None,
+            ..ErrorBody::default()
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""hintType":"syntax_fix""#));

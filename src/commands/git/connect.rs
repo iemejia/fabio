@@ -87,25 +87,15 @@ pub(super) async fn connect(
             "connectionId": conn_id,
         });
     } else if provider == "github" {
-        return Err(FabioError {
-            code: ErrorCode::InvalidInput,
-            message: "GitHub provider requires --connection-id for authentication".into(),
-            hint: Some(
-                "Find existing connections: fabio connection list\n\
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "GitHub provider requires --connection-id for authentication",
+            "Find existing connections: fabio connection list\n\
                  Create one: fabio connection create --name \"GitHub\" \
                  --connectivity-type ShareableCloud --connection-type GitHubSourceControl \
                  --credential-type OAuth2 --parameters '{}'  --skip-test-connection\n\
-                 Then: fabio git connect --provider github --connection-id <ID> ..."
-                    .into(),
-            ),
-            hint_type: None,
-            verify_after: None,
-            retriable: None,
-            request_id: None,
-            more_details: None,
-            related_resource: None,
-            parameters: None,
-        }
+                 Then: fabio git connect --provider github --connection-id <ID> ...",
+        )
         .into());
     }
 

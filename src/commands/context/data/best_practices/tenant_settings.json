@@ -1,0 +1,42 @@
+{
+  "topic": "tenant-settings",
+  "title": "Review and resume tenant settings changes",
+  "summary": "Export tenant settings to YAML, plan field-level differences, and apply reviewed updates sequentially. Resume throttled export, plan, or apply operations with --continue rather than replaying completed requests.",
+  "scope": "Tenant-scoped admin REST operations; do not pass --workspace. Capacity, domain, and workspace delegated overrides are not part of this workflow.",
+  "format": {
+    "desired": "schemaVersion: 1, kind: tenant-settings, tenantId, endpoint, settings. Each setting has settingName, metadata, and values.",
+    "supported_values": "enabled, enabledSecurityGroups, excludedSecurityGroups. Group entries use graphId and optional name; order and display-name-only differences do not cause updates.",
+    "limitations": "Delegation flags and advanced properties are preserved as read-only metadata in this workflow, not editable values. This is an implementation limit, not a statement that the underlying API cannot update them.",
+    "checkpoint_names": "Defaults append .export.checkpoint.yaml or .plan.checkpoint.yaml to --out, or .apply.checkpoint.yaml to the apply input plan. Completed checkpoints are retained.",
+    "failure_metadata": "error.progress contains counts and the checkpoint path; error.retry_after and error.retry_at are included when a valid Retry-After was supplied."
+  },
+  "workflow": [
+    "Export with admin export-tenant-settings --out tenant-settings.yaml and keep a private original backup.",
+    "Edit supported desired values without changing the schema version, tenant binding, or metadata; omitted settings remain unmanaged.",
+    "Use admin plan-tenant-settings --file tenant-settings.yaml --out tenant-plan.yaml and review the before/after changes.",
+    "Preview with admin apply-tenant-settings --file tenant-plan.yaml --dry-run; ask the user to approve tenant-wide changes before applying.",
+    "Apply the reviewed plan with admin apply-tenant-settings --file tenant-plan.yaml --continuation-file apply-state.yaml.",
+    "If interrupted, follow the error hint and resume the same operation with --continue <checkpoint-file>."
+  ],
+  "quota_and_recovery": [
+    "The workflow accommodates the conservative 25-requests/hour budget in the feature request. The service's actual Retry-After response is authoritative; do not assume a fixed quota window or that the caller has the full budget available.",
+    "Throttling stops the workflow and persists progress instead of entering the ordinary short automatic retry loop. RATE_LIMITED uses exit code 7; wait as instructed before continuing.",
+    "--continue is a checkpoint-file option, not the global --continuation-token pagination option. Do not combine it with fresh-run file/output arguments.",
+    "Completed snapshot pages and acknowledged setting updates are not replayed. Uncertain write outcomes need reconciliation before another write.",
+    "Keep input files unchanged, retain checkpoint files, use the same authenticated tenant, and never edit checkpoint contents.",
+    "Preserve private files and consistent paths between CI jobs. Do not run concurrent resumes of the same checkpoint or blindly restart the original apply command."
+  ],
+  "safety": [
+    "Tenant setting changes can affect every workspace. Preview and obtain approval; apply respects --readonly.",
+    "Changed live baselines require replanning, not --force. Offline dry-run cannot verify live state.",
+    "Apply is sequential, not transactional. Partial success is possible; there is no automatic rollback.",
+    "A restoration requires its own reviewed plan using the captured original values. Do not overwrite another administrator's changes.",
+    "Checkpoints do not store authentication credentials, but contain sensitive tenant configuration and group identifiers; keep them access-controlled."
+  ],
+  "output": [
+    "Export and plan write YAML files. Stdout uses normal Fabio output helpers and summarizes artifacts and execution.",
+    "Presentation flags do not truncate or transform saved configuration or planned work.",
+    "A no-change plan contains no updates; missing settings never mean delete or disable.",
+    "Inspect destructive markers and warnings before running apply without --dry-run."
+  ]
+}

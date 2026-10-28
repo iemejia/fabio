@@ -1,8 +1,9 @@
 {
   "topic": "throttling",
   "title": "How fabio handles API throttling",
-  "summary": "fabio transparently handles 429 (Too Many Requests) and gateway errors. Agents do NOT need to implement retry logic.",
+  "summary": "fabio handles ordinary throttling retries. Tenant settings export/plan/apply instead checkpoint and return RATE_LIMITED; wait and resume with --continue.",
   "fabio_behavior": {
+    "tenant_settings_workflow": "admin export-tenant-settings, plan-tenant-settings, and apply-tenant-settings checkpoint and stop on 429/430 rather than using the ordinary retry loop. The low hourly quota requires resuming with --continue <checkpoint-file>; acknowledged successes are not replayed.",
     "platform_quota": "Core workspace/item APIs now document a 500 calls/min unified Platform API quota. Read list/get operations generally also have a 500 calls/min API limit, while create/update/delete operations commonly retain a 200 calls/min API limit.",
     "lro_quota": "Get Operation State and Get Operation Result each document a 500 calls/min unified Long-Running Operations quota and API-specific limit.",
     "rate_limit_429": "fabio retries automatically using the Retry-After header value (capped at 60s). Parallel operations (upload, sync, copy) use bounded concurrency with rate-limit retry.",
@@ -10,8 +11,8 @@
     "capacity_throttle_430": "Spark operations on small capacity may return 430 (TooManyRequestsForCapacity). fabio reports this as RATE_LIMITED error."
   },
   "what_agents_should_do": [
-    "Nothing — fabio handles all retries transparently",
-    "If you get RATE_LIMITED error, the operation already exhausted retries. Wait and try again later.",
+    "Do not implement a tight retry loop; follow the command's structured recovery hint.",
+    "If you get RATE_LIMITED, wait as instructed. For tenant settings export/plan/apply use --continue with the saved checkpoint instead of restarting; ordinary commands may already have exhausted their automatic retries.",
     "Use --verbose to see HTTP response codes and retry behavior on stderr",
     "For bulk operations, fabio uses bounded parallelism (default 8 concurrent) with automatic backoff",
     "Treat the documented quotas as shared budgets: prefer list/bulk APIs and avoid tight manual polling loops; mutation endpoints can retain a 200 calls/min API limit even when the unified quota is 500."
@@ -21,7 +22,7 @@
     "--concurrency N": "Control parallelism for bulk/parallel operations (lower = less throttling)"
   },
   "error_codes": {
-    "RATE_LIMITED": "API returned 429 after all retries exhausted. Wait before retrying.",
+    "RATE_LIMITED": "The API throttled the operation. Wait before retrying; for the resumable tenant settings workflow, use its checkpoint and --continue.",
     "TIMEOUT": "LRO polling exceeded --lro-timeout (default 120s). Operation may still be running."
   }
 }

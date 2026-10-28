@@ -1,0 +1,45 @@
+{
+  "name": "Tenant settings configuration workflow",
+  "description": "Export all tenant settings to YAML, edit desired values, review a plan, and apply it with durable continuation across the low hourly API quota.",
+  "prerequisites": [
+    "An authenticated identity authorized for Fabric tenant administration",
+    "A private writable directory for exports, reviewed plans, and continuation files",
+    "Explicit approval before applying tenant-wide configuration changes"
+  ],
+  "steps": [
+    {
+      "step_number": 1,
+      "command": "fabio admin export-tenant-settings --out tenant-settings.yaml",
+      "description": "Export all pages of current tenant settings.",
+      "notes": "Keep an original private backup; then edit supported desired values. Omitted settings remain unmanaged."
+    },
+    {
+      "step_number": 2,
+      "command": "fabio admin plan-tenant-settings --file tenant-settings.yaml --out tenant-plan.yaml",
+      "description": "Compare desired values with the live tenant and write a reviewable YAML plan.",
+      "notes": "Review before/after differences, scope, and destructive warnings. An unchanged export produces no updates."
+    },
+    {
+      "step_number": 3,
+      "command": "fabio admin apply-tenant-settings --file tenant-plan.yaml --dry-run",
+      "description": "Preview the exact planned scope without updates.",
+      "notes": "Offline preview does not verify live state. Obtain approval before the next step."
+    },
+    {
+      "step_number": 4,
+      "command": "fabio admin apply-tenant-settings --file tenant-plan.yaml --continuation-file apply-state.yaml",
+      "description": "Apply the reviewed updates sequentially, preserving progress.",
+      "notes": "The operation is not transactional. A changed live baseline requires replanning."
+    }
+  ],
+  "recovery": {
+    "command": "fabio admin apply-tenant-settings --continue apply-state.yaml",
+    "description": "On RATE_LIMITED, wait as instructed and resume using the checkpoint reported by the failed command. Export and plan support the same resume pattern.",
+    "notes": "Do not combine --continue with fresh inputs, substitute --continuation-token, edit the checkpoint, or blindly restart apply. Retain files privately and use the same tenant."
+  },
+  "see_also": [
+    "fabio context best-practices tenant-settings",
+    "fabio context best-practices throttling",
+    "fabio context skill admin"
+  ]
+}
