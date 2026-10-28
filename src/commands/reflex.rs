@@ -623,6 +623,15 @@ struct ActivationsColumn {
 }
 
 fn build_query_activations_request(query: &str) -> Result<Value> {
+    if query.trim().is_empty() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Activation query cannot be empty.",
+            "Provide a non-empty KQL query with --kql, an @file, or pipe it via stdin.".to_string(),
+        )
+        .into());
+    }
+
     let char_count = query.chars().count();
     if char_count > MAX_ACTIVATIONS_QUERY_CHARS {
         return Err(FabioError::with_hint(
@@ -644,6 +653,9 @@ async fn query_activations(
     id: &str,
     kql: Option<&str>,
 ) -> Result<()> {
+    crate::client::validate_uuid(workspace, "--workspace")?;
+    crate::client::validate_uuid(id, "--id")?;
+
     let query = crate::commands::query_input::resolve_query_input(
         kql,
         "KQL",
@@ -1160,6 +1172,14 @@ mod tests {
     fn query_activations_request_matches_spec() {
         let body = build_query_activations_request(".show tables").unwrap();
         assert_eq!(body, serde_json::json!({"query": ".show tables"}));
+    }
+
+    #[test]
+    fn query_activations_rejects_empty_text() {
+        for query in ["", " \n\t "] {
+            let error = build_query_activations_request(query).unwrap_err();
+            assert!(error.to_string().contains("cannot be empty"));
+        }
     }
 
     #[test]

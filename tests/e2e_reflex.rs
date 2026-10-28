@@ -371,6 +371,26 @@ fn reflex_query_activations_validates_input_before_dry_run() {
     let directory = tempfile::tempdir().unwrap();
     let query_file = directory.path().join("query.kql");
     let file_arg = format!("@{}", query_file.display());
+    for query in ["", " \n\t "] {
+        std::fs::write(&query_file, query).unwrap();
+        let output = fabio()
+            .args([
+                "--dry-run",
+                "reflex",
+                "query-activations",
+                "--workspace",
+                "aaaaaaaa-1111-2222-3333-444444444444",
+                "--id",
+                "bbbbbbbb-1111-2222-3333-444444444444",
+                "--kql",
+                &file_arg,
+            ])
+            .assert()
+            .failure();
+        let error: serde_json::Value = serde_json::from_slice(&output.get_output().stderr).unwrap();
+        assert_eq!(error["error"]["code"], "INVALID_INPUT");
+    }
+
     for (count, accepted) in [(1_048_576, true), (1_048_577, false)] {
         std::fs::write(&query_file, "é".repeat(count)).unwrap();
         let output = fabio()
@@ -411,6 +431,37 @@ fn reflex_query_activations_validates_input_before_dry_run() {
         .failure();
     let error: serde_json::Value = serde_json::from_slice(&output.get_output().stderr).unwrap();
     assert_eq!(error["error"]["code"], "INVALID_INPUT");
+}
+
+#[test]
+fn reflex_query_activations_validates_ids_before_resolving_query_input() {
+    for (workspace, id) in [
+        (
+            "aaaaaaaa-1111-2222-3333-444444444444/items/cccccccc-1111-2222-3333-444444444444/jobs/instances?jobType=Pipeline&ignored=",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+        ),
+        (
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "bbbbbbbb-1111-2222-3333-444444444444/jobs/instances?jobType=Pipeline",
+        ),
+    ] {
+        let output = fabio()
+            .args([
+                "--dry-run",
+                "reflex",
+                "query-activations",
+                "--workspace",
+                workspace,
+                "--id",
+                id,
+                "--kql",
+                "@/no/such/query.kql",
+            ])
+            .assert()
+            .failure();
+        let error: serde_json::Value = serde_json::from_slice(&output.get_output().stderr).unwrap();
+        assert_eq!(error["error"]["code"], "INVALID_INPUT");
+    }
 }
 
 // ─── Definition Tests ────────────────────────────────────────────────────────
