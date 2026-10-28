@@ -27,8 +27,10 @@
     "getDefinition sends empty body {} (LRO)",
     "updateDefinition is LRO",
     "The canonical part path is copyjob-content.json (the API also tolerates the alias CopyJobV1.json, but export/round-trip use copyjob-content.json). Verified live.",
-    "Reset allows re-copying: --all or --entity-ids (mutually exclusive)",
-    "Required roles: Create/Delete need Member; Update/Definition need Contributor",
+    "Reset allows re-copying: --all-entities or --entity-ids (mutually exclusive)",
+    "Run uses the dedicated POST /workspaces/{workspaceId}/copyJobs/{id}/jobs/execute/instances endpoint; the instance ID comes from Location and the first status poll honors Retry-After",
+    "list-runs returns paginated execute instances, including status, invokeType, timestamps, and failureReason; use --all or --continuation-token for pagination",
+    "Required roles: Create/Delete/Run need Member; Update/Definition need Contributor; list-runs needs Viewer",
     "Validate offline before pushing: fabio item validate-definition --type CopyJob --dir <folder>"
   ],
   "related_commands": [
@@ -36,6 +38,7 @@
     "fabio copy-job update-definition --workspace <WS> --id <ID> --file <FILE>",
     "fabio item validate-definition --type CopyJob --dir <FOLDER>",
     "fabio copy-job run --workspace <WS> --id <ID> --wait",
+    "fabio copy-job list-runs --workspace <WS> --id <ID> --all",
     "fabio copy-job reset --workspace <WS> --id <ID> --all-entities",
     "fabio copy-job list --workspace <WS>",
     "fabio copy-job delete --workspace <WS> --id <ID>"
