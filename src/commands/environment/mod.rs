@@ -367,6 +367,33 @@ pub enum EnvironmentCommand {
         #[arg(long, conflicts_with_all = ["file", "content"])]
         clear_custom_live_pool_settings: bool,
     },
+    /// List custom live-pool activations and job history
+    ListPoolActivations {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+        /// Number of activations per page
+        #[arg(long)]
+        page_size: Option<u32>,
+        /// Filter by state, for example: `state eq 'InProgress'`
+        #[arg(long)]
+        filter: Option<String>,
+    },
+    /// Show detailed diagnostics for a pool activation
+    ShowPoolActivation {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+        /// Pool activation ID
+        #[arg(long)]
+        activation_id: String,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -521,7 +548,77 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EnvironmentComm
             )
             .await
         }
+        EnvironmentCommand::ListPoolActivations {
+            workspace,
+            id,
+            page_size,
+            filter,
+        } => list_pool_activations(cli, client, workspace, id, *page_size, filter.as_deref()).await,
+        EnvironmentCommand::ShowPoolActivation {
+            workspace,
+            id,
+            activation_id,
+        } => show_pool_activation(cli, client, workspace, id, activation_id).await,
     }
+}
+
+async fn list_pool_activations(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    page_size: Option<u32>,
+    filter: Option<&str>,
+) -> Result<()> {
+    let mut url = format!("/workspaces/{workspace}/environments/{id}/poolActivations");
+    let mut params = Vec::new();
+    if let Some(value) = page_size {
+        params.push(format!("pageSize={value}"));
+    }
+    if let Some(value) = filter {
+        params.push(format!("filter={}", urlencoding::encode(value)));
+    }
+    if !params.is_empty() {
+        url.push('?');
+        url.push_str(&params.join("&"));
+    }
+    let response = client
+        .get_list(&url, "value", cli.all, cli.continuation_token.as_deref())
+        .await
+        .map_err(|e| enrich_forbidden(e, "environment list-pool-activations", "Viewer"))?;
+    output::render_list_with_token(
+        cli,
+        &response.items,
+        &[
+            "name",
+            "state",
+            "jobType",
+            "actualStartDateTime",
+            "actualEndDateTime",
+            "jobInstanceId",
+        ],
+        &["NAME", "STATE", "JOB TYPE", "STARTED", "ENDED", "JOB ID"],
+        "jobInstanceId",
+        response.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+async fn show_pool_activation(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    activation_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/environments/{id}/poolActivations/{activation_id}"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "environment show-pool-activation", "Viewer"))?;
+    output::render_object(cli, &data, "jobInstanceId");
+    Ok(())
 }
 
 // ─── CRUD ────────────────────────────────────────────────────────────────────

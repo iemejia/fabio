@@ -852,6 +852,28 @@ fn git_pull_item_options_dry_run() {
 }
 
 #[test]
+fn git_pull_deployment_plan_reference_dry_run() {
+    let logical_id = "22222222-2222-2222-2222-222222222222";
+    let assert = fabio()
+        .args([
+            "git",
+            "pull",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--deployment-plan-logical-id",
+            logical_id,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let reference = &extract_data(&json)["details"]["options"]["deploymentPlan"];
+    assert_eq!(reference["referenceType"], "ByLogicalId");
+    assert_eq!(reference["logicalId"], logical_id);
+}
+
+#[test]
 fn git_pull_item_options_purge_is_destructive() {
     // A per-item option carrying allowPurgeData makes the pull irreversible; the
     // dry-run must carry the purge warning + destructive signal.

@@ -151,6 +151,10 @@ pub enum GitCommand {
         #[arg(long, value_name = "JSON")]
         item_options: Option<String>,
 
+        /// Deployment plan logical ID used to orchestrate update ordering and actions (Beta)
+        #[arg(long)]
+        deployment_plan_logical_id: Option<String>,
+
         /// Override workspace head (auto-fetched from status if omitted)
         #[arg(long, hide = true)]
         workspace_head: Option<String>,
@@ -426,6 +430,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
             conflict_resolution,
             allow_override,
             item_options,
+            deployment_plan_logical_id,
             workspace_head,
             remote_commit_hash,
             wait,
@@ -437,6 +442,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &GitCommand) -> 
             conflict_resolution.as_deref(),
             *allow_override,
             item_options.as_deref(),
+            deployment_plan_logical_id.as_deref(),
             workspace_head.as_deref(),
             remote_commit_hash.as_deref(),
             *wait,

@@ -19,6 +19,7 @@ pub mod dataflow;
 pub mod datamart;
 pub mod deploy;
 pub mod deployment_pipeline;
+pub mod deployment_plan;
 pub mod digital_twin_builder;
 pub mod digital_twin_builder_flow;
 pub mod domain;
@@ -253,6 +254,9 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Gateway { command } => gateway::execute(&cli, &client, command).await,
         Command::Git { command } => git::execute(&cli, &client, command).await,
         Command::Connection { command } => connection::execute(&cli, &client, command).await,
+        Command::DeploymentPlan { command } => {
+            deployment_plan::execute(&cli, &client, command).await
+        }
         Command::DeploymentPipeline { command } => {
             deployment_pipeline::execute(&cli, &client, command).await
         }
@@ -470,6 +474,7 @@ fn extract_command_path(cli: &Cli) -> String {
         Command::Monitoring { .. } => "monitoring",
         Command::PolicySet { .. } => "policy-set",
         Command::Connection { .. } => "connection",
+        Command::DeploymentPlan { .. } => "deployment-plan",
         Command::DeploymentPipeline { .. } => "deployment-pipeline",
         Command::Domain { .. } => "domain",
         Command::Deploy { .. } => "deploy",

@@ -2,11 +2,61 @@
 
 mod common;
 
+use std::io::Write;
+
 use base64::Engine as _;
 use common::{TestConfig, extract_data, fabio, parse_json, unique_name};
 use serial_test::serial;
-use std::io::Write;
 use tempfile::NamedTempFile;
+
+#[test]
+fn test_create_empty_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "semantic-model",
+            "create",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--name",
+            "Empty model",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    assert_eq!(
+        json["data"]["details"]["request"]["displayName"],
+        "Empty model"
+    );
+    assert!(
+        json["data"]["details"]["request"]
+            .get("definition")
+            .is_none()
+    );
+}
+
+#[test]
+fn test_create_onelake_tables_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "semantic-model",
+            "create",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--name",
+            "Direct Lake model",
+            "--one-lake-table",
+            "https://onelake.dfs.fabric.microsoft.com/aaaaaaaa-1111-2222-3333-444444444444/bbbbbbbb-1111-2222-3333-444444444444/Tables/dim_customer",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    assert_eq!(
+        json["data"]["details"]["request"]["creationPayload"]["oneLakeTables"][0],
+        "https://onelake.dfs.fabric.microsoft.com/aaaaaaaa-1111-2222-3333-444444444444/bbbbbbbb-1111-2222-3333-444444444444/Tables/dim_customer"
+    );
+}
 
 /// Extract the error JSON envelope from stderr, skipping any `[timing]` line
 /// that precedes it when the command made network calls before failing.

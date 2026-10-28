@@ -11,6 +11,8 @@ use crate::commands::jobs::{JobEntry, JobLedger};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
+const MAX_GEN1_UPGRADE_REQUEST_BYTES: usize = 13_312;
+
 #[derive(Debug, Subcommand)]
 #[command(
     after_help = "Before using this command, run: fabio context examples dataflow\nAlso available: fabio context schema Dataflow"
@@ -389,9 +391,21 @@ fn build_upgrade_gen1_body(ids: &[String]) -> Result<Value> {
     for id in ids {
         validate_uuid(id, "--id")?;
     }
-    Ok(serde_json::json!({
+    let body = serde_json::json!({
         "dataflows": ids.iter().map(|id| serde_json::json!({"id": id})).collect::<Vec<_>>()
-    }))
+    });
+    let size = serde_json::to_vec(&body)?.len();
+    if size > MAX_GEN1_UPGRADE_REQUEST_BYTES {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!(
+                "Gen1 upgrade request body is {size} bytes; the API maximum is {MAX_GEN1_UPGRADE_REQUEST_BYTES} bytes (13 KiB)"
+            ),
+            "Submit fewer dataflow IDs so the serialized request body is at most 13,312 bytes.",
+        )
+        .into());
+    }
+    Ok(body)
 }
 
 async fn upgrade_gen1(

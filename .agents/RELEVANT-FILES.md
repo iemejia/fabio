@@ -304,3 +304,7 @@
 - `src/commands/context/capabilities.rs`: Runtime-derived per-item-type capability matrix (`context item-capabilities`) — creatable / supports_definition / deploy_strategy / deployable_from_definition / deploy_order, computed from known types + definition specs + schema formats + DEPLOY_ORDER + commands.json (no hand-maintained registry)
 - `src/commands/scorecard.rs`: `fabio scorecard` command group — Power BI Goals (Metrics) scorecards + goals via the Power BI REST API (`/groups/{ws}/scorecards`); not a Fabric item
 - `tests/e2e_scorecard.rs`: E2E tests for the scorecard group (hermetic dry-run/validation + gated live lifecycle)
+- `src/commands/deployment_plan.rs`: DeploymentPlan item CRUD and definition APIs
+- `src/commands/admin/connections.rs`: tenant-admin connection and ownership APIs
+- `src/commands/capacity/actors.rs`: capacity blocked/mission-critical surge-protection actors
+- `tests/e2e_deployment_plan.rs`: deployment-plan dry-run and definition request coverage

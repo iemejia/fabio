@@ -283,6 +283,54 @@ fn capacity_update_overage_configuration_rejects_enabled_zero() {
 }
 
 #[test]
+fn test_create_blocked_actor_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "capacity",
+            "create-blocked-actor",
+            "--id",
+            "96f3f0ff-4fe2-4712-b61b-05a456ba9357",
+            "--workspace",
+            "b2c3d4e5-f6a7-4901-bcde-2345678901fa",
+            "--expiration-policy",
+            "ExpireAfterDate",
+            "--expire-after",
+            "2026-12-31T23:59:59Z",
+        ])
+        .assert()
+        .success();
+    let data = parse_json(&output)["data"].clone();
+    assert_eq!(data["would_execute"], "capacity create-blocked-actor");
+    assert_eq!(
+        data["details"]["expirationPolicy"]["policyType"],
+        "ExpireAfterDate"
+    );
+}
+
+#[test]
+fn test_delete_mission_critical_actor_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "capacity",
+            "delete-mission-critical-actor",
+            "--id",
+            "96f3f0ff-4fe2-4712-b61b-05a456ba9357",
+            "--actor-id",
+            "33445566-7788-49aa-bbcc-ddeeff001122",
+        ])
+        .assert()
+        .success();
+    let data = parse_json(&output)["data"].clone();
+    assert_eq!(
+        data["would_execute"],
+        "capacity delete-mission-critical-actor"
+    );
+    assert_eq!(data["destructive"], true);
+}
+
+#[test]
 #[ignore = "requires capacity administrator permissions"]
 fn capacity_get_surge_protection_live() {
     let capacity_id =

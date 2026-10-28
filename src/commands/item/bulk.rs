@@ -69,6 +69,7 @@ pub(super) async fn bulk_import_definitions(
     content: Option<&str>,
     allow_pairing_by_name: bool,
     item_options: Option<&str>,
+    deployment_plan_logical_id: Option<&str>,
 ) -> Result<()> {
     let mut body = read_json_input(file, content, "bulk-import-definitions")?;
     if !body.is_object() {
@@ -106,6 +107,12 @@ pub(super) async fn bulk_import_definitions(
         )?;
         body["options"]["itemOptionsByLogicalId"] = entries;
     }
+    if let Some(logical_id) = deployment_plan_logical_id {
+        body["options"]["deploymentPlan"] = serde_json::json!({
+            "referenceType": "ByLogicalId",
+            "logicalId": logical_id
+        });
+    }
     validate_bulk_definition_payload_size(&body)?;
 
     // A per-item option entry (or a top-level option) can enable the irreversible
@@ -121,9 +128,14 @@ pub(super) async fn bulk_import_definitions(
         return Ok(());
     }
 
+    let suffix = if deployment_plan_logical_id.is_some() {
+        "?beta=true"
+    } else {
+        ""
+    };
     let mut data = client
         .post(
-            &format!("/workspaces/{workspace}/items/bulkImportDefinitions"),
+            &format!("/workspaces/{workspace}/items/bulkImportDefinitions{suffix}"),
             &body,
             true,
         )

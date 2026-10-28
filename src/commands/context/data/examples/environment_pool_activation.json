@@ -1,0 +1,40 @@
+{
+  "command": "fabio environment show-pool-activation --workspace $WS --id $ENV --activation-id $ACTIVATION",
+  "description": "Detailed custom live-pool activation diagnostics.",
+  "response": {
+    "data": {
+      "jobInstanceId": "cccccccc-1111-2222-3333-444444444444",
+      "state": "Succeeded",
+      "runtimeVersion": "2.0",
+      "sparkConfiguration": {
+        "driverMemory": "28g",
+        "driverCores": 4,
+        "executorMemory": "28g",
+        "executorCores": 4,
+        "numExecutors": 2,
+        "isDynamicAllocationEnabled": true
+      },
+      "resourceStatusSummary": {
+        "starting": 0,
+        "ready": 2,
+        "acquired": 0,
+        "stopping": 0,
+        "deactivated": 0,
+        "expired": 0,
+        "cancelled": 0,
+        "failed": 0
+      }
+    }
+  },
+  "notes": "List filtering supports only state eq '<JobHistoryStatus>'.",
+  "query_examples": [
+    {
+      "query": "data.resourceStatusSummary.ready",
+      "description": "Count ready resources"
+    },
+    {
+      "query": "data.sparkConfiguration.runtimeVersion",
+      "description": "Inspect the Spark runtime"
+    }
+  ]
+}

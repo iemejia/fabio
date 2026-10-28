@@ -151,6 +151,10 @@ const ITEM_SCHEMAS: &[(&str, &str)] = &[
     ),
     ("Ontology", include_str!("data/schemas/ontology.json")),
     ("Monitoring", include_str!("data/schemas/monitoring.json")),
+    (
+        "DeploymentPlan",
+        include_str!("data/schemas/deployment_plan.json"),
+    ),
     ("PolicySet", include_str!("data/schemas/policy_set.json")),
     (
         "SQLDatabase",

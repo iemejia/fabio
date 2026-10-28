@@ -113,10 +113,12 @@ Manage environments (Spark compute, libraries, publish)
 | `fabio environment import-staging-libraries` | yes | Import external libraries configuration into staging |
 | `fabio environment list` | no | List environments in a workspace |
 | `fabio environment list-libraries` | no | List published libraries of an environment |
+| `fabio environment list-pool-activations` | no | List custom live-pool activations and job history |
 | `fabio environment list-staging-libraries` | no | List staging libraries of an environment |
 | `fabio environment publish` | yes | Publish staged changes to an environment |
 | `fabio environment remove-staging-library` | yes | Remove an external library from staging |
 | `fabio environment show` | no | Show details of an environment |
+| `fabio environment show-pool-activation` | no | Show detailed diagnostics for a pool activation |
 | `fabio environment update` | yes | Update environment properties (name and/or description) |
 | `fabio environment update-definition` | yes | Update the definition of an environment |
 | `fabio environment update-staging-spark-compute` | yes | Update staging Spark compute configuration |
