@@ -4,12 +4,84 @@ mod common;
 
 use common::{TestConfig, extract_data, fabio, parse_json};
 use serial_test::serial;
-use wiremock::matchers::{header, method, path};
+use wiremock::matchers::{header, method, path, query_param};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
 const WORKSPACE: &str = "aaaaaaaa-1111-2222-3333-444444444444";
 const COPY_JOB: &str = "bbbbbbbb-1111-2222-3333-444444444444";
 const INSTANCE: &str = "cccccccc-1111-2222-3333-444444444444";
+
+#[test]
+fn copy_job_list_runs_preserves_pagination_and_supports_all_and_resume() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let token = "page 2/+==";
+    let route = format!("/workspaces/{WORKSPACE}/copyJobs/{COPY_JOB}/jobs/execute/instances");
+    let cases: [(&[&str], usize, u64, u64); 3] = [
+        (&[], 1, 1, 0),
+        (&["--all"], 2, 1, 1),
+        (&["--continuation-token", token], 1, 0, 1),
+    ];
+    for (flags, count, first_requests, second_requests) in cases {
+        let server = runtime.block_on(async {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path(&route))
+                .and(|request: &Request| request.url.query().is_none())
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "value": [{"id": INSTANCE, "itemId": COPY_JOB, "jobType": "execute",
+                        "invokeType": "Manual", "status": "Completed", "failureReason": null}],
+                    "continuationToken": token,
+                })))
+                .expect(first_requests)
+                .mount(&server)
+                .await;
+            Mock::given(method("GET"))
+                .and(path(&route))
+                .and(query_param("continuationToken", token))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "value": [{"id": uuid::Uuid::nil().to_string(), "itemId": COPY_JOB,
+                        "jobType": "execute", "invokeType": "Manual", "status": "Failed",
+                        "failureReason": {"errorCode": "SyntheticFailure"}}],
+                })))
+                .expect(second_requests)
+                .mount(&server)
+                .await;
+            server
+        });
+        let output = fabio()
+            .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+            .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
+            .args([
+                "--readonly",
+                "copy-job",
+                "list-runs",
+                "--workspace",
+                WORKSPACE,
+                "--id",
+                COPY_JOB,
+            ])
+            .args(flags)
+            .assert()
+            .success();
+        let json = parse_json(&output);
+        assert_eq!(json["count"], count);
+        let instances = extract_data(&json).as_array().unwrap();
+        assert_eq!(instances.len(), count);
+        assert_eq!(instances[0]["itemId"], COPY_JOB);
+        assert_eq!(instances[0]["jobType"], "execute");
+        assert_eq!(instances[0]["invokeType"], "Manual");
+        if second_requests == 0 {
+            assert_eq!(json["continuationToken"], token);
+            assert_eq!(instances[0]["failureReason"], serde_json::Value::Null);
+        } else {
+            assert!(json.get("continuationToken").is_none());
+            assert_eq!(
+                instances[count - 1]["failureReason"]["errorCode"],
+                "SyntheticFailure"
+            );
+        }
+    }
+}
 
 #[test]
 fn copy_job_run_retries_with_empty_body_and_returns_location_without_waiting() {

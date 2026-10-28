@@ -1232,4 +1232,47 @@ mod tests {
         let response: QueryActivationsResponse = serde_json::from_value(data.clone()).unwrap();
         assert_eq!(serde_json::to_value(response).unwrap(), data);
     }
+
+    #[test]
+    fn activation_response_round_trips_all_scalar_types_and_future_types() {
+        let types = [
+            "Bool",
+            "DateTime",
+            "Decimal",
+            "Dynamic",
+            "Guid",
+            "Int",
+            "Long",
+            "Real",
+            "String",
+            "TimeSpan",
+            "FutureScalar",
+        ];
+        let columns: Vec<_> = types
+            .iter()
+            .map(|column_type| {
+                serde_json::json!({
+                    "columnName": column_type,
+                    "columnType": column_type,
+                })
+            })
+            .collect();
+        let values = serde_json::json!([
+            true, "2026-01-01T00:00:00Z", "12.34", {"nested": [1, 2]},
+            Uuid::nil().to_string(), 42, 9_007_199_254_740_993_i64, 1.5,
+            "sample", "00:01:00", {"future": true}
+        ]);
+        let data = serde_json::json!({"tables": [{
+            "tableName": "PrimaryResult",
+            "columns": columns,
+            "rows": [values, vec![Value::Null; types.len()]],
+        }, {
+            "tableName": "SecondResult", "columns": [], "rows": [],
+        }]});
+
+        let response: QueryActivationsResponse = serde_json::from_value(data.clone()).unwrap();
+        assert_eq!(response.tables.len(), 2);
+        assert_eq!(response.tables[0].columns.len(), types.len());
+        assert_eq!(serde_json::to_value(response).unwrap(), data);
+    }
 }

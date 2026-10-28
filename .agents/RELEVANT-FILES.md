@@ -204,7 +204,7 @@
 - `tests/e2e_lakehouse_shortcuts.rs`: Shortcut create/get/delete tests
 - `tests/e2e_lakehouse_iceberg.rs`: Iceberg REST Catalog tests (config, namespaces, tables, schema)
 - `tests/e2e_notebook.rs`: Notebook create/get-definition/run/run --wait/status/stop/delete/strip-output tests
-- `tests/e2e_warehouse.rs`: Warehouse list/show/query/query-stdin/plan/queries-running/queries-frequent/queries-long-running/queries-history/queries-kill/statistics-list/statistics-create/statistics-update/statistics-delete tests; opt-in live SQL Pools classifier round-trip (`FABIO_TEST_SQL_POOLS_WORKSPACE`) restores the baseline configuration before assertions
+- `tests/e2e_warehouse.rs`: Warehouse list/show/query/query-stdin/plan/queries-running/queries-frequent/queries-long-running/queries-history/queries-kill/statistics-list/statistics-create/statistics-update/statistics-delete tests; offline SQL Pools GET/PATCH route/body/no-beta assertions and opt-in live classifier round-trip (`FABIO_TEST_SQL_POOLS_WORKSPACE`) that restores the baseline before assertions
 - `tests/e2e_sql_database.rs`: SQL Database CRUD + query + import + revalidate-cmk dry-run tests
 - `tests/e2e_dataagent.rs`: Data agent tests (CRUD, query, multi-turn, visuals extraction, definition, publish, datasource lifecycle, fewshot lifecycle, elements lifecycle, config, CSV upload, dry-run validations)
 - `tests/e2e_git.rs`: Git command group tests
@@ -222,11 +222,11 @@
 - `tests/e2e_kql_queryset.rs`: KQL queryset tests
 - `tests/e2e_kql_dashboard.rs`: KQL dashboard tests
 - `tests/e2e_mirrored_database.rs`: Mirrored database tests
-- `tests/e2e_reflex.rs`: Reflex CRUD, definition, and activation-query tests
+- `tests/e2e_reflex.rs`: Reflex CRUD, definition, and activation-query tests, including read-only input modes and executing documented JMESPath projections
 - `tests/e2e_graphql_api.rs`: GraphQL API CRUD tests
 - `tests/e2e_ml_model.rs`: ML model CRUD tests
 - `tests/e2e_ml_experiment.rs`: ML experiment CRUD tests
-- `tests/e2e_copy_job.rs`: Copy job CRUD, reset, run, and instance-list tests
+- `tests/e2e_copy_job.rs`: Copy job CRUD, reset, run, and instance-list tests, including pagination-token preservation, multi-page --all, and token resume
 - `tests/e2e_dataflow.rs`: Dataflow CRUD + run + execute-query tests
 - `tests/e2e_report.rs`: Report CRUD tests
 - `tests/e2e_semantic_model.rs`: Semantic model CRUD tests + Direct Lake generate (dry-run + generate→frame→DAX lifecycle)
@@ -256,7 +256,7 @@
 - `tests/e2e_graph_model.rs`: Graph model CRUD + refresh + query tests
 - `tests/e2e_graph_query_set.rs`: Graph query set tests
 - `tests/e2e_catalog.rs`: Catalog search tests
-- `tests/e2e_context.rs`: Context tenant tests (10 offline dry-run + 10 live graph extraction)
+- `tests/e2e_context.rs`: Context tenant graph/dry-run tests and item-schema command/flag discoverability checks
 - `tests/e2e_dashboard.rs`: Dashboard list tests
 - `tests/e2e_datamart.rs`: Datamart list tests
 - `tests/e2e_paginated_report.rs`: Paginated report tests

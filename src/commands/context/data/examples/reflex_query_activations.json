@@ -31,14 +31,14 @@
       ]
     }
   },
-  "notes": "Rows are positional arrays aligned with columns. Standard KQL data queries, explicit-table union, .show tables, and .show table <name> cslschema are supported. Wildcard union * is rejected. Queries are limited to 1,048,576 characters and may time out after about 30 seconds.",
+  "notes": "Rows are positional arrays aligned with columns, with one table per statement. Current columnType values are Bool, DateTime, Decimal, Dynamic, Guid, Int, Long, Real, String, and TimeSpan; additional values may appear over time. Standard KQL data queries, explicit-table union, .show tables, and .show table <name> cslschema are supported. Wildcard union * is rejected. Queries are limited to 1,048,576 characters and may time out after about 30 seconds. The query_examples below are JMESPath expressions applied to the payload under data, not to the full output envelope.",
   "query_examples": [
     {
-      "query": "data.tables[0].columns[*].columnName",
+      "query": "tables[0].columns[*].columnName",
       "description": "Extract the ordered column names."
     },
     {
-      "query": "data.tables[0].rows",
+      "query": "tables[0].rows",
       "description": "Extract positional result rows."
     }
   ]

@@ -5,6 +5,53 @@ mod common;
 use common::{TestConfig, fabio, parse_json};
 use serial_test::serial;
 
+#[test]
+fn context_schemas_include_copy_job_history_and_reflex_activation_queries() {
+    for (item_type, command) in [
+        ("CopyJob", "fabio copy-job list-runs"),
+        ("Reflex", "fabio reflex query-activations"),
+    ] {
+        let output = fabio()
+            .args(["context", "schema", item_type])
+            .assert()
+            .success();
+        let json = parse_json(&output);
+        let data = &json["data"];
+        assert!(
+            data["related_commands"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value.as_str().unwrap().starts_with(command))
+        );
+        let notes = data["notes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|value| value.as_str().unwrap())
+            .collect::<Vec<_>>()
+            .join(" ");
+        if item_type == "CopyJob" {
+            let reset_note = data["notes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .find(|note| note.starts_with("Reset "))
+                .unwrap();
+            assert!(reset_note.contains("--all-entities"));
+            assert!(!reset_note.contains("--all or"));
+            assert!(notes.contains("Run need Member"));
+            assert!(notes.contains("list-runs needs Viewer"));
+            assert!(notes.contains("Retry-After"));
+        } else {
+            assert!(notes.contains("positional"));
+            assert!(notes.contains("--readonly"));
+            assert!(notes.contains("stdin"));
+        }
+    }
+}
+
 // ── Dry-run tests (offline, no live tenant needed) ──────────────────────────
 
 #[test]

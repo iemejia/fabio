@@ -5,8 +5,70 @@ mod common;
 use common::{TestConfig, extract_data, fabio, parse_json};
 use predicates::prelude::*;
 use serial_test::serial;
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{body_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+
+#[test]
+fn warehouse_sql_pools_get_and_patch_use_stable_route_without_beta() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let workspace = uuid::Uuid::nil().to_string();
+    let route = format!("/workspaces/{workspace}/warehouses/sqlPoolsConfiguration");
+    let configuration = serde_json::json!({
+        "customSQLPoolsEnabled": true,
+        "customSQLPools": [{
+            "name": "synthetic-select-pool", "isDefault": true,
+            "maxResourcePercentage": 20, "optimizeForReads": true,
+            "classifier": {"type": "Statement Type", "value": ["SELECT"]},
+        }],
+    });
+    let server = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(&route))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&configuration))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path(&route))
+            .and(body_json(&configuration))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&configuration))
+            .expect(1)
+            .mount(&server)
+            .await;
+        server
+    });
+    let read = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
+        .args([
+            "--readonly",
+            "warehouse",
+            "get-sql-pools-config",
+            "--workspace",
+            &workspace,
+        ])
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&read)), &configuration);
+    let updated = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
+        .args([
+            "warehouse",
+            "update-sql-pools-config",
+            "--workspace",
+            &workspace,
+            "--content",
+            &configuration.to_string(),
+        ])
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&updated)), &configuration);
+    let requests = runtime.block_on(server.received_requests()).unwrap();
+    assert_eq!(requests.len(), 2);
+    assert!(requests.iter().all(|request| request.url.query().is_none()));
+}
 
 #[test]
 #[ignore = "requires live Fabric tenant"]

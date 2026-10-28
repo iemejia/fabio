@@ -334,7 +334,7 @@ fn reflex_query_activations_readonly_accepts_file_and_stdin_and_preserves_result
             .and(path("/workspaces/aaaaaaaa-1111-2222-3333-444444444444/reflexes/bbbbbbbb-1111-2222-3333-444444444444/queryActivations"))
             .and(body_json(serde_json::json!({"query": ".show tables"})))
             .respond_with(ResponseTemplate::new(200).set_body_json(&expected))
-            .expect(2)
+            .expect(4)
             .mount(&server)
             .await;
         server
@@ -363,6 +363,36 @@ fn reflex_query_activations_readonly_accepts_file_and_stdin_and_preserves_result
         }
         let output = command.assert().success();
         assert_eq!(extract_data(&parse_json(&output)), &expected);
+    }
+
+    let examples = fabio()
+        .args(["context", "examples", "reflex", "query-activations"])
+        .assert()
+        .success();
+    let json = parse_json(&examples);
+    let queries = json["data"]["query_examples"].as_array().unwrap();
+    let projections = [serde_json::json!(["active"]), serde_json::json!([[true]])];
+    assert_eq!(queries.len(), projections.len());
+    for (example, projection) in queries.iter().zip(projections) {
+        let output = fabio()
+            .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+            .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
+            .args([
+                "--readonly",
+                "reflex",
+                "query-activations",
+                "--workspace",
+                "aaaaaaaa-1111-2222-3333-444444444444",
+                "--id",
+                "bbbbbbbb-1111-2222-3333-444444444444",
+                "--kql",
+                ".show tables",
+                "--query",
+                example["query"].as_str().unwrap(),
+            ])
+            .assert()
+            .success();
+        assert_eq!(extract_data(&parse_json(&output)), &projection);
     }
 }
 
