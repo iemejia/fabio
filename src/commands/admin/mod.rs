@@ -1,3 +1,4 @@
+mod connections;
 mod domains;
 mod items;
 mod policy_sets;
@@ -230,6 +231,75 @@ pub enum AdminCommand {
         /// "outbound/publicAccessRules/defaultAction eq 'deny'", or both combined with `or`)
         #[arg(long)]
         filter: Option<String>,
+    },
+
+    // ── Connections ──────────────────────────────────────────────────────
+    /// List connections in the tenant (admin preview)
+    #[command(display_order = 38)]
+    ListConnections,
+    /// Show a connection in the tenant (admin preview)
+    #[command(display_order = 39)]
+    ShowConnection {
+        /// Connection ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Delete a connection in the tenant (admin preview)
+    #[command(display_order = 40)]
+    DeleteConnection {
+        /// Connection ID
+        #[arg(long)]
+        id: String,
+    },
+    /// List role assignments for a tenant connection (admin preview)
+    #[command(display_order = 41)]
+    ListConnectionRoleAssignments {
+        /// Connection ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Assign ownership of a tenant connection (admin preview)
+    #[command(display_order = 42)]
+    AddConnectionRoleAssignment {
+        /// Connection ID
+        #[arg(long)]
+        id: String,
+        /// Principal ID
+        #[arg(long)]
+        principal_id: String,
+        /// Principal type (groups are not supported)
+        #[arg(long, value_parser = ["User", "ServicePrincipal"])]
+        principal_type: String,
+    },
+    /// Show a tenant connection role assignment (admin preview)
+    #[command(display_order = 43)]
+    ShowConnectionRoleAssignment {
+        /// Connection ID
+        #[arg(long)]
+        id: String,
+        /// Role assignment ID
+        #[arg(long)]
+        assignment_id: String,
+    },
+    /// Update a tenant connection role assignment to Owner (admin preview)
+    #[command(display_order = 44)]
+    UpdateConnectionRoleAssignment {
+        /// Connection ID
+        #[arg(long)]
+        id: String,
+        /// Role assignment ID
+        #[arg(long)]
+        assignment_id: String,
+    },
+    /// Delete a tenant connection role assignment (admin preview)
+    #[command(display_order = 45)]
+    DeleteConnectionRoleAssignment {
+        /// Connection ID
+        #[arg(long)]
+        id: String,
+        /// Role assignment ID
+        #[arg(long)]
+        assignment_id: String,
     },
 
     // ── Items ────────────────────────────────────────────────────────────
@@ -642,6 +712,27 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &AdminCommand) -
         } => workspaces::restore_workspace(cli, client, workspace, name, capacity_id).await,
         AdminCommand::ListNetworkPolicies { filter } => {
             workspaces::list_network_policies(cli, client, filter.as_deref()).await
+        }
+        // Connections
+        AdminCommand::ListConnections => connections::list(cli, client).await,
+        AdminCommand::ShowConnection { id } => connections::show(cli, client, id).await,
+        AdminCommand::DeleteConnection { id } => connections::delete(cli, client, id).await,
+        AdminCommand::ListConnectionRoleAssignments { id } => {
+            connections::list_roles(cli, client, id).await
+        }
+        AdminCommand::AddConnectionRoleAssignment {
+            id,
+            principal_id,
+            principal_type,
+        } => connections::add_role(cli, client, id, principal_id, principal_type).await,
+        AdminCommand::ShowConnectionRoleAssignment { id, assignment_id } => {
+            connections::show_role(cli, client, id, assignment_id).await
+        }
+        AdminCommand::UpdateConnectionRoleAssignment { id, assignment_id } => {
+            connections::update_role(cli, client, id, assignment_id).await
+        }
+        AdminCommand::DeleteConnectionRoleAssignment { id, assignment_id } => {
+            connections::delete_role(cli, client, id, assignment_id).await
         }
         // Items
         AdminCommand::ListItems => items::list_items(cli, client).await,

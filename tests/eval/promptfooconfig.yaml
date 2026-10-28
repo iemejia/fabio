@@ -1516,6 +1516,28 @@ tests:
       - type: icontains
         value: "--eventhouse-id"
 
+  - description: "CI/CD: create a deployment plan item from plan.yml"
+    vars:
+      user_query: "Create a Fabric deployment plan named Ordered Deploy from plan.yml in workspace ws-001"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('deployment-plan create')
+        metric: deployment-plan-create-command
+      - type: icontains
+        value: "--file"
+
+  - description: "CI/CD: use a deployment plan logical ID during Git pull"
+    vars:
+      user_query: "Pull Git changes into workspace ws-001 using deployment plan logical ID plan-logical-1"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('git pull')
+        metric: git-pull-command
+      - type: icontains
+        value: "--deployment-plan-logical-id"
+
   - description: "Sequencing: workspace create before any workspace-scoped item"
     vars:
       user_query: "Create a workspace called DevEnv, then create a notebook called ETL-Job inside it"

@@ -9,6 +9,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const MOCK_WORKSPACE: &str = "aaaaaaaa-1111-2222-3333-444444444444";
 const MOCK_ENVIRONMENT: &str = "bbbbbbbb-1111-2222-3333-444444444444";
+const MOCK_ACTIVATION: &str = "cccccccc-1111-2222-3333-444444444444";
 
 #[test]
 #[serial]
@@ -132,6 +133,7 @@ fn environment_transition_endpoints_explicitly_request_beta() {
                 .mount(&server)
                 .await;
         }
+
         (server.uri(), server)
     });
 
@@ -155,6 +157,92 @@ fn environment_transition_endpoints_explicitly_request_beta() {
             .assert()
             .success();
     }
+}
+
+#[test]
+#[serial]
+fn test_list_pool_activations_sends_pagination_filters() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (server_uri, _server) = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/poolActivations"
+            )))
+            .and(query_param("pageSize", "25"))
+            .and(query_param("filter", "state eq 'InProgress'"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [{"jobInstanceId": MOCK_ACTIVATION, "state": "InProgress"}]
+            })))
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server_uri)
+        .args([
+            "environment",
+            "list-pool-activations",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+            "--page-size",
+            "25",
+            "--filter",
+            "state eq 'InProgress'",
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&output)["data"][0]["state"], "InProgress");
+}
+
+#[test]
+#[serial]
+fn test_show_pool_activation_returns_diagnostics() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (server_uri, _server) = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/poolActivations/{MOCK_ACTIVATION}"
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "jobInstanceId": MOCK_ACTIVATION,
+                "state": "Succeeded",
+                "sparkConfiguration": {"runtimeVersion": "2.0"},
+                "resourceStatusSummary": {"ready": 2}
+            })))
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server_uri)
+        .args([
+            "environment",
+            "show-pool-activation",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+            "--activation-id",
+            MOCK_ACTIVATION,
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&output)["data"]["resourceStatusSummary"]["ready"],
+        2
+    );
 }
 
 #[test]

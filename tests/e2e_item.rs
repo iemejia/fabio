@@ -1432,6 +1432,30 @@ fn item_bulk_import_item_options_dry_run() {
 }
 
 #[test]
+fn item_bulk_import_deployment_plan_reference_dry_run() {
+    let logical_id = "22222222-2222-2222-2222-222222222222";
+    let assert = fabio()
+        .args([
+            "item",
+            "bulk-import-definitions",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--content",
+            r#"{"definitionParts":[]}"#,
+            "--deployment-plan-logical-id",
+            logical_id,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&assert);
+    let reference = &extract_data(&json)["details"]["options"]["deploymentPlan"];
+    assert_eq!(reference["referenceType"], "ByLogicalId");
+    assert_eq!(reference["logicalId"], logical_id);
+}
+
+#[test]
 fn item_bulk_import_item_options_purge_is_destructive() {
     // A per-item option nesting allowPurgeData makes the bulk import irreversible;
     // the dry-run must carry the purge warning + destructive signal.

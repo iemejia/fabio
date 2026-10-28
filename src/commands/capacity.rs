@@ -7,6 +7,8 @@ use crate::client::{FabricClient, validate_uuid};
 use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
+mod actors;
+
 const ARM_API_VERSION: &str = "2023-11-01";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -41,6 +43,14 @@ impl SurgeProtectionState {
             Self::Disabled => "Disabled",
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum BlockedActorExpirationPolicy {
+    #[value(name = "NeverExpire")]
+    NeverExpire,
+    #[value(name = "ExpireAfterDate")]
+    ExpireAfterDate,
 }
 
 #[derive(Debug, Subcommand)]
@@ -210,8 +220,96 @@ pub enum CapacityCommand {
         #[arg(long, value_parser = clap::value_parser!(u32).range(0..=240_000))]
         threshold_capacity_unit_hours: Option<u32>,
     },
+    /// Create or update a blocked workspace actor on a capacity
+    CreateBlockedActor {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+        /// Workspace ID to block
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Expiration policy
+        #[arg(long, value_enum)]
+        expiration_policy: BlockedActorExpirationPolicy,
+        /// UTC expiration timestamp (required for `ExpireAfterDate`)
+        #[arg(long)]
+        expire_after: Option<String>,
+    },
+    /// List blocked actors on a capacity
+    ListBlockedActors {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Show a blocked actor
+    ShowBlockedActor {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+        /// Blocked actor ID
+        #[arg(long)]
+        actor_id: String,
+    },
+    /// Update a blocked actor expiration policy
+    UpdateBlockedActor {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+        /// Blocked actor ID
+        #[arg(long)]
+        actor_id: String,
+        /// Expiration policy
+        #[arg(long, value_enum)]
+        expiration_policy: BlockedActorExpirationPolicy,
+        /// UTC expiration timestamp (required for `ExpireAfterDate`)
+        #[arg(long)]
+        expire_after: Option<String>,
+    },
+    /// Delete a blocked actor
+    DeleteBlockedActor {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+        /// Blocked actor ID
+        #[arg(long)]
+        actor_id: String,
+    },
+    /// Create a mission-critical workspace actor on a capacity
+    CreateMissionCriticalActor {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+        /// Workspace ID to shield
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+    },
+    /// List mission-critical actors on a capacity
+    ListMissionCriticalActors {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Show a mission-critical actor
+    ShowMissionCriticalActor {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+        /// Mission-critical actor ID
+        #[arg(long)]
+        actor_id: String,
+    },
+    /// Delete a mission-critical actor
+    DeleteMissionCriticalActor {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+        /// Mission-critical actor ID
+        #[arg(long)]
+        actor_id: String,
+    },
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &CapacityCommand) -> Result<()> {
     match command {
         CapacityCommand::List => list(cli, client).await,
@@ -305,6 +403,57 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &CapacityCommand
         } => {
             update_overage_configuration(cli, client, id, *state, *threshold_capacity_unit_hours)
                 .await
+        }
+        CapacityCommand::CreateBlockedActor {
+            id,
+            workspace,
+            expiration_policy,
+            expire_after,
+        } => {
+            actors::create_blocked(
+                cli,
+                client,
+                id,
+                workspace,
+                *expiration_policy,
+                expire_after.as_deref(),
+            )
+            .await
+        }
+        CapacityCommand::ListBlockedActors { id } => actors::list_blocked(cli, client, id).await,
+        CapacityCommand::ShowBlockedActor { id, actor_id } => {
+            actors::show_blocked(cli, client, id, actor_id).await
+        }
+        CapacityCommand::UpdateBlockedActor {
+            id,
+            actor_id,
+            expiration_policy,
+            expire_after,
+        } => {
+            actors::update_blocked(
+                cli,
+                client,
+                id,
+                actor_id,
+                *expiration_policy,
+                expire_after.as_deref(),
+            )
+            .await
+        }
+        CapacityCommand::DeleteBlockedActor { id, actor_id } => {
+            actors::delete_blocked(cli, client, id, actor_id).await
+        }
+        CapacityCommand::CreateMissionCriticalActor { id, workspace } => {
+            actors::create_mission_critical(cli, client, id, workspace).await
+        }
+        CapacityCommand::ListMissionCriticalActors { id } => {
+            actors::list_mission_critical(cli, client, id).await
+        }
+        CapacityCommand::ShowMissionCriticalActor { id, actor_id } => {
+            actors::show_mission_critical(cli, client, id, actor_id).await
+        }
+        CapacityCommand::DeleteMissionCriticalActor { id, actor_id } => {
+            actors::delete_mission_critical(cli, client, id, actor_id).await
         }
     }
 }

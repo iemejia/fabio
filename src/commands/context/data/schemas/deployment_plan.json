@@ -1,0 +1,47 @@
+{
+  "type": "DeploymentPlan",
+  "description": "Preview item that orchestrates Fabric deployments by defining item ordering and pre/post deployment actions.",
+  "create_command": "fabio deployment-plan create --workspace <WS> --name <NAME> --file plan.yml",
+  "definition_format": "DeploymentPlanFormat",
+  "definition_parts": [
+    {
+      "path": "plan.yml",
+      "description": "Required deployment plan definition using the DeploymentPlanV1 executable format."
+    },
+    {
+      "path": ".platform",
+      "description": "Optional Fabric item metadata."
+    }
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}",
+    "definition": {
+      "format": "DeploymentPlanFormat",
+      "parts": [
+        {
+          "path": "plan.yml",
+          "payload": "{{base64_plan_yaml}}",
+          "payloadType": "InlineBase64"
+        }
+      ]
+    }
+  },
+  "flags": {
+    "--file": "Raw plan.yml or a complete definition envelope.",
+    "--folder-id": "Optional workspace folder for the item.",
+    "--format": "Definition format; currently DeploymentPlanFormat.",
+    "--update-metadata": "Update item metadata from the submitted definition."
+  },
+  "notes": [
+    "Deployment plan items and their integration with Git, bulk import, and deployment pipelines are Preview/Beta.",
+    "Git pull and bulk import reference deployment plans by logical ID; deployment-pipeline deploy references them by item ID.",
+    "Beta query activation is automatic when a deployment-plan reference flag is supplied."
+  ],
+  "related_commands": [
+    "fabio deployment-plan list --workspace <WS>",
+    "fabio deployment-plan get-definition --workspace <WS> --id <ID>",
+    "fabio git pull --workspace <WS> --deployment-plan-logical-id <LOGICAL_ID>",
+    "fabio item bulk-import-definitions --workspace <WS> --content <JSON> --deployment-plan-logical-id <LOGICAL_ID>",
+    "fabio deployment-pipeline deploy --id <PIPELINE_ID> --source-stage-id <STAGE_ID> --deployment-plan-id <ITEM_ID>"
+  ]
+}

@@ -97,6 +97,7 @@ Fabric tenant administration (settings, tags, workloads, users)
 | Command | Mutates | Description |
 |---|---|---|
 | `fabio admin activate-policy-set` | yes | Activate a tenant-scoped policy set |
+| `fabio admin add-connection-role-assignment` | yes | Assign ownership of a tenant connection (admin preview) |
 | `fabio admin assign-domain-workspaces` | yes | Assign workspaces to a domain |
 | `fabio admin assign-domain-workspaces-by-capacities` | yes | Assign workspaces to a domain by capacities |
 | `fabio admin assign-domain-workspaces-by-principals` | yes | Assign workspaces to a domain by principals |
@@ -110,6 +111,8 @@ Fabric tenant administration (settings, tags, workloads, users)
 | `fabio admin create-workload-assignment` | yes | Create a workload assignment |
 | `fabio admin deactivate-policy-set` | yes | Deactivate the active tenant-scoped policy set |
 | `fabio admin delete-capacity-tenant-override` | yes | Delete a capacity delegated tenant setting override |
+| `fabio admin delete-connection` | yes | Delete a connection in the tenant (admin preview) |
+| `fabio admin delete-connection-role-assignment` | yes | Delete a tenant connection role assignment (admin preview) |
 | `fabio admin delete-domain` | yes | Delete a domain |
 | `fabio admin delete-tag` | yes | Delete a tag |
 | `fabio admin delete-workload-assignment` | yes | Delete a workload assignment |
@@ -117,6 +120,8 @@ Fabric tenant administration (settings, tags, workloads, users)
 | `fabio admin grant-admin-access` | yes | Grant temporary admin access to a workspace |
 | `fabio admin list-capacities-tenant-overrides` | no | List all capacities' delegated tenant setting overrides |
 | `fabio admin list-capacity-tenant-overrides` | no | List delegated tenant setting overrides for a capacity |
+| `fabio admin list-connection-role-assignments` | no | List role assignments for a tenant connection (admin preview) |
+| `fabio admin list-connections` | no | List connections in the tenant (admin preview) |
 | `fabio admin list-domain-role-assignments` | no | List role assignments for a domain |
 | `fabio admin list-domain-workspaces` | no | List workspaces in a domain |
 | `fabio admin list-domains` | no | List domains (admin view) |
@@ -138,6 +143,8 @@ Fabric tenant administration (settings, tags, workloads, users)
 | `fabio admin remove-all-sharing-links` | yes | Remove all sharing links for specified items |
 | `fabio admin restore-workspace` | yes | Restore a deleted workspace |
 | `fabio admin revoke-external-data-share` | yes | Revoke an external data share |
+| `fabio admin show-connection` | no | Show a connection in the tenant (admin preview) |
+| `fabio admin show-connection-role-assignment` | no | Show a tenant connection role assignment (admin preview) |
 | `fabio admin show-domain` | no | Show domain details |
 | `fabio admin show-item` | no | Show item details (admin view) |
 | `fabio admin show-workspace` | no | Show workspace details (admin view) |
@@ -145,6 +152,7 @@ Fabric tenant administration (settings, tags, workloads, users)
 | `fabio admin unassign-all-domain-workspaces` | yes | Unassign all workspaces from a domain |
 | `fabio admin unassign-domain-workspaces` | yes | Unassign workspaces from a domain |
 | `fabio admin update-capacity-tenant-override` | yes | Update a capacity delegated tenant setting override |
+| `fabio admin update-connection-role-assignment` | yes | Update a tenant connection role assignment to Owner (admin preview) |
 | `fabio admin update-domain` | yes | Update a domain |
 | `fabio admin update-tag` | yes | Update a tag |
 | `fabio admin update-tenant-setting` | yes | Update a tenant setting |
@@ -156,15 +164,24 @@ List and inspect Fabric capacities
 |---|---|---|
 | `fabio capacity check-name` | no | Check if a capacity name is available (ARM API) |
 | `fabio capacity create` | yes | Create a new Fabric capacity (ARM API) |
+| `fabio capacity create-blocked-actor` | yes | Create or update a blocked workspace actor on a capacity |
+| `fabio capacity create-mission-critical-actor` | yes | Create a mission-critical workspace actor on a capacity |
 | `fabio capacity delete` | yes | Delete a Fabric capacity (ARM API) |
+| `fabio capacity delete-blocked-actor` | yes | Delete a blocked actor |
+| `fabio capacity delete-mission-critical-actor` | yes | Delete a mission-critical actor |
 | `fabio capacity get-overage-configuration` | no | Get a capacity's overage configuration |
 | `fabio capacity get-surge-protection` | no | Get a capacity's background-operation surge protection configuration |
 | `fabio capacity list` | no | List capacities available to the caller (Fabric API) |
+| `fabio capacity list-blocked-actors` | no | List blocked actors on a capacity |
+| `fabio capacity list-mission-critical-actors` | no | List mission-critical actors on a capacity |
 | `fabio capacity list-skus` | no | List available SKUs for Fabric capacities (ARM API) |
 | `fabio capacity resume` | yes | Resume a suspended capacity (ARM API) |
 | `fabio capacity show` | no | Show details of a specific capacity (Fabric API) |
+| `fabio capacity show-blocked-actor` | no | Show a blocked actor |
+| `fabio capacity show-mission-critical-actor` | no | Show a mission-critical actor |
 | `fabio capacity suspend` | yes | Suspend (pause) a capacity (ARM API) |
 | `fabio capacity update` | yes | Update an existing Fabric capacity (ARM API) |
+| `fabio capacity update-blocked-actor` | yes | Update a blocked actor expiration policy |
 | `fabio capacity update-overage-configuration` | yes | Update a capacity's overage configuration |
 | `fabio capacity update-surge-protection` | yes | Update a capacity's background-operation surge protection configuration |
 

@@ -306,6 +306,150 @@
           "fabio admin list-network-policies --filter \"inbound/publicAccessRules/defaultAction eq 'deny'\""
         ]
       },
+      "list-connections": {
+        "description": "List connections in the tenant (admin preview)",
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio admin list-connections"
+        ]
+      },
+      "show-connection": {
+        "description": "Show a connection in the tenant (admin preview)",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Connection ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio admin show-connection --id $CONNECTION"
+        ]
+      },
+      "delete-connection": {
+        "description": "Delete a connection in the tenant (admin preview)",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Connection ID"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true,
+        "examples": [
+          "fabio admin delete-connection --id $CONNECTION --dry-run"
+        ]
+      },
+      "list-connection-role-assignments": {
+        "description": "List role assignments for a tenant connection (admin preview)",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Connection ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio admin list-connection-role-assignments --id $CONNECTION"
+        ]
+      },
+      "add-connection-role-assignment": {
+        "description": "Assign ownership of a tenant connection (admin preview)",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Connection ID"
+          },
+          "--principal-id": {
+            "type": "string",
+            "required": true,
+            "description": "Principal ID"
+          },
+          "--principal-type": {
+            "type": "enum",
+            "values": [
+              "User",
+              "ServicePrincipal"
+            ],
+            "required": true,
+            "description": "Principal type (groups are not supported)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio admin add-connection-role-assignment --id $CONNECTION --principal-id $USER --principal-type User"
+        ]
+      },
+      "show-connection-role-assignment": {
+        "description": "Show a tenant connection role assignment (admin preview)",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Connection ID"
+          },
+          "--assignment-id": {
+            "type": "string",
+            "required": true,
+            "description": "Role assignment ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio admin show-connection-role-assignment --id $CONNECTION --assignment-id $ASSIGNMENT"
+        ]
+      },
+      "update-connection-role-assignment": {
+        "description": "Update a tenant connection role assignment to Owner (admin preview)",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Connection ID"
+          },
+          "--assignment-id": {
+            "type": "string",
+            "required": true,
+            "description": "Role assignment ID"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "examples": [
+          "fabio admin update-connection-role-assignment --id $CONNECTION --assignment-id $ASSIGNMENT"
+        ]
+      },
+      "delete-connection-role-assignment": {
+        "description": "Delete a tenant connection role assignment (admin preview)",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Connection ID"
+          },
+          "--assignment-id": {
+            "type": "string",
+            "required": true,
+            "description": "Role assignment ID"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true,
+        "examples": [
+          "fabio admin delete-connection-role-assignment --id $CONNECTION --assignment-id $ASSIGNMENT --dry-run"
+        ]
+      },
       "list-items": {
         "description": "List items (admin view)",
         "mutates": false,
@@ -2382,13 +2526,18 @@
           "--item-options": {
             "type": "string",
             "description": "Per-item import options as a JSON array keyed by logicalId (inline or @file)"
+          },
+          "--deployment-plan-logical-id": {
+            "type": "string",
+            "description": "Deployment plan logical ID used to orchestrate import ordering and actions (Beta)"
           }
         },
         "mutates": true,
         "returns": "object",
         "async": true,
         "examples": [
-          "fabio item bulk-import-definitions --workspace $WS --file import.json --item-options @item-options.json --dry-run"
+          "fabio item bulk-import-definitions --workspace $WS --file import.json --item-options @item-options.json --dry-run",
+          "fabio item bulk-import-definitions --workspace $WS --file import.json --deployment-plan-logical-id $PLAN_LOGICAL_ID"
         ]
       },
       "bulk-move": {
@@ -4760,6 +4909,204 @@
         "examples": [
           "fabio capacity update-overage-configuration --id $CAPACITY_ID --state Enabled --threshold-capacity-unit-hours 1000 --dry-run",
           "fabio capacity update-overage-configuration --id $CAPACITY_ID --state Disabled --dry-run"
+        ]
+      },
+      "create-blocked-actor": {
+        "description": "Create or update a blocked workspace actor on a capacity",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          },
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID to block"
+          },
+          "--expiration-policy": {
+            "type": "enum",
+            "values": [
+              "NeverExpire",
+              "ExpireAfterDate"
+            ],
+            "required": true,
+            "description": "Expiration policy"
+          },
+          "--expire-after": {
+            "type": "string",
+            "description": "UTC expiration timestamp (required for `ExpireAfterDate`)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio capacity create-blocked-actor --id $CAPACITY --workspace $WS --expiration-policy NeverExpire"
+        ]
+      },
+      "list-blocked-actors": {
+        "description": "List blocked actors on a capacity",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio capacity list-blocked-actors --id $CAPACITY"
+        ]
+      },
+      "show-blocked-actor": {
+        "description": "Show a blocked actor",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          },
+          "--actor-id": {
+            "type": "string",
+            "required": true,
+            "description": "Blocked actor ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio capacity show-blocked-actor --id $CAPACITY --actor-id $ACTOR"
+        ]
+      },
+      "update-blocked-actor": {
+        "description": "Update a blocked actor expiration policy",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          },
+          "--actor-id": {
+            "type": "string",
+            "required": true,
+            "description": "Blocked actor ID"
+          },
+          "--expiration-policy": {
+            "type": "enum",
+            "values": [
+              "NeverExpire",
+              "ExpireAfterDate"
+            ],
+            "required": true,
+            "description": "Expiration policy"
+          },
+          "--expire-after": {
+            "type": "string",
+            "description": "UTC expiration timestamp (required for `ExpireAfterDate`)"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "examples": [
+          "fabio capacity update-blocked-actor --id $CAPACITY --actor-id $ACTOR --expiration-policy ExpireAfterDate --expire-after 2027-01-01T00:00:00Z"
+        ]
+      },
+      "delete-blocked-actor": {
+        "description": "Delete a blocked actor",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          },
+          "--actor-id": {
+            "type": "string",
+            "required": true,
+            "description": "Blocked actor ID"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true,
+        "examples": [
+          "fabio capacity delete-blocked-actor --id $CAPACITY --actor-id $ACTOR --dry-run"
+        ]
+      },
+      "create-mission-critical-actor": {
+        "description": "Create a mission-critical workspace actor on a capacity",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          },
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID to shield"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio capacity create-mission-critical-actor --id $CAPACITY --workspace $WS"
+        ]
+      },
+      "list-mission-critical-actors": {
+        "description": "List mission-critical actors on a capacity",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio capacity list-mission-critical-actors --id $CAPACITY"
+        ]
+      },
+      "show-mission-critical-actor": {
+        "description": "Show a mission-critical actor",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          },
+          "--actor-id": {
+            "type": "string",
+            "required": true,
+            "description": "Mission-critical actor ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio capacity show-mission-critical-actor --id $CAPACITY --actor-id $ACTOR"
+        ]
+      },
+      "delete-mission-critical-actor": {
+        "description": "Delete a mission-critical actor",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          },
+          "--actor-id": {
+            "type": "string",
+            "required": true,
+            "description": "Mission-critical actor ID"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true,
+        "examples": [
+          "fabio capacity delete-mission-critical-actor --id $CAPACITY --actor-id $ACTOR --dry-run"
         ]
       }
     }
@@ -9382,6 +9729,59 @@
           "fabio environment update-staging-spark-compute --workspace $WS --id $ENV --custom-live-pool-support Enabled --max-clusters-to-hydrate 4 --cluster-idle-timeout PT20M --custom-live-pool-lifespan PT1H",
           "fabio environment update-staging-spark-compute --workspace $WS --id $ENV --custom-live-pool-support Disabled --clear-custom-live-pool-settings"
         ]
+      },
+      "list-pool-activations": {
+        "description": "List custom live-pool activations and job history",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Environment ID"
+          },
+          "--page-size": {
+            "type": "integer",
+            "description": "Number of activations per page"
+          },
+          "--filter": {
+            "type": "string",
+            "description": "Filter by state, for example: `state eq 'InProgress'`"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio environment list-pool-activations --workspace $WS --id $ENV --filter \"state eq 'InProgress'\""
+        ]
+      },
+      "show-pool-activation": {
+        "description": "Show detailed diagnostics for a pool activation",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Environment ID"
+          },
+          "--activation-id": {
+            "type": "string",
+            "required": true,
+            "description": "Pool activation ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio environment show-pool-activation --workspace $WS --id $ENV --activation-id $ACTIVATION"
+        ]
       }
     }
   },
@@ -10330,7 +10730,7 @@
         "returns": "object"
       },
       "create": {
-        "description": "Create a new report from a definition file",
+        "description": "Create a report from a definition or semantic model reference",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10358,6 +10758,14 @@
             "type": "string",
             "description": "Dataset/semantic model ID to bind report to (auto-generates definition.pbir). With --definition, rebinds the folder's definition.pbir to this model by connection"
           },
+          "--semantic-model": {
+            "type": "string",
+            "description": "Semantic model ID for API-native empty report creation"
+          },
+          "--semantic-model-workspace": {
+            "type": "string",
+            "description": "Workspace containing --semantic-model (defaults to the report workspace)"
+          },
           "--sensitivity-label": {
             "type": "string",
             "description": "Sensitivity label ID to apply on creation"
@@ -10367,7 +10775,8 @@
         "returns": "object",
         "async": true,
         "examples": [
-          "fabio report create --workspace $WS --name \"Sales Dashboard\" --dataset $SM"
+          "fabio report create --workspace $WS --name \"Sales Dashboard\" --dataset $SM",
+          "fabio report create --workspace $WS --name \"Empty Report\" --semantic-model $SM --semantic-model-workspace $MODEL_WS"
         ]
       },
       "update": {
@@ -10910,7 +11319,7 @@
         ]
       },
       "create": {
-        "description": "Create a new semantic model from a definition file (model.bim)",
+        "description": "Create a semantic model from a definition, `OneLake` tables, or empty",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -10934,6 +11343,13 @@
             "type": "string",
             "description": "Path to a FULL model definition folder (a `.SemanticModel` folder or any folder with definition.pbism + definition/ TMDL files or model.bim). All files are gathered recursively — the way a real multi-file TMDL model ships"
           },
+          "--one-lake-table": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "`OneLake` table URL for API-native Direct Lake creation (repeatable, maximum 100)"
+          },
           "--connection": {
             "type": "string",
             "description": "SQL endpoint or lakehouse ID for live connection (generates definition.pbism)"
@@ -10951,7 +11367,9 @@
         "returns": "object",
         "async": true,
         "examples": [
-          "fabio semantic-model create --workspace $WS --name \"SalesModel\" --file model.tmdl --connection $SQL_ENDPOINT_ID"
+          "fabio semantic-model create --workspace $WS --name \"SalesModel\" --file model.tmdl --connection $SQL_ENDPOINT_ID",
+          "fabio semantic-model create --workspace $WS --name \"Empty Model\"",
+          "fabio semantic-model create --workspace $WS --name \"Direct Lake Model\" --one-lake-table https://onelake.dfs.fabric.microsoft.com/$WS/$LH/Tables/sales"
         ],
         "output_fields": [
           "id",
@@ -24837,6 +25255,10 @@
             "type": "string",
             "description": "Per-item update options as a JSON array keyed by logicalId (inline or @file)"
           },
+          "--deployment-plan-logical-id": {
+            "type": "string",
+            "description": "Deployment plan logical ID used to orchestrate update ordering and actions (Beta)"
+          },
           "--workspace-head": {
             "type": "string",
             "description": "Override workspace head (auto-fetched from status if omitted)"
@@ -24859,7 +25281,8 @@
         "async": true,
         "examples": [
           "fabio git pull --workspace $WS --conflict-resolution prefer-remote --wait",
-          "fabio git pull --workspace $WS --item-options @item-options.json --wait"
+          "fabio git pull --workspace $WS --item-options @item-options.json --wait",
+          "fabio git pull --workspace $WS --deployment-plan-logical-id $PLAN_LOGICAL_ID --wait"
         ]
       },
       "connect": {
@@ -25480,6 +25903,214 @@
       }
     }
   },
+  "deployment-plan": {
+    "auth_scope": "fabric",
+    "description": "Manage deployment plan items (ordered CI/CD orchestration)",
+    "subcommands": {
+      "list": {
+        "description": "List deployment plans in a workspace",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--no-recursive": {
+            "type": "bool",
+            "description": "Only list plans directly in the root folder"
+          },
+          "--root-folder-id": {
+            "type": "string",
+            "description": "Filter plans to a specific root folder ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio deployment-plan list --workspace $WS --root-folder-id $FOLDER"
+        ]
+      },
+      "show": {
+        "description": "Show a deployment plan",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Deployment plan ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio deployment-plan show --workspace $WS --id $PLAN"
+        ]
+      },
+      "create": {
+        "description": "Create a deployment plan",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Deployment plan display name"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Optional description (maximum 256 characters)"
+          },
+          "--folder-id": {
+            "type": "string",
+            "description": "Folder ID to create the deployment plan in"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID to apply on creation"
+          },
+          "--file": {
+            "type": "string",
+            "description": "Path to a deployment plan definition or definition envelope"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline deployment plan definition or definition envelope"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "async": true,
+        "examples": [
+          "fabio deployment-plan create --workspace $WS --name \"Ordered Deploy\" --file plan.yml"
+        ]
+      },
+      "update": {
+        "description": "Update deployment plan properties",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Deployment plan ID"
+          },
+          "--name": {
+            "type": "string",
+            "description": "New display name"
+          },
+          "--description": {
+            "type": "string",
+            "description": "New description (maximum 256 characters)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio deployment-plan update --workspace $WS --id $PLAN --name \"Production Deploy\""
+        ]
+      },
+      "delete": {
+        "description": "Delete a deployment plan",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Deployment plan ID"
+          },
+          "--hard-delete": {
+            "type": "bool",
+            "description": "Permanently delete the deployment plan"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true,
+        "examples": [
+          "fabio deployment-plan delete --workspace $WS --id $PLAN --dry-run"
+        ]
+      },
+      "get-definition": {
+        "description": "Get a deployment plan definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Deployment plan ID"
+          },
+          "--format": {
+            "type": "enum",
+            "values": [
+              "DeploymentPlanFormat"
+            ],
+            "description": "Definition format"
+          },
+          "--decode": {
+            "type": "bool",
+            "description": "Decode base64 payloads inline"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "async": true,
+        "examples": [
+          "fabio deployment-plan get-definition --workspace $WS --id $PLAN --decode"
+        ]
+      },
+      "update-definition": {
+        "description": "Replace a deployment plan definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Deployment plan ID"
+          },
+          "--file": {
+            "type": "string",
+            "description": "Path to a deployment plan definition or definition envelope"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline deployment plan definition or definition envelope"
+          },
+          "--update-metadata": {
+            "type": "bool",
+            "description": "Update item metadata from the definition"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "async": true,
+        "examples": [
+          "fabio deployment-plan update-definition --workspace $WS --id $PLAN --file plan.yml --dry-run"
+        ]
+      }
+    }
+  },
   "deployment-pipeline": {
     "auth_scope": "fabric",
     "description": "Manage deployment pipelines (CI/CD stages, deploy items)",
@@ -25795,6 +26426,10 @@
           "--item-options": {
             "type": "string",
             "description": "Per-item deployment options as a JSON array keyed by sourceItemId (inline or @file)"
+          },
+          "--deployment-plan-id": {
+            "type": "string",
+            "description": "Deployment plan item ID used to orchestrate ordering and pre/post actions (Beta)"
           }
         },
         "mutates": true,
@@ -25802,7 +26437,8 @@
         "async": true,
         "examples": [
           "fabio deployment-pipeline deploy --id $DP --source-stage-id $DEV_STAGE --target-stage-id $PROD_STAGE",
-          "fabio deployment-pipeline deploy --id $DP --source-stage-id $DEV_STAGE --items '[{\"sourceItemId\":\"00000000-0000-0000-0000-000000000000\",\"itemType\":\"Notebook\"}]' --item-options @item-options.json"
+          "fabio deployment-pipeline deploy --id $DP --source-stage-id $DEV_STAGE --items '[{\"sourceItemId\":\"00000000-0000-0000-0000-000000000000\",\"itemType\":\"Notebook\"}]' --item-options @item-options.json",
+          "fabio deployment-pipeline deploy --id $DP --source-stage-id $DEV_STAGE --deployment-plan-id $PLAN"
         ]
       }
     }

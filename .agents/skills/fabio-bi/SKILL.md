@@ -54,7 +54,7 @@ Manage semantic models (Power BI datasets)
 | `fabio semantic-model cancel-refresh` | yes | Cancel an in-progress enhanced refresh by its request id |
 | `fabio semantic-model clone` | yes | Clone a semantic model to the same or different workspace |
 | `fabio semantic-model copilot-schema` | no | Get the Copilot-oriented schema (tables/columns/measures/relationships + author custom instructions) from the remote Power BI MCP server |
-| `fabio semantic-model create` | yes | Create a new semantic model from a definition file (model.bim) |
+| `fabio semantic-model create` | yes | Create a semantic model from a definition, `OneLake` tables, or empty |
 | `fabio semantic-model delete` | yes | Delete a semantic model |
 | `fabio semantic-model delete-calculation-group` | yes | Delete a calculation group (its whole table) by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio semantic-model delete-calculation-item` | yes | Delete a calculation item from a calculation group by editing the model definition. Overwrites the definition (irreversible) — dry-run guarded |
@@ -134,7 +134,7 @@ Manage reports (Power BI)
 | `fabio report add-page` | yes | Add a page to a PBIR report by editing its definition. Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio report add-visual` | yes | Add a visual to a page of a PBIR report by editing its definition. Build a data-bound visual with --category/--measure (fields as Table.Column or Sum(Table.Column)) or a textbox with --text. Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio report copilot-metadata` | no | Get the synthesized report schema (pages, visuals, field→role bindings, textboxes) from the remote Power BI MCP server — read-only |
-| `fabio report create` | yes | Create a new report from a definition file |
+| `fabio report create` | yes | Create a report from a definition or semantic model reference |
 | `fabio report delete` | yes | Delete a report |
 | `fabio report delete-page` | yes | Delete a page from a PBIR report by editing its definition (a report must keep at least one page). Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio report delete-visual` | yes | Delete a visual from a page of a PBIR report by editing its definition. Overwrites the definition (irreversible) — dry-run guarded |

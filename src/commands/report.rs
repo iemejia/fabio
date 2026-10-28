@@ -37,7 +37,7 @@ pub enum ReportCommand {
         #[arg(long)]
         id: String,
     },
-    /// Create a new report from a definition file
+    /// Create a report from a definition or semantic model reference
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
@@ -53,19 +53,31 @@ pub enum ReportCommand {
         description: Option<String>,
 
         /// Path to report definition file (definition.pbir JSON)
-        #[arg(long, required_unless_present_any = ["dataset", "definition"])]
+        #[arg(
+            long,
+            required_unless_present_any = ["dataset", "definition", "semantic_model"],
+            conflicts_with = "semantic_model"
+        )]
         file: Option<String>,
 
         /// Path to a full PBIR report folder (a `.Report` folder or any folder
         /// containing definition.pbir). All files are gathered recursively and
         /// sent as the report definition (PBIR enhanced or PBIR-Legacy).
-        #[arg(long)]
+        #[arg(long, conflicts_with = "semantic_model")]
         definition: Option<String>,
 
         /// Dataset/semantic model ID to bind report to (auto-generates definition.pbir).
         /// With --definition, rebinds the folder's definition.pbir to this model by connection.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "semantic_model")]
         dataset: Option<String>,
+
+        /// Semantic model ID for API-native empty report creation
+        #[arg(long)]
+        semantic_model: Option<String>,
+
+        /// Workspace containing --semantic-model (defaults to the report workspace)
+        #[arg(long, requires = "semantic_model")]
+        semantic_model_workspace: Option<String>,
 
         /// Sensitivity label ID to apply on creation
         #[arg(long)]
@@ -479,6 +491,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) 
             file,
             definition,
             dataset,
+            semantic_model,
+            semantic_model_workspace,
             sensitivity_label,
         } => {
             create(
@@ -490,6 +504,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ReportCommand) 
                 file.as_deref(),
                 definition.as_deref(),
                 dataset.as_deref(),
+                semantic_model.as_deref(),
+                semantic_model_workspace.as_deref(),
                 sensitivity_label.as_deref(),
             )
             .await
@@ -758,11 +774,15 @@ async fn create(
     file: Option<&str>,
     definition: Option<&str>,
     dataset: Option<&str>,
+    semantic_model: Option<&str>,
+    semantic_model_workspace: Option<&str>,
     sensitivity_label: Option<&str>,
 ) -> Result<()> {
     let mut parts: Vec<Value> = Vec::new();
 
-    if let Some(folder) = definition {
+    if semantic_model.is_some() {
+        // API-native creationPayload mode does not carry definition parts.
+    } else if let Some(folder) = definition {
         // Gather a full PBIR report folder (definition.pbir + report.json or
         // definition/**). Validate first so agents get a clear structural error
         // instead of an opaque API rejection.
@@ -849,8 +869,8 @@ async fn create(
     } else {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
-            "Provide --file, --definition, or --dataset".to_string(),
-            "Use --dataset <semantic-model-id> to create a report bound to a model, or \
+            "Provide --file, --definition, --dataset, or --semantic-model".to_string(),
+            "Use --semantic-model <id> for an API-native empty report, --dataset <id> to generate a PBIR definition, or \
              --definition <folder> for a full PBIR report folder (validate it first: \
              fabio report validate --source <folder>). See: fabio context schema Report."
                 .to_string(),
@@ -858,12 +878,18 @@ async fn create(
         .into());
     }
 
-    let mut body = serde_json::json!({
-        "displayName": name,
-        "definition": {
-            "parts": parts
-        }
-    });
+    let mut body = serde_json::json!({"displayName": name});
+    if let Some(model_id) = semantic_model {
+        body["creationPayload"] = serde_json::json!({
+            "semanticModelReference": {
+                "referenceType": "ById",
+                "itemId": model_id,
+                "workspaceId": semantic_model_workspace.unwrap_or(workspace)
+            }
+        });
+    } else {
+        body["definition"] = serde_json::json!({"parts": parts});
+    }
     if let Some(desc) = description {
         body["description"] = Value::from(desc);
     }
@@ -881,8 +907,11 @@ async fn create(
             "displayName": name,
             "description": description,
             "dataset": dataset,
+            "semanticModel": semantic_model,
+            "semanticModelWorkspace": semantic_model_workspace,
             "file": file,
-            "sensitivityLabel": sensitivity_label
+            "sensitivityLabel": sensitivity_label,
+            "request": body
         }),
     ) {
         return Ok(());

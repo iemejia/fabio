@@ -195,6 +195,30 @@ fn deployment_pipeline_deploy_item_options_dry_run() {
 }
 
 #[test]
+fn deployment_pipeline_deploy_plan_reference_dry_run() {
+    let plan_id = "22222222-2222-2222-2222-222222222222";
+    let output = fabio()
+        .args([
+            "deployment-pipeline",
+            "deploy",
+            "--id",
+            "00000000-0000-0000-0000-000000000000",
+            "--source-stage-id",
+            "11111111-1111-1111-1111-111111111111",
+            "--deployment-plan-id",
+            plan_id,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let json = parse_json(&output);
+    let reference = &extract_data(&json)["details"]["options"]["deploymentPlan"];
+    assert_eq!(reference["referenceType"], "ByItemId");
+    assert_eq!(reference["itemId"], plan_id);
+}
+
+#[test]
 fn deployment_pipeline_deploy_item_options_purge_is_destructive() {
     // A per-item option entry nesting allowPurgeData makes the deploy irreversible;
     // the dry-run must carry the purge warning + destructive signal.

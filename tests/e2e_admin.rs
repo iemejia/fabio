@@ -60,6 +60,47 @@ fn assert_list_non_empty(json: &Value) {
     assert!(!arr.is_empty(), "Expected non-empty list, got: {json}");
 }
 
+#[test]
+fn test_add_connection_role_assignment_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "admin",
+            "add-connection-role-assignment",
+            "--id",
+            "f3a2e6af-d048-4f85-94d9-b3d16140df05",
+            "--principal-id",
+            "6a002b3d-e4ec-43df-8c08-e8eb7547d9dd",
+            "--principal-type",
+            "User",
+        ])
+        .assert()
+        .success();
+    let json: Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+    assert_eq!(
+        json["data"]["details"]["principal"]["type"],
+        serde_json::json!("User")
+    );
+    assert_eq!(json["data"]["details"]["role"], "Owner");
+}
+
+#[test]
+fn test_delete_connection_dry_run_is_destructive() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "admin",
+            "delete-connection",
+            "--id",
+            "536f7c95-1b4e-4d3a-8e7f-9c2d5a6b8e01",
+        ])
+        .assert()
+        .success();
+    let json: Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "admin delete-connection");
+    assert_eq!(json["data"]["destructive"], true);
+}
+
 // ─── Tier 0: Read-Only Commands ──────────────────────────────────────────────
 // These commands only fetch data. They are completely safe to run.
 

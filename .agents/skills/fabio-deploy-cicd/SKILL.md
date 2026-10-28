@@ -18,6 +18,7 @@ license: MIT
 - Git branch-change governance: set additional roles at connect time with --additional-branch-changing-roles, inspect with git connection-settings-show, or update with git connection-settings-update.
 - Managing base/branch workspace relations as an independent resource (git relation list/create/delete), separate from the branch-out flow.
 - Managing deployment pipelines (dev/test/prod stages).
+- Authoring deployment plan items that order item deployment and run pre/post actions.
 - Managing variable libraries and activating environment value sets.
 - Branch-out development: after Fabric 'Branch out' creates a Git-synced feature workspace, rebind the local definition files from dev IDs to the feature workspace's IDs with 'deploy rebind' (NOT 'deploy apply' — that would drift a Git-synced workspace).
 - Gating a PR back to the shared branch: 'deploy validate --pr-ready' asserts the repo is rebound to the expected env and carries no foreign-env IDs or stray value-set files.
@@ -62,6 +63,19 @@ Manage Git integration (connect, commit, pull, status)
 | `fabio git relation` | yes | Manage workspace relations (base/branch links between workspaces, Preview) |
 | `fabio git show-tracked` | no | Show tracked items and their Git sync status |
 | `fabio git status` | no | Show workspace Git status (changes, conflicts) |
+
+### fabio deployment-plan
+Manage deployment plan items (ordered CI/CD orchestration)
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio deployment-plan create` | yes | Create a deployment plan |
+| `fabio deployment-plan delete` | yes | Delete a deployment plan |
+| `fabio deployment-plan get-definition` | no | Get a deployment plan definition |
+| `fabio deployment-plan list` | no | List deployment plans in a workspace |
+| `fabio deployment-plan show` | no | Show a deployment plan |
+| `fabio deployment-plan update` | yes | Update deployment plan properties |
+| `fabio deployment-plan update-definition` | yes | Replace a deployment plan definition |
 
 ### fabio deployment-pipeline
 Manage deployment pipelines (CI/CD stages, deploy items)
@@ -125,6 +139,7 @@ Manage variable libraries (shared variables)
 - git relation (WorkspaceRelations, preview) manages base/branch links between workspaces as a standalone resource — distinct from 'git branch-out', which creates+connects a feature workspace in one flow.
 - Use 'git status --include-files-details' to discover root-relative changed paths, then repeat 'git commit --file-selection ITEM_ID=PATH' for an object-ID FileLevelSelective commit or --logical-file-selection for a logical ID. An empty selectedFiles list (via the corresponding --all-files flag) commits every file in that item.
 - Git pull and deployment-pipeline deploy support item-type-specific definition options: use git pull --item-options with entries keyed by logicalId, or deployment-pipeline deploy --item-options with entries keyed by sourceItemId. Each ID may occur once; values are JSON option objects such as {"validateOnly":true}.
+- Deployment-plan orchestration is Beta. git pull and item bulk-import-definitions reference a plan by logical ID; deployment-pipeline deploy references it by item ID. fabio adds beta=true only when the deployment-plan flag is supplied.
 - Use 'git connection-show --workspace <WS>' for the current Git provider/repository/branch binding; the nested 'git connection show' form is a hidden legacy alias. Git connection additionalRolesAuthorizedToChangeBranch is PascalCase: None keeps branch changes admin-only; MemberAndContributor also authorizes members and contributors. Checkout preserves this setting across disconnect/reconnect and rollback.
 - Raw Power BI Desktop PBIP folders deploy directly: a '<name>.Report' / '<name>.SemanticModel' folder with NO '.platform' sidecar is discovered by folder-name suffix (Report needs definition.pbir, SemanticModel needs definition.pbism). Such items have no logicalId, so rename tracking is off (plan warns 'no logicalId') and they match deployed items by (type, name); a v2-PBIR report still rebinds to its model by name.
 - 'deploy apply' resolves cross-item references stored as Fabric LOGICAL IDs (the referenced item's .platform logicalId) in a SINGLE pass even to an EMPTY workspace: it creates items in topological order and records each new GUID mid-run (created_ids), then rewrites later items' logical-ID references to them (resolve_logical_ids_in_payload). Unlike fabric-cicd's parameter.yml $items placeholder, which queries the live workspace before publish and needs a two-phase deploy on first run. Exception: --strategy bulk creates all items at once and rejects interdependent items (DependenciesCouldNotBeResolved); use the default per-item strategy for first deploys with cross-item references. Do NOT rely on the $items.Type.Name.id PARAMETER form for cross-item GUIDs — it resolves against an empty map during deploy and is skipped-with-warning; use logical-ID references, a Variable Library value set, or a find_replace literal/$ENV: instead.

@@ -3321,3 +3321,40 @@ implemented or confirmed to require no code change.
 - **The `require_auth()` return value is a FULL `Authorization` header (`"Bearer <jwt>"`), not a raw token.** Wrapping it again (`format!("Bearer {token}")`) produces `"Bearer Bearer <jwt>"`, which the data-agent MCP endpoint rejects with **HTTP 500** (and HTTP 401 for a non-JWT value). This was a regression introduced by the Assistants→MCP migration and fixed (data-agent query/evaluate now pass the header through unchanged, matching `ontology/search`). Root-caused live: raw curl AND a raw reqwest POST with the identical token returned 200; only fabio's double-`Bearer ` request 500'd. Lesson: `McpClient::connect*(endpoint, auth_header, …)` wants the FULL header value; pass `require_auth()` straight through.
 - **The Fabric data-agent MCP endpoint is a Streamable-HTTP MCP server** named `"DataAgent MCP Server"`; it is **stateless** (no `Mcp-Session-Id` header on initialize), advertises `tools`/`resources`/`tasks` capabilities, and exposes **one tool** named `DataAgent_<agentDisplayName>` whose input schema is `{ "userQuestion": string }` (required). fabio's `primary_tool_argument` correctly selects `userQuestion` via its first-`required` fallback (none of the conventional names question/query/prompt/input/text match exactly). A `tools/call` returns `{content:[{type:text,text:…}], isError:bool}`.
 - **A published data agent whose orchestrator backend can't run returns a tool result `{isError:true, text:"The Data Agent run failed before producing a result."}`** — this is a SERVICE/CAPACITY-side failure (reproduced identically via raw curl), NOT a fabio issue; fabio surfaces it as an `ApiError` with a get-config hint. Observed on a freshly created+published Lakehouse-backed agent whose SQL analytics endpoint DID have the data (verified `SELECT COUNT(*)`), so it is independent of the data source.
+## October 2026 REST spec sync: deployment plans, admin connections, and surge actors
+
+- **DeploymentPlan is a new preview item type:** CRUD uses
+  `/workspaces/{workspaceId}/deploymentPlans`; definitions use `plan.yml`,
+  `format: DeploymentPlanFormat`, and the usual `InlineBase64` parts envelope.
+  List supports `recursive` and `rootFolderId`; updateDefinition supports
+  `updateMetadata`; delete supports `hardDelete`.
+- **Deployment-plan orchestration references are Beta:** Git
+  `updateFromGit` and bulk item-definition import accept only
+  `{referenceType:"ByLogicalId",logicalId}`; deployment-pipeline deploy accepts
+  only `{referenceType:"ByItemId",itemId}`. Each request must include
+  `?beta=true` when the reference is present.
+- **Tenant-admin connection ownership is a two-step transfer:** the admin API
+  can assign only the `Owner` role, does not support Group principals, and the
+  assignee initially receives `PendingOwner`. The assignee must update the
+  connection credentials before ownership becomes effective. Connection
+  responses now expose the caller's effective `myRole`, including
+  `PendingOwner`.
+- **Capacity surge-protection actor creation is upsert-by-workspace:** creating
+  an already blocked actor returns 200 and replaces its expiration policy;
+  creating a new one returns 201. A capacity has a combined limit of 1,000
+  blocked actors, mission-critical actors, and detection rules. Expired blocked
+  actors stop enforcement immediately but may remain visible until background
+  garbage collection.
+- **Environment pool activations are job-history resources:** list filtering
+  supports only `state eq '<JobHistoryStatus>'`; details add Spark driver,
+  executor, dynamic-allocation, and resource-state counts.
+- **Report and semantic-model creation gained API-native modes:** a report can
+  use `creationPayload.semanticModelReference` instead of a definition.
+  Semantic models can use `creationPayload.oneLakeTables` (maximum 100,
+  cross-workspace URLs allowed) or omit both definition and creationPayload to
+  create an empty model. Table URLs must use the canonical HTTPS OneLake DFS
+  host and either
+  `/{workspaceId}/{itemId}/Tables/{tableName}` or
+  `/{workspaceId}/{itemId}/Tables/{schemaName}/{tableName}`. Definition and
+  creationPayload are mutually exclusive.
+- **Gen1 dataflow upgrade request bodies are capped at 13,312 bytes.**

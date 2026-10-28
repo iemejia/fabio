@@ -7,6 +7,44 @@ use predicates::prelude::*;
 use serial_test::serial;
 
 #[test]
+fn test_create_with_semantic_model_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "report",
+            "create",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--name",
+            "Sales Dashboard",
+            "--semantic-model",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--semantic-model-workspace",
+            "cccccccc-1111-2222-3333-444444444444",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    assert_eq!(
+        json["data"]["details"]["request"]["creationPayload"]["semanticModelReference"]["referenceType"],
+        "ById"
+    );
+    assert_eq!(
+        json["data"]["details"]["request"]["creationPayload"]["semanticModelReference"]["itemId"],
+        "bbbbbbbb-1111-2222-3333-444444444444"
+    );
+    assert_eq!(
+        json["data"]["details"]["request"]["creationPayload"]["semanticModelReference"]["workspaceId"],
+        "cccccccc-1111-2222-3333-444444444444"
+    );
+    assert!(
+        json["data"]["details"]["request"]
+            .get("definition")
+            .is_none()
+    );
+}
+
+#[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn report_list_returns_array() {

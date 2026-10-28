@@ -50,7 +50,7 @@ pub enum SemanticModelCommand {
         #[arg(long)]
         id: String,
     },
-    /// Create a new semantic model from a definition file (model.bim)
+    /// Create a semantic model from a definition, `OneLake` tables, or empty
     #[command(display_order = 3)]
     Create {
         /// Workspace ID
@@ -66,14 +66,18 @@ pub enum SemanticModelCommand {
         description: Option<String>,
 
         /// Path to a single model definition file (model.bim TMSL or a single .tmdl)
-        #[arg(long, required_unless_present = "definition")]
+        #[arg(long, conflicts_with = "one_lake_table")]
         file: Option<String>,
 
         /// Path to a FULL model definition folder (a `.SemanticModel` folder or any
         /// folder with definition.pbism + definition/ TMDL files or model.bim). All
         /// files are gathered recursively — the way a real multi-file TMDL model ships.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "one_lake_table")]
         definition: Option<String>,
+
+        /// `OneLake` table URL for API-native Direct Lake creation (repeatable, maximum 100)
+        #[arg(long = "one-lake-table", conflicts_with_all = ["file", "definition"])]
+        one_lake_table: Vec<String>,
 
         /// SQL endpoint or lakehouse ID for live connection (generates definition.pbism)
         #[arg(long, visible_alias = "connection-id")]
@@ -1965,6 +1969,7 @@ pub async fn execute(
             description,
             file,
             definition,
+            one_lake_table,
             connection,
             sensitivity_label,
             allow_purge_data,
@@ -1977,6 +1982,7 @@ pub async fn execute(
                 description.as_deref(),
                 file.as_deref(),
                 definition.as_deref(),
+                one_lake_table,
                 connection.as_deref(),
                 sensitivity_label.as_deref(),
                 *allow_purge_data,

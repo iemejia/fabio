@@ -4,16 +4,16 @@ use crate::commands::{
     admin, anomaly_detector, apache_airflow_job, app_backend, auth, azure_databricks_storage,
     capacity, catalog, connection, context, copy_job, cosmos_db_database, dashboard,
     data_build_tool_job, data_pipeline, dataagent, dataflow, datamart, deploy, deployment_pipeline,
-    digital_twin_builder, digital_twin_builder_flow, domain, environment, event_schema_set,
-    eventhouse, eventstream, feedback, gateway, git, graph_model, graph_query_set, graphql_api,
-    item, job_scheduler, jobs, kql_dashboard, kql_database, kql_queryset, label, lakehouse, lro,
-    managed_private_endpoint, map, mirrored_catalog, mirrored_database,
-    mirrored_databricks_catalog, mirrored_google_lakehouse_catalog, mirrored_warehouse,
-    ml_experiment, ml_model, monitoring, mounted_data_factory, notebook, onelake_security,
-    ontology, operations_agent, org_app, org_app_audience, paginated_report, plan, policy_set,
-    profile, reflex, report, rest, rti, scorecard, semantic_model, snowflake_database, spark,
-    spark_job_definition, sql_database, sql_endpoint, user_data_function, variable_library,
-    warehouse, warehouse_snapshot, workspace,
+    deployment_plan, digital_twin_builder, digital_twin_builder_flow, domain, environment,
+    event_schema_set, eventhouse, eventstream, feedback, gateway, git, graph_model,
+    graph_query_set, graphql_api, item, job_scheduler, jobs, kql_dashboard, kql_database,
+    kql_queryset, label, lakehouse, lro, managed_private_endpoint, map, mirrored_catalog,
+    mirrored_database, mirrored_databricks_catalog, mirrored_google_lakehouse_catalog,
+    mirrored_warehouse, ml_experiment, ml_model, monitoring, mounted_data_factory, notebook,
+    onelake_security, ontology, operations_agent, org_app, org_app_audience, paginated_report,
+    plan, policy_set, profile, reflex, report, rest, rti, scorecard, semantic_model,
+    snowflake_database, spark, spark_job_definition, sql_database, sql_endpoint,
+    user_data_function, variable_library, warehouse, warehouse_snapshot, workspace,
 };
 
 /// Agent-native CLI for managing Microsoft Fabric artifacts and data.
@@ -660,8 +660,14 @@ pub enum Command {
         #[command(subcommand)]
         command: connection::ConnectionCommand,
     },
+    /// Manage deployment plan items (ordered CI/CD orchestration)
+    #[command(name = "deployment-plan", display_order = 42)]
+    DeploymentPlan {
+        #[command(subcommand)]
+        command: deployment_plan::DeploymentPlanCommand,
+    },
     /// Manage deployment pipelines (CI/CD stages, deploy items)
-    #[command(display_order = 42)]
+    #[command(display_order = 43)]
     DeploymentPipeline {
         #[command(subcommand)]
         command: deployment_pipeline::DeploymentPipelineCommand,

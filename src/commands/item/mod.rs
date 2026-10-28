@@ -427,6 +427,10 @@ pub enum ItemCommand {
         /// Per-item import options as a JSON array keyed by logicalId (inline or @file)
         #[arg(long, value_name = "JSON")]
         item_options: Option<String>,
+
+        /// Deployment plan logical ID used to orchestrate import ordering and actions (Beta)
+        #[arg(long)]
+        deployment_plan_logical_id: Option<String>,
     },
     /// Bulk move items to another workspace (LRO)
     #[command(display_order = 32)]
@@ -821,6 +825,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             content,
             allow_pairing_by_name,
             item_options,
+            deployment_plan_logical_id,
         } => {
             bulk::bulk_import_definitions(
                 cli,
@@ -830,6 +835,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
                 content.as_deref(),
                 *allow_pairing_by_name,
                 item_options.as_deref(),
+                deployment_plan_logical_id.as_deref(),
             )
             .await
         }
@@ -964,6 +970,7 @@ const KNOWN_ITEM_TYPES: &[&str] = &[
     "DataPipeline",
     "Dataflow",
     "Datamart",
+    "DeploymentPlan",
     "DigitalTwinBuilder",
     "DigitalTwinBuilderFlow",
     "Environment",

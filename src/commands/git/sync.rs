@@ -303,6 +303,7 @@ fn validate_git_file_path(path: &str) -> Result<()> {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_lines)]
 pub(super) async fn pull(
     cli: &Cli,
     client: &FabricClient,
@@ -310,6 +311,7 @@ pub(super) async fn pull(
     conflict_resolution: Option<&str>,
     allow_override: bool,
     item_options: Option<&str>,
+    deployment_plan_logical_id: Option<&str>,
     workspace_head: Option<&str>,
     remote_commit_hash: Option<&str>,
     wait: bool,
@@ -401,14 +403,25 @@ pub(super) async fn pull(
         }
         body["options"] = options;
     }
+    if let Some(logical_id) = deployment_plan_logical_id {
+        body["options"]["deploymentPlan"] = serde_json::json!({
+            "referenceType": "ByLogicalId",
+            "logicalId": logical_id
+        });
+    }
 
     if output::dry_run_guard_purge_aware(cli, "git pull", &body, purge) {
         return Ok(());
     }
 
+    let suffix = if deployment_plan_logical_id.is_some() {
+        "?beta=true"
+    } else {
+        ""
+    };
     let mut data = client
         .post_with_timeout(
-            &format!("/workspaces/{workspace}/git/updateFromGit"),
+            &format!("/workspaces/{workspace}/git/updateFromGit{suffix}"),
             &body,
             wait,
             timeout,

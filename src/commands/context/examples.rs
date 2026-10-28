@@ -97,6 +97,10 @@ pub(super) const fn example_entries() -> &'static [(&'static str, &'static str)]
 
 const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
+        "environment/show-pool-activation",
+        include_str!("data/examples/environment_pool_activation.json"),
+    ),
+    (
         "reflex/query-activations",
         include_str!("data/examples/reflex_query_activations.json"),
     ),

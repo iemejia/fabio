@@ -237,6 +237,10 @@ pub enum DeploymentPipelineCommand {
         /// Per-item deployment options as a JSON array keyed by sourceItemId (inline or @file)
         #[arg(long, value_name = "JSON")]
         item_options: Option<String>,
+
+        /// Deployment plan item ID used to orchestrate ordering and pre/post actions (Beta)
+        #[arg(long)]
+        deployment_plan_id: Option<String>,
     },
 }
 
@@ -325,6 +329,7 @@ pub async fn execute(
             note,
             allow_cross_region_deployment,
             item_options,
+            deployment_plan_id,
         } => {
             deploy(
                 cli,
@@ -336,6 +341,7 @@ pub async fn execute(
                 note.as_deref(),
                 *allow_cross_region_deployment,
                 item_options.as_deref(),
+                deployment_plan_id.as_deref(),
             )
             .await
         }
@@ -802,6 +808,7 @@ async fn deploy(
     note: Option<&str>,
     allow_cross_region_deployment: bool,
     item_options: Option<&str>,
+    deployment_plan_id: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({
         "sourceStageId": source_stage_id,
@@ -839,13 +846,28 @@ async fn deploy(
         }
         body["options"] = options;
     }
+    if let Some(plan_id) = deployment_plan_id {
+        body["options"]["deploymentPlan"] = serde_json::json!({
+            "referenceType": "ByItemId",
+            "itemId": plan_id
+        });
+    }
 
     if output::dry_run_guard_purge_aware(cli, "deployment-pipeline deploy", &body, purge) {
         return Ok(());
     }
 
+    let suffix = if deployment_plan_id.is_some() {
+        "?beta=true"
+    } else {
+        ""
+    };
     let data = client
-        .post(&format!("/deploymentPipelines/{id}/deploy"), &body, true)
+        .post(
+            &format!("/deploymentPipelines/{id}/deploy{suffix}"),
+            &body,
+            true,
+        )
         .await
         .map_err(|e| enrich_forbidden(e, "deployment-pipeline deploy", "Contributor"))?;
 

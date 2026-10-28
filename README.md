@@ -70,6 +70,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 - **Terraform-like convergence** — re-running `deploy apply` on a synced workspace produces zero API calls
 - **Single-pass cross-item resolution** — `$items.Type.Name.id` references resolve *during* a single `deploy apply`, even to a brand-new empty workspace, because fabio records each item's freshly-created GUID as it goes (no two-phase deploy — see [How fabio avoids the chicken-and-egg problem](#how-fabio-avoids-the-chicken-and-egg-problem))
 - **Saved deployment plans** — `--out plan.json` then `apply --plan plan.json` (with staleness detection)
+- **Fabric deployment-plan items** — author ordered CI/CD orchestration plans and attach them to Git pull, bulk import, or deployment-pipeline deploy operations
 - **Workspace folder management** — infers folder hierarchy, creates/moves/deletes automatically
 - **Workspace recycle-bin lifecycle** — list retained soft-deleted items, recover item trees, or permanently delete recoverable items with destructive dry-run signals
 - **Protected type deletion guards** — Lakehouse/Warehouse/Eventhouse safe from accidental deletion
@@ -77,7 +78,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 - **Workspace clone** — replicate workspace items via Bulk Export/Import APIs (`--allow-pairing-by-name` for initial clones)
 - **Data orchestration** — `--post-run-item` triggers a pipeline or notebook after deployment to populate lakehouses
 - **Dataflow modernization** — assess every Gen1 dataflow for upgrade readiness and migrate 1-50 items to Gen2 in place with per-row results
-- **Capacity governance** — inspect and configure surge protection and preview overage thresholds with structured dry-run previews
+- **Capacity governance** — inspect/configure surge protection and overage thresholds, and manage blocked or mission-critical workspace actors with structured dry-run previews
 - **Policy sets** — create tenant- or capacity-scoped governance definitions, manage beta policy rules, and activate them with admin-aware safety guardrails
 - **Git branch governance** — control whether members and contributors may change the connected branch, at connect time or through connection settings
 - **Parallel execution** — bounded-concurrency async deployment (default 8 parallel ops per type)
