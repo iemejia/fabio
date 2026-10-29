@@ -174,3 +174,35 @@ const ITEM_SCHEMAS: &[(&str, &str)] = &[
         include_str!("data/schemas/digital_twin_builder_flow.json"),
     ),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn semantic_model_definition_requirements_are_creation_mode_specific() {
+        let content = find_entry(ITEM_SCHEMAS, "semanticmodel").unwrap();
+        let mut schema: Value = serde_json::from_str(content).unwrap();
+        merge_definition_requirements(&mut schema, "SemanticModel");
+        for mode in ["empty", "one_lake_tables"] {
+            assert_eq!(
+                schema["creation_modes"][mode]["definition_required"], false,
+                "{mode}"
+            );
+        }
+        assert_eq!(
+            schema["creation_modes"]["definition"]["definition_required"],
+            true
+        );
+        assert_eq!(
+            schema["definition_requirements"]["requiredParts"][0],
+            "definition.pbism"
+        );
+        assert!(
+            schema["definition_requirements_scope"]
+                .as_str()
+                .unwrap()
+                .contains("definition-backed")
+        );
+    }
+}

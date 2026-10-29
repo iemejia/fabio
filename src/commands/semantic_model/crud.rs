@@ -522,8 +522,9 @@ fn enrich_create_error(err: anyhow::Error) -> anyhow::Error {
     if msg_lower.contains("definition") && msg_lower.contains("invalid") {
         return fabio_err
             .with_replaced_hint(
-                "Semantic model creation requires: (1) a model definition file (model.bim or .tmdl), \
-                 (2) a definition.pbism entry. The CLI auto-generates definition.pbism. \
+                "Definition-backed creation requires a model body (model.bim or .tmdl) \
+                  and a definition.pbism entry. The CLI auto-generates definition.pbism for --file. \
+                  Empty and API-native --one-lake-table creation require no definition files. \
                  For .bim files use compat 1604 + powerBI_V3. \
                  For .tmdl files ensure 'defaultPowerBIDataSourceVersion: powerBI_V3'.",
                 None,
@@ -531,13 +532,15 @@ fn enrich_create_error(err: anyhow::Error) -> anyhow::Error {
             .into();
     }
 
-    // Pattern: DirectLake requires TMDL
+    // Pattern: Direct Lake creation errors (definition-backed or API-native).
     if msg_lower.contains("directlake") || msg_lower.contains("direct lake") {
         return fabio_err
             .with_replaced_hint(
-                "Direct Lake semantic models require TMDL format (not model.bim). \
-                 Use a .tmdl file with partition mode: directLake and provide \
-                 --connection <sql-endpoint-id> to bind the lakehouse connection.",
+                "Definition-backed Direct Lake models use TMDL (not model.bim): \
+                  use a .tmdl file with partition mode: directLake and \
+                  --connection <sql-endpoint-id> to bind the lakehouse connection. \
+                  API-native --one-lake-table creation requires no definition files \
+                  and must not be combined with --connection.",
                 None,
             )
             .into();
@@ -649,6 +652,20 @@ mod tests {
         let enriched = enrich_create_error(err);
         let fabio_err = enriched.downcast_ref::<FabioError>().unwrap();
         assert!(fabio_err.hint.as_ref().unwrap().contains("tab"));
+    }
+
+    #[test]
+    fn create_error_hints_do_not_require_files_for_api_native_modes() {
+        for message in ["definition is invalid", "Direct Lake creation failed"] {
+            let error = FabioError::new(ErrorCode::ApiError, message);
+            let enriched = enrich_create_error(error.into());
+            let error = enriched.downcast_ref::<FabioError>().unwrap();
+            assert_eq!(error.code, ErrorCode::ApiError);
+            let hint = error.hint.as_deref().unwrap();
+            assert!(hint.contains("Definition-backed"));
+            assert!(hint.contains("--one-lake-table creation require"));
+            assert!(hint.contains("no definition files"));
+        }
     }
 
     #[test]
