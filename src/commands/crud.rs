@@ -275,7 +275,10 @@ pub async fn update(
         body["description"] = serde_json::Value::from(d);
     }
     let op = format!("{group} update");
-    if output::dry_run_guard(cli, &op, &body) {
+    let mut preview = body.clone();
+    preview["workspace"] = serde_json::Value::from(workspace);
+    preview["id"] = serde_json::Value::from(id);
+    if output::dry_run_guard(cli, &op, &preview) {
         return Ok(());
     }
     let data = client

@@ -335,6 +335,40 @@ async fn admin_connection_deletes_respect_readonly() {
     assert_eq!(server.received_requests().await.unwrap().len(), 0);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn admin_ownership_previews_identify_each_target_without_requests() {
+    let server = MockServer::start().await;
+    for (connection, assignment) in [(CONNECTION, ASSIGNMENT), (PRINCIPAL, CONNECTION)] {
+        for (command, extra) in [
+            (
+                "add-connection-role-assignment",
+                vec!["--principal-id", PRINCIPAL, "--principal-type", "User"],
+            ),
+            (
+                "update-connection-role-assignment",
+                vec!["--assignment-id", assignment],
+            ),
+        ] {
+            let output = mock_fabio(&server)
+                .args(["--dry-run", "admin", command, "--id", connection])
+                .args(extra)
+                .assert()
+                .success();
+            let data = parse_json(&output)["data"].clone();
+            assert_eq!(data["dry_run"], true);
+            assert_eq!(data["would_execute"], format!("admin {command}"));
+            assert_eq!(data["details"]["connectionId"], connection);
+            assert_eq!(data["details"]["role"], "Owner");
+            if command.starts_with("update") {
+                assert_eq!(data["details"]["assignmentId"], assignment);
+            } else {
+                assert_eq!(data["details"]["principal"]["id"], PRINCIPAL);
+            }
+        }
+    }
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
+}
+
 // ─── Tier 0: Read-Only Commands ──────────────────────────────────────────────
 // These commands only fetch data. They are completely safe to run.
 

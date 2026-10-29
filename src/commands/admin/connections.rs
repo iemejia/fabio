@@ -92,7 +92,9 @@ pub(super) async fn add_role(
         "principal": {"id": principal_id, "type": principal_type},
         "role": "Owner"
     });
-    if output::dry_run_guard(cli, "admin add-connection-role-assignment", &body) {
+    let mut preview = body.clone();
+    preview["connectionId"] = serde_json::Value::from(id);
+    if output::dry_run_guard(cli, "admin add-connection-role-assignment", &preview) {
         return Ok(());
     }
     let data = client
@@ -134,7 +136,10 @@ pub(super) async fn update_role(
     validate_uuid(id, "--id")?;
     validate_uuid(assignment_id, "--assignment-id")?;
     let body = serde_json::json!({"role": "Owner"});
-    if output::dry_run_guard(cli, "admin update-connection-role-assignment", &body) {
+    let mut preview = body.clone();
+    preview["connectionId"] = serde_json::Value::from(id);
+    preview["assignmentId"] = serde_json::Value::from(assignment_id);
+    if output::dry_run_guard(cli, "admin update-connection-role-assignment", &preview) {
         return Ok(());
     }
     let data = client
