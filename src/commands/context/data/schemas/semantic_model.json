@@ -1,10 +1,26 @@
 {
   "type": "SemanticModel",
   "description": "Analytical data model (formerly 'Power BI dataset') that defines tables, relationships, measures, and calculations. Queried via DAX. Direct Lake mode reads Delta tables directly from OneLake (zero-copy); Import mode loads data into memory. Reports bind to semantic models for visualization.",
-  "create_command": "fabio semantic-model create --workspace <WS> --name <NAME> --file <TMDL_OR_BIM>",
+  "create_command": "fabio semantic-model create --workspace <WS> --name <NAME>",
+  "creation_modes": {
+    "empty": {
+      "definition_required": false,
+      "example": "fabio semantic-model create --workspace <WS> --name <NAME>"
+    },
+    "one_lake_tables": {
+      "definition_required": false,
+      "example": "fabio semantic-model create --workspace <WS> --name <NAME> --one-lake-table <ONELAKE_TABLE_URL>"
+    },
+    "definition": {
+      "definition_required": true,
+      "example": "fabio semantic-model create --workspace <WS> --name <NAME> --file <TMDL_OR_BIM>",
+      "note": "Use --definition <folder> for a complete model folder. --file supplies one model file; fabio generates definition.pbism automatically."
+    }
+  },
+  "definition_requirements_scope": "The definition_parts and definition_requirements below apply only to definition-backed creation and definition updates, not empty or API-native --one-lake-table creation.",
   "definition_format": "TMDL (Direct Lake) or model.bim (Import)",
   "definition_parts": [
-    {"path": "definition.pbism", "description": "Required entry point. MS schema requires $schema + version. fabio sends {\"$schema\":\".../semanticModel/definitionProperties/1.0.0/schema.json\",\"version\":\"4.0\"} for TMDL and version \"3.0\" for model.bim; Fabric normalizes the stored version (e.g. to 4.2)."},
+    {"path": "definition.pbism", "description": "Required entry point only when supplying a definition; fabio generates it for --file. Not required for empty or --one-lake-table creation. MS schema requires $schema + version. fabio sends {\"$schema\":\".../semanticModel/definitionProperties/1.0.0/schema.json\",\"version\":\"4.0\"} for TMDL and version \"3.0\" for model.bim; Fabric normalizes the stored version (e.g. to 4.2)."},
     {"path": "model.tmdl", "description": "TMDL: model-level settings and expressions"},
     {"path": "definition/tables/<Name>.tmdl", "description": "TMDL: one file per table with columns/measures/partitions"},
     {"path": "model.bim", "description": "Import: full tabular model JSON (compatibilityLevel 1604, powerBI_V3)"}
@@ -17,16 +33,16 @@
     "--file": "Path to a single model.bim (TMSL) or one .tmdl file",
     "--definition": "Path to a FULL model definition folder (a .SemanticModel folder or any folder with definition.pbism + definition/ TMDL files or model.bim). Gathers all files recursively — the way a real multi-file TMDL model ships. Validated first (needs definition.pbism + a model body).",
     "--one-lake-table": "OneLake table URL for API-native Direct Lake creation; repeat up to 100 times. Supports default dbo and explicit schema URL forms.",
-    "--connection": "SQL Analytics Endpoint ID for Direct Lake binding"
+    "--connection": "SQL endpoint or lakehouse ID for definition-backed Direct Lake binding. Requires --file or --definition; rejected for empty and --one-lake-table creation."
   },
   "notes": [
-    "Direct Lake REQUIRES TMDL format (model.bim cannot express directLake partitions)",
+    "Definition-backed Direct Lake uses TMDL (model.bim cannot express directLake partitions). API-native --one-lake-table creation requires no authored TMDL or definition.pbism files.",
     "model.bim MUST use compatibilityLevel 1604 and powerBI_V3",
     "Create a FULL multi-file TMDL model from a folder with --definition <folder> (a .SemanticModel folder); --file only sends a single file. Previously only deploy could push a full TMDL tree.",
     "Omit --file, --definition, and --one-lake-table to create an empty semantic model. --one-lake-table uses creationPayload and is mutually exclusive with definition inputs.",
     "After creation, call refresh to frame Direct Lake: fabio semantic-model refresh",
     "Call takeover to make editable in portal: fabio semantic-model takeover",
-    "definition.pbism is ALWAYS required regardless of format",
+    "Definition-backed input needs definition.pbism regardless of format: include it in a --definition folder; fabio generates it for a single --file. Empty and --one-lake-table creation do not require definition files.",
     "Introspect a model's schema WITHOUT parsing its definition via DAX INFO.VIEW.* (the Analysis Services Schema Rowsets): list-tables (StorageMode incl. Direct Lake), list-columns (DataType/SummarizeBy/FormatString), list-measures (Expression/FormatString), list-relationships (Cardinality/CrossFilteringBehavior). Use these before writing DAX or wiring a report.",
     "Enhanced/granular refresh: 'refresh --objects '[{\"table\":\"Sales\"}]'' refreshes specific tables/partitions (TMSL refresh semantics); add --commit-mode transactional|partialBatch, --max-parallelism, --retry-count. Registers as ViaEnhancedApi. Monitor with refresh-details --refresh-id <requestId> (object-level status) and stop with cancel-refresh --refresh-id <requestId>; get the requestId from refresh-status.",
     "Scheduled (automatic) refresh: get-refresh-schedule / update-refresh-schedule (import/Direct Lake). Times must be on the full/half hour (HH:00 or HH:30); to disable pass ONLY --enabled false (the API rejects changing other settings while disabling). DirectQuery/Live models use a different directQueryRefreshSchedule endpoint (reach via rest call --api powerbi)."

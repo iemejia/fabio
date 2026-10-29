@@ -5,9 +5,76 @@ mod common;
 use std::io::Write;
 
 use base64::Engine as _;
-use common::{TestConfig, extract_data, fabio, parse_json, unique_name};
+use common::{TestConfig, extract_data, fabio, mock_fabio, parse_json, unique_name};
 use serial_test::serial;
 use tempfile::NamedTempFile;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
+
+#[test]
+fn semantic_model_schema_examples_allow_definition_free_creation() {
+    let output = fabio()
+        .args(["context", "schema", "SemanticModel"])
+        .assert()
+        .success();
+    let schema = parse_json(&output)["data"].clone();
+    for mode in ["empty", "one_lake_tables"] {
+        assert_eq!(schema["creation_modes"][mode]["definition_required"], false);
+        let example = schema["creation_modes"][mode]["example"].as_str().unwrap();
+        let args: Vec<&str> = example.split_whitespace().skip(1).map(|arg| match arg {
+            "<WS>" => "aaaaaaaa-1111-2222-3333-444444444444",
+            "<NAME>" => "ExampleModel",
+            "<ONELAKE_TABLE_URL>" => "https://onelake.dfs.fabric.microsoft.com/aaaaaaaa-1111-2222-3333-444444444444/bbbbbbbb-1111-2222-3333-444444444444/Tables/Example",
+            value => value,
+        }).collect();
+        let output = fabio().args(args).arg("--dry-run").assert().success();
+        let json = parse_json(&output);
+        let request = &json["data"]["details"]["request"];
+        assert!(request.get("definition").is_none());
+        assert_eq!(
+            request.get("creationPayload").is_some(),
+            mode == "one_lake_tables"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn semantic_model_api_native_errors_do_not_require_definition_files() {
+    for message in ["definition is invalid", "Direct Lake creation failed"] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(
+                "/workspaces/aaaaaaaa-1111-2222-3333-444444444444/semanticModels",
+            ))
+            .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                "errorCode": "InvalidInput", "message": message
+            })))
+            .expect(2)
+            .mount(&server)
+            .await;
+        for one_lake in [false, true] {
+            let mut cmd = mock_fabio(&server);
+            cmd.args([
+                "--quiet",
+                "semantic-model",
+                "create",
+                "--workspace",
+                "aaaaaaaa-1111-2222-3333-444444444444",
+                "--name",
+                "ExampleModel",
+            ]);
+            if one_lake {
+                cmd.args(["--one-lake-table", "https://onelake.dfs.fabric.microsoft.com/aaaaaaaa-1111-2222-3333-444444444444/bbbbbbbb-1111-2222-3333-444444444444/Tables/Example"]);
+            }
+            let output = cmd.assert().failure();
+            let error: serde_json::Value =
+                serde_json::from_slice(&output.get_output().stderr).unwrap();
+            let hint = error["error"]["hint"].as_str().unwrap();
+            assert!(hint.contains("Definition-backed"));
+            assert!(hint.contains("no definition files"));
+        }
+    }
+}
 
 #[test]
 fn test_create_empty_dry_run() {
