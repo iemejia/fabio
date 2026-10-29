@@ -351,6 +351,8 @@ fabio capacity list                                          # tenant-scoped (no
 fabio capacity get-surge-protection --id $CAP                # Fabric API; capacity admin required
 fabio capacity update-surge-protection --id $CAP --state Enabled \
   --rejection-threshold 70 --recovery-threshold 50 --dry-run # Disabled clears thresholds
+fabio capacity create-blocked-actor --id $CAP --workspace $WS --expiration-policy NeverExpire --dry-run
+fabio capacity create-mission-critical-actor --id $CAP --workspace $WS --dry-run # workspace is an actor reference
 fabio gateway list                                           # tenant-scoped (no --workspace)
 fabio gateway create-streaming --name "MyVNetGW" \           # streaming VNet gateway
   --subscription-id $SUB --resource-group $RG --vnet $VNET --subnet $SUBNET
@@ -767,7 +769,7 @@ Agents can branch on `$?` without parsing JSON:
 These cause silent failures if ignored:
 
 1. **PascalCase values are MANDATORY** — `--mode Overwrite` (not `overwrite`), `--format Csv` (not `csv`), `--format Parquet` (not `parquet`). load-table ONLY supports `Csv` and `Parquet` — **JSON format is NOT supported** (convert to CSV/Parquet first).
-2. **Tenant-scoped commands** — `deployment-pipeline`, `connection`, `capacity`, `domain`, `gateway`, `admin` have NO `--workspace` flag. They operate at tenant level.
+2. **Tenant-scoped commands** — `deployment-pipeline`, `connection`, `capacity`, `domain`, `gateway`, and `admin` normally operate without `--workspace`. Check the subcommand schema: `admin activate-policy-set` requires the policy-set workspace; `capacity create-blocked-actor` and `capacity create-mission-critical-actor` require `--workspace` as the target actor reference, not as the API scope. Do not infer accepted flags from the group alone.
 3. **LRO default behavior** — Create, getDefinition, updateDefinition use LRO (202 + polling). Default: **2-second polling interval, 120-second max wait**. Jobs use `--wait` + `--timeout` (default 600s). Deploy apply handles LRO automatically for all item operations.
 4. **Delete requires Member/Admin role** — Delete operations return FORBIDDEN without sufficient workspace role. Error hints show the required role.
 5. **Token sharing** — Same Fabric token (`https://api.fabric.microsoft.com/.default`) works for Power BI API. Use `fabio rest call --api powerbi` for Power BI endpoints.

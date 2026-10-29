@@ -80,6 +80,30 @@ tests:
       - type: icontains
         value: "--dry-run"
 
+  - description: "Scope: capacity blocked actor workspace reference"
+    vars:
+      user_query: "Preview blocking workspace WS on capacity CAP with a NeverExpire policy"
+    assert:
+      - type: icontains
+        value: "capacity create-blocked-actor"
+      - type: javascript
+        value: /--workspace(?:=|\s+)["']?\$?WS\b/i.test(output) && /--id(?:=|\s+)["']?\$?CAP\b/i.test(output)
+      - type: contains
+        value: "--expiration-policy NeverExpire"
+      - type: icontains
+        value: "--dry-run"
+
+  - description: "Scope: capacity mission-critical actor workspace reference"
+    vars:
+      user_query: "Preview marking workspace WS as a mission-critical actor on capacity CAP"
+    assert:
+      - type: icontains
+        value: "capacity create-mission-critical-actor"
+      - type: javascript
+        value: /--workspace(?:=|\s+)["']?\$?WS\b/i.test(output) && /--id(?:=|\s+)["']?\$?CAP\b/i.test(output)
+      - type: icontains
+        value: "--dry-run"
+
   # ============================================================
   # BASIC CRUD OPERATIONS
   # ============================================================

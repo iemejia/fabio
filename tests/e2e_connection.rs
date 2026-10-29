@@ -2,10 +2,34 @@
 
 mod common;
 
-use common::{extract_data, fabio, parse_json};
+use common::{extract_data, fabio, mock_fabio, parse_json};
 use serial_test::serial;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn connection_list_exposes_effective_role_in_json_and_table() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/connections"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "value": [{"id": "aaaaaaaa-1111-2222-3333-444444444444",
+                "displayName": "Mock connection", "connectivityType": "ShareableCloud", "myRole": "PendingOwner"}]
+        })))
+        .expect(2).mount(&server).await;
+    let output = mock_fabio(&server)
+        .args(["connection", "list"])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&output)["data"][0]["myRole"], "PendingOwner");
+    let output = mock_fabio(&server)
+        .args(["connection", "list", "--output", "table"])
+        .assert()
+        .success();
+    let table = String::from_utf8_lossy(&output.get_output().stdout);
+    assert!(table.contains("ROLE"));
+    assert!(table.contains("PendingOwner"));
+}
 
 #[test]
 #[ignore = "requires live Fabric tenant"]

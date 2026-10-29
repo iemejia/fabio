@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use crate::cli::Cli;
 use crate::client::{FabricClient, validate_uuid};
-use crate::errors::enrich_forbidden;
+use crate::errors::enrich_admin;
 use crate::output;
 
 pub(super) async fn list(cli: &Cli, client: &FabricClient) -> Result<()> {
@@ -14,7 +14,7 @@ pub(super) async fn list(cli: &Cli, client: &FabricClient) -> Result<()> {
             cli.continuation_token.as_deref(),
         )
         .await
-        .map_err(|e| enrich_forbidden(e, "admin list-connections", "Fabric administrator"))?;
+        .map_err(|e| enrich_admin(e, "admin list-connections"))?;
     output::render_list_with_token(
         cli,
         &response.items,
@@ -31,7 +31,7 @@ pub(super) async fn show(cli: &Cli, client: &FabricClient, id: &str) -> Result<(
     let data = client
         .get(&format!("/admin/connections/{id}"))
         .await
-        .map_err(|e| enrich_forbidden(e, "admin show-connection", "Fabric administrator"))?;
+        .map_err(|e| enrich_admin(e, "admin show-connection"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -48,7 +48,7 @@ pub(super) async fn delete(cli: &Cli, client: &FabricClient, id: &str) -> Result
     client
         .delete(&format!("/admin/connections/{id}"))
         .await
-        .map_err(|e| enrich_forbidden(e, "admin delete-connection", "Fabric administrator"))?;
+        .map_err(|e| enrich_admin(e, "admin delete-connection"))?;
     output::render_object(
         cli,
         &serde_json::json!({"id": id, "status": "deleted"}),
@@ -67,13 +67,7 @@ pub(super) async fn list_roles(cli: &Cli, client: &FabricClient, id: &str) -> Re
             cli.continuation_token.as_deref(),
         )
         .await
-        .map_err(|e| {
-            enrich_forbidden(
-                e,
-                "admin list-connection-role-assignments",
-                "Fabric administrator",
-            )
-        })?;
+        .map_err(|e| enrich_admin(e, "admin list-connection-role-assignments"))?;
     output::render_list_with_token(
         cli,
         &response.items,
@@ -108,13 +102,7 @@ pub(super) async fn add_role(
             false,
         )
         .await
-        .map_err(|e| {
-            enrich_forbidden(
-                e,
-                "admin add-connection-role-assignment",
-                "Fabric administrator",
-            )
-        })?;
+        .map_err(|e| enrich_admin(e, "admin add-connection-role-assignment"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -132,13 +120,7 @@ pub(super) async fn show_role(
             "/admin/connections/{id}/roleAssignments/{assignment_id}"
         ))
         .await
-        .map_err(|e| {
-            enrich_forbidden(
-                e,
-                "admin show-connection-role-assignment",
-                "Fabric administrator",
-            )
-        })?;
+        .map_err(|e| enrich_admin(e, "admin show-connection-role-assignment"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -161,13 +143,7 @@ pub(super) async fn update_role(
             &body,
         )
         .await
-        .map_err(|e| {
-            enrich_forbidden(
-                e,
-                "admin update-connection-role-assignment",
-                "Fabric administrator",
-            )
-        })?;
+        .map_err(|e| enrich_admin(e, "admin update-connection-role-assignment"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -192,13 +168,7 @@ pub(super) async fn delete_role(
             "/admin/connections/{id}/roleAssignments/{assignment_id}"
         ))
         .await
-        .map_err(|e| {
-            enrich_forbidden(
-                e,
-                "admin delete-connection-role-assignment",
-                "Fabric administrator",
-            )
-        })?;
+        .map_err(|e| enrich_admin(e, "admin delete-connection-role-assignment"))?;
     output::render_object(
         cli,
         &serde_json::json!({"id": assignment_id, "status": "deleted"}),

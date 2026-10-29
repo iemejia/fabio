@@ -282,12 +282,9 @@ async fn admin_connection_http_errors_remain_structured() {
         let json: Value = serde_json::from_slice(&output.get_output().stderr).unwrap();
         assert_eq!(json["error"]["code"], code);
         if status == 403 {
-            assert!(
-                json["error"]["hint"]
-                    .as_str()
-                    .unwrap()
-                    .contains("Fabric administrator")
-            );
+            let hint = json["error"]["hint"].as_str().unwrap();
+            assert!(hint.contains("tenant-level Fabric Administrator"));
+            assert!(!hint.contains("Ask a workspace Admin"));
         }
     }
 }
