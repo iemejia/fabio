@@ -26,14 +26,14 @@
       }
     }
   },
-  "notes": "List filtering supports only state eq '<JobHistoryStatus>'.",
+  "notes": "List filtering supports only state eq '<JobHistoryStatus>'. --query applies to the payload under data, so omit the data prefix; runtimeVersion is a top-level payload field.",
   "query_examples": [
     {
-      "query": "data.resourceStatusSummary.ready",
+      "query": "resourceStatusSummary.ready",
       "description": "Count ready resources"
     },
     {
-      "query": "data.sparkConfiguration.runtimeVersion",
+      "query": "runtimeVersion",
       "description": "Inspect the Spark runtime"
     }
   ]
