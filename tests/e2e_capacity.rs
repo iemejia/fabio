@@ -313,6 +313,46 @@ const ACTOR: &str = "bbbbbbbb-1111-2222-3333-444444444444";
 const WORKSPACE: &str = "cccccccc-1111-2222-3333-444444444444";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn capacity_actor_previews_identify_each_target_without_requests() {
+    let server = MockServer::start().await;
+    for (capacity, actor) in [(CAPACITY, ACTOR), (ACTOR, WORKSPACE)] {
+        for command in [
+            "create-blocked-actor",
+            "update-blocked-actor",
+            "create-mission-critical-actor",
+        ] {
+            let mut cmd = mock_fabio(&server);
+            cmd.args(["--dry-run", "capacity", command, "--id", capacity]);
+            if command.starts_with("create") {
+                cmd.args(["--workspace", WORKSPACE]);
+            } else {
+                cmd.args(["--actor-id", actor]);
+            }
+            if command.contains("blocked") {
+                cmd.args(["--expiration-policy", "NeverExpire"]);
+            }
+            let output = cmd.assert().success();
+            let data = parse_json(&output)["data"].clone();
+            assert_eq!(data["dry_run"], true);
+            assert_eq!(data["would_execute"], format!("capacity {command}"));
+            assert_eq!(data["details"]["capacityId"], capacity);
+            if command.starts_with("update") {
+                assert_eq!(data["details"]["actorId"], actor);
+            } else {
+                assert_eq!(data["details"]["actorDetails"]["workspaceId"], WORKSPACE);
+            }
+            if command.contains("blocked") {
+                assert_eq!(
+                    data["details"]["expirationPolicy"]["policyType"],
+                    "NeverExpire"
+                );
+            }
+        }
+    }
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn capacity_actor_forbidden_errors_teach_capacity_permissions() {
     for (command, collection, verb, actor) in [
         ("create-blocked-actor", "blockedActors", "POST", false),

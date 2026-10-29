@@ -96,6 +96,34 @@ fn test_delete_dry_run_is_destructive() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn deployment_plan_update_preview_identifies_the_target_without_requests() {
+    let server = MockServer::start().await;
+    for (workspace, plan) in [(WORKSPACE, PLAN), (PLAN, WORKSPACE)] {
+        let output = mock_fabio(&server)
+            .args([
+                "--dry-run",
+                "deployment-plan",
+                "update",
+                "--workspace",
+                workspace,
+                "--id",
+                plan,
+                "--name",
+                "Updated name",
+            ])
+            .assert()
+            .success();
+        let data = parse_json(&output)["data"].clone();
+        assert_eq!(data["dry_run"], true);
+        assert_eq!(data["would_execute"], "deployment-plan update");
+        assert_eq!(data["details"]["workspace"], workspace);
+        assert_eq!(data["details"]["id"], plan);
+        assert_eq!(data["details"]["displayName"], "Updated name");
+    }
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn deployment_plan_delete_rejects_invalid_scope_before_dry_run() {
     let server = MockServer::start().await;
     for invalid in [

@@ -65,7 +65,9 @@ pub(super) async fn create_blocked(
         "actorDetails": actor_body(workspace),
         "expirationPolicy": expiration_policy(policy, expire_after)?
     });
-    if output::dry_run_guard(cli, "capacity create-blocked-actor", &body) {
+    let mut preview = body.clone();
+    preview["capacityId"] = Value::from(capacity_id);
+    if output::dry_run_guard(cli, "capacity create-blocked-actor", &preview) {
         return Ok(());
     }
     let data = client
@@ -140,7 +142,10 @@ pub(super) async fn update_blocked(
     validate_uuid(capacity_id, "--id")?;
     validate_uuid(actor_id, "--actor-id")?;
     let body = serde_json::json!({"expirationPolicy": expiration_policy(policy, expire_after)?});
-    if output::dry_run_guard(cli, "capacity update-blocked-actor", &body) {
+    let mut preview = body.clone();
+    preview["capacityId"] = Value::from(capacity_id);
+    preview["actorId"] = Value::from(actor_id);
+    if output::dry_run_guard(cli, "capacity update-blocked-actor", &preview) {
         return Ok(());
     }
     let data = client
@@ -192,7 +197,9 @@ pub(super) async fn create_mission_critical(
     validate_uuid(capacity_id, "--id")?;
     validate_uuid(workspace, "--workspace")?;
     let body = serde_json::json!({"actorDetails": actor_body(workspace)});
-    if output::dry_run_guard(cli, "capacity create-mission-critical-actor", &body) {
+    let mut preview = body.clone();
+    preview["capacityId"] = Value::from(capacity_id);
+    if output::dry_run_guard(cli, "capacity create-mission-critical-actor", &preview) {
         return Ok(());
     }
     let data = client
