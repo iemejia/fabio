@@ -247,6 +247,56 @@ fn test_show_pool_activation_returns_diagnostics() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn pool_activation_pagination_preserves_state_and_page_size() {
+    let server = MockServer::start().await;
+    let url =
+        format!("/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/poolActivations");
+    for (token, response) in [
+        (
+            "",
+            serde_json::json!({"value": [{"jobInstanceId": MOCK_ACTIVATION}], "continuationToken": "next-page"}),
+        ),
+        (
+            "next-page",
+            serde_json::json!({"value": [{"jobInstanceId": MOCK_ENVIRONMENT}]}),
+        ),
+    ] {
+        let mut mock = Mock::given(method("GET"))
+            .and(path(&url))
+            .and(query_param("pageSize", "10"))
+            .and(query_param("filter", "state eq 'Succeeded'"));
+        if !token.is_empty() {
+            mock = mock.and(query_param("continuationToken", token));
+        }
+        mock.respond_with(ResponseTemplate::new(200).set_body_json(response))
+            .with_priority(if token.is_empty() { 2 } else { 1 })
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    let output = mock_fabio(&server)
+        .args([
+            "environment",
+            "list-pool-activations",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+            "--page-size",
+            "10",
+            "--filter",
+            "state eq 'Succeeded'",
+            "--all",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    assert_eq!(json["count"], 2);
+    assert_eq!(json["data"][0]["jobInstanceId"], MOCK_ACTIVATION);
+    assert_eq!(json["data"][1]["jobInstanceId"], MOCK_ENVIRONMENT);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn pool_activation_published_query_examples_execute() {
     let output = fabio()
         .args(["context", "examples", "environment", "show-pool-activation"])

@@ -17,6 +17,29 @@ For the strategy behind this model (why API-driven deploy, branch layout, parame
 
 Only **Dev** is connected to Fabric Git integration. **Test** and **Prod** receive script/API deploys only — this keeps Fabric Git integration off the production path (avoiding "ghost commits" and Source Control drift) while still using Git as the single source of truth. This is the Fabio-recommended hybrid; see the `deploy-cicd` skill for the rationale.
 
+### Fabric deployment-plan items are different from `deploy plan`
+
+`fabio deploy plan` previews Fabio's content-hash changeset. A Fabric
+`DeploymentPlan` item instead controls the service's deployment ordering and
+pre/post actions. Discover its current definition with
+`fabio context schema DeploymentPlan`. A minimal `plan.yml` is:
+
+```yaml
+$schema: https://developer.microsoft.com/json-schemas/fabric/item/deploymentPlan/definition/plan/1.0.0/schema.json
+version: 1.0.0
+groups: []
+```
+
+Add groups with item logical IDs and dependencies before using it to orchestrate
+real items. The older `executableFormat`/`id` REST example is not a valid current
+definition. Beta service integrations use `--deployment-plan-id` on
+`deployment-pipeline deploy`, or `--deployment-plan-logical-id` on `git pull` and
+`item bulk-import-definitions`; Fabio adds `beta=true` automatically. These flags
+do not apply to `fabio deploy apply`.
+When `deployment-pipeline deploy --items` selects an incoming source-stage plan,
+include the `DeploymentPlan` item itself alongside its workload items; referencing
+the plan ID alone does not select/import it.
+
 ## Prerequisites
 
 - Three Fabric workspaces (Dev / Test / Prod) on a Fabric or Power BI Premium capacity.

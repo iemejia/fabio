@@ -218,6 +218,44 @@ fn deployment_pipeline_deploy_plan_reference_dry_run() {
     assert_eq!(reference["itemId"], plan_id);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn deployment_pipeline_plan_reference_reaches_beta_endpoint() {
+    use wiremock::matchers::{body_json, method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+    let pipeline = "aaaaaaaa-1111-2222-3333-444444444444";
+    let stage = "bbbbbbbb-1111-2222-3333-444444444444";
+    let plan = "cccccccc-1111-2222-3333-444444444444";
+    Mock::given(method("POST"))
+        .and(path(format!("/deploymentPipelines/{pipeline}/deploy")))
+        .and(query_param("beta", "true"))
+        .and(body_json(serde_json::json!({
+            "sourceStageId": stage,
+            "options": {"deploymentPlan": {"referenceType": "ByItemId", "itemId": plan}}
+        })))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"status": "Succeeded"})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let output = common::mock_fabio(&server)
+        .args([
+            "deployment-pipeline",
+            "deploy",
+            "--id",
+            pipeline,
+            "--source-stage-id",
+            stage,
+            "--deployment-plan-id",
+            plan,
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&output)["data"]["status"], "Succeeded");
+}
+
 #[test]
 fn deployment_pipeline_deploy_item_options_purge_is_destructive() {
     // A per-item option entry nesting allowPurgeData makes the deploy irreversible;

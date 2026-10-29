@@ -891,6 +891,12 @@ cargo clippy --tests -- -D warnings
 cargo fmt
 ```
 
+Deployment/governance live lifecycle tests (deployment-plan items, Beta plan
+references, capacity actors, admin connections, native BI creation, and pool
+diagnostics) have a separate [test guide](tests/README.md) with scoped prerequisites
+and cleanup guarantees. Run selected tests rather than all ignored tests against
+a shared tenant.
+
 ### Pre-commit hooks (prek)
 
 The project uses [prek](https://prek.j178.dev) (a fast, Rust-native pre-commit runner) for automated local validation before each commit. Install it and set up the hooks:

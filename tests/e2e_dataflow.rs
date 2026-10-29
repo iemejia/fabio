@@ -161,6 +161,49 @@ fn dataflow_upgrade_gen1_dry_run_matches_request() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dataflow_upgrade_maximum_batch_respects_request_size_limit() {
+    let server = MockServer::start().await;
+    let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+    let ids: Vec<String> = (1..=51)
+        .map(|id| uuid::Uuid::from_u128(id).to_string())
+        .collect();
+    let body = serde_json::json!({"dataflows": ids[..50].iter().map(|id| serde_json::json!({"id": id})).collect::<Vec<_>>()});
+    // The count/UUID guards bound every valid request below the byte ceiling.
+    assert!(serde_json::to_vec(&body).unwrap().len() <= 13_312);
+    Mock::given(method("POST"))
+        .and(path(format!(
+            "/workspaces/{workspace}/dataflows/gen1Upgrade"
+        )))
+        .and(body_json(body))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"status": "Succeeded"})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    for (count, dry_run) in [(50, false), (51, false), (51, true)] {
+        let mut command = common::mock_fabio(&server);
+        command.args(["dataflow", "upgrade-gen1", "--workspace", workspace]);
+        for id in &ids[..count] {
+            command.args(["--id", id]);
+        }
+        if dry_run {
+            command.arg("--dry-run");
+        }
+        if count == 50 {
+            let output = command.assert().success();
+            assert_eq!(parse_json(&output)["data"]["status"], "Succeeded");
+        } else {
+            let output = command.assert().failure();
+            let error: serde_json::Value =
+                serde_json::from_slice(&output.get_output().stderr).unwrap();
+            assert_eq!(error["error"]["code"], "INVALID_INPUT");
+        }
+    }
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}
+
 #[test]
 fn dataflow_upgrade_gen1_rejects_invalid_id() {
     fabio()

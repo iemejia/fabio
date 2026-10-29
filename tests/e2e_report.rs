@@ -44,6 +44,43 @@ fn test_create_with_semantic_model_dry_run() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn report_native_creation_resolves_same_and_cross_workspace_reference() {
+    use wiremock::matchers::{body_json, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+    let model = "bbbbbbbb-1111-2222-3333-444444444444";
+    let other = "cccccccc-1111-2222-3333-444444444444";
+    for cross_workspace in [false, true] {
+        let server = MockServer::start().await;
+        let reference = serde_json::json!({
+            "referenceType": "ById", "itemId": model,
+            "workspaceId": if cross_workspace { other } else { workspace }
+        });
+        Mock::given(method("POST")).and(path(format!("/workspaces/{workspace}/reports")))
+            .and(body_json(serde_json::json!({"displayName": "Native report", "creationPayload": {"semanticModelReference": reference}})))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({"id": model, "type": "Report"})))
+            .expect(1).mount(&server).await;
+        let mut cmd = common::mock_fabio(&server);
+        cmd.args([
+            "report",
+            "create",
+            "--workspace",
+            workspace,
+            "--name",
+            "Native report",
+            "--semantic-model",
+            model,
+        ]);
+        if cross_workspace {
+            cmd.args(["--semantic-model-workspace", other]);
+        }
+        let output = cmd.assert().success();
+        assert_eq!(parse_json(&output)["data"]["type"], "Report");
+    }
+}
+
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]

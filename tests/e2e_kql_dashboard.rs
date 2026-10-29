@@ -5,6 +5,40 @@ mod common;
 use common::{TestConfig, extract_data, fabio, parse_json};
 use serial_test::serial;
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn kql_dashboard_create_does_not_require_location_header() {
+    use wiremock::matchers::{body_json, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+    let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+    let id = "bbbbbbbb-1111-2222-3333-444444444444";
+    let body =
+        serde_json::json!({"id": id, "displayName": "Mock dashboard", "type": "KQLDashboard"});
+    Mock::given(method("POST"))
+        .and(path(format!("/workspaces/{workspace}/kqlDashboards")))
+        .and(body_json(
+            serde_json::json!({"displayName": "Mock dashboard"}),
+        ))
+        // The October spec removed Location from the synchronous 201 response.
+        .respond_with(ResponseTemplate::new(201).set_body_json(&body))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let output = common::mock_fabio(&server)
+        .args([
+            "kql-dashboard",
+            "create",
+            "--workspace",
+            workspace,
+            "--name",
+            "Mock dashboard",
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&output)["data"], body);
+}
+
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]

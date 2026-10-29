@@ -307,4 +307,6 @@
 - `src/commands/deployment_plan.rs`: DeploymentPlan item CRUD and definition APIs
 - `src/commands/admin/connections.rs`: tenant-admin connection and ownership APIs
 - `src/commands/capacity/actors.rs`: capacity blocked/mission-critical surge-protection actors
-- `tests/e2e_deployment_plan.rs`: deployment-plan dry-run and definition request coverage
+- `tests/e2e_deployment_plan.rs`: deployment-plan scope/dry-run, filtered pagination, CRUD, and definition/LRO request coverage
+- `tests/e2e_deployment_governance.rs`: opt-in PR #188 live lifecycles with test-owned resource cleanup and confidential failure reporting; also deterministic fixture/runner regressions
+- `tests/README.md`: deployment/governance live-test prerequisites, scoped run commands, safety, and coverage boundaries

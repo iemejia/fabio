@@ -8,6 +8,31 @@ use serial_test::serial;
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn workspace_show_preserves_identity_item_reference() {
+    let server = MockServer::start().await;
+    let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+    let identity = "bbbbbbbb-1111-2222-3333-444444444444";
+    let body = serde_json::json!({
+        "id": workspace, "displayName": "Mock workspace",
+        "workspaceIdentity": {
+            "applicationId": identity, "servicePrincipalId": identity,
+            "identityReference": {"referenceType": "ById", "itemId": identity, "workspaceId": workspace}
+        }
+    });
+    Mock::given(method("GET"))
+        .and(path(format!("/workspaces/{workspace}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let output = common::mock_fabio(&server)
+        .args(["workspace", "show", "--id", workspace])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&output)["data"], body);
+}
+
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]

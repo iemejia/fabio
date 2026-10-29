@@ -6,13 +6,14 @@
   "definition_parts": [
     {
       "path": "plan.yml",
-      "description": "Required deployment plan definition using the DeploymentPlanV1 executable format."
+      "description": "Deployment plan YAML with $schema, version, and deployment groups."
     },
     {
       "path": ".platform",
       "description": "Optional Fabric item metadata."
     }
   ],
+  "definition_content_template": "$schema: https://developer.microsoft.com/json-schemas/fabric/item/deploymentPlan/definition/plan/1.0.0/schema.json\nversion: 1.0.0\ngroups: []\n",
   "creation_body_template": {
     "displayName": "{{name}}",
     "definition": {
@@ -33,6 +34,7 @@
     "--update-metadata": "Update item metadata from the submitted definition."
   },
   "notes": [
+    "Use the published plan.yml schema ($schema and version: 1.0.0, with optional groups). The older REST example containing executableFormat/id is rejected live with InvalidContent.",
     "Deployment plan items and their integration with Git, bulk import, and deployment pipelines are Preview/Beta.",
     "Git pull and bulk import reference deployment plans by logical ID; deployment-pipeline deploy references them by item ID.",
     "Beta query activation is automatic when a deployment-plan reference flag is supplied."

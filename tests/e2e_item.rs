@@ -1455,6 +1455,54 @@ fn item_bulk_import_deployment_plan_reference_dry_run() {
     assert_eq!(reference["logicalId"], logical_id);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn item_bulk_import_plan_references_reach_beta_endpoint() {
+    use wiremock::matchers::{body_json, method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+    let plan = "bbbbbbbb-1111-2222-3333-444444444444";
+    let body = serde_json::json!({
+        "definitionParts": [],
+        "options": {"deploymentPlan": {"referenceType": "ByLogicalId", "logicalId": plan}}
+    });
+    for inline in [false, true] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/workspaces/{workspace}/items/bulkImportDefinitions"
+            )))
+            .and(query_param("beta", "true"))
+            .and(body_json(&body))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"status": "Succeeded"})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let content = if inline {
+            body.to_string()
+        } else {
+            serde_json::json!({"definitionParts": []}).to_string()
+        };
+        let mut cmd = common::mock_fabio(&server);
+        cmd.args([
+            "item",
+            "bulk-import-definitions",
+            "--workspace",
+            workspace,
+            "--content",
+            &content,
+        ]);
+        if !inline {
+            cmd.args(["--deployment-plan-logical-id", plan]);
+        }
+        let output = cmd.assert().success();
+        assert_eq!(parse_json(&output)["data"]["status"], "Succeeded");
+    }
+}
+
 #[test]
 fn item_bulk_import_deployment_plan_logical_id_validates_options() {
     let output = fabio()

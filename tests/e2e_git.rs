@@ -873,6 +873,49 @@ fn git_pull_deployment_plan_reference_dry_run() {
     assert_eq!(reference["logicalId"], logical_id);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn git_pull_plan_reference_reaches_beta_endpoint_after_status() {
+    use wiremock::matchers::{body_json, method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+    let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+    let plan = "bbbbbbbb-1111-2222-3333-444444444444";
+    Mock::given(method("GET"))
+        .and(path(format!("/workspaces/{workspace}/git/status")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            serde_json::json!({"workspaceHead": "local-head", "remoteCommitHash": "remote-head"}),
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path(format!("/workspaces/{workspace}/git/updateFromGit")))
+        .and(query_param("beta", "true"))
+        .and(body_json(serde_json::json!({
+            "workspaceHead": "local-head", "remoteCommitHash": "remote-head",
+            "options": {"deploymentPlan": {"referenceType": "ByLogicalId", "logicalId": plan}}
+        })))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"status": "Succeeded"})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let output = common::mock_fabio(&server)
+        .args([
+            "git",
+            "pull",
+            "--workspace",
+            workspace,
+            "--deployment-plan-logical-id",
+            plan,
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&output)["data"]["status"], "Succeeded");
+}
+
 #[test]
 fn git_pull_item_options_purge_is_destructive() {
     // A per-item option carrying allowPurgeData makes the pull irreversible; the

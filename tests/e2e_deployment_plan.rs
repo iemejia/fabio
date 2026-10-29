@@ -166,6 +166,89 @@ fn definition() -> Value {
     })
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn deployment_plan_list_preserves_folder_filters_across_pages() {
+    let server = MockServer::start().await;
+    let url = format!("/workspaces/{WORKSPACE}/deploymentPlans");
+    for (token, response) in [
+        (
+            "",
+            json!({"value": [{"id": PLAN}], "continuationToken": "next-page"}),
+        ),
+        ("next-page", json!({"value": [{"id": WORKSPACE}]})),
+    ] {
+        let mut mock = Mock::given(method("GET"))
+            .and(path(&url))
+            .and(query_param("recursive", "false"))
+            .and(query_param("rootFolderId", PLAN));
+        if !token.is_empty() {
+            mock = mock.and(query_param("continuationToken", token));
+        }
+        mock.respond_with(ResponseTemplate::new(200).set_body_json(response))
+            .with_priority(if token.is_empty() { 2 } else { 1 })
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    let output = mock_fabio(&server)
+        .args([
+            "deployment-plan",
+            "list",
+            "--workspace",
+            WORKSPACE,
+            "--no-recursive",
+            "--root-folder-id",
+            PLAN,
+            "--all",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    assert_eq!(json["count"], 2);
+    assert_eq!(json["data"][0]["id"], PLAN);
+    assert_eq!(json["data"][1]["id"], WORKSPACE);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn deployment_plan_show_and_update_use_scoped_endpoints() {
+    let server = MockServer::start().await;
+    let url = format!("/workspaces/{WORKSPACE}/deploymentPlans/{PLAN}");
+    let plan = json!({"id": PLAN, "displayName": "Updated", "description": "Updated description"});
+    Mock::given(method("PATCH"))
+        .and(path(&url))
+        .and(body_json(
+            json!({"displayName": "Updated", "description": "Updated description"}),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&plan))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(&url))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&plan))
+        .expect(1)
+        .mount(&server)
+        .await;
+    for extra in [
+        vec![
+            "update",
+            "--name",
+            "Updated",
+            "--description",
+            "Updated description",
+        ],
+        vec!["show"],
+    ] {
+        let output = mock_fabio(&server)
+            .arg("deployment-plan")
+            .args(extra)
+            .args(["--workspace", WORKSPACE, "--id", PLAN])
+            .assert()
+            .success();
+        assert_eq!(parse_json(&output)["data"], plan);
+    }
+}
+
 /// Exercise both operation polling and fetching its final resource/definition.
 async fn accepted_response(server: &MockServer, result: &Value) -> ResponseTemplate {
     Mock::given(method("GET"))

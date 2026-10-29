@@ -984,6 +984,14 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **Relations (beta)**: `GET /workspaces/{ws}/items/{id}/relations/upstream?beta=true` and `.../relations/downstream?beta=true` return `{"items":[...],"relations":[...],"workspaces":[...]}` — a graph fragment, not a paginated list. `items` are related items (id/type/displayName/workspaceId), `relations` are edges (`itemId`, `dependentOnItemId`, `relationType`), `workspaces` resolves the workspace IDs referenced by cross-workspace relations. `relationType` values: `CascadeDelete`, `WeakAssociation`, `Datasource`, `PushData`, `Orchestration`, `Shortcut`, `HiddenInWorkspace`. Requires `?beta=true` query param — omitting it returns an error. Rendered via `render_object` (not `render_list_with_token`) since it is not paginated.
 
 ## Lakehouse API Behaviors Discovered
+
+- **CSV load fixtures need non-hidden filenames:** a dot-prefixed temporary CSV
+  (such as the default `NamedTempFile` name) failed `upload-table` during live
+  OneLake-model fixture setup, while an ordinary CSV filename loaded successfully.
+  Use a temporary directory with an explicitly named `regression.csv`, not a
+  dot-prefixed source file. The deployment/governance suite also waits for the
+  newly created lakehouse's SQL endpoint provisioning status to become `Success`
+  before loading its fixture.
 - **Load table format validation**: Only `"Csv"` and `"Parquet"` are valid (PascalCase). JSON is NOT supported by the Fabric REST API. Mode values: `"Overwrite"`, `"Append"` (PascalCase).
 - **Load table body (Csv)**: `{"relativePath": "<path>", "pathType": "File", "mode": "Overwrite", "formatOptions": {"format": "Csv", "header": true, "delimiter": ","}}`. The `format` key is INSIDE `formatOptions` (discriminated union pattern).
 - **Load table body (Parquet)**: `{"relativePath": "<path>", "pathType": "File", "mode": "Overwrite", "formatOptions": {"format": "Parquet"}}`. Do NOT include `header`/`delimiter` with Parquet — API rejects mixed format options.
@@ -3333,23 +3341,47 @@ implemented or confirmed to require no code change.
   `format: DeploymentPlanFormat`, and the usual `InlineBase64` parts envelope.
   List supports `recursive` and `rootFolderId`; updateDefinition supports
   `updateMetadata`; delete supports `hardDelete`.
+- **The old REST deployment-plan content example is stale (live, Oct 29):**
+  `executableFormat: DeploymentPlanV1` plus `id` is rejected with
+  `InvalidContent: Item content cannot be used`. The current `plan.yml` uses
+  `$schema: https://developer.microsoft.com/json-schemas/fabric/item/deploymentPlan/definition/plan/1.0.0/schema.json`,
+  `version: 1.0.0`, and optional `groups` (an empty array is valid). Creating
+  without a definition also succeeds and generates a minimal plan. CRUD and
+  canonical getDefinition/updateDefinition round trips work with the current
+  schema. See the [definition reference](https://learn.microsoft.com/en-us/rest/api/fabric/articles/item-management/definitions/deployment-plan-definition).
 - **Deployment-plan orchestration references are Beta:** Git
   `updateFromGit` and bulk item-definition import accept only
   `{referenceType:"ByLogicalId",logicalId}`; deployment-pipeline deploy accepts
   only `{referenceType:"ByItemId",itemId}`. Each request must include
   `?beta=true` when the reference is present.
+- **An incoming source-stage plan must also be selected:** when calling
+  deployment-pipeline deploy with an explicit `items` array, include the
+  source plan itself (`itemType: DeploymentPlan`) alongside the selected
+  workload items. Merely referencing its ID does not select/import it. This
+  differs from using a plan already present in the target stage. Live-verified
+  by deploying a notebook and its plan into an isolated empty target workspace.
 - **Tenant-admin connection ownership is a two-step transfer:** the admin API
   can assign only the `Owner` role, does not support Group principals, and the
   assignee initially receives `PendingOwner`. The assignee must update the
   connection credentials before ownership becomes effective. Connection
   responses now expose the caller's effective `myRole`, including
   `PendingOwner`.
-- **Capacity surge-protection actor creation is upsert-by-workspace:** creating
-  an already blocked actor returns 200 and replaces its expiration policy;
-  creating a new one returns 201. A capacity has a combined limit of 1,000
+- **Capacity blocked-actor upsert is specified but not reliable live (Oct 29):**
+  the spec describes 200/upsert for an already blocked workspace and 201 for a
+  new one. The tested service instead returned HTTP 400 `BadRequest` for a
+  duplicate POST, both with identical and changed expiration policies. Initial
+  creation, GET, PATCH of the expiration policy, and DELETE work. Use
+  `update-blocked-actor` for an existing actor; do not assume create is a safe
+  idempotent retry. Mocked tests retain the documented 200/201 transport contract;
+  a separate live negative test covers the observed rejection. A capacity has a combined limit of 1,000
   blocked actors, mission-critical actors, and detection rules. Expired blocked
   actors stop enforcement immediately but may remain visible until background
   garbage collection.
+- **Wait for workspace capacity assignment before actor tests:**
+  `workspace assign-capacity` acknowledges the request before the assignment
+  necessarily becomes usable. Poll workspace `capacityId` and
+  `capacityAssignmentProgress: Completed` before dependent requests instead of
+  retrying arbitrary actor API errors.
 - **Environment pool activations are job-history resources:** list filtering
   supports only `state eq '<JobHistoryStatus>'`; details add Spark driver,
   executor, dynamic-allocation, and resource-state counts. `runtimeVersion`
@@ -3365,4 +3397,13 @@ implemented or confirmed to require no code change.
   `/{workspaceId}/{itemId}/Tables/{tableName}` or
   `/{workspaceId}/{itemId}/Tables/{schemaName}/{tableName}`. Definition and
   creationPayload are mutually exclusive.
+- **Native BI creation is live-validated with real Delta data:** empty model
+  creation, API-native report creation/binding, and `oneLakeTables` creation
+  over a disposable schema-enabled lakehouse all succeed. The latter fixture
+  loads two CSV rows and uses a schema-qualified OneLake URL. SQL views are
+  not Delta-table fixtures. A schema-less source also returned
+  `DirectLakeSchemaError` because the native API looked for a `dbo`-qualified
+  table absent from that source schema; do not assume URL validation proves
+  source compatibility. For schema-less sources, see the earlier "Direct Lake
+  on OneLake vs on SQL" behavior note and the definition-backed generator.
 - **Gen1 dataflow upgrade request bodies are capped at 13,312 bytes.**

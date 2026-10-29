@@ -303,6 +303,7 @@ Manage governance policy sets and policy rules
 ## Key gotchas
 - capacity suspend/resume/create/delete use the ARM scope (management.azure.com), not the Fabric scope.
 - capacity get-surge-protection/update-surge-protection use the Fabric scope and require capacity administrator permissions. Enabling an unconfigured capacity needs rejection and recovery thresholds; disabling clears persisted thresholds.
+- Do not assume create-blocked-actor is an idempotent upsert: although the REST spec describes a 200 update response, live duplicate POSTs returned BadRequest, even with a changed expiration policy. List/show to find the actor, then use update-blocked-actor for an existing entry.
 - capacity get-overage-configuration/update-overage-configuration are preview Fabric APIs requiring capacity admin. Thresholds are 0-240000 CU-hours; zero disables overage, and Disabled resets the threshold to zero.
 - PolicySet rule APIs and tenant active lookup require beta=true; fabio supplies it. PolicySet definitions require format Beta and policySet.json. A set supports at most 50 rules per policy type. Use admin deactivate-policy-set for the tenant-active set; policy-set deactivate is for a capacity-scoped activation.
 - label list resolves UUIDs to names via Microsoft Graph (needs M365 E5 + InformationProtection.Read).

@@ -125,6 +125,51 @@ fn test_create_onelake_tables_dry_run() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn semantic_model_native_creation_modes_send_exact_requests() {
+    use wiremock::matchers::body_json;
+
+    let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+    let id = "bbbbbbbb-1111-2222-3333-444444444444";
+    let tables = [
+        format!("https://onelake.dfs.fabric.microsoft.com/{workspace}/{id}/Tables/customers"),
+        format!("https://onelake.dfs.fabric.microsoft.com/{workspace}/{id}/Tables/dbo/orders"),
+    ];
+    for empty in [true, false] {
+        let server = MockServer::start().await;
+        let mut body = serde_json::json!({"displayName": "Native model"});
+        if !empty {
+            body["creationPayload"] = serde_json::json!({"oneLakeTables": tables});
+        }
+        Mock::given(method("POST"))
+            .and(path(format!("/workspaces/{workspace}/semanticModels")))
+            .and(body_json(body))
+            .respond_with(
+                ResponseTemplate::new(201)
+                    .set_body_json(serde_json::json!({"id": id, "type": "SemanticModel"})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let mut cmd = mock_fabio(&server);
+        cmd.args([
+            "semantic-model",
+            "create",
+            "--workspace",
+            workspace,
+            "--name",
+            "Native model",
+        ]);
+        if !empty {
+            for table in &tables {
+                cmd.args(["--one-lake-table", table]);
+            }
+        }
+        let output = cmd.assert().success();
+        assert_eq!(parse_json(&output)["data"]["id"], id);
+    }
+}
+
 #[test]
 fn semantic_model_create_rejects_connection_without_definition() {
     for extra_args in [

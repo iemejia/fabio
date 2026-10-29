@@ -1592,6 +1592,18 @@ tests:
       - type: icontains
         value: "--deployment-plan-logical-id"
 
+  - description: "CI/CD: repair obsolete deployment-plan definition content"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-deploy-cicd/SKILL.md"
+      user_query: "deployment-plan create rejects a plan.yml containing only executableFormat and id with InvalidContent. Show how to discover or author the current minimal valid plan. Do not retry the same content."
+    assert:
+      - type: javascript
+        value: |
+          output.includes('context schema DeploymentPlan') ||
+            (output.includes('deploymentPlan/definition/plan/1.0.0/schema.json') &&
+             /version\s*:\s*["']?1\.0\.0/.test(output))
+        metric: current-deployment-plan-schema
+
   - description: "Sequencing: workspace create before any workspace-scoped item"
     vars:
       user_query: "Create a workspace called DevEnv, then create a notebook called ETL-Job inside it"
