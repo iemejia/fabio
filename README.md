@@ -78,7 +78,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 - **Workspace clone** — replicate workspace items via Bulk Export/Import APIs (`--allow-pairing-by-name` for initial clones)
 - **Data orchestration** — `--post-run-item` triggers a pipeline or notebook after deployment to populate lakehouses
 - **Dataflow modernization** — assess every Gen1 dataflow for upgrade readiness and migrate 1-50 items to Gen2 in place with per-row results
-- **Capacity governance** — inspect/configure surge protection and overage thresholds, and manage blocked or mission-critical workspace actors with structured dry-run previews
+- **Capacity governance** — inspect/configure surge protection and overage thresholds, and manage blocked or mission-critical workspace actors with structured dry-run previews and capacity-scoped permission guidance
 - **Connection ownership visibility** — connection lists expose the caller's effective role, including `PendingOwner`, in JSON and table output; tenant-admin connection errors point to the Fabric Administrator role
 - **Policy sets** — create tenant- or capacity-scoped governance definitions, manage beta policy rules, and activate them with admin-aware safety guardrails
 - **Git branch governance** — control whether members and contributors may change the connected branch, at connect time or through connection settings

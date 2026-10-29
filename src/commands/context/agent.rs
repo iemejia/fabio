@@ -1476,6 +1476,23 @@ fn generate_subcommands(
             sc_obj.insert("returns".to_owned(), serde_json::json!("object"));
         }
 
+        // These governance mutations emit a resource or status object, not void.
+        // Override both name inference and stale annotations when regenerating.
+        if matches!(
+            (group.get_name(), sc_name.as_str()),
+            (
+                "admin",
+                "delete-connection"
+                    | "update-connection-role-assignment"
+                    | "delete-connection-role-assignment"
+            ) | (
+                "capacity",
+                "update-blocked-actor" | "delete-blocked-actor" | "delete-mission-critical-actor"
+            ) | ("deployment-plan", "delete" | "update-definition")
+        ) {
+            sc_obj.insert("returns".to_owned(), serde_json::json!("object"));
+        }
+
         subcommands.insert(sc_name, serde_json::Value::Object(sc_obj));
     }
 
@@ -1715,6 +1732,37 @@ fn infer_destructive(cmd_name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn governance_return_contracts_override_stale_void_annotations() {
+        for (group, commands) in [
+            (
+                "admin",
+                vec![
+                    "delete-connection",
+                    "update-connection-role-assignment",
+                    "delete-connection-role-assignment",
+                ],
+            ),
+            (
+                "capacity",
+                vec![
+                    "update-blocked-actor",
+                    "delete-blocked-actor",
+                    "delete-mission-critical-actor",
+                ],
+            ),
+            ("deployment-plan", vec!["delete", "update-definition"]),
+        ] {
+            for name in commands {
+                let command = clap::Command::new(group).subcommand(clap::Command::new(name));
+                let mut existing = serde_json::json!({"subcommands": {}});
+                existing["subcommands"][name] = serde_json::json!({"returns": "void"});
+                let generated = generate_subcommands(&command, Some(&existing));
+                assert_eq!(generated[name]["returns"], "object", "{group} {name}");
+            }
+        }
+    }
 
     #[test]
     fn query_matches_term_or_alias_boosts_term_and_aliases() {

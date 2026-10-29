@@ -492,13 +492,7 @@ async fn get_surge_protection(cli: &Cli, client: &FabricClient, id: &str) -> Res
     let data = client
         .get(&format!("/capacities/{id}/surgeProtection"))
         .await
-        .map_err(|e| {
-            crate::errors::enrich_forbidden(
-                e,
-                "capacity get-surge-protection",
-                "Capacity administrator",
-            )
-        })?;
+        .map_err(|e| crate::errors::enrich_capacity(e, "capacity get-surge-protection"))?;
     output::render_object(cli, &data, "state");
     Ok(())
 }
@@ -563,13 +557,7 @@ async fn update_surge_protection(
     let data = client
         .patch(&format!("/capacities/{id}/surgeProtection"), &body)
         .await
-        .map_err(|e| {
-            crate::errors::enrich_forbidden(
-                e,
-                "capacity update-surge-protection",
-                "Capacity administrator",
-            )
-        })?;
+        .map_err(|e| crate::errors::enrich_capacity(e, "capacity update-surge-protection"))?;
     output::render_object(cli, &data, "state");
     Ok(())
 }
@@ -579,13 +567,7 @@ async fn get_overage_configuration(cli: &Cli, client: &FabricClient, id: &str) -
     let data = client
         .get(&format!("/capacities/{id}/overageConfiguration"))
         .await
-        .map_err(|e| {
-            crate::errors::enrich_forbidden(
-                e,
-                "capacity get-overage-configuration",
-                "Capacity administrator",
-            )
-        })?;
+        .map_err(|e| crate::errors::enrich_capacity(e, "capacity get-overage-configuration"))?;
     output::render_object(cli, &data, "state");
     Ok(())
 }
@@ -642,13 +624,7 @@ async fn update_overage_configuration(
     let data = client
         .patch(&format!("/capacities/{id}/overageConfiguration"), &body)
         .await
-        .map_err(|e| {
-            crate::errors::enrich_forbidden(
-                e,
-                "capacity update-overage-configuration",
-                "Capacity administrator",
-            )
-        })?;
+        .map_err(|e| crate::errors::enrich_capacity(e, "capacity update-overage-configuration"))?;
     output::render_object(cli, &data, "state");
     Ok(())
 }

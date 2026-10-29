@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::{FabricClient, validate_uuid};
-use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
+use crate::errors::{ErrorCode, FabioError, enrich_capacity};
 use crate::output;
 
 use super::BlockedActorExpirationPolicy;
@@ -75,9 +75,7 @@ pub(super) async fn create_blocked(
             false,
         )
         .await
-        .map_err(|e| {
-            enrich_forbidden(e, "capacity create-blocked-actor", "Capacity administrator")
-        })?;
+        .map_err(|e| enrich_capacity(e, "capacity create-blocked-actor"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -96,9 +94,7 @@ pub(super) async fn list_blocked(
             cli.continuation_token.as_deref(),
         )
         .await
-        .map_err(|e| {
-            enrich_forbidden(e, "capacity list-blocked-actors", "Capacity administrator")
-        })?;
+        .map_err(|e| enrich_capacity(e, "capacity list-blocked-actors"))?;
     output::render_list_with_token(
         cli,
         &response.items,
@@ -127,7 +123,8 @@ pub(super) async fn show_blocked(
         .get(&format!(
             "/capacities/{capacity_id}/surgeProtection/blockedActors/{actor_id}"
         ))
-        .await?;
+        .await
+        .map_err(|e| enrich_capacity(e, "capacity show-blocked-actor"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -151,7 +148,8 @@ pub(super) async fn update_blocked(
             &format!("/capacities/{capacity_id}/surgeProtection/blockedActors/{actor_id}"),
             &body,
         )
-        .await?;
+        .await
+        .map_err(|e| enrich_capacity(e, "capacity update-blocked-actor"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -175,7 +173,8 @@ pub(super) async fn delete_blocked(
         .delete(&format!(
             "/capacities/{capacity_id}/surgeProtection/blockedActors/{actor_id}"
         ))
-        .await?;
+        .await
+        .map_err(|e| enrich_capacity(e, "capacity delete-blocked-actor"))?;
     output::render_object(
         cli,
         &serde_json::json!({"id": actor_id, "status": "deleted"}),
@@ -202,7 +201,8 @@ pub(super) async fn create_mission_critical(
             &body,
             false,
         )
-        .await?;
+        .await
+        .map_err(|e| enrich_capacity(e, "capacity create-mission-critical-actor"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -220,7 +220,8 @@ pub(super) async fn list_mission_critical(
             cli.all,
             cli.continuation_token.as_deref(),
         )
-        .await?;
+        .await
+        .map_err(|e| enrich_capacity(e, "capacity list-mission-critical-actors"))?;
     output::render_list_with_token(
         cli,
         &response.items,
@@ -244,7 +245,8 @@ pub(super) async fn show_mission_critical(
         .get(&format!(
             "/capacities/{capacity_id}/surgeProtection/missionCriticalActors/{actor_id}"
         ))
-        .await?;
+        .await
+        .map_err(|e| enrich_capacity(e, "capacity show-mission-critical-actor"))?;
     output::render_object(cli, &data, "id");
     Ok(())
 }
@@ -268,7 +270,8 @@ pub(super) async fn delete_mission_critical(
         .delete(&format!(
             "/capacities/{capacity_id}/surgeProtection/missionCriticalActors/{actor_id}"
         ))
-        .await?;
+        .await
+        .map_err(|e| enrich_capacity(e, "capacity delete-mission-critical-actor"))?;
     output::render_object(
         cli,
         &serde_json::json!({"id": actor_id, "status": "deleted"}),

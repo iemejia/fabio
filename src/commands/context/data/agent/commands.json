@@ -339,7 +339,7 @@
           }
         },
         "mutates": true,
-        "returns": "void",
+        "returns": "object",
         "destructive": true,
         "examples": [
           "fabio admin delete-connection --id $CONNECTION --dry-run"
@@ -424,7 +424,7 @@
           }
         },
         "mutates": true,
-        "returns": "void",
+        "returns": "object",
         "examples": [
           "fabio admin update-connection-role-assignment --id $CONNECTION --assignment-id $ASSIGNMENT"
         ]
@@ -444,7 +444,7 @@
           }
         },
         "mutates": true,
-        "returns": "void",
+        "returns": "object",
         "destructive": true,
         "examples": [
           "fabio admin delete-connection-role-assignment --id $CONNECTION --assignment-id $ASSIGNMENT --dry-run"
@@ -5007,7 +5007,7 @@
           }
         },
         "mutates": true,
-        "returns": "void",
+        "returns": "object",
         "examples": [
           "fabio capacity update-blocked-actor --id $CAPACITY --actor-id $ACTOR --expiration-policy ExpireAfterDate --expire-after 2027-01-01T00:00:00Z"
         ]
@@ -5027,7 +5027,7 @@
           }
         },
         "mutates": true,
-        "returns": "void",
+        "returns": "object",
         "destructive": true,
         "examples": [
           "fabio capacity delete-blocked-actor --id $CAPACITY --actor-id $ACTOR --dry-run"
@@ -5103,7 +5103,7 @@
           }
         },
         "mutates": true,
-        "returns": "void",
+        "returns": "object",
         "destructive": true,
         "examples": [
           "fabio capacity delete-mission-critical-actor --id $CAPACITY --actor-id $ACTOR --dry-run"
@@ -26038,7 +26038,7 @@
           }
         },
         "mutates": true,
-        "returns": "void",
+        "returns": "object",
         "destructive": true,
         "examples": [
           "fabio deployment-plan delete --workspace $WS --id $PLAN --dry-run"
@@ -26103,7 +26103,7 @@
           }
         },
         "mutates": true,
-        "returns": "void",
+        "returns": "object",
         "async": true,
         "destructive": true,
         "examples": [

@@ -19,6 +19,41 @@ fn agent_context_returns_schema() {
 }
 
 #[test]
+fn agent_context_governance_mutations_advertise_json_objects() {
+    let output = fabio()
+        .args(["context", "agent", "--full"])
+        .assert()
+        .success();
+    let schema: serde_json::Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+    for (group, commands) in [
+        (
+            "admin",
+            vec![
+                "delete-connection",
+                "update-connection-role-assignment",
+                "delete-connection-role-assignment",
+            ],
+        ),
+        (
+            "capacity",
+            vec![
+                "update-blocked-actor",
+                "delete-blocked-actor",
+                "delete-mission-critical-actor",
+            ],
+        ),
+        ("deployment-plan", vec!["delete", "update-definition"]),
+    ] {
+        for command in commands {
+            assert_eq!(
+                schema["data"]["commands"][group]["subcommands"][command]["returns"], "object",
+                "{group} {command}"
+            );
+        }
+    }
+}
+
+#[test]
 fn agent_context_includes_workspace_command() {
     let assert = fabio()
         .args(["context", "agent", "--full"])
