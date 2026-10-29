@@ -37,9 +37,18 @@ pub(super) async fn list(cli: &Cli, client: &FabricClient) -> Result<()> {
 /// returned the `connectionRecency` object (it is absent for older connections
 /// and for connectivity types that do not report recency). The full recency
 /// detail (including `createdDateTime`) is always available in `--output json`.
+/// A `ROLE` column surfaces the caller's `myRole` when the API reports it.
 fn list_table_columns(items: &[Value]) -> (Vec<&'static str>, Vec<&'static str>) {
     let mut columns = vec!["displayName", "id", "connectivityType"];
     let mut headers = vec!["NAME", "ID", "CONNECTIVITY TYPE"];
+
+    if items
+        .iter()
+        .any(|item| item["myRole"].as_str().is_some_and(|role| !role.is_empty()))
+    {
+        columns.push("myRole");
+        headers.push("ROLE");
+    }
 
     let has_gateway_id = items.iter().any(|item| {
         item.get("gatewayId")
@@ -548,6 +557,22 @@ mod tests {
             ["displayName", "id", "connectivityType", "gatewayId"]
         );
         assert_eq!(headers, ["NAME", "ID", "CONNECTIVITY TYPE", "GATEWAY ID"]);
+    }
+
+    #[test]
+    fn list_table_columns_surfaces_optional_effective_role() {
+        for role in [
+            json!("PendingOwner"),
+            json!("Owner"),
+            json!(null),
+            json!(""),
+        ] {
+            let items = [json!({"id": "connection", "myRole": role})];
+            let (columns, headers) = list_table_columns(&items);
+            let present = role.as_str().is_some_and(|role| !role.is_empty());
+            assert_eq!(columns.contains(&"myRole"), present);
+            assert_eq!(headers.contains(&"ROLE"), present);
+        }
     }
 
     #[test]

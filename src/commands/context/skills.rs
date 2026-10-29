@@ -78,4 +78,23 @@ mod tests {
     fn skills_is_non_empty() {
         assert!(!SKILLS.is_empty(), "SKILLS should have at least one entry");
     }
+
+    #[test]
+    fn admin_guidance_preserves_actor_workspace_references() {
+        let content = find_entry(SKILLS, "admin").unwrap();
+        let skill: Value = serde_json::from_str(content).unwrap();
+        for field in ["must", "avoid"] {
+            let guidance = skill[field]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(" ");
+            assert!(guidance.contains("--workspace"));
+            for command in ["create-blocked-actor", "create-mission-critical-actor"] {
+                assert!(guidance.contains(command), "{field}: {command}");
+            }
+        }
+    }
 }

@@ -7,6 +7,7 @@
         "id": "e5f6a7b8-0000-0000-0000-000000000001",
         "displayName": "ADLS Sales Storage",
         "connectivityType": "ShareableCloud",
+        "myRole": "Owner",
         "connectionDetails": {
           "type": "AzureDataLakeStorage",
           "path": "https://salesstorageacct.dfs.core.windows.net"
@@ -26,6 +27,7 @@
         "id": "e5f6a7b8-0000-0000-0000-000000000002",
         "displayName": "Azure SQL Prod",
         "connectivityType": "ShareableCloud",
+        "myRole": "PendingOwner",
         "connectionDetails": {
           "type": "Sql",
           "path": "prodserver.database.windows.net"

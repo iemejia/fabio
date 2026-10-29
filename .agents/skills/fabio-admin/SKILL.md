@@ -287,7 +287,7 @@ Manage governance policy sets and policy rules
 
 ## Must / Prefer / Avoid
 ### MUST
-- Call tenant-scoped commands WITHOUT --workspace (capacity, connection, gateway, domain, deployment-pipeline, admin), except `admin activate-policy-set`, which requires `--workspace`.
+- Use --workspace only when the subcommand requires a workspace resource or reference. Tenant-scoped list/show operations in capacity, connection, gateway, domain, deployment-pipeline, and admin normally omit it. Exceptions: admin activate-policy-set requires the policy-set workspace; capacity create-blocked-actor and create-mission-critical-actor require the target workspace as the actor reference, not as the API scope.
 - Have a Fabric admin role before using admin commands (they FORBIDDEN otherwise).
 
 ### PREFER
@@ -296,7 +296,7 @@ Manage governance policy sets and policy rules
 - --dry-run before any destructive tenant change.
 
 ### AVOID
-- Passing --workspace to tenant-scoped commands, except `admin activate-policy-set` (which requires it).
+- Adding --workspace to tenant-scoped operations that do not accept it, or omitting the required workspace reference from admin activate-policy-set or capacity create-blocked-actor/create-mission-critical-actor.
 - Suspending capacity during business hours without warning users about interrupted jobs.
 - Bulk tenant-setting changes without confirming the scope with the user.
 
