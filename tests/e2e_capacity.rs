@@ -2,9 +2,9 @@
 
 mod common;
 
-use common::{extract_count, fabio, parse_json};
+use common::{extract_count, fabio, mock_fabio, parse_json};
 use serial_test::serial;
-use wiremock::matchers::{body_json, method, path};
+use wiremock::matchers::{body_json, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[test]
@@ -306,6 +306,188 @@ fn test_create_blocked_actor_dry_run() {
         data["details"]["expirationPolicy"]["policyType"],
         "ExpireAfterDate"
     );
+}
+
+const CAPACITY: &str = "aaaaaaaa-1111-2222-3333-444444444444";
+const ACTOR: &str = "bbbbbbbb-1111-2222-3333-444444444444";
+const WORKSPACE: &str = "cccccccc-1111-2222-3333-444444444444";
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn capacity_blocked_actor_upsert_accepts_created_and_updated() {
+    let body = serde_json::json!({
+        "actorDetails": {"actorType": "Workspace", "workspaceId": WORKSPACE},
+        "expirationPolicy": {"policyType": "ExpireAfterDate", "expireAfterDateTime": "2026-12-31T23:59:59Z"}
+    });
+    let mut actor = body.clone();
+    actor["id"] = serde_json::Value::from(ACTOR);
+    for status in [200, 201] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/capacities/{CAPACITY}/surgeProtection/blockedActors"
+            )))
+            .and(body_json(&body))
+            .respond_with(ResponseTemplate::new(status).set_body_json(&actor))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let output = mock_fabio(&server)
+            .args([
+                "capacity",
+                "create-blocked-actor",
+                "--id",
+                CAPACITY,
+                "--workspace",
+                WORKSPACE,
+                "--expiration-policy",
+                "ExpireAfterDate",
+                "--expire-after",
+                "2026-12-31T23:59:59Z",
+            ])
+            .assert()
+            .success();
+        assert_eq!(parse_json(&output)["data"], actor);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn capacity_actor_show_update_and_delete_use_scoped_endpoints() {
+    for (collection, show, delete) in [
+        (
+            "blockedActors",
+            "show-blocked-actor",
+            "delete-blocked-actor",
+        ),
+        (
+            "missionCriticalActors",
+            "show-mission-critical-actor",
+            "delete-mission-critical-actor",
+        ),
+    ] {
+        let server = MockServer::start().await;
+        let url = format!("/capacities/{CAPACITY}/surgeProtection/{collection}/{ACTOR}");
+        let actor = serde_json::json!({
+            "id": ACTOR, "actorDetails": {"actorType": "Workspace", "workspaceId": WORKSPACE},
+            "expirationPolicy": {"policyType": "NeverExpire"}
+        });
+        Mock::given(method("GET"))
+            .and(path(&url))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&actor))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path(&url))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let output = mock_fabio(&server)
+            .args(["capacity", show, "--id", CAPACITY, "--actor-id", ACTOR])
+            .assert()
+            .success();
+        assert_eq!(parse_json(&output)["data"], actor);
+        if collection == "blockedActors" {
+            Mock::given(method("PATCH"))
+                .and(path(&url))
+                .and(body_json(
+                    serde_json::json!({"expirationPolicy": {"policyType": "NeverExpire"}}),
+                ))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&actor))
+                .expect(1)
+                .mount(&server)
+                .await;
+            let output = mock_fabio(&server)
+                .args([
+                    "capacity",
+                    "update-blocked-actor",
+                    "--id",
+                    CAPACITY,
+                    "--actor-id",
+                    ACTOR,
+                    "--expiration-policy",
+                    "NeverExpire",
+                ])
+                .assert()
+                .success();
+            assert_eq!(parse_json(&output)["data"], actor);
+        }
+        let output = mock_fabio(&server)
+            .args(["capacity", delete, "--id", CAPACITY, "--actor-id", ACTOR])
+            .assert()
+            .success();
+        assert_eq!(
+            parse_json(&output)["data"],
+            serde_json::json!({"id": ACTOR, "status": "deleted"})
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn capacity_mission_critical_actor_create_sends_workspace() {
+    let server = MockServer::start().await;
+    let body =
+        serde_json::json!({"actorDetails": {"actorType": "Workspace", "workspaceId": WORKSPACE}});
+    let mut actor = body.clone();
+    actor["id"] = serde_json::Value::from(ACTOR);
+    Mock::given(method("POST"))
+        .and(path(format!(
+            "/capacities/{CAPACITY}/surgeProtection/missionCriticalActors"
+        )))
+        .and(body_json(body))
+        .respond_with(ResponseTemplate::new(201).set_body_json(&actor))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let output = mock_fabio(&server)
+        .args([
+            "capacity",
+            "create-mission-critical-actor",
+            "--id",
+            CAPACITY,
+            "--workspace",
+            WORKSPACE,
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&output)["data"], actor);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn capacity_actor_lists_follow_continuation() {
+    for (collection, command) in [
+        ("blockedActors", "list-blocked-actors"),
+        ("missionCriticalActors", "list-mission-critical-actors"),
+    ] {
+        let server = MockServer::start().await;
+        let url = format!("/capacities/{CAPACITY}/surgeProtection/{collection}");
+        Mock::given(method("GET"))
+            .and(path(&url))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [{"id": ACTOR}], "continuationToken": "next-page"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(&url))
+            .and(query_param("continuationToken", "next-page"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [{"id": WORKSPACE}]
+            })))
+            .with_priority(1)
+            .expect(1)
+            .mount(&server)
+            .await;
+        let output = mock_fabio(&server)
+            .args(["--all", "capacity", command, "--id", CAPACITY])
+            .assert()
+            .success();
+        let json = parse_json(&output);
+        assert_eq!(json["count"], 2);
+        assert_eq!(json["data"][0]["id"], ACTOR);
+        assert_eq!(json["data"][1]["id"], WORKSPACE);
+    }
 }
 
 #[test]

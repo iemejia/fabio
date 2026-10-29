@@ -3,7 +3,7 @@ use clap::Subcommand;
 use serde_json::Value;
 
 use crate::cli::Cli;
-use crate::client::FabricClient;
+use crate::client::{FabricClient, validate_uuid};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
@@ -125,6 +125,7 @@ pub async fn execute(
     client: &FabricClient,
     command: &DeploymentPlanCommand,
 ) -> Result<()> {
+    validate_scope(command)?;
     match command {
         DeploymentPlanCommand::List {
             workspace,
@@ -226,6 +227,23 @@ pub async fn execute(
             .await
         }
     }
+}
+
+fn validate_scope(command: &DeploymentPlanCommand) -> Result<()> {
+    let (workspace, id) = match command {
+        DeploymentPlanCommand::List { workspace, .. }
+        | DeploymentPlanCommand::Create { workspace, .. } => (workspace, None),
+        DeploymentPlanCommand::Show { workspace, id }
+        | DeploymentPlanCommand::Update { workspace, id, .. }
+        | DeploymentPlanCommand::Delete { workspace, id, .. }
+        | DeploymentPlanCommand::GetDefinition { workspace, id, .. }
+        | DeploymentPlanCommand::UpdateDefinition { workspace, id, .. } => (workspace, Some(id)),
+    };
+    validate_uuid(workspace, "--workspace")?;
+    if let Some(id) = id {
+        validate_uuid(id, "--id")?;
+    }
+    Ok(())
 }
 
 async fn list(
@@ -401,6 +419,39 @@ async fn update_definition(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn delete_scope_rejects_path_injection() {
+        let valid = "aaaaaaaa-1111-2222-3333-444444444444";
+        for invalid in [
+            "",
+            "..",
+            "../../../workspaces/other",
+            "%2e%2e",
+            "bad?id=other",
+        ] {
+            for (workspace, id) in [(invalid, valid), (valid, invalid)] {
+                let command = DeploymentPlanCommand::Delete {
+                    workspace: workspace.to_string(),
+                    id: id.to_string(),
+                    hard_delete: false,
+                };
+                let error = validate_scope(&command).unwrap_err();
+                assert_eq!(
+                    error.downcast_ref::<FabioError>().unwrap().code,
+                    ErrorCode::InvalidInput
+                );
+            }
+        }
+        assert!(
+            validate_scope(&DeploymentPlanCommand::Delete {
+                workspace: valid.to_string(),
+                id: valid.to_string(),
+                hard_delete: false,
+            })
+            .is_ok()
+        );
+    }
 
     #[test]
     fn raw_definition_uses_plan_yml_part() {

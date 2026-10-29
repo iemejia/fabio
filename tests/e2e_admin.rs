@@ -12,10 +12,10 @@
 
 mod common;
 
-use common::{TestConfig, fabio, unique_name};
+use common::{TestConfig, fabio, mock_fabio, parse_json, unique_name};
 use serde_json::Value;
 use serial_test::serial;
-use wiremock::matchers::{method, path, query_param};
+use wiremock::matchers::{body_json, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -99,6 +99,243 @@ fn test_delete_connection_dry_run_is_destructive() {
     let json: Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
     assert_eq!(json["data"]["would_execute"], "admin delete-connection");
     assert_eq!(json["data"]["destructive"], true);
+}
+
+// ─── Admin connection request/response coverage ─────────────────────────────
+const CONNECTION: &str = "aaaaaaaa-1111-2222-3333-444444444444";
+const ASSIGNMENT: &str = "bbbbbbbb-1111-2222-3333-444444444444";
+const PRINCIPAL: &str = "cccccccc-1111-2222-3333-444444444444";
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn admin_connection_http_operations_preserve_pending_owner() {
+    let server = MockServer::start().await;
+    let connection_path = format!("/admin/connections/{CONNECTION}");
+    let role_path = format!("{connection_path}/roleAssignments/{ASSIGNMENT}");
+    let connection = serde_json::json!({"id": CONNECTION, "displayName": "Mock connection"});
+    let role = serde_json::json!({
+        "id": ASSIGNMENT, "principal": {"id": PRINCIPAL, "type": "User"}, "role": "PendingOwner"
+    });
+    Mock::given(method("POST"))
+        .and(path(format!("{connection_path}/roleAssignments")))
+        .and(body_json(serde_json::json!({
+            "principal": {"id": PRINCIPAL, "type": "User"}, "role": "Owner"
+        })))
+        .respond_with(ResponseTemplate::new(201).set_body_json(&role))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("PATCH"))
+        .and(path(&role_path))
+        .and(body_json(serde_json::json!({"role": "Owner"})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&role))
+        .expect(1)
+        .mount(&server)
+        .await;
+    for (url, response) in [(&connection_path, &connection), (&role_path, &role)] {
+        Mock::given(method("GET"))
+            .and(path(url))
+            .respond_with(ResponseTemplate::new(200).set_body_json(response))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path(url))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    for (command, extra, expected) in [
+        ("show-connection", vec![], connection),
+        (
+            "add-connection-role-assignment",
+            vec!["--principal-id", PRINCIPAL, "--principal-type", "User"],
+            role.clone(),
+        ),
+        (
+            "show-connection-role-assignment",
+            vec!["--assignment-id", ASSIGNMENT],
+            role.clone(),
+        ),
+        (
+            "update-connection-role-assignment",
+            vec!["--assignment-id", ASSIGNMENT],
+            role,
+        ),
+        (
+            "delete-connection-role-assignment",
+            vec!["--assignment-id", ASSIGNMENT],
+            serde_json::json!({"id": ASSIGNMENT, "status": "deleted"}),
+        ),
+        (
+            "delete-connection",
+            vec![],
+            serde_json::json!({"id": CONNECTION, "status": "deleted"}),
+        ),
+    ] {
+        let output = mock_fabio(&server)
+            .args(["admin", command, "--id", CONNECTION])
+            .args(extra)
+            .assert()
+            .success();
+        assert_eq!(parse_json(&output)["data"], expected, "{command}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn admin_connection_lists_follow_continuation() {
+    for (command, url, extra) in [
+        ("list-connections", "/admin/connections".to_string(), vec![]),
+        (
+            "list-connection-role-assignments",
+            format!("/admin/connections/{CONNECTION}/roleAssignments"),
+            vec!["--id", CONNECTION],
+        ),
+    ] {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(&url))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [{"id": CONNECTION, "role": "Owner"}], "continuationToken": "next-page"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(&url))
+            .and(query_param("continuationToken", "next-page"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [{"id": ASSIGNMENT, "role": "PendingOwner"}]
+            })))
+            .with_priority(1)
+            .expect(1)
+            .mount(&server)
+            .await;
+        let output = mock_fabio(&server)
+            .args(["--all", "admin", command])
+            .args(extra)
+            .assert()
+            .success();
+        let json = parse_json(&output);
+        assert_eq!(json["count"], 2);
+        assert_eq!(json["data"][1]["role"], "PendingOwner");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn admin_connection_deletes_reject_invalid_scope_before_dry_run() {
+    let server = MockServer::start().await;
+    for invalid in ["", "..", "../../workspaces/other", "%2e%2e", "bad?id=other"] {
+        for (command, id, assignment, flag) in [
+            ("delete-connection", invalid, None, "--id"),
+            (
+                "delete-connection-role-assignment",
+                invalid,
+                Some(ASSIGNMENT),
+                "--id",
+            ),
+            (
+                "delete-connection-role-assignment",
+                CONNECTION,
+                Some(invalid),
+                "--assignment-id",
+            ),
+        ] {
+            for dry_run in [false, true] {
+                let mut cmd = mock_fabio(&server);
+                cmd.args(["admin", command, "--id", id]);
+                if let Some(assignment) = assignment {
+                    cmd.args(["--assignment-id", assignment]);
+                }
+                if dry_run {
+                    cmd.arg("--dry-run");
+                }
+                let output = cmd.assert().failure();
+                let json: Value = serde_json::from_slice(&output.get_output().stderr).unwrap();
+                assert_eq!(json["error"]["code"], "INVALID_INPUT");
+                assert!(json["error"]["message"].as_str().unwrap().contains(flag));
+                assert_eq!(output.get_output().stdout.len(), 0);
+            }
+        }
+    }
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn admin_connection_http_errors_remain_structured() {
+    for (status, code) in [(403, "FORBIDDEN"), (404, "NOT_FOUND")] {
+        let server = MockServer::start().await;
+        Mock::given(method("DELETE"))
+            .and(path(format!("/admin/connections/{CONNECTION}")))
+            .respond_with(
+                ResponseTemplate::new(status).set_body_json(serde_json::json!({
+                    "errorCode": "RequestFailed", "message": "Mock request failed"
+                })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let output = mock_fabio(&server)
+            .args(["--quiet", "admin", "delete-connection", "--id", CONNECTION])
+            .assert()
+            .failure();
+        let json: Value = serde_json::from_slice(&output.get_output().stderr).unwrap();
+        assert_eq!(json["error"]["code"], code);
+        if status == 403 {
+            assert!(
+                json["error"]["hint"]
+                    .as_str()
+                    .unwrap()
+                    .contains("Fabric administrator")
+            );
+        }
+    }
+}
+
+#[test]
+fn admin_connection_role_delete_dry_run_is_destructive() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "admin",
+            "delete-connection-role-assignment",
+            "--id",
+            CONNECTION,
+            "--assignment-id",
+            ASSIGNMENT,
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    assert_eq!(json["data"]["dry_run"], true);
+    assert_eq!(
+        json["data"]["would_execute"],
+        "admin delete-connection-role-assignment"
+    );
+    assert_eq!(json["data"]["destructive"], true);
+    assert_eq!(json["data"]["details"]["connectionId"], CONNECTION);
+    assert_eq!(json["data"]["details"]["assignmentId"], ASSIGNMENT);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn admin_connection_deletes_respect_readonly() {
+    let server = MockServer::start().await;
+    for (command, extra) in [
+        ("delete-connection", vec![]),
+        (
+            "delete-connection-role-assignment",
+            vec!["--assignment-id", ASSIGNMENT],
+        ),
+    ] {
+        let output = mock_fabio(&server)
+            .args(["--readonly", "admin", command, "--id", CONNECTION])
+            .args(extra)
+            .assert()
+            .failure();
+        let json: Value = serde_json::from_slice(&output.get_output().stderr).unwrap();
+        assert_eq!(json["error"]["code"], "READONLY_MODE");
+    }
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
 }
 
 // ─── Tier 0: Read-Only Commands ──────────────────────────────────────────────
