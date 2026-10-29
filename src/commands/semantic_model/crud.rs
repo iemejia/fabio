@@ -274,18 +274,11 @@ fn validate_one_lake_table_url(value: &str) -> Result<()> {
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn create(
-    cli: &Cli,
-    client: &FabricClient,
-    workspace: &str,
-    name: &str,
-    description: Option<&str>,
+fn validate_creation_mode(
     file: Option<&str>,
     definition: Option<&str>,
     one_lake_tables: &[String],
     connection: Option<&str>,
-    sensitivity_label: Option<&str>,
     allow_purge_data: bool,
 ) -> Result<()> {
     if one_lake_tables.len() > 100 {
@@ -320,6 +313,30 @@ pub(super) async fn create(
         )
         .into());
     }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn create(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    name: &str,
+    description: Option<&str>,
+    file: Option<&str>,
+    definition: Option<&str>,
+    one_lake_tables: &[String],
+    connection: Option<&str>,
+    sensitivity_label: Option<&str>,
+    allow_purge_data: bool,
+) -> Result<()> {
+    validate_creation_mode(
+        file,
+        definition,
+        one_lake_tables,
+        connection,
+        allow_purge_data,
+    )?;
 
     let parts = if let Some(folder) = definition {
         // Gather a FULL model definition folder (definition.pbism + definition/
@@ -626,6 +643,115 @@ mod tests {
             .is_err()
         );
         assert!(validate_one_lake_table_url(&format!("{prefix}/too/many/segments")).is_err());
+    }
+
+    #[test]
+    fn one_lake_table_urls_reject_malformed_endpoints_paths_and_identifiers() {
+        let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+        let item = "bbbbbbbb-1111-2222-3333-444444444444";
+        let prefix = format!("https://onelake.dfs.fabric.microsoft.com/{workspace}/{item}");
+        let table = format!("{prefix}/Tables/customers");
+        for invalid in [
+            "not a URL".to_string(),
+            table.replacen("https", "http", 1),
+            table.replace(
+                "onelake.dfs.fabric.microsoft.com",
+                "onelake.blob.fabric.microsoft.com",
+            ),
+            table.replace(
+                "onelake.dfs.fabric.microsoft.com",
+                "onelake.dfs.fabric.microsoft.com.example.com",
+            ),
+            table.replace(".com/", ".com:8443/"),
+            format!("{table}?token=example"),
+            format!("{table}#fragment"),
+            prefix.clone(),
+            format!("{prefix}/Tables"),
+            format!("{prefix}/Tables/"),
+            format!("{prefix}/Tables//customers"),
+            format!("{prefix}/Tables/dbo/customers/extra"),
+            format!("{prefix}/Files/customers"),
+            format!("{prefix}/tables/customers"),
+            table.replace(workspace, "invalid"),
+            table.replace(item, "invalid"),
+        ] {
+            let error = validate_one_lake_table_url(&invalid).unwrap_err();
+            let error = error.downcast_ref::<FabioError>().unwrap();
+            assert_eq!(error.code, ErrorCode::InvalidInput, "{invalid}");
+            assert!(error.hint.is_some(), "{invalid}");
+        }
+    }
+
+    #[test]
+    fn one_lake_table_urls_accept_encoded_names_and_default_https_port() {
+        let prefix = "https://onelake.dfs.fabric.microsoft.com:443/aaaaaaaa-1111-2222-3333-444444444444/bbbbbbbb-1111-2222-3333-444444444444/Tables";
+        for suffix in ["customers", "dbo/customers", "sales%20data/caf%C3%A9"] {
+            validate_one_lake_table_url(&format!("{prefix}/{suffix}")).unwrap();
+        }
+    }
+
+    #[test]
+    fn creation_mode_accepts_empty_models_and_at_most_one_hundred_tables() {
+        validate_creation_mode(None, None, &[], None, false).unwrap();
+        let prefix = "https://onelake.dfs.fabric.microsoft.com/aaaaaaaa-1111-2222-3333-444444444444/bbbbbbbb-1111-2222-3333-444444444444/Tables";
+        let mut tables: Vec<String> = (0..100).map(|id| format!("{prefix}/table_{id}")).collect();
+        validate_creation_mode(None, None, &tables, None, false).unwrap();
+        tables.push(format!("{prefix}/table_100"));
+        let error = validate_creation_mode(None, None, &tables, None, false).unwrap_err();
+        let error = error.downcast_ref::<FabioError>().unwrap();
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        assert!(error.message.contains("101"));
+        assert!(
+            error
+                .hint
+                .as_deref()
+                .unwrap()
+                .contains("100 --one-lake-table")
+        );
+    }
+
+    #[test]
+    fn creation_mode_validates_every_table_before_definition_file_io() {
+        let tables = [
+            "https://onelake.dfs.fabric.microsoft.com/aaaaaaaa-1111-2222-3333-444444444444/bbbbbbbb-1111-2222-3333-444444444444/Tables/customers".to_string(),
+            "not a URL".to_string(),
+        ];
+        let error = validate_creation_mode(None, None, &tables, None, false).unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<FabioError>().unwrap().code,
+            ErrorCode::InvalidInput
+        );
+    }
+
+    #[test]
+    fn creation_mode_rejects_definition_only_options_for_native_modes() {
+        let tables = ["https://onelake.dfs.fabric.microsoft.com/aaaaaaaa-1111-2222-3333-444444444444/bbbbbbbb-1111-2222-3333-444444444444/Tables/customers".to_string()];
+        for tables in [&[][..], tables.as_slice()] {
+            for (connection, purge, flag) in [
+                (Some("fixture-connection"), false, "--connection"),
+                (None, true, "--allow-purge-data"),
+            ] {
+                let error =
+                    validate_creation_mode(None, None, tables, connection, purge).unwrap_err();
+                let error = error.downcast_ref::<FabioError>().unwrap();
+                assert_eq!(error.code, ErrorCode::InvalidInput);
+                assert!(error.message.contains(flag));
+                assert!(error.hint.as_deref().unwrap().contains("Remove"));
+            }
+        }
+    }
+
+    #[test]
+    fn creation_mode_accepts_connection_and_purge_for_both_definition_sources() {
+        // These paths deliberately do not exist: mode validation must be pure.
+        for (file, folder) in [
+            (Some("fixture.bim"), None),
+            (None, Some("fixture.SemanticModel")),
+        ] {
+            validate_creation_mode(file, folder, &[], Some("fixture-connection"), false).unwrap();
+            validate_creation_mode(file, folder, &[], None, true).unwrap();
+            validate_creation_mode(file, folder, &[], Some("fixture-connection"), true).unwrap();
+        }
     }
 
     #[test]

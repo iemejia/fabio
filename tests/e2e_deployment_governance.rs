@@ -5,138 +5,20 @@
 //! Only resources created by the current test are mutated or deleted.
 
 mod common;
+#[path = "common/live.rs"]
+mod live;
 
-use assert_cmd::Command;
 use base64::Engine as _;
-use common::{fabio, unique_name};
+use common::unique_name;
+use live::{
+    CreatedResource, assert_reference, command, contains_id, execute, field, list, run, try_run,
+    wait_for_ready,
+};
 use serde_json::{Value, json};
 use std::time::Duration;
 
 fn required_env(name: &str) -> String {
     std::env::var(name).unwrap_or_else(|_| panic!("{name} must be set for this live test"))
-}
-
-/// Do not include commands, resource IDs, names, or raw responses in failures.
-/// `assert_cmd`'s default failure report includes all of them.
-fn execute(mut command: Command) -> Result<Value, String> {
-    let output = command
-        .timeout(Duration::from_mins(5))
-        .output()
-        .map_err(|_| "failed to execute fabio".to_string())?;
-    if output.status.success() {
-        serde_json::from_slice(&output.stdout)
-            .map_err(|_| "successful command returned invalid JSON".to_string())
-    } else {
-        let error = String::from_utf8_lossy(&output.stderr)
-            .lines()
-            .rev()
-            .find_map(|line| serde_json::from_str::<Value>(line).ok());
-        // Only known machine-readable codes are safe to publish. Never print an
-        // arbitrary API message, hint, or string supplied by the tenant.
-        let code = error.as_ref().and_then(|v| v["error"]["code"].as_str());
-        let code = code
-            .filter(|code| {
-                matches!(
-                    *code,
-                    "AUTH_REQUIRED"
-                        | "FORBIDDEN"
-                        | "NOT_FOUND"
-                        | "API_ERROR"
-                        | "INVALID_INPUT"
-                        | "CONFLICT"
-                        | "TIMEOUT"
-                        | "CAPACITY_INACTIVE"
-                        | "READONLY_MODE"
-                        | "RATE_LIMITED"
-                        | "NETWORK_ERROR"
-                )
-            })
-            .unwrap_or("UNKNOWN_ERROR");
-        Err(format!(
-            "fabio failed with {code} (tenant details withheld)"
-        ))
-    }
-}
-
-fn command(args: &[&str]) -> Command {
-    let mut command = fabio();
-    command.args(["--wrap-untrusted", "--lro-timeout", "240"]);
-    command.args(args);
-    command
-}
-
-fn run(args: &[&str]) -> Value {
-    execute(command(args)).unwrap_or_else(|error| panic!("{} {}: {error}", args[0], args[1]))
-}
-
-fn field(value: &Value, key: &str) -> String {
-    value[key]
-        .as_str()
-        .unwrap_or_else(|| panic!("expected string field {key} (tenant details withheld)"))
-        .to_string()
-}
-
-fn list(value: &Value) -> &[Value] {
-    let items = value["data"].as_array().expect("expected list envelope");
-    assert_eq!(value["count"].as_u64(), Some(items.len() as u64));
-    items
-}
-
-fn contains_id(value: &Value, id: &str) -> bool {
-    list(value)
-        .iter()
-        .any(|item| item["id"].as_str() == Some(id))
-}
-
-fn assert_reference(actual: &Value, expected: &str) {
-    assert!(
-        actual.as_str().is_some_and(|id| id == expected),
-        "resource reference mismatch; tenant details withheld"
-    );
-}
-
-/// Register cleanup immediately after creation, before assertions can unwind.
-/// The guard is never constructed for an existing tenant resource.
-struct CreatedResource {
-    delete_args: Vec<String>,
-    active: bool,
-}
-
-impl CreatedResource {
-    fn new(args: &[&str]) -> Self {
-        Self {
-            delete_args: args.iter().map(|arg| (*arg).to_string()).collect(),
-            active: true,
-        }
-    }
-
-    fn delete(&mut self) {
-        let args: Vec<&str> = self.delete_args.iter().map(String::as_str).collect();
-        let preview = run(&[args.as_slice(), &["--dry-run"]].concat());
-        assert_eq!(preview["data"]["dry_run"], true);
-        assert_eq!(preview["data"]["destructive"], true);
-        let result = run(&args);
-        self.active = false;
-        assert_eq!(result["data"]["status"], "deleted");
-    }
-}
-
-impl Drop for CreatedResource {
-    fn drop(&mut self) {
-        if self.active {
-            let args: Vec<&str> = self.delete_args.iter().map(String::as_str).collect();
-            let result = execute(command(&args));
-            if result.is_err() {
-                if std::thread::panicking() {
-                    eprintln!(
-                        "cleanup failed for a test-created resource; tenant details withheld"
-                    );
-                } else {
-                    panic!("cleanup failed for a test-created resource; tenant details withheld");
-                }
-            }
-        }
-    }
 }
 
 fn create_item(group: &str, workspace: &str, extra: &[&str]) -> (String, CreatedResource) {
@@ -169,22 +51,17 @@ fn new_workspace() -> (String, CreatedResource) {
     ]);
     // assignToCapacity returns before the assignment necessarily becomes usable.
     // Wait for the read-side state rather than retrying an arbitrary API_ERROR.
-    let deadline = std::time::Instant::now() + Duration::from_mins(2);
-    loop {
-        let current = run(&["workspace", "show", "--id", &id]);
-        if current["data"]["capacityId"]
-            .as_str()
-            .is_some_and(|value| value == capacity)
-            && current["data"]["capacityAssignmentProgress"] == "Completed"
-        {
-            break;
-        }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "test workspace capacity assignment did not complete"
-        );
-        std::thread::sleep(Duration::from_secs(2));
-    }
+    wait_for_ready(
+        || try_run(&["workspace", "show", "--id", &id]),
+        |current| {
+            current["data"]["capacityId"]
+                .as_str()
+                .is_some_and(|value| value == capacity)
+                && current["data"]["capacityAssignmentProgress"] == "Completed"
+        },
+        Duration::from_mins(2),
+    )
+    .expect("test workspace capacity assignment did not complete");
     (id, resource)
 }
 
@@ -389,26 +266,24 @@ fn one_lake_fixture(workspace: &str) -> (String, Option<CreatedResource>) {
         return (url, None);
     }
     let (lakehouse, resource) = create_item("lakehouse", workspace, &["--enable-schemas"]);
-    let deadline = std::time::Instant::now() + Duration::from_mins(2);
-    loop {
-        let current = run(&[
-            "lakehouse",
-            "show",
-            "--workspace",
-            workspace,
-            "--id",
-            &lakehouse,
-        ]);
-        if current["data"]["properties"]["sqlEndpointProperties"]["provisioningStatus"] == "Success"
-        {
-            break;
-        }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "test lakehouse provisioning did not complete"
-        );
-        std::thread::sleep(Duration::from_secs(2));
-    }
+    wait_for_ready(
+        || {
+            try_run(&[
+                "lakehouse",
+                "show",
+                "--workspace",
+                workspace,
+                "--id",
+                &lakehouse,
+            ])
+        },
+        |current| {
+            current["data"]["properties"]["sqlEndpointProperties"]["provisioningStatus"]
+                == "Success"
+        },
+        Duration::from_mins(2),
+    )
+    .expect("test lakehouse provisioning did not complete");
     let directory = tempfile::tempdir().expect("create CSV fixture directory");
     // NamedTempFile's default dot-prefixed name is not a suitable load source.
     let csv = directory.path().join("regression.csv");
@@ -793,7 +668,7 @@ fn live_admin_connection_lifecycle() {
     // Exercise the new admin DELETE, retaining the regular-owner fallback guard.
     let mut admin_delete = CreatedResource::new(&["admin", "delete-connection", "--id", &id]);
     admin_delete.delete();
-    resource.active = false;
+    resource.disarm();
     assert_not_found(&["connection", "show", "--id", &id]);
 }
 

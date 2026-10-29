@@ -4,6 +4,44 @@ PR #188 added mocked HTTP, input-validation, LRO, and dry-run tests. The
 `e2e_deployment_governance` suite adds opt-in **live** lifecycle tests for those
 APIs. Ordinary `cargo test` runs the deterministic tests without tenant access.
 
+## Unit tests and coverage measurement
+
+The focused unit tests cover definition file/envelope parsing (including CRLF,
+Unicode, missing files, and invalid UTF-8), every deployment-plan scope variant,
+expiration-policy branches/calendar boundaries, native semantic-model mode and
+URL validation, and Gen1 batch/byte boundaries. The defensive byte-limit check is
+tested independently because valid 50-UUID batches cannot reach it. Thin HTTP
+wrappers remain covered by the per-group mocked CLI tests instead of duplicating
+their implementation in unit mocks.
+
+```bash
+cargo test --bin fabio commands::deployment_plan::tests
+cargo test --bin fabio commands::capacity::actors::tests
+cargo test --bin fabio commands::semantic_model::crud::tests
+cargo test --bin fabio commands::dataflow::tests
+cargo test --test e2e_deployment_governance live::tests
+```
+
+`tests/common/live.rs` is included only by the governance suite. Its deterministic
+tests inject an in-memory cleanup runner and a fake polling clock: they exercise
+cleanup on normal exit and assertion unwinding, explicit-delete disarming,
+fallback cleanup after failures, error redaction, and readiness/error/timeout
+paths without tenant credentials, real sleeps, or global environment changes.
+
+To measure the default unit **and offline integration** suite:
+
+```bash
+cargo install cargo-llvm-cov --version 0.9.1 --locked
+rustup component add llvm-tools-preview
+cargo llvm-cov --json --output-path target/coverage.json
+```
+
+Ignored live tests are not included. Line/region coverage is not branch coverage;
+the stable-toolchain report does not enable LLVM's experimental branch coverage.
+Whole-file totals can include embedded unit-test code, so inspect the targeted
+helper functions and uncovered regions rather than treating a passing-test count
+or an aggregate percentage as proof that all CLI behavior is exercised.
+
 ## Prerequisites
 
 Authenticate with `az login` / `fabio auth login`, then set only the variables

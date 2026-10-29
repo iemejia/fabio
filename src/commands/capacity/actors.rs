@@ -292,6 +292,74 @@ mod tests {
     use super::*;
 
     #[test]
+    fn never_expire_policy_omits_timestamp() {
+        assert_eq!(
+            expiration_policy(BlockedActorExpirationPolicy::NeverExpire, None).unwrap(),
+            serde_json::json!({"policyType": "NeverExpire"})
+        );
+    }
+
+    #[test]
+    fn never_expire_rejects_any_supplied_timestamp_with_a_teaching_error() {
+        for timestamp in ["", "2026-12-31T23:59:59Z"] {
+            let error =
+                expiration_policy(BlockedActorExpirationPolicy::NeverExpire, Some(timestamp))
+                    .unwrap_err();
+            let error = error.downcast_ref::<FabioError>().unwrap();
+            assert_eq!(error.code, ErrorCode::InvalidInput);
+            assert!(error.message.contains("cannot be used"));
+            assert!(
+                error
+                    .hint
+                    .as_deref()
+                    .unwrap()
+                    .contains("Remove --expire-after")
+            );
+        }
+    }
+
+    #[test]
+    fn expiration_dates_validate_calendar_and_exact_utc_format() {
+        for invalid in [
+            "",
+            "not-a-date",
+            "2026-02-29T00:00:00Z",
+            "2028-02-30T00:00:00Z",
+            "2026-13-01T00:00:00Z",
+            "2026-01-01T24:00:00Z",
+            "2026-01-01T00:60:00Z",
+            "2026-01-01T00:00:00",
+            "2026-01-01T00:00:00.123Z",
+            "2026-01-01T00:00:00Zextra",
+        ] {
+            let error =
+                expiration_policy(BlockedActorExpirationPolicy::ExpireAfterDate, Some(invalid))
+                    .unwrap_err();
+            let error = error.downcast_ref::<FabioError>().unwrap();
+            assert_eq!(error.code, ErrorCode::InvalidInput, "{invalid}");
+            assert!(error.hint.as_deref().unwrap().contains("--expire-after"));
+        }
+        let leap_day = "2028-02-29T23:59:59Z";
+        assert_eq!(
+            expiration_policy(
+                BlockedActorExpirationPolicy::ExpireAfterDate,
+                Some(leap_day)
+            )
+            .unwrap(),
+            serde_json::json!({"policyType": "ExpireAfterDate", "expireAfterDateTime": leap_day})
+        );
+    }
+
+    #[test]
+    fn workspace_actor_body_has_only_the_spec_discriminator_and_reference() {
+        let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+        assert_eq!(
+            actor_body(workspace),
+            serde_json::json!({"actorType": "Workspace", "workspaceId": workspace})
+        );
+    }
+
+    #[test]
     fn expire_after_policy_serializes_spec_shape() {
         let value = expiration_policy(
             BlockedActorExpirationPolicy::ExpireAfterDate,

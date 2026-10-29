@@ -394,7 +394,11 @@ fn build_upgrade_gen1_body(ids: &[String]) -> Result<Value> {
     let body = serde_json::json!({
         "dataflows": ids.iter().map(|id| serde_json::json!({"id": id})).collect::<Vec<_>>()
     });
-    let size = serde_json::to_vec(&body)?.len();
+    validate_upgrade_gen1_request_size(serde_json::to_vec(&body)?.len())?;
+    Ok(body)
+}
+
+fn validate_upgrade_gen1_request_size(size: usize) -> Result<()> {
     if size > MAX_GEN1_UPGRADE_REQUEST_BYTES {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
@@ -405,7 +409,7 @@ fn build_upgrade_gen1_body(ids: &[String]) -> Result<Value> {
         )
         .into());
     }
-    Ok(body)
+    Ok(())
 }
 
 async fn upgrade_gen1(
@@ -931,7 +935,45 @@ async fn execute_query(
 
 #[cfg(test)]
 mod tests {
-    use super::{build_upgrade_gen1_body, dataflow_run_failure_hint};
+    use super::{
+        MAX_GEN1_UPGRADE_REQUEST_BYTES, build_upgrade_gen1_body, dataflow_run_failure_hint,
+        validate_upgrade_gen1_request_size,
+    };
+    use crate::errors::{ErrorCode, FabioError};
+
+    #[test]
+    fn upgrade_gen1_rejects_empty_batches_and_invalid_ids() {
+        for ids in [
+            vec![],
+            vec!["invalid".to_string()],
+            vec![String::new()],
+            vec![
+                "aaaaaaaa-1111-2222-3333-444444444444".to_string(),
+                "../other".to_string(),
+            ],
+        ] {
+            let error = build_upgrade_gen1_body(&ids).unwrap_err();
+            let error = error.downcast_ref::<FabioError>().unwrap();
+            assert_eq!(error.code, ErrorCode::InvalidInput);
+            assert!(error.hint.is_some());
+        }
+    }
+
+    #[test]
+    fn upgrade_gen1_accepts_both_batch_boundaries_and_preserves_order() {
+        for count in [1, 50] {
+            let ids: Vec<String> = (1..=count)
+                .map(|id| uuid::Uuid::from_u128(id).to_string())
+                .collect();
+            let body = build_upgrade_gen1_body(&ids).unwrap();
+            let dataflows = body["dataflows"].as_array().unwrap();
+            assert_eq!(dataflows.len(), ids.len());
+            for (entry, id) in dataflows.iter().zip(&ids) {
+                assert_eq!(entry["id"], *id);
+            }
+            assert!(serde_json::to_vec(&body).unwrap().len() <= MAX_GEN1_UPGRADE_REQUEST_BYTES);
+        }
+    }
 
     #[test]
     fn queries_metadata_failure_teaches_the_shape() {
@@ -942,6 +984,27 @@ mod tests {
         assert!(hint.contains("queriesMetadata"), "got: {hint}");
         assert!(hint.contains("loadEnabled"), "got: {hint}");
         assert!(hint.contains("job-1"));
+    }
+
+    #[test]
+    fn upgrade_gen1_byte_limit_accepts_the_exact_boundary_and_rejects_one_more_byte() {
+        assert_eq!(MAX_GEN1_UPGRADE_REQUEST_BYTES, 13_312);
+        for size in [
+            0,
+            MAX_GEN1_UPGRADE_REQUEST_BYTES - 1,
+            MAX_GEN1_UPGRADE_REQUEST_BYTES,
+        ] {
+            validate_upgrade_gen1_request_size(size).unwrap();
+        }
+        // A valid 50-UUID batch cannot reach this defensive guard. Test its
+        // byte boundary directly without manufacturing invalid IDs or allocating
+        // a large request merely to defeat the earlier count/UUID guards.
+        let error =
+            validate_upgrade_gen1_request_size(MAX_GEN1_UPGRADE_REQUEST_BYTES + 1).unwrap_err();
+        let error = error.downcast_ref::<FabioError>().unwrap();
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        assert!(error.message.contains("13313"));
+        assert!(error.hint.as_deref().unwrap().contains("13,312"));
     }
 
     #[test]

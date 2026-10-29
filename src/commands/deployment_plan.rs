@@ -418,7 +418,11 @@ async fn update_definition(
 
 #[cfg(test)]
 mod tests {
+    use base64::Engine as _;
+
     use super::*;
+
+    const PLAN_YAML: &str = "$schema: https://developer.microsoft.com/json-schemas/fabric/item/deploymentPlan/definition/plan/1.0.0/schema.json\r\nversion: 1.0.0\r\ngroups: []\r\n# Unicode: déploiement\r\n";
 
     #[test]
     fn delete_scope_rejects_path_injection() {
@@ -455,11 +459,116 @@ mod tests {
 
     #[test]
     fn raw_definition_uses_plan_yml_part() {
-        let definition = read_definition(None, Some("executableFormat: DeploymentPlanV1"))
-            .unwrap()
-            .unwrap();
+        let definition = read_definition(None, Some(PLAN_YAML)).unwrap().unwrap();
         assert_eq!(definition["parts"][0]["path"], "plan.yml");
         assert_eq!(definition["parts"][0]["payloadType"], "InlineBase64");
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(definition["parts"][0]["payload"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(decoded, PLAN_YAML.as_bytes());
+    }
+
+    #[test]
+    fn no_definition_is_allowed_for_empty_creation() {
+        assert_eq!(read_definition(None, None).unwrap(), None);
+    }
+
+    #[test]
+    fn definition_files_preserve_raw_yaml_and_both_envelope_forms() {
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("plan.yml");
+        let definition = read_definition(None, Some(PLAN_YAML)).unwrap().unwrap();
+        for content in [
+            PLAN_YAML.to_string(),
+            definition.to_string(),
+            serde_json::json!({"definition": definition}).to_string(),
+        ] {
+            std::fs::write(&file, content).unwrap();
+            assert_eq!(
+                read_definition(file.to_str(), None).unwrap(),
+                Some(definition.clone())
+            );
+        }
+    }
+
+    #[test]
+    fn unreadable_definition_files_fail_without_using_inline_content() {
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("missing.yml");
+        let error = read_definition(file.to_str(), Some(PLAN_YAML)).unwrap_err();
+        assert!(error.to_string().contains("Failed to read file"));
+
+        std::fs::write(&file, [0xff, 0xfe]).unwrap();
+        let error = read_definition(file.to_str(), None).unwrap_err();
+        assert!(error.to_string().contains("Failed to read file"));
+    }
+
+    #[test]
+    fn every_subcommand_validates_its_workspace_and_optional_item_scope() {
+        fn commands(workspace: &str, id: &str) -> Vec<DeploymentPlanCommand> {
+            let workspace = workspace.to_string();
+            let id = id.to_string();
+            vec![
+                DeploymentPlanCommand::List {
+                    workspace: workspace.clone(),
+                    no_recursive: false,
+                    root_folder_id: None,
+                },
+                DeploymentPlanCommand::Create {
+                    workspace: workspace.clone(),
+                    name: "Fixture".to_string(),
+                    description: None,
+                    folder_id: None,
+                    sensitivity_label: None,
+                    file: None,
+                    content: None,
+                },
+                DeploymentPlanCommand::Show {
+                    workspace: workspace.clone(),
+                    id: id.clone(),
+                },
+                DeploymentPlanCommand::Update {
+                    workspace: workspace.clone(),
+                    id: id.clone(),
+                    name: None,
+                    description: None,
+                },
+                DeploymentPlanCommand::Delete {
+                    workspace: workspace.clone(),
+                    id: id.clone(),
+                    hard_delete: false,
+                },
+                DeploymentPlanCommand::GetDefinition {
+                    workspace: workspace.clone(),
+                    id: id.clone(),
+                    format: None,
+                    decode: false,
+                },
+                DeploymentPlanCommand::UpdateDefinition {
+                    workspace,
+                    id,
+                    file: None,
+                    content: None,
+                    update_metadata: false,
+                },
+            ]
+        }
+        let valid = "aaaaaaaa-1111-2222-3333-444444444444";
+        for command in commands(valid, valid) {
+            validate_scope(&command).unwrap();
+        }
+        for command in commands("invalid", valid) {
+            let error = validate_scope(&command).unwrap_err();
+            let error = error.downcast_ref::<FabioError>().unwrap();
+            assert_eq!(error.code, ErrorCode::InvalidInput);
+            assert!(error.message.contains("--workspace"));
+        }
+        for command in commands(valid, "invalid").into_iter().skip(2) {
+            let error = validate_scope(&command).unwrap_err();
+            let error = error.downcast_ref::<FabioError>().unwrap();
+            assert_eq!(error.code, ErrorCode::InvalidInput);
+            assert!(error.message.contains("--id"));
+        }
     }
 
     #[test]

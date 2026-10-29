@@ -541,6 +541,15 @@ mod tests {
             bulk_import_beta_suffix(&serde_json::json!({"options": {}})),
             ""
         );
+        for body in [
+            serde_json::json!({}),
+            serde_json::json!({"options": null}),
+            serde_json::json!({"options": false}),
+            serde_json::json!({"options": []}),
+            serde_json::json!({"options": {"allowPairingByName": true}}),
+        ] {
+            assert_eq!(bulk_import_beta_suffix(&body), "");
+        }
     }
 
     #[test]
