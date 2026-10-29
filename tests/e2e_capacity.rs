@@ -313,6 +313,76 @@ const ACTOR: &str = "bbbbbbbb-1111-2222-3333-444444444444";
 const WORKSPACE: &str = "cccccccc-1111-2222-3333-444444444444";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn capacity_actor_forbidden_errors_teach_capacity_permissions() {
+    for (command, collection, verb, actor) in [
+        ("create-blocked-actor", "blockedActors", "POST", false),
+        ("list-blocked-actors", "blockedActors", "GET", false),
+        ("show-blocked-actor", "blockedActors", "GET", true),
+        ("update-blocked-actor", "blockedActors", "PATCH", true),
+        ("delete-blocked-actor", "blockedActors", "DELETE", true),
+        (
+            "create-mission-critical-actor",
+            "missionCriticalActors",
+            "POST",
+            false,
+        ),
+        (
+            "list-mission-critical-actors",
+            "missionCriticalActors",
+            "GET",
+            false,
+        ),
+        (
+            "show-mission-critical-actor",
+            "missionCriticalActors",
+            "GET",
+            true,
+        ),
+        (
+            "delete-mission-critical-actor",
+            "missionCriticalActors",
+            "DELETE",
+            true,
+        ),
+    ] {
+        let server = MockServer::start().await;
+        let mut url = format!("/capacities/{CAPACITY}/surgeProtection/{collection}");
+        if actor {
+            url.push('/');
+            url.push_str(ACTOR);
+        }
+        Mock::given(method(verb))
+            .and(path(url))
+            .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
+                "errorCode": "Forbidden", "message": "Mock access denied"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let mut cmd = mock_fabio(&server);
+        cmd.args(["--quiet", "capacity", command, "--id", CAPACITY]);
+        if actor {
+            cmd.args(["--actor-id", ACTOR]);
+        }
+        if verb == "POST" {
+            cmd.args(["--workspace", WORKSPACE]);
+        }
+        if matches!(command, "create-blocked-actor" | "update-blocked-actor") {
+            cmd.args(["--expiration-policy", "NeverExpire"]);
+        }
+        let output = cmd.assert().failure();
+        let error: serde_json::Value = serde_json::from_slice(&output.get_output().stderr).unwrap();
+        assert_eq!(error["error"]["code"], "FORBIDDEN");
+        let hint = error["error"]["hint"].as_str().unwrap();
+        assert!(
+            hint.contains("capacity administrator permissions"),
+            "{command}: {hint}"
+        );
+        assert!(!hint.contains("Ask a workspace Admin"), "{command}: {hint}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn capacity_blocked_actor_upsert_accepts_created_and_updated() {
     let body = serde_json::json!({
         "actorDetails": {"actorType": "Workspace", "workspaceId": WORKSPACE},

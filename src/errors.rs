@@ -412,6 +412,22 @@ pub fn enrich_forbidden(err: anyhow::Error, operation: &str, required_role: &str
     fabio_err.with_replaced_hint(hint, None).into()
 }
 
+/// Enrich Fabric capacity errors without suggesting workspace-role recovery.
+pub fn enrich_capacity(err: anyhow::Error, operation: &str) -> anyhow::Error {
+    let Some(fabio_err) = err.downcast_ref::<FabioError>() else {
+        return err;
+    };
+    if fabio_err.code != ErrorCode::Forbidden {
+        return err;
+    }
+    let hint = format!(
+        "'{operation}' requires capacity administrator permissions on the specified capacity. \
+         Workspace roles do not grant capacity administration. Ask a capacity administrator \
+         or Fabric administrator to review your access in the Fabric Admin portal > Capacity settings."
+    );
+    fabio_err.with_replaced_hint(hint, None).into()
+}
+
 /// Enrich a failed ontology definition push (`import`, `bind`,
 /// `update-definition`) with a diagnostic hint.
 ///
@@ -943,6 +959,29 @@ mod tests {
             !hint.contains("Workspace roles: Admin > Member"),
             "Hint should NOT mention workspace roles: {hint}"
         );
+    }
+
+    #[test]
+    fn enrich_capacity_forbidden_preserves_metadata_and_names_capacity_scope() {
+        let error = FabioError::new(ErrorCode::Forbidden, "access denied")
+            .set_request_id(Some("mock-request".to_string()));
+        let enriched = enrich_capacity(error.into(), "capacity create-blocked-actor");
+        let error = enriched.downcast_ref::<FabioError>().unwrap();
+        assert_eq!(error.code, ErrorCode::Forbidden);
+        assert_eq!(error.request_id.as_deref(), Some("mock-request"));
+        let hint = error.hint.as_deref().unwrap();
+        assert!(hint.contains("capacity administrator permissions"));
+        assert!(hint.contains("Capacity settings"));
+        assert!(!hint.contains("Ask a workspace Admin"));
+    }
+
+    #[test]
+    fn enrich_capacity_preserves_non_permission_errors() {
+        let error = FabioError::with_hint(ErrorCode::NotFound, "not found", "original hint");
+        let enriched = enrich_capacity(error.into(), "capacity show-blocked-actor");
+        let error = enriched.downcast_ref::<FabioError>().unwrap();
+        assert_eq!(error.code, ErrorCode::NotFound);
+        assert_eq!(error.hint.as_deref(), Some("original hint"));
     }
 
     #[test]
