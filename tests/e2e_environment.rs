@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{TestConfig, extract_data, fabio, parse_json};
+use common::{TestConfig, extract_data, fabio, mock_fabio, parse_json};
 use serial_test::serial;
 use wiremock::matchers::{body_json, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -217,7 +217,8 @@ fn test_show_pool_activation_returns_diagnostics() {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "jobInstanceId": MOCK_ACTIVATION,
                 "state": "Succeeded",
-                "sparkConfiguration": {"runtimeVersion": "2.0"},
+                "runtimeVersion": "2.0",
+                "sparkConfiguration": {"driverCores": 4},
                 "resourceStatusSummary": {"ready": 2}
             })))
             .mount(&server)
@@ -243,6 +244,46 @@ fn test_show_pool_activation_returns_diagnostics() {
         parse_json(&output)["data"]["resourceStatusSummary"]["ready"],
         2
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn pool_activation_published_query_examples_execute() {
+    let output = fabio()
+        .args(["context", "examples", "environment", "show-pool-activation"])
+        .assert()
+        .success();
+    let example = parse_json(&output)["data"].clone();
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/poolActivations/{MOCK_ACTIVATION}"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&example["response"]["data"]))
+        .expect(2).mount(&server).await;
+    let queries = example["query_examples"].as_array().unwrap();
+    assert_eq!(queries.len(), 2);
+    for (entry, expected) in queries
+        .iter()
+        .zip([serde_json::json!(2), serde_json::json!("2.0")])
+    {
+        let query = entry["query"].as_str().unwrap();
+        let output = mock_fabio(&server)
+            .args([
+                "environment",
+                "show-pool-activation",
+                "--workspace",
+                MOCK_WORKSPACE,
+                "--id",
+                MOCK_ENVIRONMENT,
+                "--activation-id",
+                MOCK_ACTIVATION,
+                "--query",
+                query,
+            ])
+            .assert()
+            .success();
+        assert_eq!(parse_json(&output)["data"], expected, "{query}");
+    }
 }
 
 #[test]

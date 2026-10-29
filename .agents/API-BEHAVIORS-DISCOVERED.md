@@ -3347,7 +3347,10 @@ implemented or confirmed to require no code change.
   garbage collection.
 - **Environment pool activations are job-history resources:** list filtering
   supports only `state eq '<JobHistoryStatus>'`; details add Spark driver,
-  executor, dynamic-allocation, and resource-state counts.
+  executor, dynamic-allocation, and resource-state counts. `runtimeVersion`
+  belongs to the top-level activation payload, not `sparkConfiguration`
+  (confirmed against the upstream `PoolActivation` schema and
+  `environment/examples/GetPoolActivation.json`).
 - **Report and semantic-model creation gained API-native modes:** a report can
   use `creationPayload.semanticModelReference` instead of a definition.
   Semantic models can use `creationPayload.oneLakeTables` (maximum 100,

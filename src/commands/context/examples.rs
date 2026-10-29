@@ -474,3 +474,27 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/variable_library_list_value_sets.json"),
     ),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pool_activation_queries_match_the_example_payload() {
+        let example: Value = serde_json::from_str(
+            find_entry(OUTPUT_EXAMPLES, "environment/showpoolactivation").unwrap(),
+        )
+        .unwrap();
+        let queries = example["query_examples"].as_array().unwrap();
+        assert_eq!(queries.len(), 2);
+        for (entry, expected) in queries.iter().zip([json!(2), json!("2.0")]) {
+            let query = entry["query"].as_str().unwrap();
+            assert!(output::validate_query(query).is_none(), "{query}");
+            assert_eq!(
+                output::apply_query(&example["response"]["data"], query),
+                expected,
+                "{query}"
+            );
+        }
+    }
+}
