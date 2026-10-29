@@ -302,6 +302,16 @@ pub(super) async fn create(
     for url in one_lake_tables {
         validate_one_lake_table_url(url)?;
     }
+    if connection.is_some()
+        && (!one_lake_tables.is_empty() || (file.is_none() && definition.is_none()))
+    {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "--connection is only supported when creating from a model definition file",
+            "Remove --connection for empty or --one-lake-table creation.",
+        )
+        .into());
+    }
     if allow_purge_data && file.is_none() && definition.is_none() {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,

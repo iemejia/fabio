@@ -68,6 +68,7 @@ fn test_update_definition_dry_run_includes_metadata_flag() {
     let json = parse_json(&output);
     let data = extract_data(&json);
     assert_eq!(data["would_execute"], "deployment-plan update-definition");
+    assert_eq!(data["destructive"], true);
     assert_eq!(data["details"]["updateMetadata"], true);
 }
 

@@ -58,6 +58,39 @@ fn test_create_onelake_tables_dry_run() {
     );
 }
 
+#[test]
+fn semantic_model_create_rejects_connection_without_definition() {
+    for extra_args in [
+        vec![],
+        vec![
+            "--one-lake-table",
+            "https://onelake.dfs.fabric.microsoft.com/aaaaaaaa-1111-2222-3333-444444444444/bbbbbbbb-1111-2222-3333-444444444444/Tables/dim_customer",
+        ],
+    ] {
+        let mut args = vec![
+            "semantic-model",
+            "create",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--name",
+            "Invalid connection mode",
+            "--connection",
+            "cccccccc-1111-2222-3333-444444444444",
+        ];
+        args.extend(extra_args);
+        args.push("--dry-run");
+
+        let output = fabio().args(args).assert().failure();
+        let error = error_json(&String::from_utf8_lossy(&output.get_output().stderr));
+        assert_eq!(error["error"]["code"], "INVALID_INPUT");
+        assert!(
+            error["error"]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("--connection"))
+        );
+    }
+}
+
 /// Extract the error JSON envelope from stderr, skipping any `[timing]` line
 /// that precedes it when the command made network calls before failing.
 fn error_json(stderr: &str) -> serde_json::Value {

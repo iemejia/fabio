@@ -26104,6 +26104,7 @@
         "mutates": true,
         "returns": "void",
         "async": true,
+        "destructive": true,
         "examples": [
           "fabio deployment-plan update-definition --workspace $WS --id $PLAN --file plan.yml --dry-run"
         ]

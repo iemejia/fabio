@@ -29,6 +29,18 @@ fn validate_bulk_definition_payload_len(payload_size: usize) -> Result<()> {
     Ok(())
 }
 
+fn bulk_import_beta_suffix(body: &Value) -> &'static str {
+    if body
+        .get("options")
+        .and_then(Value::as_object)
+        .is_some_and(|options| options.contains_key("deploymentPlan"))
+    {
+        "?beta=true"
+    } else {
+        ""
+    }
+}
+
 // ─── Bulk Post (server-side LRO) ─────────────────────────────────────────────
 
 pub(super) async fn bulk_post(
@@ -82,7 +94,7 @@ pub(super) async fn bulk_import_definitions(
     }
     // Any option flag needs an object `options`; validate/create it once so
     // --allow-pairing-by-name and --item-options can both write into it.
-    if allow_pairing_by_name || item_options.is_some() {
+    if allow_pairing_by_name || item_options.is_some() || deployment_plan_logical_id.is_some() {
         match body.get("options") {
             Some(options) if !options.is_object() => {
                 return Err(FabioError::with_hint(
@@ -128,11 +140,7 @@ pub(super) async fn bulk_import_definitions(
         return Ok(());
     }
 
-    let suffix = if deployment_plan_logical_id.is_some() {
-        "?beta=true"
-    } else {
-        ""
-    };
+    let suffix = bulk_import_beta_suffix(&body);
     let mut data = client
         .post(
             &format!("/workspaces/{workspace}/items/bulkImportDefinitions{suffix}"),
@@ -517,9 +525,23 @@ pub(super) async fn delete_external_data_share(
 #[cfg(test)]
 mod tests {
     use super::{
-        MAX_BULK_DEFINITION_PAYLOAD_SIZE, build_eds_recipient,
+        MAX_BULK_DEFINITION_PAYLOAD_SIZE, build_eds_recipient, bulk_import_beta_suffix,
         validate_bulk_definition_payload_len, validate_bulk_definition_payload_size,
     };
+
+    #[test]
+    fn bulk_import_beta_activation_follows_request_body() {
+        assert_eq!(
+            bulk_import_beta_suffix(&serde_json::json!({
+                "options": {"deploymentPlan": {"referenceType": "ByLogicalId"}}
+            })),
+            "?beta=true"
+        );
+        assert_eq!(
+            bulk_import_beta_suffix(&serde_json::json!({"options": {}})),
+            ""
+        );
+    }
 
     #[test]
     fn bulk_definition_payload_enforces_spec_limit() {
