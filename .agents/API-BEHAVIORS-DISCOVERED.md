@@ -3349,6 +3349,23 @@ implemented or confirmed to require no code change.
   without a definition also succeeds and generates a minimal plan. CRUD and
   canonical getDefinition/updateDefinition round trips work with the current
   schema. See the [definition reference](https://learn.microsoft.com/en-us/rest/api/fabric/articles/item-management/definitions/deployment-plan-definition).
+- **Assigned logical identity is independent of getDefinition placeholders (live):**
+  a newly API-created item's definition can contain a zero `.platform.config.logicalId`.
+  That placeholder can remain zero even after `item update-logical-id` successfully
+  assigns a non-zero identity visible in first-class item metadata. Export and
+  rename detection must prefer metadata `logicalId`, falling back to definition/Git
+  identity only when metadata is absent. Merely sending a `.platform` part on generic
+  item creation did not reliably assign the identity; plan-bearing per-item deploys
+  now restore it on fresh creations. Existing target identities are checked, never
+  silently migrated. The generic create/update/rename round trip was validated live
+  without any plan jobs running.
+- **Non-empty native orchestration is live-validated separately from artifact storage:**
+  a two-group plan with the file order deliberately reversed executed its Wait
+  pipeline actions in dependency order (second job start not before first job end).
+  An intentional Fail activity in the first action stopped deployment before the
+  dependent item was imported; completed/failed work is not rolled back. All items,
+  stages, and workspaces were isolated test resources. Job-history `*TimeUtc` values
+  can omit a timezone suffix; they still represent UTC, not the caller's local zone.
 - **Deployment-plan orchestration references are Beta:** Git
   `updateFromGit` and bulk item-definition import accept only
   `{referenceType:"ByLogicalId",logicalId}`; deployment-pipeline deploy accepts

@@ -97,6 +97,10 @@ pub(super) const fn example_entries() -> &'static [(&'static str, &'static str)]
 
 const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
+        "deployment-plan/validate",
+        include_str!("data/examples/deployment_plan_validate.json"),
+    ),
+    (
         "environment/show-pool-activation",
         include_str!("data/examples/environment_pool_activation.json"),
     ),

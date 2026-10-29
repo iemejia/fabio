@@ -2,6 +2,7 @@
   "type": "DeploymentPlan",
   "description": "Preview item that orchestrates Fabric deployments by defining item ordering and pre/post deployment actions.",
   "create_command": "fabio deployment-plan create --workspace <WS> --name <NAME> --file plan.yml",
+  "validation_command": "fabio deployment-plan validate --file plan.yml --source <DIR> --strict",
   "definition_format": "DeploymentPlanFormat",
   "definition_parts": [
     {
@@ -34,6 +35,8 @@
     "--update-metadata": "Update item metadata from the submitted definition."
   },
   "notes": [
+    "Offline validate checks intrinsic plan rules and optionally a local source catalog; it never executes jobs or verifies target permissions, active variable values, readiness, or runtime lineage. Missing source references warn unless --strict is supplied.",
+    "Generic deploy stores this artifact without executing it. Plan references and .platform logical identities must remain logical IDs across workspaces, not physical item IDs.",
     "Use the published plan.yml schema ($schema and version: 1.0.0, with optional groups). The older REST example containing executableFormat/id is rejected live with InvalidContent.",
     "Deployment plan items and their integration with Git, bulk import, and deployment pipelines are Preview/Beta.",
     "Git pull and bulk import reference deployment plans by logical ID; deployment-pipeline deploy references them by item ID.",

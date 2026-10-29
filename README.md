@@ -70,7 +70,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 - **Terraform-like convergence** — re-running `deploy apply` on a synced workspace produces zero API calls
 - **Single-pass cross-item resolution** — `$items.Type.Name.id` references resolve *during* a single `deploy apply`, even to a brand-new empty workspace, because fabio records each item's freshly-created GUID as it goes (no two-phase deploy — see [How fabio avoids the chicken-and-egg problem](#how-fabio-avoids-the-chicken-and-egg-problem))
 - **Saved deployment plans** — `--out plan.json` then `apply --plan plan.json` (with staleness detection)
-- **Fabric deployment-plan items** — author ordered CI/CD orchestration plans and attach them to Git pull, bulk import, or deployment-pipeline deploy operations
+- **Fabric deployment-plan items** — author and validate ordered CI/CD orchestration plans offline, preserve their logical identities across generic deployments, and explicitly attach them to Git pull, bulk import, or deployment-pipeline deploy operations. Generic `deploy apply` stores plans without executing their actions.
 - **Workspace folder management** — infers folder hierarchy, creates/moves/deletes automatically
 - **Workspace recycle-bin lifecycle** — list retained soft-deleted items, recover item trees, or permanently delete recoverable items with destructive dry-run signals
 - **Protected type deletion guards** — Lakehouse/Warehouse/Eventhouse safe from accidental deletion

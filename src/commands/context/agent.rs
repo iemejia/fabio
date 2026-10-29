@@ -1644,6 +1644,7 @@ fn infer_mutates(cmd_name: &str) -> bool {
         "describe",
         "status",
         "check-",
+        "validate",
         "search",
         "diagnostics",
         "deeplink",
@@ -1686,6 +1687,7 @@ fn infer_returns(cmd_name: &str) -> &'static str {
         || cmd_name == "exists"
         || cmd_name == "sample"
         || cmd_name == "diagnostics"
+        || cmd_name.starts_with("validate")
         || cmd_name == "deeplink"
         || cmd_name == "plan"
         || cmd_name == "export"

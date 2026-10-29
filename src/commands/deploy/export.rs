@@ -12,6 +12,7 @@ use super::platform::{DefinitionPart, PlatformMetadata, write_source_directory};
 /// Exportable item with governance metadata.
 struct ExportableItem {
     id: String,
+    logical_id: Option<String>,
     item_type: String,
     name: String,
     description: Option<String>,
@@ -136,6 +137,10 @@ async fn collect_exportable_items(
 
         items.push(ExportableItem {
             id: id.to_owned(),
+            logical_id: item
+                .get("logicalId")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
             item_type: item_type.to_owned(),
             name: name.to_owned(),
             description,
@@ -198,6 +203,7 @@ async fn fetch_definitions_parallel(
         let item_type_owned = item.item_type.clone();
         let name_owned = item.name.clone();
         let description_owned = item.description.clone();
+        let logical_id_owned = item.logical_id.clone();
 
         handles.push(tokio::spawn(async move {
             let _permit = sem.acquire().await.unwrap();
@@ -216,6 +222,7 @@ async fn fetch_definitions_parallel(
                 name_owned,
                 description_owned,
                 item_id,
+                logical_id_owned,
                 result,
             )
         }));
@@ -225,7 +232,7 @@ async fn fetch_definitions_parallel(
     let mut skipped = Vec::new();
 
     for handle in handles {
-        let (item_type, name, description, item_id, result) = handle.await?;
+        let (item_type, name, description, item_id, listed_logical_id, result) = handle.await?;
 
         match result {
             Ok(data) => {
@@ -244,7 +251,11 @@ async fn fetch_definitions_parallel(
                 let metadata = PlatformMetadata {
                     item_type,
                     display_name: name,
-                    logical_id: Some(stable_logical_id(&data, &item_id)),
+                    logical_id: Some(export_logical_id(
+                        listed_logical_id.as_deref(),
+                        &data,
+                        &item_id,
+                    )),
                     description,
                     definition_format,
                     sensitivity_label_id: None,
@@ -261,7 +272,11 @@ async fn fetch_definitions_parallel(
                     let metadata = PlatformMetadata {
                         item_type,
                         display_name: name,
-                        logical_id: Some(item_id),
+                        logical_id: Some(export_logical_id(
+                            listed_logical_id.as_deref(),
+                            &Value::Null,
+                            &item_id,
+                        )),
                         description,
                         definition_format: None,
                         sensitivity_label_id: None,
@@ -423,6 +438,12 @@ const ZERO_LOGICAL_ID: &str = "00000000-0000-0000-0000-000000000000";
 /// a Lakehouse) is rewritten to the newly-deployed GUID by the existing
 /// logical-id resolver (`build_resolution_map` + `resolve_logical_ids_in_payload`),
 /// because the referenced item's logical id now equals that same source GUID.
+fn export_logical_id(listed: Option<&str>, data: &Value, source_item_id: &str) -> String {
+    listed
+        .filter(|id| !id.is_empty() && *id != "00000000-0000-0000-0000-000000000000")
+        .map_or_else(|| stable_logical_id(data, source_item_id), str::to_owned)
+}
+
 fn stable_logical_id(data: &Value, source_item_id: &str) -> String {
     match extract_logical_id(data) {
         Some(lid) if !lid.is_empty() && lid != ZERO_LOGICAL_ID => lid,
@@ -896,11 +917,37 @@ mod tests {
         assert_eq!(stable_logical_id(&data, "src-guid-456"), "src-guid-456");
     }
 
+    #[test]
+    fn export_prefers_assigned_item_identity_over_definition_placeholders_or_stale_ids() {
+        let logical = "aaaaaaaa-1111-2222-3333-444444444444";
+        for data in [
+            platform_data(Some("00000000-0000-0000-0000-000000000000")),
+            platform_data(Some("stale-git-id")),
+            platform_data(None),
+        ] {
+            assert_eq!(
+                export_logical_id(Some(logical), &data, "physical-id"),
+                logical
+            );
+        }
+        for absent in [None, Some(""), Some("00000000-0000-0000-0000-000000000000")] {
+            assert_eq!(
+                export_logical_id(absent, &platform_data(Some("git-id")), "physical-id"),
+                "git-id"
+            );
+            assert_eq!(
+                export_logical_id(absent, &platform_data(None), "physical-id"),
+                "physical-id"
+            );
+        }
+    }
+
     // ── ontology_child_names ────────────────────────────────────────────────
 
     fn item(item_type: &str, name: &str, id: &str) -> ExportableItem {
         ExportableItem {
             id: id.to_owned(),
+            logical_id: None,
             item_type: item_type.to_owned(),
             name: name.to_owned(),
             description: None,
@@ -938,6 +985,7 @@ mod tests {
 
         let items = vec![ExportableItem {
             id: "id-1".to_owned(),
+            logical_id: None,
             item_type: "Notebook".to_owned(),
             name: "MyNb".to_owned(),
             description: None,
@@ -962,6 +1010,7 @@ mod tests {
 
         let items = vec![ExportableItem {
             id: "id-1".to_owned(),
+            logical_id: None,
             item_type: "Notebook".to_owned(),
             name: "MyNb".to_owned(),
             description: None,
@@ -987,6 +1036,7 @@ mod tests {
 
         let items = vec![ExportableItem {
             id: "id-1".to_owned(),
+            logical_id: None,
             item_type: "Notebook".to_owned(),
             name: "MyNb".to_owned(),
             description: None,
@@ -1008,6 +1058,7 @@ mod tests {
 
         let items = vec![ExportableItem {
             id: "id-1".to_owned(),
+            logical_id: None,
             item_type: "Notebook".to_owned(),
             name: "MyNb".to_owned(),
             description: None,
@@ -1028,6 +1079,7 @@ mod tests {
 
         let items = vec![ExportableItem {
             id: "id-1".to_owned(),
+            logical_id: None,
             item_type: "Notebook".to_owned(),
             name: "MyNb".to_owned(),
             description: None,

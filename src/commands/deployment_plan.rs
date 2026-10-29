@@ -12,6 +12,21 @@ use crate::output;
     after_help = "Before creating deployment plans, run: fabio context schema DeploymentPlan\nReturns the definition template with required fields and format."
 )]
 pub enum DeploymentPlanCommand {
+    /// Validate plan YAML or a definition envelope offline (does not execute actions)
+    Validate {
+        /// Raw plan.yml or definition-envelope file
+        #[arg(long, required_unless_present = "content", conflicts_with = "content")]
+        file: Option<String>,
+        /// Inline plan YAML or definition envelope
+        #[arg(long)]
+        content: Option<String>,
+        /// Optional local .platform source directory for item/type reference checks
+        #[arg(long)]
+        source: Option<std::path::PathBuf>,
+        /// Treat warnings (including references absent from source) as failures
+        #[arg(long)]
+        strict: bool,
+    },
     /// List deployment plans in a workspace
     List {
         /// Workspace ID
@@ -127,6 +142,18 @@ pub async fn execute(
 ) -> Result<()> {
     validate_scope(command)?;
     match command {
+        DeploymentPlanCommand::Validate {
+            file,
+            content,
+            source,
+            strict,
+        } => validate(
+            cli,
+            file.as_deref(),
+            content.as_deref(),
+            source.as_deref(),
+            *strict,
+        ),
         DeploymentPlanCommand::List {
             workspace,
             no_recursive,
@@ -231,6 +258,7 @@ pub async fn execute(
 
 fn validate_scope(command: &DeploymentPlanCommand) -> Result<()> {
     let (workspace, id) = match command {
+        DeploymentPlanCommand::Validate { .. } => return Ok(()),
         DeploymentPlanCommand::List { workspace, .. }
         | DeploymentPlanCommand::Create { workspace, .. } => (workspace, None),
         DeploymentPlanCommand::Show { workspace, id }
@@ -242,6 +270,77 @@ fn validate_scope(command: &DeploymentPlanCommand) -> Result<()> {
     validate_uuid(workspace, "--workspace")?;
     if let Some(id) = id {
         validate_uuid(id, "--id")?;
+    }
+    Ok(())
+}
+
+fn validate(
+    cli: &Cli,
+    file: Option<&str>,
+    content: Option<&str>,
+    source: Option<&std::path::Path>,
+    strict: bool,
+) -> Result<()> {
+    use base64::Engine as _;
+    let definition = read_definition(file, content)?.ok_or_else(|| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Provide --file or --content",
+            "Use: fabio deployment-plan validate --file plan.yml",
+        )
+    })?;
+    let findings = crate::definition_spec::validate_definition(
+        Some("DeploymentPlan"),
+        &serde_json::json!({"definition": definition}),
+    );
+    let source = source
+        .map(crate::commands::deploy::platform::parse_source_directory)
+        .transpose()?;
+    let catalog = source.as_ref().map(|source| {
+        crate::deployment_plan::catalog(source.items.iter().filter_map(|item| {
+            item.metadata
+                .logical_id
+                .as_deref()
+                .map(|id| (id, item.metadata.item_type.as_str()))
+        }))
+    });
+    let plan = definition["parts"]
+        .as_array()
+        .and_then(|parts| parts.iter().find(|part| part["path"] == "plan.yml"));
+    let mut result = if let Some(plan) = plan
+        && let Some(payload) = plan["payload"].as_str()
+        && let Ok(decoded) = base64::engine::general_purpose::STANDARD.decode(payload)
+    {
+        crate::deployment_plan::validate(&decoded, catalog.as_ref())
+    } else {
+        crate::deployment_plan::Validation::default()
+    };
+    // Keep universal envelope errors and missing plan.yml errors in the same
+    // report; avoid repeating semantic findings already produced by the core.
+    for finding in findings {
+        if finding.code == "INVALID_DEPLOYMENT_PLAN" || finding.code == "DEPLOYMENT_PLAN_SCOPE" {
+            continue;
+        }
+        if finding.severity == crate::definition_spec::Severity::Error
+            || finding.code == "MISSING_CANONICAL_PART"
+        {
+            result.errors.push(finding.message);
+        } else {
+            result.warnings.push(finding.message);
+        }
+    }
+    if result.errors.len() > 100 || result.warnings.len() > 100 {
+        result.truncated = true;
+        result.errors.truncate(100);
+        result.warnings.truncate(100);
+    }
+    result.valid = result.errors.is_empty() && (!strict || result.warnings.is_empty());
+    let valid = result.valid;
+    output::render_object(cli, &serde_json::to_value(&result)?, "valid");
+    if !valid {
+        return Err(FabioError::with_hint(ErrorCode::InvalidInput,
+            "Deployment plan validation failed; inspect data.errors and data.warnings.",
+            "Use the current template from 'fabio context schema DeploymentPlan'. --source checks a local catalog, not target permissions/readiness; --strict also rejects warnings.").into());
     }
     Ok(())
 }
@@ -281,10 +380,13 @@ async fn list(
 
 fn read_definition(file: Option<&str>, content: Option<&str>) -> Result<Option<Value>> {
     let raw = match (file, content) {
-        (Some(path), _) => Some(
-            std::fs::read_to_string(path)
-                .map_err(|e| anyhow::anyhow!("Failed to read file '{path}': {e}"))?,
-        ),
+        (Some(path), _) => Some(std::fs::read_to_string(path).map_err(|e| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("Failed to read file '{path}': {e}"),
+                "Provide a readable UTF-8 plan.yml or definition-envelope file.",
+            )
+        })?),
         (_, Some(value)) => Some(value.to_string()),
         (None, None) => None,
     };

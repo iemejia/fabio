@@ -1,0 +1,40 @@
+{
+  "topic": "deployment-plans",
+  "title": "Fabric deployment plans: portability, validation, and native execution",
+  "summary": "Distinguish Fabio's diff preview from Fabric deployment-plan artifacts and native job orchestration. Covers offline validation, logical IDs, execution backends, value-set preparation, permissions, partial failures, and retry safety.",
+  "concepts": {
+    "diff_preview": "fabio deploy plan previews create/update/delete/skip changes; it is not an executable Fabric deployment-plan item.",
+    "artifact": "A DeploymentPlan is a versioned plan.yml plus .platform metadata. Generic deploy stores its definition without automatically executing its actions.",
+    "execution": "Explicitly attach a plan to a supported native operation. Current Fabio attachment surfaces are git pull, deployment-pipeline deploy, and item bulk-import-definitions. High-level deploy apply (including --strategy bulk) does not attach or interpret plans."
+  },
+  "validation": {
+    "command": "fabio deployment-plan validate --file plan.yml --source ./items --strict",
+    "checks": "Current schema/version, non-zero UUIDs, group/action dependencies and cycles (including references through grouped action items), case-insensitive duplicate names, repeated group items, action placement, parameter names, limits, and supported action types when a local source catalog is supplied.",
+    "source_scope": "A reference absent from --source can already exist in the target. It is a warning; --strict rejects warnings. Incomplete draft actions and known invocation-readiness issues also warn rather than blocking artifact storage. Validation does not query the tenant, fetch user-supplied schemas, execute jobs, or verify target permissions, active variable values, connections, readiness, or runtime lineage.",
+    "shared_checks": "item validate-definition --type DeploymentPlan shares intrinsic plan checks. Generic deploy source parsing also rejects malformed plan artifacts before mutating a workspace."
+  },
+  "portability": {
+    "identity": "Keep .platform config.logicalId and plan.yml logicalId fields as stable logical identities. Do not substitute deployed physical object IDs into these fields. Runtime binding fields in other item definitions can still require physical-ID resolution.",
+    "authoritative_metadata": "getDefinition can return a zero .platform placeholder even after a logical ID is assigned. Export and rename detection prefer the item's first-class metadata.logicalId; do not infer assigned identity from that placeholder.",
+    "generic_bootstrap": "When a DeploymentPlan artifact is selected, the generic per-item executor restores source logical IDs only on items it just created. It checks existing target identities before mutation and refuses mismatches; it never silently migrates existing identities. No additional identity-assignment RPCs or migration checks are added when no plan is selected.",
+    "attachment": "Git and bulk import use ByLogicalId. Deployment pipelines use ByItemId to select the plan artifact, but references inside its definition are still logical IDs.",
+    "selection": "A reference does not select/import every referenced item. On selective stage deployments, also select an incoming source-stage DeploymentPlan itself."
+  },
+  "preparation": [
+    "Configure capacity, workspace identity, connections, gateway bindings, and Spark settings before actions depend on them; plans do not provision them.",
+    "Activate the intended variable-library value set before native actions run. Fabio's generic deploy --env activation is a post-hook and is too late to configure actions executing inside a native deployment. New workspaces initially use Default.",
+    "Avoid duplicate runs through both native actions and --post-run-item or automatic post-hooks.",
+    "API automation requires beta=true plus the original operation's scope and Item.Execute.All. A service identity must be supported by all participating items/jobs."
+  ],
+  "execution_safety": [
+    "Treat an action-bearing plan as code execution that may change data even if a metadata changeset has destructive:false.",
+    "Failures stop subsequent deployment but do not roll back completed items or job side effects. Inspect completed work before retrying and make jobs idempotent.",
+    "Actions/groups currently execute serially. Completion of a job does not guarantee downstream SQL/catalog readiness; perform readiness checks inside producing jobs.",
+    "A pre-action cannot run the item its own group has not deployed yet. A plan operates on one target workspace per operation, and one operation attaches at most one plan.",
+    "Do not blindly add a plan object to Initialize Connection: initial Git sync requires attaching it to a subsequent Update From Git operation when needed."
+  ],
+  "references": [
+    "https://learn.microsoft.com/en-us/fabric/cicd/deployment-plan/deployment-plan-automation",
+    "https://learn.microsoft.com/en-us/rest/api/fabric/articles/item-management/definitions/deployment-plan-definition"
+  ]
+}

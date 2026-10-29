@@ -25906,6 +25906,29 @@
     "auth_scope": "fabric",
     "description": "Manage deployment plan items (ordered CI/CD orchestration)",
     "subcommands": {
+      "validate": {
+        "description": "Validate plan YAML or a definition envelope offline (does not execute actions)",
+        "flags": {
+          "--file": {
+            "type": "string",
+            "description": "Raw plan.yml or definition-envelope file"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline plan YAML or definition envelope"
+          },
+          "--source": {
+            "type": "string",
+            "description": "Optional local .platform source directory for item/type reference checks"
+          },
+          "--strict": {
+            "type": "bool",
+            "description": "Treat warnings (including references absent from source) as failures"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
       "list": {
         "description": "List deployment plans in a workspace",
         "flags": {

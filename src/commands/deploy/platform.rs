@@ -331,11 +331,88 @@ pub fn parse_source_directory(source_dir: &Path) -> Result<SourceWorkspace> {
         );
     }
 
-    Ok(SourceWorkspace {
+    let workspace = SourceWorkspace {
         items,
         logical_id_index,
         type_name_index,
-    })
+    };
+    validate_deployment_plans(&workspace)?;
+    Ok(workspace)
+}
+
+/// Plan artifacts must remain semantically valid before any generic deploy can
+/// mutate a workspace. References absent from a partial source can already exist
+/// in the target, so only intrinsic/type errors are fatal here.
+fn validate_deployment_plans(source: &SourceWorkspace) -> Result<()> {
+    if !source.items.iter().any(|item| {
+        item.metadata
+            .item_type
+            .eq_ignore_ascii_case("DeploymentPlan")
+    }) {
+        return Ok(());
+    }
+    let mut identities = std::collections::HashSet::new();
+    for item in &source.items {
+        if let Some(id) = item
+            .metadata
+            .logical_id
+            .as_deref()
+            .and_then(|id| uuid::Uuid::parse_str(id).ok())
+            && !id.is_nil()
+            && !identities.insert(id)
+        {
+            return Err(FabioError::with_hint(ErrorCode::InvalidInput,
+                "Plan-bearing source contains duplicate logical identities.",
+                "Each .platform config.logicalId must uniquely identify one source item. Resolve the conflicting identities before deployment; no target identities were changed.").into());
+        }
+    }
+    let catalog = crate::deployment_plan::catalog(source.items.iter().filter_map(|item| {
+        item.metadata
+            .logical_id
+            .as_deref()
+            .map(|id| (id, item.metadata.item_type.as_str()))
+    }));
+    for item in source.items.iter().filter(|item| {
+        item.metadata
+            .item_type
+            .eq_ignore_ascii_case("DeploymentPlan")
+    }) {
+        if item
+            .metadata
+            .logical_id
+            .as_deref()
+            .and_then(|id| uuid::Uuid::parse_str(id).ok())
+            .is_none_or(|id| id.is_nil())
+        {
+            return Err(FabioError::with_hint(ErrorCode::InvalidInput,
+                "DeploymentPlan source metadata needs a non-zero config.logicalId for portable identity.",
+                "Use assigned item metadata.logicalId or a genuine Git .platform logical ID, not a zero getDefinition placeholder. Review dependent automations before assigning an existing item's identity, then export again.").into());
+        }
+        let part = item
+            .parts
+            .iter()
+            .find(|part| part.path == "plan.yml")
+            .ok_or_else(|| {
+                FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    "DeploymentPlan source item is missing plan.yml",
+                    "Get a template with: fabio context schema DeploymentPlan",
+                )
+            })?;
+        let bytes = BASE64.decode(&part.payload).map_err(|_| {
+            FabioError::new(
+                ErrorCode::InvalidInput,
+                "Deployment plan payload is not valid base64",
+            )
+        })?;
+        let validation = crate::deployment_plan::validate(&bytes, Some(&catalog));
+        if !validation.valid {
+            return Err(FabioError::with_hint(ErrorCode::InvalidInput,
+                format!("Invalid DeploymentPlan source: {}", validation.errors.join("; ")),
+                "Run: fabio deployment-plan validate --file <item>/plan.yml --source <DIR>. Deployment plan logical IDs must remain logical IDs across workspaces.").into());
+        }
+    }
+    Ok(())
 }
 
 /// Recursively discover item directories within the source tree.

@@ -1,0 +1,22 @@
+{
+  "command": "fabio deployment-plan validate --file plan.yml",
+  "description": "Offline validation of a plan containing two groups and one job action. This describes the plan without executing it.",
+  "response": {
+    "data": {
+      "valid": true,
+      "groups": 2,
+      "actions": 1,
+      "executes_jobs": true,
+      "source_checked": false,
+      "logical_ids": ["aaaaaaaa-1111-2222-3333-444444444444", "bbbbbbbb-1111-2222-3333-444444444444"],
+      "errors": [],
+      "warnings": [],
+      "truncated": false
+    }
+  },
+  "notes": "executes_jobs describes what the plan would do if attached to a deployment; validation itself never executes jobs. valid covers intrinsic checks, not target readiness or permissions. --source adds local reference/type checks; references missing from it are warnings unless --strict is supplied. Findings are capped at 100 errors and 100 warnings.",
+  "query_examples": [
+    {"description": "Read validity", "query": "valid", "output": true},
+    {"description": "Count declared actions", "query": "actions", "output": 1}
+  ]
+}

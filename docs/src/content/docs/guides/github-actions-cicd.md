@@ -40,6 +40,11 @@ When `deployment-pipeline deploy --items` selects an incoming source-stage plan,
 include the `DeploymentPlan` item itself alongside its workload items; referencing
 the plan ID alone does not select/import it.
 
+Validate before attaching with `fabio deployment-plan validate --file plan.yml
+--source ./fabric-items --strict`. See [Fabric deployment plans and Fabio CI/CD](../../explanation/deployment-plans/)
+for portability, supported execution paths, and the important difference between
+native actions and Fabio's post-deploy value-set activation.
+
 ## Prerequisites
 
 - Three Fabric workspaces (Dev / Test / Prod) on a Fabric or Power BI Premium capacity.

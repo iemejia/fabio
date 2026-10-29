@@ -4,6 +4,7 @@ pub mod config;
 pub mod export;
 pub mod folders;
 pub mod git_diff;
+mod identities;
 pub mod init_params;
 pub mod ordering;
 pub mod params;
@@ -605,15 +606,14 @@ async fn execute_plan(
         return Err(FabioError::with_hint(ErrorCode::InvalidInput, "--env is required when --parameters is specified", "Both --parameters and --env must be provided together. Example: --parameters params.json --env dev").into());
     }
 
-    // Resolve workspace
-    let workspace_id = resolve_workspace(client, workspace).await?;
-
-    // Parse source directory
+    // Validate source artifacts before any workspace discovery/authentication.
     let mut source_workspace = platform::parse_source_directory(source)?;
 
     if source_workspace.items.is_empty() {
         return Err(FabioError::with_hint(ErrorCode::InvalidInput, format!("No items found in source directory: {}", source.display()), "Ensure the directory contains item folders with .platform files. Export from a workspace: fabio deploy export --workspace <WS> --dir <DIR>").into());
     }
+
+    let workspace_id = resolve_workspace(client, workspace).await?;
 
     // Apply workspace ID auto-replacement (any workspace GUID → target workspace)
     if !no_workspace_id_replace {
@@ -834,12 +834,13 @@ async fn execute_apply(
             )
         })?;
 
-        let workspace_id = resolve_workspace(client, ws).await?;
         let mut source_ws = platform::parse_source_directory(src_path)?;
 
         if source_ws.items.is_empty() {
             return Err(FabioError::with_hint(ErrorCode::InvalidInput, format!("No items found in source directory: {}", src_path.display()), "Ensure the directory contains item folders with .platform files. Export from a workspace: fabio deploy export --workspace <WS> --dir <DIR>").into());
         }
+
+        let workspace_id = resolve_workspace(client, ws).await?;
 
         // Apply workspace ID auto-replacement
         if !no_workspace_id_replace {

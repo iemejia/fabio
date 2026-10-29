@@ -109,6 +109,17 @@ async fn fetch_deployed_logical_id(
     workspace: &str,
     item_id: &str,
 ) -> Result<Option<String>> {
+    // Assigned identity is first-class metadata. getDefinition can still emit a
+    // zero .platform placeholder even after logicalId was explicitly assigned.
+    if let Ok(metadata) = client
+        .get(&format!("/workspaces/{workspace}/items/{item_id}"))
+        .await
+        && let Some(id) = metadata["logicalId"]
+            .as_str()
+            .filter(|id| !id.is_empty() && *id != "00000000-0000-0000-0000-000000000000")
+    {
+        return Ok(Some(id.to_string()));
+    }
     let path = format!("/workspaces/{workspace}/items/{item_id}/getDefinition");
     let result = client.post(&path, &serde_json::json!({}), true).await;
 
@@ -385,7 +396,7 @@ pub async fn build_changeset(
 
                 if let Ok(Some(lid)) =
                     fetch_deployed_logical_id(client, workspace_id, &candidate.id).await
-                    && lid == *source_lid
+                    && lid.eq_ignore_ascii_case(source_lid)
                 {
                     // Found a rename: same logical ID, different name
                     matched_deployed

@@ -90,6 +90,12 @@ cargo test --test e2e_deployment_governance live_kql_dashboard_ -- --ignored
 # Beta plan references through bulk import and deployment pipelines
 cargo test --test e2e_deployment_governance live_bulk_import_ -- --ignored
 cargo test --test e2e_deployment_governance live_pipeline_deploy_ -- --ignored
+
+# Real non-empty native plans: action ordering and intentional failure propagation
+cargo test --test e2e_deployment_governance live_native_plan_ -- --ignored --test-threads=1
+
+# Generic export/create/update/rename preserves identities but never executes actions
+cargo test --test e2e_deployment_governance live_generic_deploy_preserves_plan_identity -- --ignored
 ```
 
 With **all** prerequisites available:
@@ -124,6 +130,11 @@ cargo test --test e2e_deployment_governance -- --ignored --test-threads=1
   overwrite an existing workspace's Git binding.
 - Gen1 upgrade request-size validation remains offline: do not upgrade a real
   dataflow irreversibly just to exercise a request-size bound.
+- Non-empty plan fixtures use only isolated Wait/Fail data-pipeline jobs. The
+  source items receive logical IDs before plans reference them, using the existing
+  item metadata API only on items freshly created by that test. Job history proves
+  execution order and that a failed action stops dependent deployment. Definitions'
+  `.platform` placeholders are not used as authoritative identity metadata.
 
 For deployment-plan content and service-specific findings, see the October 2026
 section of [API behaviors](../.agents/API-BEHAVIORS-DISCOVERED.md).

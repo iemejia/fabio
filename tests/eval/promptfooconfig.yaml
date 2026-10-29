@@ -1604,6 +1604,28 @@ tests:
              /version\s*:\s*["']?1\.0\.0/.test(output))
         metric: current-deployment-plan-schema
 
+  - description: "CI/CD: validate a deployment plan offline against a local source"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-deploy-cicd/SKILL.md"
+      user_query: "Validate plan.yml against the items in ./fabric-items without contacting the tenant or executing jobs. Treat warnings as failures."
+    assert:
+      - type: javascript
+        value: "output.includes('deployment-plan validate')"
+      - type: icontains
+        value: "--file"
+      - type: icontains
+        value: "--source"
+      - type: icontains
+        value: "--strict"
+
+  - description: "CI/CD: storing a deployment plan is not executing it"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-deploy-cicd/SKILL.md"
+      user_query: "Our repo now contains a DeploymentPlan. Will our existing fabio deploy apply --strategy default execute its post-actions automatically? Explain what actually runs the plan."
+    assert:
+      - type: llm-rubric
+        value: "States that generic deploy apply stores the plan artifact but does not execute its actions, and that execution requires explicitly attaching a plan to a supported native Git, deployment-pipeline, or low-level bulk-import operation. Does not invent a high-level deploy apply plan-execution flag."
+
   - description: "Sequencing: workspace create before any workspace-scoped item"
     vars:
       user_query: "Create a workspace called DevEnv, then create a notebook called ETL-Job inside it"

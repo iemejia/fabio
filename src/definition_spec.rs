@@ -272,6 +272,30 @@ pub fn validate_definition(item_type: Option<&str>, envelope: &Value) -> Vec<Fin
     // Per-type canonical-part checks (warnings — the API is often lenient).
     if let Some(item_type) = item_type {
         validate_type_requirements(item_type, &present_paths, &mut findings);
+        if canonical_type_name(item_type) == Some("DeploymentPlan") {
+            for part in parts.iter().filter(|part| part["path"] == "plan.yml") {
+                if part["payloadType"] == "InlineBase64"
+                    && let Some(payload) = part["payload"].as_str()
+                    && let Ok(decoded) = BASE64.decode(payload)
+                {
+                    let validation = crate::deployment_plan::validate(&decoded, None);
+                    for message in validation.errors {
+                        findings.push(Finding::error(
+                            "INVALID_DEPLOYMENT_PLAN",
+                            message,
+                            Some("plan.yml".to_string()),
+                        ));
+                    }
+                    for message in validation.warnings {
+                        findings.push(Finding::warning(
+                            "DEPLOYMENT_PLAN_SCOPE",
+                            message,
+                            Some("plan.yml".to_string()),
+                        ));
+                    }
+                }
+            }
+        }
     }
 
     findings

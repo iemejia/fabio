@@ -5,6 +5,7 @@ mod cli;
 mod client;
 mod commands;
 mod definition_spec;
+mod deployment_plan;
 mod errors;
 mod llm;
 mod mcp_client;

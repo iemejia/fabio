@@ -40,6 +40,10 @@ pub async fn execute_changeset(
     fail_fast: bool,
 ) -> Result<DeployResult> {
     let start = Instant::now();
+    let preserve_identities = super::identities::required(changeset);
+    if preserve_identities && !cli.dry_run {
+        super::identities::check_existing(client, workspace_id, source, changeset).await?;
+    }
 
     let mut succeeded: Vec<Change> = Vec::new();
     let mut failed: Vec<DeployFailure> = Vec::new();
@@ -176,6 +180,7 @@ pub async fn execute_changeset(
                         &source_map,
                         &created_ids,
                         &extra_resolutions,
+                        preserve_identities,
                     )
                     .await;
 
@@ -257,6 +262,7 @@ pub async fn execute_changeset(
                             source_item.as_ref(),
                             &res_map,
                             &sm_ids,
+                            preserve_identities,
                         )
                         .await;
                         (change_owned, result)
@@ -417,6 +423,7 @@ pub async fn execute_changeset(
                     &source_map,
                     &created_ids,
                     &extra_resolutions,
+                    preserve_identities,
                 )
                 .await;
 
@@ -1688,6 +1695,7 @@ async fn execute_single_change(
     source_map: &HashMap<(&str, &str), usize>,
     created_ids: &HashMap<(String, String), String>,
     extra: &HashMap<String, String>,
+    preserve_identities: bool,
 ) -> Result<Option<String>> {
     let source_idx = source_map
         .get(&(change.item_type.as_str(), change.name.as_str()))
@@ -1716,11 +1724,13 @@ async fn execute_single_change(
         source_item,
         &resolution_map,
         &semantic_model_ids,
+        preserve_identities,
     )
     .await
 }
 
 /// Execute a single create or update with owned data (for parallel spawned tasks).
+#[allow(clippy::too_many_arguments)]
 async fn execute_single_change_owned(
     dry_run: bool,
     client: &FabricClient,
@@ -1729,6 +1739,7 @@ async fn execute_single_change_owned(
     source_item: Option<&super::platform::SourceItem>,
     resolution_map: &HashMap<String, String>,
     semantic_model_ids: &HashMap<String, String>,
+    preserve_identities: bool,
 ) -> Result<Option<String>> {
     let source_item = source_item.ok_or_else(|| {
         anyhow::anyhow!(
@@ -1745,12 +1756,17 @@ async fn execute_single_change_owned(
         source_item,
         resolution_map,
         semantic_model_ids,
+        preserve_identities,
     )
     .await
 }
 
 /// Core deploy logic shared by sequential and parallel paths.
-#[allow(clippy::option_if_let_else, clippy::too_many_lines)]
+#[allow(
+    clippy::option_if_let_else,
+    clippy::too_many_lines,
+    clippy::too_many_arguments
+)]
 async fn deploy_change(
     dry_run: bool,
     client: &FabricClient,
@@ -1759,6 +1775,7 @@ async fn deploy_change(
     source_item: &super::platform::SourceItem,
     resolution_map: &HashMap<String, String>,
     semantic_model_ids: &HashMap<String, String>,
+    preserve_identities: bool,
 ) -> Result<Option<String>> {
     // Build definition parts for API, applying transformations:
     // 1. Report byPath → byConnection conversion
@@ -1778,8 +1795,14 @@ async fn deploy_change(
                 payload = resolve_report_byconnection_model_id(&payload, semantic_model_ids);
             }
 
-            // Apply logical ID resolution to all payloads
-            let payload = resolve_logical_ids_in_payload(&payload, resolution_map);
+            // Plan references and .platform identities are logical across
+            // workspaces; only runtime-binding payloads need physical IDs.
+            let payload =
+                if crate::deployment_plan::preserves_logical_ids(&change.item_type, &p.path) {
+                    payload
+                } else {
+                    resolve_logical_ids_in_payload(&payload, resolution_map)
+                };
             json!({
                 "path": p.path,
                 "payload": payload,
@@ -1874,6 +1897,19 @@ async fn deploy_change(
                 match client.post(&url, &body, true).await {
                     Ok(result) => {
                         let id = result.get("id").and_then(|v| v.as_str()).map(str::to_owned);
+                        if preserve_identities {
+                            let id = id.as_deref().ok_or_else(|| FabioError::with_hint(ErrorCode::ApiError,
+                                "An item create response had no item ID; the deployment cannot confirm its logical identity.",
+                                "Inspect target item metadata before retrying a partially completed deployment."))?;
+                            super::identities::restore_new(
+                                client,
+                                workspace_id,
+                                id,
+                                &source_item.metadata,
+                                &result,
+                            )
+                            .await?;
+                        }
                         return Ok(id);
                     }
                     Err(e) => {

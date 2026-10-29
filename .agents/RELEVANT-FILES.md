@@ -310,4 +310,7 @@
 - `tests/e2e_deployment_plan.rs`: deployment-plan scope/dry-run, filtered pagination, CRUD, and definition/LRO request coverage
 - `tests/e2e_deployment_governance.rs`: opt-in PR #188 live lifecycles with test-owned resource cleanup and confidential failure reporting; also deterministic fixture/runner regressions
 - `tests/common/live.rs`: governance-only live-test support with injectable cleanup runners, fake-clock polling tests, and confidential subprocess/envelope validation (not imported by every integration test binary)
+- `src/deployment_plan.rs`: shared offline plan semantics, bounded findings, source-catalog checks, graph validation, and identity-preservation policy
+- `src/commands/deploy/identities.rs`: plan-bearing per-item namespace bootstrap for fresh creations and read-only conflict checks for existing targets
+- `tests/e2e_deployment_plan_integration.rs`: offline CLI validation, export/rename metadata identity, per-item create/update wire behavior, and no-mutation mismatch guard regressions
 - `tests/README.md`: deployment/governance live-test prerequisites, scoped run commands, safety, and coverage boundaries
