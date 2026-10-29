@@ -66,6 +66,15 @@ pub fn fabio() -> Command {
     Command::cargo_bin("fabio").expect("failed to find fabio binary")
 }
 
+/// Build a command using a fake token and the local mock Fabric endpoint.
+pub fn mock_fabio(server: &wiremock::MockServer) -> Command {
+    let mut command = fabio();
+    command
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server.uri());
+    command
+}
+
 /// Parse the stdout of a successful fabio command as JSON.
 pub fn parse_json(output: &assert_cmd::assert::Assert) -> Value {
     let stdout = String::from_utf8_lossy(&output.get_output().stdout);
