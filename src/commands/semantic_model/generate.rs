@@ -1,23 +1,22 @@
 //! `semantic-model generate` — generate a Direct Lake semantic model from a
 //! lakehouse or warehouse, the way the Fabric portal's "New semantic model" does.
 //!
-//! The portal action (open a lakehouse/warehouse/SQL analytics endpoint → "New
-//! semantic model" → pick tables) has NO public REST API. fabio reproduces it
-//! CLIENT-SIDE:
+//! This is the client-side, definition-backed alternative to API-native
+//! `semantic-model create --one-lake-table`. It remains useful for schema-aware
+//! generation (including schema-less lakehouses) and explicit storage binding:
 //!
 //! 1. Resolve the source's SQL analytics endpoint `(server, database)`.
 //! 2. Read `INFORMATION_SCHEMA.COLUMNS` for the base tables (optionally filtered
 //!    to `--tables`).
 //! 3. Map each SQL type to a Power BI data type; columns whose type can't be
 //!    mapped are DROPPED (matching Fabric's own sync behavior).
-//! 4. Synthesize a Direct Lake `model.bim` (TMSL, compatibilityLevel 1604,
-//!    `defaultMode: directLake`, one `directLake` entity partition per table, and
-//!    a shared `DatabaseQuery = Sql.Database(server, database)` expression).
-//! 5. Create the semantic model and frame it with a `Full` refresh so DAX works.
+//! 4. Synthesize a multi-file TMDL model with SQL-endpoint or `OneLake` binding.
+//! 5. Create the model and request `Full` framing unless `--no-refresh` is set.
+//!    Refresh submission is not proof of completion or DAX readiness.
 //!
 //! Relationships and measures are NOT inferred (same as the portal — you add
-//! them afterward with `update-definition`). This mirrors `ontology generate`,
-//! which likewise reproduces a portal-only, no-REST feature.
+//! them afterward with `update-definition`). Native creation is a separate mode,
+//! not a silent fallback that changes this generator's source/binding semantics.
 
 use std::collections::HashSet;
 use std::fmt::Write as _;

@@ -314,3 +314,7 @@
 - `src/commands/deploy/identities.rs`: plan-bearing per-item namespace bootstrap for fresh creations and read-only conflict checks for existing targets
 - `tests/e2e_deployment_plan_integration.rs`: offline CLI validation, export/rename metadata identity, per-item create/update wire behavior, and no-mutation mismatch guard regressions
 - `tests/README.md`: deployment/governance live-test prerequisites, scoped run commands, safety, and coverage boundaries
+- `src/commands/context/recipe_tests.rs`: hermetic clap-contract tests for selected published BI workflow, schema, and output examples (test-only shell-word parsing, no execution)
+- `src/commands/context/data/best_practices/bi_creation.json`: canonical BI creation-mode decisions, readiness, source compatibility, and safe-recovery guidance
+- `tests/e2e_bi_guidance.rs`: runtime discovery, definition-free native recipe wire contracts, and offline report-creation example regressions
+- `docs/src/content/docs/guides/bi-creation.md`: user-facing guide to native/generated/authored models, query readiness, report shells, and PBIR authoring

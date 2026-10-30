@@ -552,9 +552,14 @@ Use `fabio context describe <group> <command>` for examples of any specific comm
 
 - `lakehouse-etl` -- Lakehouse + notebook + load-table + schedule
 - `rti-pipeline` -- Eventhouse + KQL DB + EventStream end-to-end
-- `direct-lake-report` -- Semantic model (TMDL) + report creation
+- `direct-lake-report` -- Native Delta-backed model, framing/query verification, and empty report binding; explicit generator/authored alternatives
 - `cicd-deploy` -- Export + plan + apply with content-hash convergence
 - `data-agent-setup` -- Create + datasource + few-shots + publish
+
+For BI mode selection, use `fabio context best-practices bi-creation` or the
+[BI creation guide](https://ismaelmejia.com/fabio/guides/bi-creation/). Native empty
+reports are distinct from the PBIR visual-authoring workflow; creation alone is
+not proof of query readiness.
 
 ## GitHub Actions
 

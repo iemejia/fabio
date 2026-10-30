@@ -25,6 +25,12 @@ Mutations support dry-run previews. Destructive plans identify themselves in str
 
 The command schema provides mechanics. Focused skills provide judgment. Personas, disambiguations, workflows, and best practices route an agent to the smallest useful context instead of presenting the entire CLI at once.
 
+Generated command tables prevent flag drift; authored recipes also need checks.
+Selected BI workflow, schema, and output examples are parsed against the actual
+CLI in hermetic tests, without executing a shell, expanding variables, reading
+definition files, or contacting a tenant. The [BI creation guide](../../guides/bi-creation/)
+explains the mode choices those recipes teach.
+
 ## Bounded and composable
 
 Limits, pagination tokens, field projection, and quiet mode let agents control cost. Stable identifiers and JSON output connect one command to the next without scraping prose.

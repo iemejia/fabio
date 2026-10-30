@@ -1,0 +1,33 @@
+{
+  "topic": "bi-creation",
+  "title": "BI creation: choose a mode, then verify readiness",
+  "summary": "Choose native OneLake, empty, generated, or authored semantic-model creation; distinguish an empty bound report from PBIR visual authoring. Covers source compatibility, cross-workspace access, framing, bounded verification, and safe recovery without silent binding changes.",
+  "semantic_model_decisions": [
+    {"intent": "Use known compatible Delta tables without local definition files", "path": "semantic-model create --one-lake-table", "notes": "Repeat the flag up to 100 times with canonical HTTPS OneLake DFS table URLs. The service infers tables/columns. Do not add --connection, --file, or --definition. Cross-workspace sources require access to every source data item. Native creation does not perform Fabio's SQL/TDS schema discovery."},
+    {"intent": "Create a deliberately empty starting point", "path": "semantic-model create without definition or OneLake-table inputs", "notes": "An empty model is a shell, not a model over existing tables. Do not add --connection. Inspect and author it before expecting data queries or a useful report."},
+    {"intent": "Generate a definition from lakehouse/warehouse metadata", "path": "semantic-model generate", "notes": "This remains a separate, useful definition-backed path. Both storage modes read the SQL endpoint over TDS and need SQL-audience credentials. Choose --storage-mode onelake for direct OneLake binding or sql for SQL-endpoint binding; do not silently change the chosen security/fallback behavior. The generator handles schema-less lakehouses and requests framing unless --no-refresh is supplied; submission is not completion."},
+    {"intent": "Import an existing authored model", "path": "semantic-model create --definition or --file", "notes": "--definition takes a complete model folder with definition.pbism and its model body. --file takes one model file; multiple --file flags are invalid. Preserve an authored folder's source expressions. --connection is a definition-backed option, not a universal prerequisite and not a substitute for checking the actual expressions/partitions."}
+  ],
+  "report_decisions": [
+    {"intent": "Create an empty report already bound to a model", "path": "report create --semantic-model", "notes": "Native creationPayload mode supplies no definition. --semantic-model-workspace defaults to the report workspace; provide it for cross-workspace references and check source-model access. This does not author a dashboard or guarantee an enhanced PBIR format."},
+    {"intent": "Author pages and visuals", "path": "report scaffold then report validate and report create --definition", "notes": "Use real model fields, scaffold a PBIR folder, validate offline, then publish. --dataset rebinds an authored folder's model reference. Native --semantic-model is mutually exclusive with --dataset/--definition/--file; it is not an alias for --dataset in other commands."},
+    {"intent": "Use the existing generated blank-report definition", "path": "report create --dataset", "notes": "This compatibility path synthesizes definition.pbir plus a PBIR-Legacy report.json. It remains supported but is not the preferred starting point for enhanced-PBIR-only editing. Inspect the stored format before editing an existing report."}
+  ],
+  "source_checks": [
+    "Inspect the actual Delta source and source schema. SQL views are not Delta-table fixtures. A syntactically valid URL does not prove source existence, permissions, compatible table schema, or loaded data.",
+    "Schema-qualified URLs on a schema-enabled lakehouse are live-validated. A schema-less native source returned DirectLakeSchemaError because the service assumed dbo. Explain this compatibility issue and offer an explicit generator/authored alternative; do not silently retry with different binding semantics.",
+    "Watch for inferred table-name collisions when selecting tables from multiple sources. Having permission to create in the target workspace does not prove read permission on a different source workspace."
+  ],
+  "readiness": [
+    "Successful creation means the artifact exists, not that it is query-ready or complete as a business model.",
+    "semantic-model refresh returns refresh_triggered after submitting work. Poll refresh-status for the new request with a bounded deadline and interval; stop on failure. Do not repeatedly submit refresh while waiting or treat an earlier completed refresh as proof of the new one.",
+    "After framing, inspect model tables/columns/measures/relationships and verify a bounded DAX read before binding visuals. Direct Lake avoids importing source data; it does not eliminate framing or readiness checks.",
+    "Inspect report definition.pbir to verify the intended model binding, and inspect pages/visuals for authored reports. An empty bound report is not a finished report."
+  ],
+  "safety": [
+    "Preview mutations with --dry-run. Readiness checks must not silently create credentials/connections, grant access, take ownership, change runtime/capacity policy, or purge data.",
+    "Changing native/generator/storage modes can change binding and security semantics. Explain the alternative and preserve the user's choice.",
+    "Model/report edits overwrite definitions. Review the intended change; --allow-purge-data and takeover are never automatic error-recovery steps."
+  ],
+  "see_also": ["fabio context workflow direct-lake-report", "fabio context workflow report-authoring", "fabio context schema SemanticModel", "fabio context schema Report", "fabio context best-practices agentic-reporting"]
+}

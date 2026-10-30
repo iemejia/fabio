@@ -7,6 +7,8 @@ mod capabilities;
 mod disambiguations;
 mod examples;
 mod personas;
+#[cfg(test)]
+mod recipe_tests;
 mod schemas;
 #[cfg(test)]
 mod skillgen;

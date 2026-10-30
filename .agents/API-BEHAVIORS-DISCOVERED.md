@@ -3423,4 +3423,12 @@ implemented or confirmed to require no code change.
   table absent from that source schema; do not assume URL validation proves
   source compatibility. For schema-less sources, see the earlier "Direct Lake
   on OneLake vs on SQL" behavior note and the definition-backed generator.
+- **Published native BI recipe is verified beyond artifact creation (live, Oct 30):**
+  an isolated schema-enabled Delta fixture was used to execute the runtime-served
+  `direct-lake-report` commands: native model creation, framing submission,
+  observation of a new completed refresh, model introspection, a DAX row-count
+  query matching the two loaded rows, native report creation, and persisted model
+  binding verification. `refresh_triggered` is submission, not completion; the
+  test captures prior refresh IDs so an older completion cannot satisfy the wait.
+  No takeover, purge, new credentials, or binding-mode fallback was needed.
 - **Gen1 dataflow upgrade request bodies are capped at 13,312 bytes.**

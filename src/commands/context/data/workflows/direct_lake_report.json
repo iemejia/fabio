@@ -1,80 +1,55 @@
 {
   "name": "Direct Lake Semantic Model + Report",
-  "description": "Create a Direct Lake semantic model from lakehouse Delta tables and bind a report for zero-copy analytics.",
-  "prerequisites": ["Authenticated via fabio auth login", "Workspace with F2+ capacity", "Lakehouse with at least one Delta table loaded"],
-  "steps": [
-    {"step_number": 1, "command": "fabio lakehouse create --workspace $WS_ID --name \"SalesLakehouse\"", "description": "Create lakehouse for Delta tables."},
-    {"step_number": 2, "command": "fabio lakehouse upload --workspace $WS_ID --id $LH_ID --source ./sales.csv --dest Files/staging/sales.csv", "description": "Upload source data."},
-    {"step_number": 3, "command": "fabio lakehouse load-table --workspace $WS_ID --id $LH_ID --table sales --source-path Files/staging/sales.csv --mode Overwrite --format Csv --header true", "description": "Load CSV into Delta table."},
-    {"step_number": 4, "command": "fabio lakehouse show --workspace $WS_ID --id $LH_ID --query 'properties.sqlEndpointProperties.id'", "description": "Get the SQL endpoint ID (needed for the model connection)."},
-    {"step_number": 5, "command": "fabio semantic-model create --workspace $WS_ID --name \"SalesModel\" --file /tmp/model.bim --connection $SQL_ENDPOINT_ID", "description": "Create Direct Lake semantic model from model.bim with connection to SQL endpoint."},
-    {"step_number": 6, "command": "fabio semantic-model refresh --workspace $WS_ID --id $SM_ID", "description": "Frame the model (required before DAX queries work). Wait 15-30s after."},
-    {"step_number": 7, "command": "fabio semantic-model query --workspace $WS_ID --id $SM_ID --dax \"EVALUATE TOPN(5, 'sales', [amount], DESC)\"", "description": "Verify model works with a DAX query."},
-    {"step_number": 8, "command": "fabio report create --workspace $WS_ID --name \"Sales Report\" --dataset $SM_ID", "description": "Create report bound to the semantic model."}
+  "description": "Create a native Direct Lake model over existing compatible Delta tables, verify query readiness, and create an empty report bound to it. Routes schema-less sources and authored models to explicit alternatives; real report authoring remains a separate PBIR workflow.",
+  "prerequisites": [
+    "Authenticated caller with permission to create models/reports in the target workspace and read every source data item, including cross-workspace sources.",
+    "An active compatible capacity and a real, populated Delta table. A SQL view is not a Delta-table source.",
+    "The native path below is live-validated on a schema-enabled lakehouse. For a schema-less lakehouse, choose the generator alternative deliberately; do not silently change the binding after a failure."
   ],
-  "model_bim_template": {
-    "description": "A minimal model.bim for a Direct Lake semantic model. Replace PLACEHOLDERS with actual values.",
-    "key_fields": {
-      "compatibilityLevel": "Must be 1604 for Direct Lake",
-      "defaultPowerBIDataSourceVersion": "Must be powerBI_V3",
-      "defaultMode": "Must be directLake",
-      "partition.mode": "Must be directLake",
-      "partition.source.type": "Must be entity",
-      "partition.source.entityName": "Must match the Delta table name",
-      "partition.source.schemaName": "Must be dbo (default lakehouse schema)"
-    },
-    "template": {
-      "compatibilityLevel": 1604,
-      "model": {
-        "defaultPowerBIDataSourceVersion": "powerBI_V3",
-        "defaultMode": "directLake",
-        "tables": [{
-          "name": "TABLE_NAME",
-          "columns": [
-            {"name": "col1", "dataType": "string", "sourceColumn": "col1"},
-            {"name": "col2", "dataType": "double", "sourceColumn": "col2"},
-            {"name": "col3", "dataType": "int64", "sourceColumn": "col3"}
-          ],
-          "partitions": [{
-            "name": "part0",
-            "mode": "directLake",
-            "source": {"type": "entity", "entityName": "TABLE_NAME", "schemaName": "dbo"}
-          }]
-        }],
-        "expressions": [{
-          "name": "DatabaseQuery",
-          "kind": "m",
-          "expression": "let\n    database = Sql.Database(\"SQL_ENDPOINT_ID\", \"LAKEHOUSE_ID\")\nin\n    database"
-        }]
-      }
-    },
-    "datatype_mapping": {
-      "string": "String/varchar columns",
-      "int64": "Integer columns (int, bigint)",
-      "double": "Floating-point columns (float, real, decimal)",
-      "boolean": "Boolean columns",
-      "dateTime": "Date/time columns (date, datetime, timestamp)"
-    }
+  "variables": {
+    "WS_ID": "Target model/report workspace ID.",
+    "MODEL_NAME": "Name for the new model; choose an available name before creating it.",
+    "REPORT_NAME": "Name for the new empty report; choose an available name before creating it.",
+    "SOURCE_WS_ID": "Source lakehouse workspace ID; may equal WS_ID.",
+    "LH_ID": "Existing source lakehouse ID. Inspect its properties.defaultSchema and actual Delta tables first.",
+    "ONELAKE_TABLE_URL": "Canonical HTTPS OneLake DFS URL for the selected table, for example https://onelake.dfs.fabric.microsoft.com/$SOURCE_WS_ID/$LH_ID/Tables/dbo/$TABLE_NAME. Use the actual source schema; repeat --one-lake-table for additional tables (maximum 100).",
+    "TABLE_NAME": "Actual model table name discovered after creation. Substitute it in the DAX example, escaping any apostrophe as two apostrophes.",
+    "SM_ID": "Capture data.id from model creation; --query id -o plain extracts the payload ID for chaining.",
+    "REPORT_ID": "Capture data.id from report creation. It is an empty bound report, not a finished dashboard."
   },
+  "steps": [
+    {"step_number": 1, "command": "fabio --wrap-untrusted lakehouse show --workspace $SOURCE_WS_ID --id $LH_ID", "description": "Inspect the source's schema support and readiness. Do not equate an accepted provisioning request with a usable table."},
+    {"step_number": 2, "command": "fabio --wrap-untrusted lakehouse list-tables --workspace $SOURCE_WS_ID --id $LH_ID --all", "description": "Choose existing Delta tables. URL syntax validation alone cannot prove table existence, compatible schemas, source access, or data availability."},
+    {"step_number": 3, "command": "fabio --wrap-untrusted semantic-model create --workspace $WS_ID --name \"$MODEL_NAME\" --one-lake-table $ONELAKE_TABLE_URL", "description": "Preview with --dry-run, then create the native model and capture SM_ID. Do not supply --connection, --file, or --definition in this mode. This path does not need client-side SQL/TDS schema discovery."},
+    {"step_number": 4, "command": "fabio --wrap-untrusted semantic-model refresh --workspace $WS_ID --id $SM_ID", "description": "Request framing when needed, after reviewing capacity consumption. refresh_triggered means accepted, not completed; do not submit repeated refreshes while waiting."},
+    {"step_number": 5, "command": "fabio --wrap-untrusted semantic-model refresh-status --workspace $WS_ID --id $SM_ID --top 1", "description": "Poll the new refresh at a bounded interval/deadline until Completed. Stop on Failed or a deadline; inspect details rather than blindly resubmitting. A pre-existing completed refresh is not proof the new one finished."},
+    {"step_number": 6, "command": "fabio --wrap-untrusted semantic-model list-tables --workspace $WS_ID --id $SM_ID", "description": "Inspect the inferred model tables and storage modes, and choose TABLE_NAME. Inspect columns, measures, and relationships before designing visuals; do not assume inferred tables form a complete business model."},
+    {"step_number": 7, "command": "fabio --wrap-untrusted semantic-model query --workspace $WS_ID --id $SM_ID --dax \"EVALUATE ROW(\\\"rowCount\\\", COUNTROWS('$TABLE_NAME'))\"", "description": "Verify a real DAX read before wiring a report. Allow bounded readiness polling after successful framing; permission, schema, and query errors need diagnosis, not arbitrary retries."},
+    {"step_number": 8, "command": "fabio --wrap-untrusted report create --workspace $WS_ID --name \"$REPORT_NAME\" --semantic-model $SM_ID", "description": "Preview with --dry-run, then create an empty report bound to the model and capture REPORT_ID. For a model in another workspace, also pass --semantic-model-workspace with that model's workspace ID. This does not author pages or visuals."},
+    {"step_number": 9, "command": "fabio --wrap-untrusted report get-definition --workspace $WS_ID --id $REPORT_ID --decode", "description": "Verify definition.pbir references the intended model. For a real report with visuals, continue with context workflow report-authoring; inspect the stored format before attempting enhanced-PBIR-only editing."}
+  ],
   "creation_methods": {
-    "model_bim": {
-      "command": "fabio semantic-model create --workspace $WS --name NAME --file model.bim --connection $SQL_ENDPOINT_ID",
-      "when": "Quick single-table models. Use model.bim (JSON TMSL) with compatibilityLevel 1604.",
-      "notes": "The --connection flag binds the model to the lakehouse SQL endpoint. This is required for Direct Lake."
+    "generated_onelake": {
+      "command": "fabio --wrap-untrusted semantic-model generate --workspace $SOURCE_WS_ID --lakehouse $LH_ID --name SalesModel --tables $TABLE_NAME --storage-mode onelake",
+      "when": "Choose schema-aware, definition-backed generation, including the schema-less lakehouse case. This example creates the model in the source workspace.",
+      "notes": "The generator reads the SQL analytics endpoint over TDS and needs SQL-audience credentials. Source schema synchronization may lag. It requests framing unless --no-refresh is supplied; inspect refresh/query readiness rather than assuming creation proves readiness. Switching from native creation to this path is an explicit choice."
     },
-    "tmdl": {
-      "command": "fabio semantic-model create --workspace $WS --name NAME --file model.tmdl --file tables/table.tmdl --file definition.pbism --connection $SQL_ENDPOINT_ID",
-      "when": "Multi-table models or complex expressions. TMDL is the recommended format for production models.",
-      "notes": "TMDL separates concerns (one file per table). definition.pbism must use version 4.2 with Fabric schema URL."
+    "authored_model": {
+      "command": "fabio --wrap-untrusted semantic-model create --workspace $WS_ID --name SalesModel --definition ./Sales.SemanticModel",
+      "when": "A complete authored model folder already exists, including its expressions, partitions, and definition.pbism.",
+      "notes": "Use --definition for the whole folder. --file accepts one model file only, not repeated files. Preserve the authored data-source expressions; do not blindly add --connection."
+    },
+    "empty_model": {
+      "command": "fabio --wrap-untrusted semantic-model create --workspace $WS_ID --name SalesModel",
+      "when": "An empty starting point is explicitly wanted. It contains no selected source tables and is not an analytics-ready model."
     }
   },
   "tips": [
-    "model.bim WORKS for Direct Lake — use compatibilityLevel 1604 and defaultMode: directLake.",
-    "TMDL is preferred for multi-table models but model.bim is simpler for single-table cases.",
-    "The --connection flag on semantic-model create is required — it links to the SQL endpoint ID (not the lakehouse ID).",
-    "Get the SQL endpoint ID from: fabio lakehouse show --workspace $WS --id $LH --query 'properties.sqlEndpointProperties.id' -o plain",
-    "After refresh, wait 15-30 seconds before querying with DAX.",
-    "Use fabio lakehouse table-schema to discover column names and types for building the model.bim.",
-    "Use --query 'id' -o plain to extract created item IDs for chaining commands."
-  ]
+    "Native --one-lake-table creation, definition-backed generate --storage-mode onelake, and authored definition import are different paths, not interchangeable flags.",
+    "A schema-less native source can fail with DirectLakeSchemaError because the service assumes dbo. Review source compatibility and explicitly select an alternative; URL validity is not a readiness guarantee.",
+    "Direct Lake does not import a copy of the source data, but framing/refresh and query readiness still matter.",
+    "A blank report created with --semantic-model is not a finished report. For pages and visuals use report scaffold, validate the resulting PBIR folder, then report create --definition with --dataset for rebinding.",
+    "Never use --allow-purge-data, takeover, ownership transfer, or a new connection as an automatic retry workaround."
+  ],
+  "see_also": ["fabio context best-practices bi-creation", "fabio context workflow report-authoring", "fabio context schema SemanticModel", "fabio context schema Report"]
 }

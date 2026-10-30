@@ -1,7 +1,25 @@
 {
   "type": "Report",
   "description": "Power BI report with interactive visualizations (charts, tables, maps) bound to a semantic model. Created programmatically or in the portal. PBIR format (one file per visual) is the modern standard; PBIR-Legacy (single report.json) supports programmatic visual creation with data rendering.",
-  "create_command": "fabio report create --workspace <WS> --name <NAME> --dataset <SEMANTIC_MODEL_ID>",
+  "create_command": "fabio report create --workspace <WS> --name <NAME> --semantic-model <SEMANTIC_MODEL_ID>",
+  "creation_modes": {
+    "native_empty": {
+      "definition_required": false,
+      "example": "fabio --wrap-untrusted report create --workspace <WS> --name <NAME> --semantic-model <MODEL_ID>",
+      "note": "Creates an empty bound report, not pages/visuals. For cross-workspace models add --semantic-model-workspace."
+    },
+    "definition": {
+      "definition_required": true,
+      "example": "fabio --wrap-untrusted report create --workspace <WS> --name <NAME> --definition ./Sales.Report --dataset <MODEL_ID>",
+      "note": "Publish a validated authored PBIR folder; --dataset rebinds its model reference."
+    },
+    "generated_blank": {
+      "definition_required": false,
+      "example": "fabio --wrap-untrusted report create --workspace <WS> --name <NAME> --dataset <MODEL_ID>",
+      "note": "Compatibility path: Fabio generates a blank PBIR-Legacy definition. Not a complete authored report."
+    }
+  },
+  "definition_requirements_scope": "Definition part requirements apply to definition-backed creation and updates, not native --semantic-model creation. Inspect persisted definition.pbir to verify binding in every mode.",
   "definition_format": "PBIR-Legacy (report.json) or PBIR (definition/ folder)",
   "definition_parts": [
     {"path": "definition.pbir", "description": "REQUIRED. Semantic model binding (pbiModelDatabaseName = semantic model UUID). MS schema requires $schema; fabio's --dataset binding sends the report/definitionProperties/1.0.0 schema URL (6-field byConnection); Fabric normalizes to 2.0.0 on ingest."},
@@ -23,13 +41,13 @@
     "--report-json": "Path to report.json (PBIR-Legacy) on update-definition"
   },
   "notes": [
-    "--dataset is the simplest path: auto-generates both definition files (a blank one-page PBIR-Legacy report)",
+    "For a native empty bound report use --semantic-model. --dataset remains supported for blank PBIR-Legacy generation and authored-folder rebinding; it is not interchangeable with native --semantic-model.",
     "--semantic-model uses the API-native creationPayload mode; it is mutually exclusive with --file, --definition, and --dataset",
     "--definition <folder> creates a full multi-page PBIR (enhanced) report from generated files — the way a coding agent should ship a real report",
     "ALWAYS run 'fabio report validate --source <folder>' before create --definition / deploy: it checks required PBIR files, $schema presence, JSON validity, byPath vs byConnection, and version/format compatibility offline (no tenant call)",
     "byPath (relative path to a .SemanticModel) is fine for deploy (fabio rewrites it to byConnection) but 'report create' needs byConnection — pass --dataset with --definition to rebind a byPath folder to a concrete model id",
     "definition.pbir is ALWAYS required for update-definition (even if only updating visuals)",
-    "PBIR-Legacy with prototypeQuery is REQUIRED for visuals that render data programmatically; PBIR (enhanced) is the documented, agent-editable format and becomes the only format at GA",
+    "Prefer enhanced PBIR and the report-authoring workflow for pages/visuals. Do not force a legacy format as a universal rendering workaround. Inspect the stored format before using enhanced-PBIR-only editors, and verify actual bindings/visuals. See context best-practices bi-creation.",
     "updateDefinition can switch formats (PBIR <-> PBIR-Legacy)"
   ],
   "related_commands": [

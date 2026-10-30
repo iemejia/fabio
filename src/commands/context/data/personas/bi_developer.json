@@ -3,29 +3,29 @@
   "description": "Orchestrator persona for business intelligence on Fabric: semantic models (datasets), reports, Direct Lake, DAX querying, and refresh. Routes model authoring, report creation, and analytics-consumption requests to the right command groups.",
   "purpose": "Build and operate the BI layer on Fabric — semantic models over lakehouse/warehouse data, reports, and DAX analytics — including Direct Lake report patterns.",
   "delegates_to": [
-    {"request_type": "Create / manage semantic model", "command_groups": ["semantic-model"], "commands": ["semantic-model create", "semantic-model refresh"], "notes": "'dataset' == semantic model. create --file model.tmdl --connection $SQLEP."},
+    {"request_type": "Create / manage semantic model", "command_groups": ["semantic-model"], "commands": ["semantic-model create", "semantic-model generate", "semantic-model refresh"], "notes": "'dataset' == semantic model. Choose native --one-lake-table, an explicitly empty model, a complete --definition folder, or schema-aware generate; do not universally require --connection. Use best-practice bi-creation for mode selection and bounded readiness verification."},
     {"request_type": "Query a model with DAX", "command_groups": ["semantic-model"], "commands": ["semantic-model query"], "notes": "query --dax \"EVALUATE Sales\"."},
-    {"request_type": "Create / manage reports", "command_groups": ["report", "paginated-report", "dashboard"], "commands": ["report scaffold", "report validate", "report create", "report export"], "workflows": ["report-authoring"], "notes": "Simple: report create --dataset $SM. Agentic path: run the Plan→Design→Author→Validate→Publish pipeline (workflow report-authoring) — scaffold --spec (or add-page/add-visual) a PBIR folder, 'report validate --source <folder>' (offline), then 'report create --definition <folder> [--dataset $SM]' (--dataset rebinds byPath→byConnection). Render with 'report export'/'paginated-report export'. fabio is the HEADLESS analog of Microsoft's Skills-for-Fabric Report Authoring skill (no Desktop Bridge). See best-practice agentic-reporting."},
-    {"request_type": "Direct Lake report", "workflows": ["direct-lake-report"], "notes": "Model reads Delta tables directly from OneLake — no import/refresh."},
+    {"request_type": "Create / manage reports", "command_groups": ["report", "paginated-report", "dashboard"], "commands": ["report scaffold", "report validate", "report create", "report export"], "workflows": ["report-authoring"], "notes": "An empty bound report uses report create --semantic-model, with --semantic-model-workspace for a cross-workspace model. Actual pages/visuals use the headless Plan→Design→Author→Validate→Publish workflow report-authoring: scaffold a PBIR folder, validate, then create --definition with --dataset for rebinding. Native --semantic-model is not an alias for --dataset in scaffold or definition import."},
+    {"request_type": "Direct Lake report", "workflows": ["direct-lake-report"], "notes": "Reads Delta without importing a data copy. Framing/refresh and query readiness still need verification; artifact creation alone is not readiness."},
     {"request_type": "Power BI service endpoints", "command_groups": ["rest"], "commands": ["rest call --api powerbi"], "notes": "Same Fabric token works for Power BI API (datasets/reports/dashboards)."},
     {"request_type": "Refresh scheduling", "command_groups": ["semantic-model", "job-scheduler"], "notes": "Deploy auto-refreshes semantic models as a post-hook."}
   ],
   "decision_gates": [
-    "Confirm the source connection (SQL endpoint / warehouse) exists before creating a semantic model bound to it.",
+    "Choose the model creation mode first; check only its applicable source/credential prerequisites (best-practice bi-creation). Never add --connection to native or empty creation.",
     "For Direct Lake, confirm the lakehouse Delta tables are populated first (report shows empty otherwise).",
     "Before triggering a full refresh on a large model, confirm capacity headroom."
   ],
   "guardrails": {
     "must": [
-      "Bind semantic-model create to a valid --connection (SQL endpoint) for import/DirectQuery.",
-      "Use PBIR-Legacy format when a report must render data programmatically."
+      "Inspect and preserve authored source bindings; use --definition for a full model folder and --file for one model file only.",
+      "Prefer enhanced PBIR for visual authoring, validate offline, and verify persisted report/model bindings."
     ],
     "prefer": [
-      "Direct Lake over import mode when data already lives in a lakehouse (no refresh cost).",
+      "Direct Lake over import mode when compatible Delta data already exists; it avoids importing data but not framing/readiness checks.",
       "fabio rest call --api powerbi for Power BI-specific endpoints not in the Fabric surface."
     ],
     "avoid": [
-      "Assuming a report renders data in plain PBIR (it needs PBIR-Legacy).",
+      "Equating an empty model/report shell with a finished, query-ready business solution.",
       "Refreshing on inactive capacity (CAPACITY_INACTIVE)."
     ]
   },
@@ -34,5 +34,5 @@
     "Real-time/KQL dashboards -> use persona 'rti-engineer'.",
     "Tenant/capacity governance -> use persona 'fabric-admin'."
   ],
-  "see_also": ["fabio context workflow report-authoring", "fabio context best-practices agentic-reporting", "fabio context workflow direct-lake-report", "fabio context disambiguate semantic-model", "fabio context examples semantic-model create"]
+  "see_also": ["fabio context best-practices bi-creation", "fabio context workflow report-authoring", "fabio context best-practices agentic-reporting", "fabio context workflow direct-lake-report", "fabio context disambiguate semantic-model", "fabio context examples semantic-model create"]
 }

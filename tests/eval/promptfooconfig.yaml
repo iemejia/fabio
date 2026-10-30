@@ -47,6 +47,76 @@ defaultTest:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
 tests:
+  - description: "BI routing: native OneLake creation needs no local definition"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"
+      user_query: "Preview a new native Direct Lake model named Sales in workspace WS using my known compatible Delta table URL in ONELAKE_TABLE_URL. Do not generate any local definition files."
+    assert:
+      - type: icontains
+        value: "semantic-model create"
+      - type: icontains
+        value: "--one-lake-table"
+      - type: icontains
+        value: "--dry-run"
+      - type: javascript
+        value: |
+          const commands = output.replace(/\\\r?\n/g, ' ').split(/\r?\n/).filter(line => /\bsemantic-model create\b/i.test(line));
+          return commands.length > 0 && commands.every(line => !/(?:--connection|--definition|--file)(?:[=\s]|$)/i.test(line));
+
+  - description: "BI routing: full authored model folders are not repeated files"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"
+      user_query: "Preview importing the complete authored ./Sales.SemanticModel folder into workspace WS as Sales. It already contains its source expressions and partitions; preserve those bindings."
+    assert:
+      - type: icontains
+        value: "semantic-model create"
+      - type: icontains
+        value: "--definition"
+      - type: icontains
+        value: "--dry-run"
+      - type: javascript
+        value: |
+          const commands = output.replace(/\\\r?\n/g, ' ').split(/\r?\n/).filter(line => /\bsemantic-model create\b/i.test(line));
+          return commands.length > 0 && commands.every(line => !/(?:--connection|--file)(?:[=\s]|$)/i.test(line));
+
+  - description: "BI routing: native report shells are not finished dashboards"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"
+      user_query: "Preview an empty report in workspace REPORT_WS connected to existing semantic model SM in workspace MODEL_WS. Will this command create the dashboard visuals too?"
+    assert:
+      - type: icontains
+        value: "report create"
+      - type: icontains
+        value: "--semantic-model"
+      - type: icontains
+        value: "--semantic-model-workspace"
+      - type: icontains
+        value: "--dry-run"
+      - type: llm-rubric
+        value: "Clearly says native creation makes only an empty bound report, not dashboard visuals. It does not conflate --semantic-model with --dataset for authored PBIR/scaffold operations."
+
+  - description: "BI routing: monitor accepted refresh without resubmitting"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"
+      user_query: "My new model SM in workspace WS returned refresh_triggered after I requested framing. What should I run next before creating report visuals? Do not trigger another refresh."
+    assert:
+      - type: icontains
+        value: "semantic-model refresh-status"
+      - type: llm-rubric
+        value: "Treats refresh_triggered as submission, not completion; monitors the new refresh with a bounded wait, stops on failure, and verifies model metadata or a DAX read before visuals. Does not propose submitting another refresh, taking ownership, or purging data as the next action."
+
+  - description: "BI routing: schema-less native errors require an explicit alternative"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"
+      user_query: "Native --one-lake-table creation failed with DirectLakeSchemaError against a schema-less lakehouse. Explain an alternative, but do not silently change my binding mode or take ownership."
+    assert:
+      - type: icontains
+        value: "semantic-model generate"
+      - type: icontains
+        value: "--storage-mode onelake"
+      - type: llm-rubric
+        value: "Explains the source-schema compatibility issue and offers generator-based creation as an explicit choice requiring SQL/TDS source discovery credentials, not an automatic retry, a universal --connection fix, or takeover."
+
   - description: "Data engineering: list copy job execution history"
     vars:
       user_query: "List every execute job instance for copy job CJ in workspace WS"

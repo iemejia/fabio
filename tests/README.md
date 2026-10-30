@@ -14,12 +14,22 @@ tested independently because valid 50-UUID batches cannot reach it. Thin HTTP
 wrappers remain covered by the per-group mocked CLI tests instead of duplicating
 their implementation in unit mocks.
 
+Selected published BI workflow/schema/output examples also have a clap-contract
+gate (`commands::context::recipe_tests`). It uses the test-only `shlex` parser to
+handle quoting and `&&` chains, then parses each invocation with the actual CLI.
+It never executes a shell, expands variables, reads a definition file, or contacts
+the network. This catches repeated single-value flags and invalid creation-mode
+combinations without maintaining a parallel flag registry. Coverage is explicitly
+limited to the selected BI documents, not every legacy workflow in the repository.
+
 ```bash
 cargo test --bin fabio commands::deployment_plan::tests
 cargo test --bin fabio commands::capacity::actors::tests
 cargo test --bin fabio commands::semantic_model::crud::tests
 cargo test --bin fabio commands::dataflow::tests
 cargo test --test e2e_deployment_governance live::tests
+cargo test --bin fabio recipe_tests
+cargo test --test e2e_bi_guidance
 ```
 
 `tests/common/live.rs` is included only by the governance suite. Its deterministic
@@ -73,6 +83,9 @@ cargo test --test e2e_deployment_governance live_empty_semantic_model -- --ignor
 cargo test --test e2e_deployment_governance live_onelake_semantic_model -- --ignored
 cargo test --test e2e_deployment_governance live_report_native_model_reference -- --ignored
 
+# Execute the published native BI recipe, including a real DAX read and report binding
+cargo test --test e2e_deployment_governance live_bi_creation_recipe_verifies_data_and_report_binding -- --ignored
+
 # All nine actor APIs; uses disposable workspaces, never existing workloads
 cargo test --test e2e_deployment_governance live_capacity_ -- --ignored --test-threads=1
 
@@ -115,6 +128,11 @@ cargo test --test e2e_deployment_governance -- --ignored --test-threads=1
   Command execution and polling have finite timeouts.
 - Missing prerequisites, permissions, and unexpected service rejections **fail the test**.
   `AUTH_REQUIRED`, `FORBIDDEN`, and `API_ERROR` are not counted as happy-path passes.
+- The BI recipe test reads the runtime-published workflow instead of duplicating
+  its command strings. It captures existing refresh IDs, submits framing once,
+  waits for a new terminal refresh with a finite deadline, verifies the fixture's
+  row count, and checks the report binding. Its default fixture lives entirely in
+  a disposable workspace. An explicit external Delta fixture is read-only.
 - The separate blocked-actor duplicate-create **negative** test expects the current
   service's structured rejection. It does not claim the spec's upsert behavior
   works live; normal create/show/list/update/delete have their own happy-path test.

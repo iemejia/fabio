@@ -529,13 +529,19 @@ NOTE: `spark run`/`create-livy-session`/`run-statement` are the INTERACTIVE Livy
 
 **Semantic Models & Reports:**
 ```bash
-# Auto-generate a Direct Lake model from a lakehouse/warehouse (portal "New semantic model" — reads the SQL endpoint schema, picks tables, frames it). Needs a SQL-scoped token from the credential chain (az/device-code), NOT a static FABIO_ACCESS_TOKEN.
+# Native model creation over known compatible Delta tables: no local definition or --connection.
+fabio semantic-model create --workspace $WS --name "Sales" --one-lake-table $ONELAKE_TABLE_URL --dry-run
+# Deliberately empty starting point (not query-ready over existing tables).
+fabio semantic-model create --workspace $WS --name "Empty model" --dry-run
+# Definition-backed generation reads SQL endpoint metadata and requests framing. Needs SQL-audience credentials (credential chain or FABIO_SQL_ACCESS_TOKEN, not a Fabric-only token).
 fabio semantic-model generate --workspace $WS --lakehouse $LH --name "Sales"    # or --warehouse $WH; --tables a,b to pick; --schema dbo; --storage-mode onelake for Direct Lake on OneLake (recommended: OneLake security, more modeling features, faster) vs default sql
 fabio semantic-model create --workspace $WS --name "Sales" --file model.tmdl --connection $SQLEP   # from hand-authored TMDL/model.bim
 fabio semantic-model query --workspace $WS --id $SM --dax "EVALUATE Sales"
 fabio semantic-model refresh --workspace $WS --id $SM
 fabio semantic-model add-relationship --workspace $WS --id $SM --from-table fact_sale --from-column CityKey --to-table dim_city --to-column CityKey  # generate does NOT infer relationships
-fabio report create --workspace $WS --name "Dashboard" --dataset $SM          # simple: 1-page report bound to a model
+fabio report create --workspace $WS --name "Dashboard" --dataset $SM          # compatibility: blank PBIR-Legacy definition, not an authored dashboard
+# Native EMPTY bound report (not a finished dashboard); add --semantic-model-workspace for a cross-workspace model.
+fabio report create --workspace $WS --name "Report shell" --semantic-model $SM --dry-run
 # Scaffold a report from a compact page/visual spec (easiest agent path — no hand-authored PBIR folder)
 fabio report scaffold --workspace $WS --name "Sales Report" --dataset $SM \
   --spec '{"pages":[{"displayName":"Overview","visuals":[{"type":"clusteredColumnChart","title":"Profit by Territory","category":"dim_city.SalesTerritory","measures":["Sum(fact_sale.Profit)"]}]}]}'
@@ -548,6 +554,14 @@ fabio report create --workspace $WS --name "Sales" --definition ./MyReport.Repor
 fabio report export --workspace $WS --id $RID --format PDF --out report.pdf                       # PDF/PPTX/PNG
 fabio paginated-report export --workspace $WS --id $PR --format XLSX --out data.xlsx --parameter Year=2026  # PDF/XLSX/DOCX/CSV/IMAGE/...
 ```
+
+Choose the BI creation path with `fabio context best-practices bi-creation`.
+An authored multi-file model uses `--definition <folder>`, never repeated `--file`.
+Creation is not query readiness: `semantic-model refresh` submits work; inspect
+the new refresh with `refresh-status` and verify a DAX read before wiring visuals.
+Native `report create --semantic-model` creates only an empty bound report; use
+`report scaffold` + `report validate` + definition creation for real pages/visuals.
+Do not silently switch native/generator/storage modes or take ownership to fix an error.
 
 **Semantic model authoring** (edit the model definition — measures, RLS, hierarchies, calc groups, translations, perspectives, Power Query params; all do a getDefinition→edit→updateDefinition):
 ```bash

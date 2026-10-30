@@ -354,6 +354,166 @@ fn live_report_native_model_reference() {
     model_resource.delete();
 }
 
+fn bi_recipe_args(recipe: &Value, number: u64, bindings: &[(&str, &str)]) -> Vec<String> {
+    let step = recipe["steps"]
+        .as_array()
+        .expect("recipe steps")
+        .iter()
+        .find(|step| step["step_number"] == number)
+        .expect("recipe step");
+    let tokens =
+        shlex::split(step["command"].as_str().expect("recipe command")).expect("recipe quoting");
+    assert_eq!(tokens[0], "fabio");
+    tokens
+        .into_iter()
+        .skip(1)
+        .filter(|token| token != "--wrap-untrusted")
+        .map(|mut token| {
+            for &(name, value) in bindings {
+                token = token.replace(&format!("${name}"), value);
+            }
+            assert!(
+                !token.contains('$'),
+                "recipe variable was not resolved; tenant details withheld"
+            );
+            token
+        })
+        .collect()
+}
+
+fn bi_recipe_run(recipe: &Value, number: u64, bindings: &[(&str, &str)]) -> Value {
+    let args = bi_recipe_args(recipe, number, bindings);
+    run(&args.iter().map(String::as_str).collect::<Vec<_>>())
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant and FABIO_TEST_CAPACITY_ID; executes the published BI recipe over isolated Delta data"]
+#[allow(clippy::too_many_lines)] // Keep the published recipe's complete lifecycle and cleanup visible.
+fn live_bi_creation_recipe_verifies_data_and_report_binding() {
+    let recipe = run(&["context", "workflow", "direct-lake-report"])["data"].clone();
+    let (workspace, _workspace_resource) = new_workspace();
+    let (url, lakehouse_resource) = one_lake_fixture(&workspace);
+    let source = reqwest::Url::parse(&url).expect("fixture OneLake URL");
+    let segments: Vec<_> = source.path_segments().expect("fixture URL path").collect();
+    let source_workspace = segments[0];
+    let lakehouse = segments[1];
+    let table = urlencoding::decode(segments.last().expect("fixture table")).expect("table name");
+    let model_name = unique_name("fabio_e2e");
+    let report_name = unique_name("fabio_e2e");
+    let mut bindings = vec![
+        ("WS_ID", workspace.as_str()),
+        ("SOURCE_WS_ID", source_workspace),
+        ("LH_ID", lakehouse),
+        ("ONELAKE_TABLE_URL", url.as_str()),
+        ("TABLE_NAME", table.as_ref()),
+        ("MODEL_NAME", model_name.as_str()),
+        ("REPORT_NAME", report_name.as_str()),
+    ];
+    bi_recipe_run(&recipe, 1, &bindings);
+    bi_recipe_run(&recipe, 2, &bindings);
+    let preview_args = bi_recipe_args(&recipe, 3, &bindings);
+    assert_eq!(
+        run(&[
+            preview_args
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+                .as_slice(),
+            &["--dry-run"]
+        ]
+        .concat())["data"]["dry_run"],
+        true
+    );
+    let model = field(&bi_recipe_run(&recipe, 3, &bindings)["data"], "id");
+    let _model_resource = CreatedResource::new(&[
+        "semantic-model",
+        "delete",
+        "--workspace",
+        &workspace,
+        "--id",
+        &model,
+    ]);
+    bindings.push(("SM_ID", &model));
+    let previous = bi_recipe_run(&recipe, 5, &bindings);
+    let previous_ids: std::collections::HashSet<_> = list(&previous)
+        .iter()
+        .filter_map(|row| row["requestId"].as_str())
+        .map(str::to_string)
+        .collect();
+    assert_eq!(
+        bi_recipe_run(&recipe, 4, &bindings)["data"]["status"],
+        "refresh_triggered"
+    );
+    let status_args = bi_recipe_args(&recipe, 5, &bindings);
+    wait_for_ready(
+        || try_run(&status_args.iter().map(String::as_str).collect::<Vec<_>>()),
+        |result| {
+            result["data"].as_array().is_some_and(|rows| {
+                rows.iter().any(|row| {
+                    row["requestId"]
+                        .as_str()
+                        .is_some_and(|id| !previous_ids.contains(id))
+                        && matches!(row["status"].as_str(), Some("Completed" | "Failed"))
+                })
+            })
+        },
+        Duration::from_mins(3),
+    )
+    .expect("new recipe refresh did not finish; tenant details withheld");
+    let completed = bi_recipe_run(&recipe, 5, &bindings);
+    assert!(
+        list(&completed)
+            .iter()
+            .any(|row| row["status"] == "Completed"),
+        "recipe refresh failed; tenant details withheld"
+    );
+    bi_recipe_run(&recipe, 6, &bindings);
+    let rows = bi_recipe_run(&recipe, 7, &bindings);
+    let count = list(&rows)
+        .first()
+        .and_then(|row| row["[rowCount]"].as_u64());
+    assert!(
+        count.is_some(),
+        "recipe DAX read returned no row count; tenant details withheld"
+    );
+    if lakehouse_resource.is_some() {
+        assert_eq!(count, Some(2), "isolated fixture row count");
+    }
+    let preview_args = bi_recipe_args(&recipe, 8, &bindings);
+    assert_eq!(
+        run(&[
+            preview_args
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+                .as_slice(),
+            &["--dry-run"]
+        ]
+        .concat())["data"]["dry_run"],
+        true
+    );
+    let report = field(&bi_recipe_run(&recipe, 8, &bindings)["data"], "id");
+    let _report_resource = CreatedResource::new(&[
+        "report",
+        "delete",
+        "--workspace",
+        &workspace,
+        "--id",
+        &report,
+    ]);
+    bindings.push(("REPORT_ID", &report));
+    let definition = bi_recipe_run(&recipe, 9, &bindings);
+    assert!(
+        definition["data"]["definition"]["parts"]
+            .as_array()
+            .expect("report definition")
+            .iter()
+            .any(|part| part["path"] == "definition.pbir"
+                && part["decodedPayload"].to_string().contains(&model)),
+        "recipe report binding mismatch; tenant details withheld"
+    );
+}
+
 #[test]
 #[ignore = "requires capacity administrator permissions and FABIO_TEST_CAPACITY_ID"]
 fn live_capacity_blocked_actor_lifecycle() {
