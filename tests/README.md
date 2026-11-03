@@ -30,6 +30,9 @@ cargo test --bin fabio commands::dataflow::tests
 cargo test --test e2e_deployment_governance live::tests
 cargo test --bin fabio recipe_tests
 cargo test --test e2e_bi_guidance
+cargo test --bin fabio workspace::diagnostics
+cargo test --bin fabio remediation
+cargo test --test e2e_workspace_diagnostics
 ```
 
 `tests/common/live.rs` is included only by the governance suite. Its deterministic
@@ -89,6 +92,12 @@ cargo test --test e2e_deployment_governance live_bi_creation_recipe_verifies_dat
 # All nine actor APIs; uses disposable workspaces, never existing workloads
 cargo test --test e2e_deployment_governance live_capacity_ -- --ignored --test-threads=1
 
+# GET-only diagnostics before/after test-owned block and mission-critical changes
+cargo test --test e2e_deployment_governance live_workspace_diagnostics_observes_policy_without_remediation -- --ignored
+
+# A user-selected target fills a missing-input template; the preview never assigns it
+cargo test --test e2e_deployment_governance live_unassigned_workspace_hint_requires_target_selection -- --ignored
+
 # Pool history/filtering and missing-job errors; optional existing-job diagnostics
 cargo test --test e2e_deployment_governance live_environment_pool_activation_history -- --ignored
 cargo test --test e2e_deployment_governance live_environment_pool_activation_diagnostics -- --ignored
@@ -128,6 +137,12 @@ cargo test --test e2e_deployment_governance -- --ignored --test-threads=1
   Command execution and polling have finite timeouts.
 - Missing prerequisites, permissions, and unexpected service rejections **fail the test**.
   `AUTH_REQUIRED`, `FORBIDDEN`, and `API_ERROR` are not counted as happy-path passes.
+- Recovery-hint tests parse concrete previews/verification against clap, execute
+  guarded previews with zero mutating HTTP calls, and preserve original error
+  metadata. The live block test also compares stdout nextSteps with strict error
+  hints and confirms the block remains until explicit test-owned cleanup. The
+  unassigned test fills the target from an explicit fixture solely for a preview;
+  the workspace remains unassigned. ARM resume is not executed live.
 - The BI recipe test reads the runtime-published workflow instead of duplicating
   its command strings. It captures existing refresh IDs, submits framing once,
   waits for a new terminal refresh with a finite deadline, verifies the fixture's

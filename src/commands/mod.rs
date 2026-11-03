@@ -72,6 +72,7 @@ pub mod powerbi_mcp;
 pub mod profile;
 pub mod query_input;
 pub mod reflex;
+pub mod remediation;
 pub mod report;
 pub mod rest;
 pub mod rti;
@@ -294,7 +295,10 @@ pub async fn execute(cli: Cli) -> Result<()> {
     // every non-feature-disabled error (checked before any admin probe).
     match result {
         Ok(v) => Ok(v),
-        Err(e) => Err(tenant_gate::enrich(&client, &command_path, e).await),
+        Err(e) => {
+            let error = tenant_gate::enrich(&client, &command_path, e).await;
+            Err(remediation::enrich_command_error(&cli, error))
+        }
     }
 }
 

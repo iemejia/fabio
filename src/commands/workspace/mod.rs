@@ -1,5 +1,6 @@
 mod capacity;
 mod crud;
+mod diagnostics;
 mod folders;
 mod identity;
 mod networking;
@@ -64,6 +65,24 @@ pub enum WorkspaceCommand {
         /// Workspace ID
         #[arg(long)]
         id: String,
+    },
+    /// Diagnose workspace/capacity configuration using bounded read-only checks
+    Diagnostics {
+        /// Workspace ID (not a display name)
+        #[arg(long)]
+        id: String,
+        /// Also inspect capacity-admin surge settings and this workspace's actor records
+        #[arg(long)]
+        include_surge_protection: bool,
+        /// Maximum pages inspected per actor collection (never overridden by --all)
+        #[arg(long, default_value = "3", value_parser = clap::value_parser!(u8).range(1..=20))]
+        actor_page_limit: u8,
+        /// Maximum seconds per read probe or complete actor scan (workspace + probes <= twice this)
+        #[arg(long, default_value = "30", value_parser = clap::value_parser!(u64).range(1..=300))]
+        timeout: u64,
+        /// Exit non-zero unless every requested check is ready; still print the report
+        #[arg(long)]
+        strict: bool,
     },
     /// Get the Fabric portal URL for a workspace
     #[command(display_order = 3)]
@@ -609,6 +628,24 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceComman
             crud::list(cli, client, roles.as_deref(), capacity.as_deref()).await
         }
         WorkspaceCommand::Show { id } => crud::show(cli, client, id).await,
+        WorkspaceCommand::Diagnostics {
+            id,
+            include_surge_protection,
+            actor_page_limit,
+            timeout,
+            strict,
+        } => {
+            diagnostics::execute(
+                cli,
+                client,
+                id,
+                *include_surge_protection,
+                *actor_page_limit,
+                *timeout,
+                *strict,
+            )
+            .await
+        }
         WorkspaceCommand::Url { id } => crud::url(cli, id),
         WorkspaceCommand::Create {
             name,

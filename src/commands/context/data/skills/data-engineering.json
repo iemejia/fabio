@@ -34,6 +34,7 @@
     "Ignoring cold-start latency on small capacity (first Spark run takes minutes)."
   ],
   "key_gotchas": [
+    "Capacity-specific run failures may suggest scoped read-only workspace diagnostics without hidden probes. Those errors do not identify a removable block: diagnose first. Confirmed policy records can yield guarded remediation previews requiring approval, never an automatic run retry or policy change; see remediation-hints.",
     "Watch a running job to completion with 'job-scheduler get-instance --follow': fabio polls the instance on --interval (default 5s), streams NDJSON per cycle, and STOPS EARLY when the status is terminal (Completed/Failed/Cancelled/Deduped) — or when --max-duration / Ctrl-C bounds it (reason 'complete' vs 'max_duration'). Use it to watch an already-running instance (from list-instances or a run-on-demand without --wait); run-on-demand --wait already blocks for jobs you start. Same terminal-aware bounded-follow works on 'operation get-state --follow' (LRO watching: Succeeded/Failed/Canceled/Undefined).",
     "Notebook source cells must be a list of strings in ipynb; fabio builds this for you from --file/--content.",
     "First Spark run on a small capacity is a 2-5 min cold start; LRO may report 430 TooManyRequestsForCapacity when the capacity is saturated.",
@@ -56,7 +57,7 @@
     "Deleting a notebook/pipeline/SJD removes its definition — confirm with the user.",
     "Scheduling a recurring job commits ongoing capacity consumption — confirm cadence and timezone."
   ],
-  "shared_references": ["throttling", "pagination", "lro"],
+  "shared_references": ["throttling", "pagination", "lro", "remediation-hints"],
   "see_also": [
     "fabio context persona data-engineer",
     "fabio context workflow lakehouse-etl",

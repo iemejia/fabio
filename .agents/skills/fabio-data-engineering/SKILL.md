@@ -253,6 +253,7 @@ Manage Mounted Data Factories (ADF integration)
 - Ignoring cold-start latency on small capacity (first Spark run takes minutes).
 
 ## Key gotchas
+- Capacity-specific run failures may suggest scoped read-only workspace diagnostics without hidden probes. Those errors do not identify a removable block: diagnose first. Confirmed policy records can yield guarded remediation previews requiring approval, never an automatic run retry or policy change; see remediation-hints.
 - Watch a running job to completion with 'job-scheduler get-instance --follow': fabio polls the instance on --interval (default 5s), streams NDJSON per cycle, and STOPS EARLY when the status is terminal (Completed/Failed/Cancelled/Deduped) — or when --max-duration / Ctrl-C bounds it (reason 'complete' vs 'max_duration'). Use it to watch an already-running instance (from list-instances or a run-on-demand without --wait); run-on-demand --wait already blocks for jobs you start. Same terminal-aware bounded-follow works on 'operation get-state --follow' (LRO watching: Succeeded/Failed/Canceled/Undefined).
 - Notebook source cells must be a list of strings in ipynb; fabio builds this for you from --file/--content.
 - First Spark run on a small capacity is a 2-5 min cold start; LRO may report 430 TooManyRequestsForCapacity when the capacity is saturated.
@@ -285,6 +286,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 | `fabio context best-practices throttling` | fabio transparently handles 429 (Too Many Requests) and gateway errors. Agents do NOT need to implement retry logic. |
 | `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |
 | `fabio context best-practices lro` | Many Fabric operations are async (return 202). fabio polls them automatically. Use --wait for job operations. |
+| `fabio context best-practices remediation-hints` | Use existing error hint/hintType/verifyAfter and diagnostic nextSteps to distinguish inspection, review, and approved remediation. Concrete commands are guarded previews, missing inputs stay explicit, metadata is preserved, and hints never execute actions or trigger hidden probes. |
 
 ## See also
 - fabio context persona data-engineer

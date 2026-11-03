@@ -12,6 +12,7 @@ license: MIT
 > **Prefer runtime introspection.** This index is a snapshot; the installed binary is always authoritative. Use `fabio context agent --group <group>` and `fabio context describe <group> <command>` for exact flags and output shapes.
 
 ## When to use
+- Read-only workspace/capacity triage: workspace diagnostics checks assignment/state; opt in to capacity-admin surge and actor evidence with --include-surge-protection.
 - Workspace lifecycle and governance: create/assign-capacity, recover or permanently delete soft-deleted items, role assignments, folders, domains, networking/firewall/encryption policies, git outbound policy, OneLake settings.
 - Capacity lifecycle: list, resume, suspend, create, delete (ARM-scoped), plus Fabric surge-protection and overage configuration.
 - PolicySet governance: define ItemCreation or WorkspaceSettingsEditing rules, then activate a tenant-scoped set as a Fabric admin or a capacity-scoped set as a capacity admin. `admin activate-policy-set` requires `--workspace` even though other tenant-scoped admin commands do not.
@@ -45,6 +46,7 @@ Manage workspaces
 | `fabio workspace delete-recoverable-item` | yes | Permanently delete a recoverable item |
 | `fabio workspace delete-role-assignment` | yes | Delete a workspace role assignment |
 | `fabio workspace deprovision-identity` | yes | Deprovision a workspace identity |
+| `fabio workspace diagnostics` | no | Diagnose workspace/capacity configuration using bounded read-only checks |
 | `fabio workspace export-lifecycle-policy` | no | Export `OneLake` lifecycle policy |
 | `fabio workspace get-dataset-storage-format` | no | Get default dataset storage format via Power BI API |
 | `fabio workspace get-encryption` | no | Get workspace Customer-Managed Key (CMK) encryption settings |
@@ -301,6 +303,8 @@ Manage governance policy sets and policy rules
 - Bulk tenant-setting changes without confirming the scope with the user.
 
 ## Key gotchas
+- Diagnostic nextSteps and strict error hints reuse evidence-based recovery builders. kind separates inspection/review/remediation; concrete fixes are --readonly --dry-run previews with requiresApproval:true and verifyAfter. Missing inputs stay in commandTemplate/missingInputs, never guessed. See remediation-hints.
+- workspace diagnostics --id <WS> is a scoped, GET-only configuration report, not a workload execution guarantee. --include-surge-protection is opt-in. Permission failures, partial actor scans, and enabled surge settings without live telemetry remain unknown; --strict exits non-zero unless all requested checks are ready. See workspace-diagnostics.
 - capacity suspend/resume/create/delete use the ARM scope (management.azure.com), not the Fabric scope.
 - capacity get-surge-protection/update-surge-protection use the Fabric scope and require capacity administrator permissions. Enabling an unconfigured capacity needs rejection and recovery thresholds; disabling clears persisted thresholds.
 - Do not assume create-blocked-actor is an idempotent upsert: although the REST spec describes a 200 update response, live duplicate POSTs returned BadRequest, even with a changed expiration policy. List/show to find the actor, then use update-blocked-actor for an existing entry.
@@ -315,11 +319,12 @@ Manage governance policy sets and policy rules
 | Symptom | Fix |
 |---|---|
 | admin commands return FORBIDDEN | You need the Fabric administrator role; these are tenant-scoped operations. |
-| Operations fail with CAPACITY_INACTIVE | Resume the capacity (fabio capacity resume --id $CAP) before running workloads on it. |
+| Operations fail with CAPACITY_INACTIVE | Diagnose scoped availability first. A resumable F-series capacity needs subscription/resourceGroup/capacityName for an ARM capacity resume preview, not --id. Review missing inputs, permissions and approval; see remediation-hints. |
 | label list shows UUIDs instead of names | Name resolution needs M365 E5 + InformationProtection.Read via Microsoft Graph. |
 | capacity suspend/resume fails | These use the ARM scope (management.azure.com); ensure your identity has rights on the capacity resource. |
 
 ## Safety
+- Diagnostic blockers do not authorize executing remediation. Hints can offer guarded previews, but workspace diagnostics never resumes capacity, deletes blocks, grants access, or changes policy. Review requiresApproval/destructive/verifyAfter, keep both preview guards, and read notChecked for readiness gaps.
 - capacity suspend interrupts ALL running workloads (notebooks, pipelines, Spark jobs) on that capacity — warn about in-flight jobs.
 - Disabling capacity surge protection clears its persisted thresholds; preview update-surge-protection with --dry-run.
 - PolicySet update-definition and replace-rules-by-policy overwrite governance configuration. An empty replacement removes every rule for that policy and requires --force.
@@ -333,6 +338,8 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 
 | Reference | Covers |
 |---|---|
+| `fabio context best-practices remediation-hints` | Use existing error hint/hintType/verifyAfter and diagnostic nextSteps to distinguish inspection, review, and approved remediation. Concrete commands are guarded previews, missing inputs stay explicit, metadata is preserved, and hints never execute actions or trigger hidden probes. |
+| `fabio context best-practices workspace-diagnostics` | Diagnose capacity assignment, capacity state, and optional capacity-admin surge-protection evidence without remediation. Interpret ready/blocked/needs_action/unknown, partial scans, expired blocks, conflicting classifications, bounded requests, and strict exit behavior. |
 | `fabio context best-practices admin-apis` | fabio has both workspace-scoped commands (for regular users) and admin commands (for Fabric administrators). Use admin commands only when explicitly needed. |
 | `fabio context best-practices throttling` | fabio transparently handles 429 (Too Many Requests) and gateway errors. Agents do NOT need to implement retry logic. |
 | `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |

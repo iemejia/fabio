@@ -47,6 +47,66 @@ defaultTest:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
 tests:
+  - description: "Remediation hints: confirmed block yields a guarded preview only"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-admin/SKILL.md"
+      user_query: "A complete diagnostic confirmed an unexpired workspace block and no conflicting mission-critical record. Capacity CAP and actor ACTOR are known. Show the safe removal preview, but do not execute the policy change."
+    assert:
+      - type: icontains
+        value: "capacity delete-blocked-actor"
+      - type: icontains
+        value: "--actor-id"
+      - type: icontains
+        value: "--dry-run"
+      - type: icontains
+        value: "--readonly"
+      - type: llm-rubric
+        value: "Offers a guarded preview and requires approval for executing the actual policy change. Does not claim the policy record proves a particular workload failure cause or guarantee that removing it resolves all readiness issues."
+
+  - description: "Remediation hints: inactive capacity ID does not invent ARM resume inputs"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-admin/SKILL.md"
+      user_query: "Diagnostics reports capacity CAP with SKU F2 as Inactive, but I have not provided its subscription, resource group or Azure capacity name. Explain a safe recovery hint without inventing those values."
+    assert:
+      - type: llm-rubric
+        value: "Explains the missing ARM inputs and conditional resume template, with guards and approval. Does not invent concrete identifiers, use capacity resume --id, or execute a mutation."
+
+  - description: "Remediation hints: partial or conflicting actor evidence never permits removal"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-admin/SKILL.md"
+      user_query: "My diagnostic has partial actor scans and also mentions conflicting mission-critical/block records. Should I follow a block deletion command to fix it?"
+    assert:
+      - type: llm-rubric
+        value: "Treats the evidence as unknown and recommends review/read-only inspection instead of proposing or executing a policy removal as the fix. Does not infer enforcement precedence."
+
+  - description: "Workspace diagnostics: basic scope without capacity-admin probes"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-admin/SKILL.md"
+      user_query: "Diagnose capacity assignment and capacity state for workspace WS in read-only mode. Do not query capacity-admin surge endpoints or change anything."
+    assert:
+      - type: icontains
+        value: "workspace diagnostics"
+      - type: icontains
+        value: "--id"
+      - type: icontains
+        value: "--readonly"
+      - type: llm-rubric
+        value: "Uses the scoped workspace diagnostics command without --include-surge-protection. Does not propose capacity resume, role grants, policy updates, or any other remediation. Explains that configuration readiness is not full workload readiness if discussing the result."
+
+  - description: "Workspace diagnostics: unknown policy evidence never authorizes remediation"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-admin/SKILL.md"
+      user_query: "Inspect workspace WS with surge-protection evidence in read-only mode. If actor reads are forbidden or partial, should the agent assume no block or automatically remove it?"
+    assert:
+      - type: icontains
+        value: "workspace diagnostics"
+      - type: icontains
+        value: "--include-surge-protection"
+      - type: icontains
+        value: "--readonly"
+      - type: llm-rubric
+        value: "Treats forbidden/partial evidence as unknown rather than no block or readiness. Does not automatically delete blocks, resume capacity, change policy, or grant access. Recommends explicit review or read-only follow-up."
+
   - description: "BI routing: native OneLake creation needs no local definition"
     vars:
       skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"
@@ -1795,17 +1855,17 @@ tests:
         value: "--force"
         metric: no-force-on-ratelimit
 
-  - description: "Error recovery: CAPACITY_INACTIVE → resume capacity"
+  - description: "Error recovery: CAPACITY_INACTIVE → inspect before resume"
     vars:
       user_query: |
-        I ran `fabio notebook run --workspace ws-001 --id nb-001 --wait` and got:
-        {"error":{"code":"CAPACITY_INACTIVE","message":"The capacity assigned to this workspace is paused.","hint":"Resume the capacity with 'fabio capacity resume --id <capacity-id>'"}}
+        I ran `fabio notebook run --workspace aaaaaaaa-1111-2222-3333-444444444444 --id cccccccc-1111-2222-3333-444444444444 --wait` and got:
+        {"error":{"code":"CAPACITY_INACTIVE","message":"The capacity assigned to this workspace is paused.","hint":"Inspect scoped workspace diagnostics first. ARM resume needs subscription, resource group and capacity name, not a Fabric capacity --id; use a guarded preview only after reviewing inputs and approval."}}
         How do I fix this?
     assert:
       - type: icontains
-        value: "fabio capacity resume"
+        value: "workspace diagnostics"
       - type: llm-rubric
-        value: "The response follows the hint: resume the capacity first, then retry the notebook run. Does NOT suggest just retrying the run without resuming."
+        value: "Follows the inspection-first hint: diagnose scoped workspace/capacity evidence without immediately retrying the notebook or executing a policy change. If discussing resume, explains the required ARM identifiers, guarded preview and approval rather than inventing values or using capacity resume --id. Verifies the intended condition before retrying the workload."
         metric: capacity-inactive-recovery
 
   - description: "Error recovery: NOT_FOUND → verify ID exists"

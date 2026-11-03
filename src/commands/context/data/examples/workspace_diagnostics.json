@@ -1,0 +1,27 @@
+{
+  "command": "fabio --wrap-untrusted --readonly workspace diagnostics --id $WS",
+  "description": "A completed assignment and active capacity satisfy the basic configuration checks; surge checks are opt-in and workload readiness is not inferred.",
+  "response": {
+    "data": {
+      "workspaceId": "aaaaaaaa-1111-2222-3333-444444444444",
+      "capacityId": "bbbbbbbb-1111-2222-3333-444444444444",
+      "observedAt": "2026-11-02T12:00:00+00:00",
+      "scope": {"area":"workspace_capacity_configuration","includeSurgeProtection":false,"actorPageLimit":3,"actorItemLimit":1000,"matchingActorLimit":10,"probeTimeoutSeconds":30,"maxLogicalReads":2,"mutates":false},
+      "status": "ready",
+      "partial": false,
+      "checks": [
+        {"checkId":"capacity_assignment","status":"ready","message":"A capacity ID and a completed assignment were observed.","evidence":{"source":"workspace","capacityId":"bbbbbbbb-1111-2222-3333-444444444444","capacityAssignmentProgress":"Completed"},"nextSteps":[{"kind":"inspection","message":"Inspect the same scoped resource without changing it.","command":"fabio --wrap-untrusted --readonly workspace show --id aaaaaaaa-1111-2222-3333-444444444444","hintType":"retry_safe"}]},
+        {"checkId":"capacity_state","status":"ready","message":"Capacity metadata reports Active. This is not a measurement of current headroom.","evidence":{"source":"capacity","id":"bbbbbbbb-1111-2222-3333-444444444444","state":"Active","sku":"F2"},"nextSteps":[{"kind":"inspection","message":"Inspect the same scoped resource without changing it.","command":"fabio --wrap-untrusted --readonly capacity show --id bbbbbbbb-1111-2222-3333-444444444444","hintType":"retry_safe"}]}
+      ],
+      "notChecked": ["workload execution","live utilization/headroom","SKU/license compatibility","source permissions","connections/credentials","workspace identity authorization","Spark/environment readiness","surge/actor policy (not requested)"],
+      "limitations": "Ready applies only to requested configuration observations. This is not end-to-end workload readiness. Unrequested surge checks and unobserved evidence are not inferred. No mutations or automatic remediation are performed."
+    }
+  },
+  "notes": "Add --include-surge-protection for capacity-admin reads. Enabled settings alone and partial/forbidden scans stay unknown. --strict preserves stdout but exits non-zero for non-ready checks and adds shared recovery guidance to error.hint. nextSteps.kind distinguishes inspection, review, and remediation: concrete remediation commands are --readonly --dry-run previews requiring approval for the actual change; missingInputs/commandTemplate do not invent runnable arguments. See remediation-hints.",
+  "query_examples": [
+    {"query":"status","description":"Read the aggregate diagnostic status (do not prefix data)."},
+    {"query":"checks[?status=='unknown'].{check:checkId,evidence:evidence}","description":"Inspect checks with unavailable or inconclusive evidence."},
+    {"query":"checks[].nextSteps[] | [?kind=='inspection'].command","description":"Extract inspection commands only."},
+    {"query":"checks[].nextSteps[] | [?kind=='remediation'].{preview:command,template:commandTemplate,missing:missingInputs,approval:requiresApproval,verify:verifyAfter}","description":"Inspect proposed previews and missing inputs, without executing them."}
+  ]
+}

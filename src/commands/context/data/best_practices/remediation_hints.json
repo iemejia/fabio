@@ -1,0 +1,25 @@
+{
+  "topic": "remediation-hints",
+  "title": "Evidence-based remediation hints and safe previews",
+  "summary": "Use existing error hint/hintType/verifyAfter and diagnostic nextSteps to distinguish inspection, review, and approved remediation. Concrete commands are guarded previews, missing inputs stay explicit, metadata is preserved, and hints never execute actions or trigger hidden probes.",
+  "contracts": [
+    "nextSteps.kind is inspection, review, or remediation. Inspection commands read evidence; review messages have no command. Remediation command values are concrete previews containing BOTH --readonly and --dry-run.",
+    "Remediations carry hintType: semantic_correction, requiresApproval:true for executing the actual change, the existing command's destructive annotation, and a read-only verifyAfter when available. The preview itself does not mutate; do not remove its guards automatically.",
+    "Missing identifiers are represented by missingInputs and commandTemplate, with command absent. A template is not a runnable solution until those inputs and permissions are reviewed. No capacity, Azure subscription/resource group, or resource name is guessed.",
+    "Strict diagnostics use the SAME builder to put an actionable preview or missing-input template into error.hint, with semantic_correction and verifyAfter. Without --strict, the structured guidance stays in the successful diagnostic report.",
+    "Existing error codes, retriability, request IDs, parameters, related resources, details, and supplied verification commands are preserved. Existing safety-bypass hints are never replaced, so their agent notices remain effective."
+  ],
+  "supported_cases": [
+    "A complete actor scan with an unexpired block and no conflicting mission-critical record can suggest capacity delete-blocked-actor with known capacity/actor IDs as a guarded preview. The record does not prove it caused a particular workload failure; recheck scope and verify the block check after an approved change.",
+    "An unassigned workspace can suggest an assignment template with its known workspace ID, but targetCapacityId remains missing until the user chooses it. In-progress/failed assignments are NOT redirected into a new assignment automatically.",
+    "An inactive F-series capacity can suggest a conditional ARM resume template. Subscription, resourceGroup, and capacityName remain missing; Fabric capacity ID is NOT a valid --id argument to capacity resume. Unknown/non-F capacity types receive review guidance instead of an invented resume command.",
+    "Partial, malformed, expired, conflicting, or forbidden actor evidence never generates a block-removal preview. Enabled surge settings without live telemetry never suggest disabling protection as a diagnostic workaround."
+  ],
+  "command_errors": [
+    "Capacity-specific errors on notebook, pipeline, copy-job, Spark-job-definition, dataflow, job-scheduler runs and semantic-model refresh/query can suggest scoped workspace diagnostics. The dispatcher adds this guidance without network probes or actor-ID extraction from error text.",
+    "Ordinary API throttling, generic RBAC errors, unrelated failures, invalid workspace names/IDs, protected bypass hints, and tenant-feature-gate errors are not converted into policy-removal suggestions. Capacity-like text can justify inspection, not mutation or a causal conclusion.",
+    "Hint builders are pure. They never call a tenant, execute a preview, resume a capacity, remove a block, grant access, or retry a workload. Follow the user's approval boundary and the destructive preview's agentNotice."
+  ],
+  "verification": "Verify a resolved CONFIGURATION condition, not universal workload success. After unblocking, inspect the workspace_block check and capacity scope; enabled capacity-level thresholds may still leave other checks unknown. After resume, confirm the capacity state. After assignment, confirm the selected capacity and completed assignment before separately verifying the workload.",
+  "see_also": ["fabio context best-practices workspace-diagnostics", "fabio context examples workspace diagnostics", "fabio context best-practices lro"]
+}

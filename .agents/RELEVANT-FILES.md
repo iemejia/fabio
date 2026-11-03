@@ -318,3 +318,11 @@
 - `src/commands/context/data/best_practices/bi_creation.json`: canonical BI creation-mode decisions, readiness, source compatibility, and safe-recovery guidance
 - `tests/e2e_bi_guidance.rs`: runtime discovery, definition-free native recipe wire contracts, and offline report-creation example regressions
 - `docs/src/content/docs/guides/bi-creation.md`: user-facing guide to native/generated/authored models, query readiness, report shells, and PBIR authoring
+- `src/commands/workspace/diagnostics.rs`: bounded GET-only workspace/capacity observations, strict/partial semantics, safe actor pagination/expiration classification, and deterministic unit tests
+- `tests/e2e_workspace_diagnostics.rs`: offline scope, JSON contracts, readonly HTTP verbs, permission/timeout/pagination failures, and machine check-ID wrapping regressions
+- `src/commands/context/data/best_practices/workspace_diagnostics.json`: canonical diagnostic interpretation, scope, bounds, and no-remediation guidance
+- `src/commands/context/data/examples/workspace_diagnostics.json`: diagnostic response/next-step/query contract example
+- `docs/src/content/docs/guides/workspace-diagnostics.md`: user-facing diagnostic scope, status, permissions, bounds, and automation guide
+- `src/commands/remediation.rs`: pure shared inspection/review/remediation builders, guarded preview/missing-input contracts, metadata-preserving error enrichment, and CLI-parser unit tests
+- `src/commands/context/data/best_practices/remediation_hints.json`: canonical recovery-hint safety, interpretation, supported cases, and verification guidance
+- `docs/src/content/docs/guides/remediation-hints.md`: user-facing recovery previews, approval boundaries, error hints, and missing-input guide

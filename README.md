@@ -548,6 +548,18 @@ fabio lakehouse list --out<Tab> → --output
 
 ## Examples
 
+Before retrying a blocked workload, use the GET-only configuration report:
+`fabio --wrap-untrusted --readonly workspace diagnostics --id "$WS"`.
+Surge/actor reads are opt-in with `--include-surge-protection`; missing evidence
+stays `unknown`, and no policy is changed. See the
+[workspace diagnostics guide](https://ismaelmejia.com/fabio/guides/workspace-diagnostics/).
+
+Confirmed blockers can now yield guarded fix previews in diagnostic `nextSteps`
+and strict error hints. Missing identifiers remain explicit templates; ordinary
+capacity-related workload errors suggest inspection without hidden probes. See
+[remediation hints](https://ismaelmejia.com/fabio/guides/remediation-hints/) before
+executing a proposed change.
+
 Use `fabio context describe <group> <command>` for examples of any specific command. Use `fabio context workflow <name>` for multi-step recipes. Available workflows:
 
 - `lakehouse-etl` -- Lakehouse + notebook + load-table + schedule

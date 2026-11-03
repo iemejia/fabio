@@ -954,6 +954,34 @@
           "capacityRegion"
         ]
       },
+      "diagnostics": {
+        "description": "Diagnose workspace/capacity configuration using bounded read-only checks",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID (not a display name)"
+          },
+          "--include-surge-protection": {
+            "type": "bool",
+            "description": "Also inspect capacity-admin surge settings and this workspace's actor records"
+          },
+          "--actor-page-limit": {
+            "type": "integer",
+            "description": "Maximum pages inspected per actor collection (never overridden by --all)"
+          },
+          "--timeout": {
+            "type": "integer",
+            "description": "Maximum seconds per read probe or complete actor scan (workspace + probes <= twice this)"
+          },
+          "--strict": {
+            "type": "bool",
+            "description": "Exit non-zero unless every requested check is ready; still print the report"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
       "url": {
         "description": "Get the Fabric portal URL for a workspace",
         "flags": {

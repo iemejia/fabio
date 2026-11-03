@@ -3399,6 +3399,14 @@ implemented or confirmed to require no code change.
   necessarily becomes usable. Poll workspace `capacityId` and
   `capacityAssignmentProgress: Completed` before dependent requests instead of
   retrying arbitrary actor API errors.
+- **Workspace/capacity diagnostic observations are live-validated (Nov 2):**
+  an isolated assigned workspace was diagnosed with GET-only probes before and
+  after a test-owned block, block cleanup, and mission-critical classification.
+  The report observed the block without removing it, strict mode rejected the
+  blocked report, and capacity-wide surge settings remained unchanged. Inventory
+  audits matched the starting workspace/actor sets after cleanup. This validates
+  configuration observation, not a capacity stress test or policy precedence
+  when contradictory classifications coexist; those remain explicitly unknown.
 - **Environment pool activations are job-history resources:** list filtering
   supports only `state eq '<JobHistoryStatus>'`; details add Spark driver,
   executor, dynamic-allocation, and resource-state counts. `runtimeVersion`
@@ -3432,3 +3440,20 @@ implemented or confirmed to require no code change.
   test captures prior refresh IDs so an older completion cannot satisfy the wait.
   No takeover, purge, new credentials, or binding-mode fallback was needed.
 - **Gen1 dataflow upgrade request bodies are capped at 13,312 bytes.**
+
+## November 2026 recovery-hint observations
+
+- **Guarded recovery hints are live-validated (Nov 3):** a test-owned block's
+  diagnostic nextSteps and strict error hint produced the same concrete deletion
+  preview and read-only verification command. Executing the emitted preview kept
+  the block intact and carried the existing destructive confirmation notice.
+  A bare workspace produced an assignment template with an explicitly missing
+  target; filling that input from the approved test fixture and previewing it
+  left the workspace unassigned. Workspace/actor inventories matched their
+  starting sets after cleanup; no ARM resume or capacity-wide policy change ran.
+- **Block metadata is not a causal proof for every workload:** a lightweight,
+  isolated Wait pipeline completed soon after manual block creation in a separate
+  probe. That single probe did not establish immediate rejection behavior for
+  Data Factory jobs (timing/coverage can differ). Recovery hints therefore describe
+  observed policy records, not a guaranteed workload failure cause or guaranteed
+  repair. Both the record and probe workspace were cleaned up.

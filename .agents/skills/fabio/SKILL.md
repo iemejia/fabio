@@ -185,7 +185,7 @@ Error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITE
 **Error recovery patterns:**
 - `AUTH_REQUIRED` (exit 3): Run `az login`, then `fabio auth login`
 - `FORBIDDEN` (exit 4): Need Member or Admin role on workspace. Delete requires Member+.
-- `CAPACITY_INACTIVE` (exit 7): Resume capacity with `fabio capacity resume --id $CAP`
+- `CAPACITY_INACTIVE` (exit 7): Inspect scoped workspace/capacity evidence first. A resumable F-series capacity needs Azure subscription, resource group, and capacity name for `capacity resume` — NOT `--id`. Review the guarded preview and obtain approval; see `fabio context best-practices remediation-hints`.
 - `RATE_LIMITED` (exit 7): Retry automatically handled; reduce concurrency if persistent
 - `TIMEOUT` (exit 8): Increase with `--timeout <seconds>` (e.g., `--timeout 1800` for 30min)
 
@@ -223,6 +223,14 @@ fabio item update-logical-id --workspace $WS --id $ID --logical-id $LOGICAL_ID -
 ```
 
 Key principle: if a hint changed WHAT the command does (not just HOW it authenticates or retries), treat the correction as a new decision that requires user awareness.
+
+Diagnostics and strict error hints share recovery builders. `nextSteps.kind`
+distinguishes inspection/review/remediation. Concrete remediation commands keep
+`--readonly` AND `--dry-run`, carry `requiresApproval: true` for the actual change,
+and include verification guidance. `commandTemplate`/`missingInputs` are not
+runnable solutions or authorization to invent resource identifiers. Never
+remove guards automatically; a policy record alone does not prove a workload's
+failure cause. See `fabio context best-practices remediation-hints`.
 
 ## Global Flags
 
@@ -335,6 +343,8 @@ Credential chain: FABIO_ACCESS_TOKEN > fabio cache > env vars > managed identity
 fabio workspace create --name "MyProject"
 fabio workspace assign-capacity --id $WS --capacity $CAP    # two-step: create, THEN assign
 fabio workspace list                                         # returns {"data":[...],"count":N}
+fabio workspace diagnostics --id $WS --readonly             # scoped configuration checks, GET-only; not full workload readiness
+fabio workspace diagnostics --id $WS --readonly --include-surge-protection # opt-in capacity-admin reads; unknown != ready
 fabio workspace clone --source $SRC_WS --dest $DST_WS       # bulk clone via export/import APIs
 fabio workspace clone --source $SRC_WS --dest $DST_WS --allow-pairing-by-name  # initial clone (no logicalId match)
 fabio workspace clone --source $SRC_WS --dest $DST_WS --item-types "Notebook,DataPipeline"  # selective: only these item types

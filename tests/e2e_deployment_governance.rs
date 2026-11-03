@@ -65,6 +65,270 @@ fn new_workspace() -> (String, CreatedResource) {
     (id, resource)
 }
 
+fn diagnostic_check<'a>(report: &'a Value, name: &str) -> &'a Value {
+    report["data"]["checks"]
+        .as_array()
+        .expect("diagnostic checks")
+        .iter()
+        .find(|check| check["checkId"] == name)
+        .expect("named diagnostic check")
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant, FABIO_TEST_CAPACITY_ID and capacity-admin reads; only test-created actor records are changed"]
+#[allow(clippy::too_many_lines)] // Isolated assignment -> block -> recovery -> classification lifecycle.
+fn live_workspace_diagnostics_observes_policy_without_remediation() {
+    let capacity = required_env("FABIO_TEST_CAPACITY_ID");
+    let before = run(&["capacity", "get-surge-protection", "--id", &capacity]);
+    let (workspace, _workspace_resource) = new_workspace();
+    let base = run(&[
+        "--readonly",
+        "workspace",
+        "diagnostics",
+        "--id",
+        &workspace,
+        "--strict",
+    ]);
+    assert_eq!(base["data"]["status"], "ready");
+    assert_eq!(base["data"]["scope"]["mutates"], false);
+    assert_reference(&base["data"]["workspaceId"], &workspace);
+    assert_reference(&base["data"]["capacityId"], &capacity);
+    let args = [
+        "--readonly",
+        "workspace",
+        "diagnostics",
+        "--id",
+        &workspace,
+        "--include-surge-protection",
+        "--actor-page-limit",
+        "20",
+    ];
+    let initial = run(&args);
+    assert!(
+        matches!(
+            diagnostic_check(&initial, "surge_configuration")["evidence"]["state"].as_str(),
+            Some("Enabled" | "Disabled")
+        ),
+        "surge read failed; tenant details withheld"
+    );
+    for name in ["workspace_block", "mission_critical"] {
+        assert_eq!(
+            diagnostic_check(&initial, name)["evidence"]["scan"]["complete"],
+            true
+        );
+        assert_eq!(
+            diagnostic_check(&initial, name)["evidence"]["scan"]["matches"]
+                .as_array()
+                .expect("actor matches")
+                .len(),
+            0
+        );
+    }
+    let expiration = (chrono::Utc::now() + chrono::Duration::minutes(5))
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
+    let create = [
+        "capacity",
+        "create-blocked-actor",
+        "--id",
+        &capacity,
+        "--workspace",
+        &workspace,
+        "--expiration-policy",
+        "ExpireAfterDate",
+        "--expire-after",
+        &expiration,
+    ];
+    assert_eq!(
+        run(&[create.as_slice(), &["--dry-run"]].concat())["data"]["dry_run"],
+        true
+    );
+    let blocked = field(&run(&create)["data"], "id");
+    let mut blocked_resource = CreatedResource::new(&[
+        "capacity",
+        "delete-blocked-actor",
+        "--id",
+        &capacity,
+        "--actor-id",
+        &blocked,
+    ]);
+    wait_for_ready(
+        || try_run(&args),
+        |report| diagnostic_check(report, "workspace_block")["status"] == "blocked",
+        Duration::from_mins(1),
+    )
+    .expect("new block was not visible in diagnostics; tenant details withheld");
+    let observed = run(&args);
+    assert_eq!(observed["data"]["status"], "blocked");
+    validate_live_block_hint(&observed, &args, &blocked);
+    assert!(
+        try_run(&[args.as_slice(), &["--strict"]].concat()).is_err(),
+        "strict blocked diagnostics must exit non-zero"
+    );
+    // A diagnostic must not remove the block, even when it reports the blocker.
+    assert_reference(
+        &run(&[
+            "capacity",
+            "show-blocked-actor",
+            "--id",
+            &capacity,
+            "--actor-id",
+            &blocked,
+        ])["data"]["id"],
+        &blocked,
+    );
+    blocked_resource.delete();
+    wait_for_ready(
+        || try_run(&args),
+        |report| diagnostic_check(report, "workspace_block")["status"] == "ready",
+        Duration::from_mins(1),
+    )
+    .expect("test-owned block cleanup was not visible; tenant details withheld");
+    let create = [
+        "capacity",
+        "create-mission-critical-actor",
+        "--id",
+        &capacity,
+        "--workspace",
+        &workspace,
+    ];
+    assert_eq!(
+        run(&[create.as_slice(), &["--dry-run"]].concat())["data"]["dry_run"],
+        true
+    );
+    let critical = field(&run(&create)["data"], "id");
+    let mut critical_resource = CreatedResource::new(&[
+        "capacity",
+        "delete-mission-critical-actor",
+        "--id",
+        &capacity,
+        "--actor-id",
+        &critical,
+    ]);
+    wait_for_ready(
+        || try_run(&args),
+        |report| diagnostic_check(report, "mission_critical")["evidence"]["classified"] == true,
+        Duration::from_mins(1),
+    )
+    .expect("test-owned classification was not visible; tenant details withheld");
+    assert_reference(
+        &run(&[
+            "capacity",
+            "show-mission-critical-actor",
+            "--id",
+            &capacity,
+            "--actor-id",
+            &critical,
+        ])["data"]["id"],
+        &critical,
+    );
+    critical_resource.delete();
+    let after = run(&["capacity", "get-surge-protection", "--id", &capacity]);
+    assert!(
+        before["data"] == after["data"],
+        "diagnostics must not change capacity-wide settings; tenant details withheld"
+    );
+}
+
+fn validate_live_block_hint(report: &Value, diagnostic_args: &[&str], actor: &str) {
+    let hint = diagnostic_check(report, "workspace_block")["nextSteps"]
+        .as_array()
+        .expect("next steps")
+        .iter()
+        .find(|hint| hint["kind"] == "remediation")
+        .expect("confirmed block preview");
+    assert_eq!(hint["requiresApproval"], true);
+    assert_eq!(hint["destructive"], true);
+    let preview = hint["command"].as_str().expect("preview command");
+    let args: Vec<_> = shlex::split(preview)
+        .expect("preview quoting")
+        .into_iter()
+        .skip(1)
+        .filter(|arg| arg != "--wrap-untrusted")
+        .collect();
+    let args: Vec<_> = args.iter().map(String::as_str).collect();
+    let mut cmd = command(&args);
+    cmd.env("OPENCODE_AGENT", "1");
+    let result = execute(cmd).expect("guarded preview failed; tenant details withheld");
+    assert_eq!(result["data"]["dry_run"], true);
+    assert_eq!(result["data"]["destructive"], true);
+    assert!(result["data"]["agentNotice"].is_string());
+    assert_reference(&result["data"]["details"]["actorId"], actor);
+    let strict = [diagnostic_args, &["--strict"]].concat();
+    let output = command(&strict)
+        .timeout(Duration::from_mins(5))
+        .output()
+        .unwrap_or_else(|_| panic!("strict diagnostic failed to execute; tenant details withheld"));
+    assert!(
+        !output.status.success(),
+        "strict diagnostic must reject a known blocker"
+    );
+    let error = String::from_utf8_lossy(&output.stderr)
+        .lines()
+        .rev()
+        .find_map(|line| serde_json::from_str::<Value>(line).ok())
+        .expect("structured error");
+    assert_eq!(error["error"]["hintType"], "semantic_correction");
+    assert!(
+        error["error"]["hint"]
+            .as_str()
+            .is_some_and(|text| text.contains(preview)),
+        "error/report hint mismatch; tenant details withheld"
+    );
+    assert!(
+        error["error"]["verifyAfter"] == hint["verifyAfter"],
+        "verification command mismatch; tenant details withheld"
+    );
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant and FABIO_TEST_CAPACITY_ID; previews assignment of a test-owned unassigned workspace only"]
+fn live_unassigned_workspace_hint_requires_target_selection() {
+    let name = unique_name("fabio_e2e");
+    let workspace = field(
+        &run(&["workspace", "create", "--name", &name])["data"],
+        "id",
+    );
+    let _resource = CreatedResource::new(&["workspace", "delete", "--id", &workspace]);
+    let report = run(&["--readonly", "workspace", "diagnostics", "--id", &workspace]);
+    assert_eq!(report["data"]["status"], "needs_action");
+    let hint = diagnostic_check(&report, "capacity_assignment")["nextSteps"]
+        .as_array()
+        .expect("steps")
+        .iter()
+        .find(|hint| hint["kind"] == "remediation")
+        .expect("assignment template");
+    assert!(
+        hint["command"].is_null(),
+        "a missing target must not be guessed"
+    );
+    assert_eq!(hint["missingInputs"], json!(["targetCapacityId"]));
+    assert_eq!(hint["requiresApproval"], true);
+    let capacity = required_env("FABIO_TEST_CAPACITY_ID");
+    let args: Vec<_> = shlex::split(hint["commandTemplate"].as_str().expect("template"))
+        .expect("template quotation")
+        .into_iter()
+        .skip(1)
+        .filter(|arg| arg != "--wrap-untrusted")
+        .map(|arg| {
+            if arg == "$TARGET_CAPACITY_ID" {
+                capacity.clone()
+            } else {
+                arg
+            }
+        })
+        .collect();
+    let preview = run(&args.iter().map(String::as_str).collect::<Vec<_>>());
+    assert_eq!(preview["data"]["dry_run"], true);
+    assert_reference(&preview["data"]["details"]["capacityId"], &capacity);
+    let after = run(&["workspace", "show", "--id", &workspace]);
+    assert!(
+        after["data"]["capacityId"].is_null()
+            || after["data"]["capacityId"] == "00000000-0000-0000-0000-000000000000",
+        "a preview must not assign the workspace; tenant details withheld"
+    );
+}
+
 fn assert_not_found(args: &[&str]) {
     let Err(error) = execute(command(args)) else {
         panic!("deleted resource should not be readable; tenant details withheld");

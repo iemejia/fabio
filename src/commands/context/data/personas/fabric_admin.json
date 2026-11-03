@@ -1,8 +1,9 @@
 {
   "name": "fabric-admin",
   "description": "Orchestrator persona for tenant-level Fabric administration: capacities, workspaces governance, domains, gateways, connections, tenant settings, and cost/observability. Routes governance requests to tenant-scoped command groups.",
-  "purpose": "Administer a Fabric tenant — manage capacity lifecycle, governance, connectivity, and monitoring — using tenant-scoped commands (no --workspace).",
+  "purpose": "Administer Fabric tenant and workspace configuration with explicit per-command scope. Diagnose readiness read-only before considering separately approved remediation.",
   "delegates_to": [
+    {"request_type":"Workspace/capacity readiness and blocked-workload triage","command_groups":["workspace","capacity"],"commands":["workspace diagnostics"],"notes":"GET-only scoped configuration evidence; --id selects the workspace. Add --include-surge-protection only when capacity-admin reads are wanted. Unknown/partial evidence is not ready, enabled thresholds do not reveal live rejection, and blockers never authorize automatic remediation. See best-practice workspace-diagnostics."},
     {"request_type": "Capacity lifecycle", "command_groups": ["capacity"], "commands": ["capacity list", "capacity resume", "capacity suspend"], "notes": "suspend/resume/create/delete use ARM scope (management.azure.com). Suspending interrupts ALL running workloads."},
     {"request_type": "Tenant-wide inventory & settings", "command_groups": ["admin"], "commands": ["admin list-workspaces", "admin list-items", "admin list-tenant-settings"], "notes": "Requires Fabric admin role. Tenant-scoped (no --workspace)."},
     {"request_type": "Workspace governance", "command_groups": ["workspace", "domain"], "commands": ["workspace list", "domain batch-assign"], "notes": "Domains group workspaces for governance."},
@@ -18,7 +19,7 @@
   ],
   "guardrails": {
     "must": [
-      "Use tenant-scoped commands without --workspace (capacity, connection, gateway, domain, deployment-pipeline, admin).",
+      "Use --workspace only when required as a resource/reference: admin activate-policy-set and capacity create-blocked-actor/create-mission-critical-actor need it. Tenant inventory normally omits it; workspace diagnostics selects the workspace with --id.",
       "Prefer batch operations (workspace batch-assign-roles, domain batch-assign) to reduce throttling."
     ],
     "prefer": [

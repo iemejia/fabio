@@ -1,0 +1,37 @@
+{
+  "topic": "workspace-diagnostics",
+  "title": "Read-only workspace and capacity diagnostics",
+  "summary": "Diagnose capacity assignment, capacity state, and optional capacity-admin surge-protection evidence without remediation. Interpret ready/blocked/needs_action/unknown, partial scans, expired blocks, conflicting classifications, bounded requests, and strict exit behavior.",
+  "entry_point": "fabio --wrap-untrusted --readonly workspace diagnostics --id $WS",
+  "scope": [
+    "The default checks one workspace and its assigned capacity. It does not scan the tenant or call capacity-admin surge APIs unless --include-surge-protection is requested.",
+    "Reading capacity metadata requires administrator or contributor permissions on the capacity. Workspace read access does not imply capacity visibility; a forbidden capacity read is unknown, not inactive or ready.",
+    "Capacity probes start only after a valid capacityId and capacityAssignmentProgress: Completed are observed. InProgress/Failed need review or a later read; do not retry arbitrary workload mutations while assignment is unsettled.",
+    "--include-surge-protection reads capacity configuration plus blocked/mission-critical actor lists and retains only records for the requested workspace. These reads require capacity-admin access; workspace access alone may not permit them. No identity/role escalation is attempted."
+  ],
+  "statuses": {
+    "ready": "No blocker or unknown was found in the REQUESTED configuration checks. Not an end-to-end guarantee that a notebook, query, refresh, connection, or source permission will work.",
+    "blocked": "An inactive capacity or an unexpired workspace block was observed. This is diagnostic evidence, not authorization to resume, unblock, or change policy.",
+    "needs_action": "Capacity assignment is absent, in progress, or failed. Review the intended workload's capacity/license needs and the returned evidence; follow-up reads are safe, but configuration changes require a separate decision.",
+    "unknown": "Evidence is unavailable, malformed, incomplete, unrecognized, or conflicting. Missing permissions and partial pagination are never interpreted as an empty list or a ready workspace."
+  },
+  "aggregation": "The strongest known status wins: blocked, then needs_action, then unknown, then ready. partial:true independently identifies unknown checks even when another check establishes a blocker. --strict prints the same report but exits non-zero unless every requested check is ready; without it a successfully produced diagnostic report exits zero regardless of its status.",
+  "surge_interpretation": [
+    "Enabled is configuration, not a live surge-activity signal. Diagnostics reports this as unknown and asks for live telemetry; it does not guess whether thresholds are currently exceeded.",
+    "Expired blocked records stop enforcement at the expiration time but may remain listed until background garbage collection. Diagnostics compares their UTC timestamps locally; it does not delete them.",
+    "Mission-critical classification does not reserve compute or guarantee immunity from general capacity throttling. If an active block and mission-critical classification coexist, diagnostics reports unknown rather than inventing precedence.",
+    "Do not assume create-blocked-actor is a retry-safe upsert. Diagnose first; any policy change remains separate and explicitly reviewed."
+  ],
+  "bounds": {
+    "requests": "Default: at most 2 logical reads. With surge: at most 3 + 2 * actor-page-limit logical reads (9 at the default page limit of 3). Client auth/transient retries can add GET attempts within the deadlines.",
+    "actors": "--actor-page-limit is 1-20 per collection, default 3. Each collection inspects at most 1,000 actors and returns at most 10 matching rows. --all cannot bypass these limits; --limit cannot truncate a scan into a false absence proof.",
+    "deadlines": "--timeout is 1-300 seconds, default 30, for each probe or entire actor scan. The workspace read precedes parallel capacity probes, so the read phases take at most roughly twice that timeout, plus local/startup processing. No background job is started.",
+    "pagination": "Opaque continuation tokens are encoded on the same scoped route. Cycles, malformed/oversized tokens, URI-only continuations, scan limits, and read failures produce incomplete evidence. No arbitrary continuation URL is followed. Use the corresponding capacity list command for manual inspection; a global --continuation-token cannot resume this multi-source report."
+  },
+  "safety": [
+    "Every network operation performed by diagnostics is GET. --readonly works, and --dry-run is an offline preview after input validation.",
+    "nextSteps.kind separates inspection, review, and remediation. Concrete remediation commands contain --readonly and --dry-run, require approval before executing the change, and carry verification guidance. Missing-input templates are not runnable commands. No change or automatic retry is performed; see remediation-hints.",
+    "notChecked and limitations identify omitted workload execution, live utilization, SKU/license compatibility, source permissions, connection credentials, identity authorization, and Spark readiness. These require later task-specific checks, not assumptions from this report."
+  ],
+  "see_also": ["fabio context best-practices remediation-hints", "fabio context examples workspace diagnostics", "fabio context describe workspace diagnostics", "fabio context best-practices throttling", "fabio context best-practices pagination"]
+}

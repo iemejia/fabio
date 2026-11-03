@@ -683,8 +683,8 @@ async fn resume(
 
     if output::dry_run_guard(
         cli,
-        &format!("Would resume capacity '{name}'"),
-        &json!({"name": name}),
+        "capacity resume",
+        &json!({"subscription": subscription, "resourceGroup": resource_group, "name": name}),
     ) {
         return Ok(());
     }
