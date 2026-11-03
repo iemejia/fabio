@@ -1,5 +1,9 @@
 # Running deployment and governance E2E tests
 
+For live Foundry-backed skill routing/safety evaluations and the hermetic
+evaluation-runner tests, see [eval/README.md](eval/README.md). These do not execute
+the generated Fabric commands and do not replace the live API suites below.
+
 PR #188 added mocked HTTP, input-validation, LRO, and dry-run tests. The
 `e2e_deployment_governance` suite adds opt-in **live** lifecycle tests for those
 APIs. Ordinary `cargo test` runs the deterministic tests without tenant access.

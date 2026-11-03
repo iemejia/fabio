@@ -9,7 +9,10 @@
 - `install.ps1`: Windows release installer; supports latest or a version selected with `-Version`/`FABIO_VERSION`
 - `tests/install.ps1.tests.ps1`: Unit tests for Windows installer release-version resolution
 - `.github/workflows/ci.yml`: Cross-platform Rust CI matrix and Windows installer tests
-- `tests/eval/promptfooconfig.yaml`: 245-case promptfoo eval testing skill instruction quality (run with `GITHUB_TOKEN=$(gh auth token) promptfoo eval -c tests/eval/promptfooconfig.yaml`)
+- `tests/eval/promptfooconfig.yaml`: skill routing/safety cases with a shared, environment-configured Foundry provider for generation and rubric grading
+- `tests/eval/run.py`, `tests/eval/test_runner.py`: private evaluation execution, fail-closed completeness/error/pass-rate gate, numeric-only summaries, and hermetic runner tests
+- `tests/eval/check-config.mjs`: credential-free provider-sharing and JavaScript assertion execution checks with routing/formatting regression fixtures (uses the installed promptfoo YAML parser)
+- `tests/eval/README.md`: Azure CLI discovery, current model configuration, local evaluation commands, confidentiality, and CI secret requirements
 - `src/main.rs`: Entry point, `#![recursion_limit = "256"]`, tokio async main, error handling dispatch
 - `src/cli.rs`: Clap derive CLI definition, OutputFormat enum, Command enum with 74 subcommand groups
 - `src/errors.rs`: ErrorCode enum (with stable exit codes) + FabioError struct with thiserror

@@ -465,15 +465,12 @@ All new features, improvements, and bug fixes MUST have corresponding tests. Thi
 
 The fabio user-facing skill (`.agents/skills/fabio/SKILL.md`) is quality-tested via [promptfoo](https://promptfoo.dev) — an LLM eval framework that validates whether an agent given the skill instructions produces correct CLI commands.
 
-**Config:** `tests/eval/promptfooconfig.yaml` (153 test cases across 16 categories)
+**Config:** `tests/eval/promptfooconfig.yaml`. Setup, current Foundry model,
+private environment variables, and CI secret requirements: `tests/eval/README.md`.
 
 **Run locally:**
 ```bash
-AZURE_OPENAI_API_KEY=$(az cognitiveservices account keys list \
-  --name foundry-imejiauseche-ai-cadata2610-demos --resource-group rg-imejiauseche-ai-demos \
-  --query "key1" -o tsv) \
-  promptfoo eval -c tests/eval/promptfooconfig.yaml
-promptfoo view   # interactive results browser
+python3 tests/eval/run.py
 ```
 
 ### When to Add New Eval Cases
@@ -553,7 +550,7 @@ This pattern is required for any assertion where the model might insert global f
 
 ### Maintaining Pass Rate
 
-The eval should maintain a high pass rate on gpt-5-mini (the CI eval model). If a new test consistently fails:
+The eval should maintain a high pass rate on the configured Foundry model (shared by generation and rubric grading). If a new test consistently fails:
 1. First verify the SKILL.md actually teaches the behavior being tested
 2. If the skill is correct but the model doesn't emit it (e.g., safety warnings), relax the assertion to test capability rather than style
 3. If the skill is missing the information, update SKILL.md first, then verify the test passes

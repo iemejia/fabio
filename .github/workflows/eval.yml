@@ -28,51 +28,31 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Install promptfoo
-        run: npm install -g promptfoo
+        run: npm install -g promptfoo@0.125.1
+
+      - name: Test evaluation runner
+        run: |
+          python3 -m unittest discover -s tests/eval -p 'test_*.py'
+          node tests/eval/check-config.mjs "$(npm root -g)"
 
       - name: Run eval
         env:
           AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_API_BASE_URL: ${{ secrets.AZURE_OPENAI_API_BASE_URL }}
+          AZURE_OPENAI_DEPLOYMENT_NAME: ${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}
+          AZURE_OPENAI_MODEL_NAME: gpt-6.1-sol
         run: |
-          if [ -z "$AZURE_OPENAI_API_KEY" ]; then
-            echo "::error::AZURE_OPENAI_API_KEY secret is not configured."
-            exit 1
-          fi
-          cd tests/eval
-          timeout 1200 promptfoo eval -c promptfooconfig.yaml --no-cache -o /tmp/eval-results.json 2>&1 | tee /tmp/eval-output.txt || true
-          # If timeout killed promptfoo before writing results, create empty file
-          if [ ! -f /tmp/eval-results.json ]; then
-            echo "::warning::Eval timed out"
-            echo '{"results":{"results":[]}}' > /tmp/eval-results.json
-          fi
+          python3 tests/eval/run.py --summary "$RUNNER_TEMP/eval-summary.json"
 
-      - name: Check pass rate
-        run: |
-          python3 -c "
-          import json, sys
-          with open('/tmp/eval-results.json') as f:
-              data = json.load(f)
-          results = data.get('results', {}).get('results', [])
-          total = len(results)
-          if total == 0:
-              print('::warning::Eval produced no results (likely rate limited or timed out)')
-              sys.exit(0)
-          passed = sum(1 for r in results if r.get('success'))
-          rate = 100 * passed / total
-          print(f'Results: {passed}/{total} passed ({rate:.0f}%)')
-          if rate < 70:
-              print(f'::error::Skill eval pass rate {rate:.0f}% is below 70% threshold')
-              sys.exit(1)
-          print(f'::notice::Skill eval pass rate: {rate:.0f}% ({passed}/{total})')
-          "
-
-      - name: Upload results
+      # Raw promptfoo output embeds resolved provider configuration and can
+      # disclose tenant endpoints/deployment aliases. Upload numeric counts only.
+      - name: Upload summary
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: eval-results
-          path: /tmp/eval-results.json
+          name: eval-summary
+          path: ${{ runner.temp }}/eval-summary.json
           retention-days: 30

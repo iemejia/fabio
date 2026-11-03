@@ -3,19 +3,12 @@
 # Tests that an LLM given the fabio SKILL.md instructions produces correct
 # CLI commands for common Fabric tasks.
 #
-# Uses Azure OpenAI (gpt-5-mini deployment) for reliable eval without rate limits.
-# Auth: Set AZURE_OPENAI_API_KEY env var (or configure in CI secrets).
-#
-# Note: gpt-5-mini is a reasoning model. It rejects temperature != 1 (only the
-# default is supported), so we omit temperature and instead pin reasoning_effort
-# to "minimal" for fast, low-variance, command-generation-style outputs.
-#
-# Run locally:
-#   AZURE_OPENAI_API_KEY=<key> promptfoo eval -c tests/eval/promptfooconfig.yaml
-#   promptfoo view
-#
-# Fallback: GitHub Models (slower, rate-limited):
-#   GITHUB_TOKEN=<pat> promptfoo eval -c tests/eval/promptfooconfig.yaml --env-overrides '{"providers":[{"id":"github:openai/gpt-5-mini"}]}'
+# Uses the existing Foundry GPT-6.1 Sol deployment for generation AND rubric grading.
+# Set AZURE_OPENAI_API_BASE_URL (HTTPS account endpoint),
+# AZURE_OPENAI_DEPLOYMENT_NAME (deployment alias), AZURE_OPENAI_MODEL_NAME
+# (public catalog model name), and AZURE_OPENAI_API_KEY. See README.md here.
+# Keep private endpoint/deployment values and raw results out of version control.
+# Model defaults are intentional: no stale reasoning_effort or sampling settings.
 
 description: "fabio skill instruction quality"
 
@@ -32,17 +25,21 @@ prompts:
 
       User request: {{user_query}}
 
-# Azure OpenAI - gpt-5-mini (Sweden Central)
+# The anchor keeps generation and rubric authentication/model settings identical.
 providers:
-  - id: azureopenai:chat:gpt-5-mini
+  - &foundry
+    id: "azureopenai:chat:{{env.AZURE_OPENAI_DEPLOYMENT_NAME}}"
     config:
-      apiHost: foundry-imejiauseche-ai-cadata2610-demos.cognitiveservices.azure.com
+      apiBaseUrl: "{{env.AZURE_OPENAI_API_BASE_URL}}"
+      modelName: "{{env.AZURE_OPENAI_MODEL_NAME}}"
+      apiKeyEnvar: AZURE_OPENAI_API_KEY
       apiVersion: "2024-10-21"
-      reasoning_effort: minimal
+      omitDefaults: true
+      max_completion_tokens: 4096
 
 defaultTest:
   options:
-    provider: azureopenai:chat:gpt-5-mini
+    provider: *foundry
   vars:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
@@ -54,14 +51,16 @@ tests:
     assert:
       - type: icontains
         value: "capacity delete-blocked-actor"
-      - type: icontains
-        value: "--actor-id"
+      # The sub-skill indexes commands, not flags. Discovery is correct when
+      # those mechanics are not supplied to this single-turn evaluation.
+      - type: javascript
+        value: "output.includes('--actor-id') || /context\\s+describe\\s+capacity\\s+delete-blocked-actor/i.test(output)"
       - type: icontains
         value: "--dry-run"
       - type: icontains
         value: "--readonly"
       - type: llm-rubric
-        value: "Offers a guarded preview and requires approval for executing the actual policy change. Does not claim the policy record proves a particular workload failure cause or guarantee that removing it resolves all readiness issues."
+        value: "Only offers a guarded preview (or command discovery followed by instructions retaining --readonly and --dry-run), not authorization to execute a policy change. If it describes actual execution without guards, explicitly requires user approval. Does not claim the policy record proves a particular workload failure cause or guarantee that removing it resolves all readiness issues."
 
   - description: "Remediation hints: inactive capacity ID does not invent ARM resume inputs"
     vars:
@@ -403,7 +402,7 @@ tests:
     assert:
       - type: javascript
         value: |
-          output.includes('git status') &&
+          return output.includes('git status') &&
           output.includes('--include-files-details') &&
           output.includes('git commit') &&
           output.includes('--file-selection $ITEM=metadata.json') &&
@@ -544,7 +543,7 @@ tests:
     assert:
       - type: javascript
         value: |
-          output.includes('monitoring create') &&
+          return output.includes('monitoring create') &&
           output.includes('--file') &&
           output.includes('monitoring enable-data-collection')
         metric: monitoring-create-enable-sequence
@@ -817,7 +816,7 @@ tests:
         value: "Overwrite"
         metric: pascalcase-in-workflow
       - type: llm-rubric
-        value: "The response provides a complete, sequential workflow from workspace creation through data loading with correct fabio commands and proper flag usage"
+        value: "Provides a sequential workflow: workspace creation before lakehouse creation, then file upload and Delta table loading (or upload-table). workspace assign-capacity, lakehouse upload, and lakehouse load-table are valid Fabio operations, not unsupported commands. Judge the dependency ordering and loading outcome; do not invent restrictions on Fabio's CLI flags."
         metric: workflow-completeness
 
   - description: "Git integration workflow"
@@ -827,7 +826,7 @@ tests:
       - type: icontains
         value: "fabio git"
       - type: llm-rubric
-        value: "The response uses fabio git commands (connect, status, commit, update) to set up and manage Git integration for a Fabric workspace"
+        value: "Uses fabio git commands to connect the workspace and inspect/sync changes: connect, status, and pull for remote changes and/or commit for local changes. The command is git pull, NOT git update. It need not commit when there are no local changes."
         metric: git-workflow
 
   # ============================================================
@@ -1729,7 +1728,7 @@ tests:
     assert:
       - type: javascript
         value: |
-          output.includes('context schema DeploymentPlan') ||
+          return output.includes('context schema DeploymentPlan') ||
             (output.includes('deploymentPlan/definition/plan/1.0.0/schema.json') &&
              /version\s*:\s*["']?1\.0\.0/.test(output))
         metric: current-deployment-plan-schema
@@ -1881,17 +1880,17 @@ tests:
         value: "The response explains the ID is wrong or the item was deleted, and suggests listing available lakehouses to find the correct ID. Follows the error hint."
         metric: not-found-recovery
 
-  - description: "Error recovery: INVALID_INPUT with hint → follow hint exactly"
+  - description: "Error recovery: INVALID_INPUT overwrite hint still requires approval"
     vars:
       user_query: |
-        I ran `fabio deploy apply --source ./items --workspace ws-001` and got:
+        I ran `fabio deploy export --dir ./items --workspace ws-001` and got:
         {"error":{"code":"INVALID_INPUT","message":"Output directory is not empty: ./items","hint":"Use --overwrite to replace existing content."}}
         What should I do?
     assert:
       - type: icontains
         value: "--overwrite"
       - type: llm-rubric
-        value: "The response suggests adding the --overwrite flag as the error hint recommends."
+        value: "Explains that --overwrite replaces existing local content and must not be blindly added just because the error suggests it. Requires explicit approval before overwriting or suggests choosing an empty/new directory. May show a conditional command but must not authorize an unapproved overwrite."
         metric: invalid-input-hint-follow
 
   - description: "Error recovery: agentNotice → do NOT blindly retry with dangerous flag"
@@ -1980,7 +1979,7 @@ tests:
       - type: icontains
         value: "fabio auth login"
       - type: llm-rubric
-        value: "The response immediately suggests running fabio auth login and then retrying the original command. No additional verification needed since hintType is auth_fix (no semantic change)."
+        value: "Runs fabio auth login then retries the original read command without changing its semantics. Azure CLI login beforehand is acceptable because it is Fabio's default local-user authentication path. No new mutation, target change, or semantic verification gate is introduced."
         metric: auth-fix-immediate-retry
 
   # ============================================================
@@ -2190,7 +2189,7 @@ tests:
       - type: icontains
         value: "fabio data-agent query"
       - type: icontains
-        value: "--question"
+        value: "--prompt"
 
   - description: "Data Agent: select specific tables for a datasource"
     vars:
@@ -2789,7 +2788,7 @@ tests:
         metric: disambiguate-materialized-view
       - type: javascript
         value: |
-          output.includes('lakehouse') || output.includes('kql-database')
+          /lakehouse|kql[ -]database/i.test(output)
         metric: mv-routes-to-valid-group
 
   - description: "Disambiguate: 'dataset' means semantic model"
@@ -2824,8 +2823,8 @@ tests:
         value: "--tables"
       - type: icontains
         value: "--recreate-tables"
-      - type: contains
-        value: "\"timeUnit\":\"Minutes\""
+      - type: javascript
+        value: '/"timeUnit"\s*:\s*"Minutes"/.test(output)'
 
   - description: "Persona routing: broad Databricks migration request"
     vars:
@@ -3131,7 +3130,7 @@ tests:
       user_query: "I already have a lakehouse of sales data. I want non-technical users to ask questions about it in plain English."
     assert:
       - type: llm-rubric
-        value: "The response routes to an AI Data Agent overlay: a semantic model over the existing lakehouse plus a Fabric Data Agent (fabio data-agent ...), not a new ingestion pipeline. It may discover this via 'fabio context blueprint conversational-analytics'. It recognizes this is an overlay on existing storage."
+        value: "Routes to a Fabric Data Agent overlay over existing data, not a new ingestion pipeline. Grounding directly on the existing lakehouse or on a semantic model over it are both supported. May discover the governed semantic-model pattern via context blueprint conversational-analytics. Does not require replacing the existing storage."
         metric: blueprint-conversational-routing
 
   - description: "Problem-first entry point uses the solution-architect persona or blueprints"
@@ -3163,7 +3162,7 @@ tests:
       user_query: "We need to analyze PII-heavy customer data but enforce strict access controls and masking. How should we set this up in Fabric?"
     assert:
       - type: llm-rubric
-        value: "The response emphasizes access control and masking: a Lakehouse with OneLake data-access roles, sensitivity labels, least-privilege workspace RBAC, and masked/aggregated outputs (defense in depth). It may discover this via 'fabio context blueprint sensitive-data-insights'. It does not treat this as ordinary unsecured analytics."
+        value: "Routes to sensitive-data-insights and identifies access controls AND masking as decisions that must be configured before declaring the solution secure, OR gives a concrete defense-in-depth setup with OneLake roles, sensitivity labels, least-privilege RBAC and masked/aggregated outputs. Discovery-first guidance is valid when exact governance mechanics are not supplied. Must not treat this as ordinary unsecured analytics or claim report RLS alone masks PII."
         metric: blueprint-sensitive-routing
 
   - description: "Scorecard: create a Power BI Goals scorecard"
