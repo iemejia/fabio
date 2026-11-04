@@ -623,13 +623,14 @@ fn eventstream_list_components_filter_source() {
     let json = parse_json(&output);
     let data = extract_data(&json);
     let items = data.as_array().expect("should be array");
-    assert_eq!(items.len(), 38, "Should match the complete SourceType enum");
+    assert_eq!(items.len(), 39, "Should match the complete SourceType enum");
     let types: Vec<&str> = items
         .iter()
         .filter_map(|item| item["type"].as_str())
         .collect();
     for new_type in [
         "Cribl",
+        "CustomStreamConnector",
         "FabricCapacityOperationEvents",
         "LakehouseChangeFeed",
         "ReferenceLakehouse",
@@ -1223,5 +1224,36 @@ fn eventstream_validate_from_server() {
     assert!(
         data.get("valid").is_some(),
         "validate should return 'valid' field, got: {data}"
+    );
+}
+
+#[test]
+fn eventstream_custom_stream_connector_source_dry_run() {
+    let output = common::fabio()
+        .args([
+            "--dry-run",
+            "eventstream",
+            "add-source",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "custom-connector",
+            "--source-type",
+            "CustomStreamConnector",
+            "--properties",
+            r#"{"dataConnectionId":"67a65f1d-6f20-4f80-aef0-a67730de7a2f","workspaceId":"9625b495-17b3-4d6c-aeea-a81ae76ba369","itemId":"ee579458-85ea-4652-bd77-5c7d7c298b2a","configurations":[{"key":"api.key","value":"${key}"}]}"#,
+        ])
+        .assert()
+        .success();
+    let json = common::parse_json(&output);
+    assert_eq!(
+        json["data"]["details"]["source"]["type"],
+        "CustomStreamConnector"
+    );
+    assert_eq!(
+        json["data"]["details"]["source"]["properties"]["configurations"][0]["value"],
+        "${key}"
     );
 }

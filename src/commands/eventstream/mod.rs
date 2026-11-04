@@ -321,7 +321,7 @@ pub enum EventstreamCommand {
         #[arg(long)]
         name: String,
 
-        /// Source type (for example `CustomEndpoint`, `Cribl`, `FabricCapacityOperationEvents`, `ReferenceLakehouse`, `SAPDatasphere`)
+        /// Source type (for example `CustomEndpoint`, `CustomStreamConnector`, `Cribl`, `FabricCapacityOperationEvents`, `ReferenceLakehouse`, `SAPDatasphere`)
         #[arg(long, visible_alias = "type")]
         source_type: String,
 

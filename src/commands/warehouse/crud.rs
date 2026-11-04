@@ -6,6 +6,8 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
+use super::{WarehouseDefinitionFormat, definitions};
+
 pub(super) async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
     let resp = client
         .get_list(
@@ -80,6 +82,7 @@ pub(super) async fn show(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn create(
     cli: &Cli,
     client: &FabricClient,
@@ -88,6 +91,9 @@ pub(super) async fn create(
     description: Option<&str>,
     sensitivity_label: Option<&str>,
     collation: Option<&str>,
+    definition_file: Option<&str>,
+    definition_dir: Option<&str>,
+    definition_format: Option<WarehouseDefinitionFormat>,
 ) -> Result<()> {
     let mut body = serde_json::json!({
         "displayName": name,
@@ -104,6 +110,11 @@ pub(super) async fn create(
         // Warehouse collation is set at create time via creationPayload.collationType.
         body["creationPayload"] = serde_json::json!({ "collationType": c });
     }
+    if let Some(definition) =
+        definitions::optional_definition(definition_file, definition_dir, definition_format)?
+    {
+        body["definition"] = definition;
+    }
 
     if output::dry_run_guard(
         cli,
@@ -113,7 +124,12 @@ pub(super) async fn create(
             "displayName": name,
             "description": description,
             "sensitivityLabel": sensitivity_label,
-            "collation": collation
+            "collation": collation,
+            "definitionFormat": definition_format.map(WarehouseDefinitionFormat::as_str),
+            "definitionPartCount": body.get("definition")
+                .and_then(|definition| definition.get("parts"))
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len)
         }),
     ) {
         return Ok(());

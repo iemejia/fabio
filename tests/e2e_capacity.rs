@@ -86,6 +86,71 @@ fn capacity_update_surge_protection_dry_run() {
 }
 
 #[test]
+fn capacity_actor_auto_detection_rules_dry_runs() {
+    let capacity = "96f3f0ff-4fe2-4712-b61b-05a456ba9357";
+    let rule = "a1f0c3e4-5b6d-4890-abcd-ef1234567890";
+    let created = fabio()
+        .args([
+            "--dry-run",
+            "capacity",
+            "create-actor-auto-detection-rule",
+            "--id",
+            capacity,
+            "--actors-subject-to-rule",
+            "AllWorkspaces",
+            "--threshold",
+            "25",
+            "--block-duration",
+            "Hours",
+            "--hours",
+            "24",
+        ])
+        .assert()
+        .success();
+    let created = parse_json(&created);
+    assert_eq!(
+        created["data"]["details"]["blockDuration"],
+        serde_json::json!({"type": "Hours", "hours": 24})
+    );
+
+    let updated = fabio()
+        .args([
+            "--dry-run",
+            "capacity",
+            "update-actor-auto-detection-rule",
+            "--id",
+            capacity,
+            "--rule-id",
+            rule,
+            "--block-duration",
+            "Indefinite",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&updated)["data"]["details"]["blockDuration"]["type"],
+        "Indefinite"
+    );
+
+    let deleted = fabio()
+        .args([
+            "--dry-run",
+            "capacity",
+            "delete-actor-auto-detection-rule",
+            "--id",
+            capacity,
+            "--rule-id",
+            rule,
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&deleted)["data"]["details"]["existingBlocksRemain"],
+        true
+    );
+}
+
+#[test]
 #[serial]
 fn capacity_update_surge_protection_sends_patch() {
     let rt = tokio::runtime::Builder::new_multi_thread()

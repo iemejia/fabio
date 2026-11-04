@@ -109,6 +109,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/environment_pool_activation.json"),
     ),
     (
+        "environment/get-publish-log",
+        include_str!("data/examples/environment_publish_log.json"),
+    ),
+    (
         "reflex/query-activations",
         include_str!("data/examples/reflex_query_activations.json"),
     ),
@@ -282,6 +286,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/warehouse_query.json"),
     ),
     (
+        "warehouse/get-definition",
+        include_str!("data/examples/warehouse_get_definition.json"),
+    ),
+    (
         "warehouse/mcp-url",
         include_str!("data/examples/warehouse_mcp_url.json"),
     ),
@@ -327,6 +335,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
         "capacity/list-skus",
         include_str!("data/examples/capacity_list_skus.json"),
+    ),
+    (
+        "capacity/list-actor-auto-detection-rules",
+        include_str!("data/examples/capacity_actor_auto_detection_rules.json"),
     ),
     (
         "admin/list-workspaces",
@@ -403,6 +415,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
         "data-agent/list-datasources",
         include_str!("data/examples/data_agent_list_datasources.json"),
+    ),
+    (
+        "data-agent/download-topic",
+        include_str!("data/examples/data_agent_download_topic.json"),
     ),
     (
         "data-agent/update-config",

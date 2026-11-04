@@ -1259,14 +1259,16 @@ fn item_capabilities_single_type_two_axes() {
     assert_eq!(lhj["data"]["supports_definition"], true);
     assert_eq!(lhj["data"]["deployable_from_definition"], false);
 
-    // Warehouse: no definition API at all.
+    // Warehouse: public DACPAC/SQL project definitions are fully round-trippable.
     let wh = fabio()
         .args(["context", "item-capabilities", "Warehouse"])
         .assert()
         .success();
     let whj: serde_json::Value =
         serde_json::from_str(&String::from_utf8_lossy(&wh.get_output().stdout)).unwrap();
-    assert_eq!(whj["data"]["supports_definition"], false);
+    assert_eq!(whj["data"]["supports_definition"], true);
+    assert_eq!(whj["data"]["deploy_strategy"], "content");
+    assert_eq!(whj["data"]["deployable_from_definition"], true);
 }
 
 #[test]

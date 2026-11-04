@@ -1,0 +1,22 @@
+{
+  "command": "fabio environment get-publish-log --workspace $WS --id $ENV",
+  "description": "Download the latest completed environment publish driver's stdout log.",
+  "response": {
+    "data": {
+      "content": "Starting Spark application...\nSpark application finished with exit code 0.\n",
+      "contentDisposition": "attachment; filename=\"publish-log-<environment-id>.log\"",
+      "truncated": false
+    }
+  },
+  "notes": "The log is available only after a publish that ran a Spark job completes. truncated=true means the body was capped at exactly 50 MB and ends with the documented truncation marker.",
+  "query_examples": [
+    {
+      "query": "data.content",
+      "description": "Extract the UTF-8 driver log."
+    },
+    {
+      "query": "data.truncated",
+      "description": "Check whether Fabric truncated the log."
+    }
+  ]
+}

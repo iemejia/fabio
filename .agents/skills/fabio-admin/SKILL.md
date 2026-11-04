@@ -166,23 +166,28 @@ List and inspect Fabric capacities
 |---|---|---|
 | `fabio capacity check-name` | no | Check if a capacity name is available (ARM API) |
 | `fabio capacity create` | yes | Create a new Fabric capacity (ARM API) |
+| `fabio capacity create-actor-auto-detection-rule` | yes | Create a capacity actor auto-detection rule |
 | `fabio capacity create-blocked-actor` | yes | Create or update a blocked workspace actor on a capacity |
 | `fabio capacity create-mission-critical-actor` | yes | Create a mission-critical workspace actor on a capacity |
 | `fabio capacity delete` | yes | Delete a Fabric capacity (ARM API) |
+| `fabio capacity delete-actor-auto-detection-rule` | yes | Delete a capacity actor auto-detection rule without clearing existing blocks |
 | `fabio capacity delete-blocked-actor` | yes | Delete a blocked actor |
 | `fabio capacity delete-mission-critical-actor` | yes | Delete a mission-critical actor |
 | `fabio capacity get-overage-configuration` | no | Get a capacity's overage configuration |
 | `fabio capacity get-surge-protection` | no | Get a capacity's background-operation surge protection configuration |
 | `fabio capacity list` | no | List capacities available to the caller (Fabric API) |
+| `fabio capacity list-actor-auto-detection-rules` | no | List capacity actor auto-detection rules |
 | `fabio capacity list-blocked-actors` | no | List blocked actors on a capacity |
 | `fabio capacity list-mission-critical-actors` | no | List mission-critical actors on a capacity |
 | `fabio capacity list-skus` | no | List available SKUs for Fabric capacities (ARM API) |
 | `fabio capacity resume` | yes | Resume a suspended capacity (ARM API) |
 | `fabio capacity show` | no | Show details of a specific capacity (Fabric API) |
+| `fabio capacity show-actor-auto-detection-rule` | no | Show a capacity actor auto-detection rule |
 | `fabio capacity show-blocked-actor` | no | Show a blocked actor |
 | `fabio capacity show-mission-critical-actor` | no | Show a mission-critical actor |
 | `fabio capacity suspend` | yes | Suspend (pause) a capacity (ARM API) |
 | `fabio capacity update` | yes | Update an existing Fabric capacity (ARM API) |
+| `fabio capacity update-actor-auto-detection-rule` | yes | Update a capacity actor auto-detection rule |
 | `fabio capacity update-blocked-actor` | yes | Update a blocked actor expiration policy |
 | `fabio capacity update-overage-configuration` | yes | Update a capacity's overage configuration |
 | `fabio capacity update-surge-protection` | yes | Update a capacity's background-operation surge protection configuration |
@@ -309,6 +314,7 @@ Manage governance policy sets and policy rules
 - capacity get-surge-protection/update-surge-protection use the Fabric scope and require capacity administrator permissions. Enabling an unconfigured capacity needs rejection and recovery thresholds; disabling clears persisted thresholds.
 - Do not assume create-blocked-actor is an idempotent upsert: although the REST spec describes a 200 update response, live duplicate POSTs returned BadRequest, even with a changed expiration policy. List/show to find the actor, then use update-blocked-actor for an existing entry.
 - capacity get-overage-configuration/update-overage-configuration are preview Fabric APIs requiring capacity admin. Thresholds are 0-240000 CU-hours; zero disables overage, and Disabled resets the threshold to zero.
+- Capacity actor auto-detection rules measure each actor's capacity-unit consumption over a rolling 24-hour window. actorsSubjectToRule currently supports only AllWorkspaces; threshold is 1-100%. Hours block duration requires hours>=1; Indefinite remains blocked until an admin unblocks the actor. Deleting the final rule disables auto-detection but NEVER clears existing blocks.
 - PolicySet rule APIs and tenant active lookup require beta=true; fabio supplies it. PolicySet definitions require format Beta and policySet.json. A set supports at most 50 rules per policy type. Use admin deactivate-policy-set for the tenant-active set; policy-set deactivate is for a capacity-scoped activation.
 - label list resolves UUIDs to names via Microsoft Graph (needs M365 E5 + InformationProtection.Read).
 - workspace recover-item can partially succeed: a failed child and its descendants remain soft-deleted while independent branches may recover.

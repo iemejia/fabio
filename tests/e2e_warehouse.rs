@@ -9,6 +9,105 @@ use wiremock::matchers::{body_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[test]
+fn warehouse_definition_create_and_update_dry_runs() {
+    let directory = tempfile::tempdir().unwrap();
+    let dacpac = directory.path().join("definition.dacpac");
+    std::fs::write(&dacpac, b"synthetic-dacpac").unwrap();
+    let dacpac = dacpac.to_str().unwrap();
+    let workspace = uuid::Uuid::nil().to_string();
+    let warehouse = "5b218778-e7a5-4d73-8187-f10824047715";
+
+    let created = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "create",
+            "--workspace",
+            &workspace,
+            "--name",
+            "definition-test",
+            "--definition-file",
+            dacpac,
+            "--definition-format",
+            "dacpac",
+        ])
+        .assert()
+        .success();
+    let created = parse_json(&created);
+    assert_eq!(created["data"]["details"]["definitionFormat"], "dacpac");
+    assert_eq!(created["data"]["details"]["definitionPartCount"], 1);
+
+    let updated = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "update-definition",
+            "--workspace",
+            &workspace,
+            "--id",
+            warehouse,
+            "--definition-file",
+            dacpac,
+            "--format",
+            "dacpac",
+            "--update-metadata",
+        ])
+        .assert()
+        .success();
+    let updated = parse_json(&updated);
+    assert_eq!(updated["data"]["details"]["format"], "dacpac");
+    assert_eq!(updated["data"]["details"]["partCount"], 1);
+    assert_eq!(updated["data"]["details"]["updateMetadata"], true);
+    assert_eq!(updated["data"]["destructive"], true);
+}
+
+#[test]
+fn warehouse_get_definition_uses_format_query_and_readonly_mode() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let workspace = uuid::Uuid::nil().to_string();
+    let warehouse = "5b218778-e7a5-4d73-8187-f10824047715";
+    let route = format!("/workspaces/{workspace}/warehouses/{warehouse}/getDefinition");
+    let server = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(route))
+            .and(wiremock::matchers::query_param("format", "dacpac"))
+            .and(body_json(serde_json::json!({})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "definition": {"parts": [{
+                    "path": "definition.dacpac",
+                    "payload": "ZGFjcGFj",
+                    "payloadType": "InlineBase64"
+                }]}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        server
+    });
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
+        .args([
+            "--readonly",
+            "warehouse",
+            "get-definition",
+            "--workspace",
+            &workspace,
+            "--id",
+            warehouse,
+            "--format",
+            "dacpac",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&output)["data"]["definition"]["parts"][0]["path"],
+        "definition.dacpac"
+    );
+}
+
+#[test]
 fn warehouse_sql_pools_get_and_patch_use_stable_route_without_beta() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let workspace = uuid::Uuid::nil().to_string();

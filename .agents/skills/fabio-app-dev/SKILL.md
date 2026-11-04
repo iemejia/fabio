@@ -39,14 +39,18 @@ Manage data agents (create, query, and interact with AI agents)
 | `fabio data-agent create` | yes | Create a new data agent |
 | `fabio data-agent delete` | yes | Delete a data agent |
 | `fabio data-agent delete-element` | yes | Delete a stale schema element (only elements no longer in the live schema) |
+| `fabio data-agent delete-topic` | yes | Delete a staging topic file |
 | `fabio data-agent describe-element` | yes | Set or clear a description on a table or column in a data source |
+| `fabio data-agent download-topic` | no | Download a Markdown topic file |
 | `fabio data-agent evaluate` | no | Batch-run a set of questions against a published data agent (evaluation primitive) |
+| `fabio data-agent format-topic` | no | Format a staging topic without modifying the stored file |
 | `fabio data-agent get-config` | no | Get the configuration of a data agent (instructions, data sources, preview runtime) |
 | `fabio data-agent get-definition` | no | Get the definition of a data agent (configuration, data sources, etc.) |
 | `fabio data-agent list` | no | List data agents in a workspace |
 | `fabio data-agent list-datasources` | no | List configured data sources for a data agent |
 | `fabio data-agent list-elements` | no | List elements (tables, columns) in a data source with selection state and descriptions |
 | `fabio data-agent list-fewshots` | no | List few-shot examples for a data source |
+| `fabio data-agent list-topics` | no | List Markdown topic files attached to a data source |
 | `fabio data-agent mcp-url` | no | Print the Model Context Protocol (MCP) endpoint URL for consuming a published data agent |
 | `fabio data-agent publish` | yes | Publish a data agent (promotes draft configuration to published state) |
 | `fabio data-agent query` | no | Query (chat with) a published data agent using natural language |
@@ -63,6 +67,7 @@ Manage data agents (create, query, and interact with AI agents)
 | `fabio data-agent update-definition` | yes | Update the definition of a data agent (configure data sources, instructions, etc.) |
 | `fabio data-agent update-fewshot` | yes | Update an existing few-shot example (question and/or query) |
 | `fabio data-agent upload-fewshots` | yes | Bulk upload few-shot examples from a JSON or CSV file |
+| `fabio data-agent upload-topic` | yes | Create or replace a staging Markdown topic file |
 | `fabio data-agent validate-fewshots` | no | Validate a data source's few-shot examples with an LLM (duplicates, conflicts, quality) |
 
 ### fabio graphql-api
@@ -179,6 +184,7 @@ Manage org app audiences (audience definitions for org apps)
 - Cosmos DB has a DATA-PLANE surface beyond item CRUD: 'list-containers'/'show-container', 'create-container' (autoscale-only — Fabric rejects manual/no throughput; fabio always sends the autoscale max, default 1000 RU/s), 'delete-container' (irreversible — drops all documents), 'query' (Cosmos NoSQL via --query-text/@file/stdin; cross-partition is automatic unless --partition-key is given; --parameter name=value binds @params; RU cost in verbose), 'import' (bulk JSONL/JSON-array, UPSERT by default = idempotent, partition key auto-derived from the container's partitionKey path — pass --continue-on-error to skip bad rows), single-document CRUD ('get-document'/'create-document'/'delete-document' — create derives the partition key from the doc unless --partition-key is given; get/delete require --partition-key), and 'export' (dumps a container as clean JSONL to a file or stdout, stripping Cosmos system fields _rid/_self/_etag/_attachments/_ts so export→import roundtrips cleanly). The Cosmos database name == the item display name; the endpoint is resolved from the item's properties.serverFqdn (override with --endpoint). Auth uses the https://cosmos.azure.com/.default scope.
 - app-backend has aliases (rayfin-app, data-app); org-app distribution pairs org-app with org-app-audience.
 - Data agent query languages are chosen by the DATA SOURCE type, and the agent generates the query itself: Lakehouse/Warehouse/SQLDatabase/MirroredDatabase -> NL2SQL, KQLDatabase -> NL2KQL, SemanticModel -> NL2DAX (Power BI datasets), Ontology/GraphModel -> graph. To do NL2DAX, `add-datasource --artifact-type SemanticModel`. CRITICAL: `add-datasource` does NOT auto-select a semantic model's TABLES (only columns) — you MUST `select-tables` for the source or the agent hallucinates instead of generating DAX. Re-`publish` after changing sources/selection (published config is a snapshot).
+- Datasource topics are Markdown basenames ending in .md. list/download support staging or published; upload/delete/format are staging operations. Upload and delete accept --if-match for optimistic concurrency. format-topic may be an LRO but is read-only: it returns formatted Markdown with applied:false and never changes the stored topic.
 
 ## Troubleshooting
 | Symptom | Fix |

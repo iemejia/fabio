@@ -13,6 +13,57 @@ const MOCK_ACTIVATION: &str = "cccccccc-1111-2222-3333-444444444444";
 
 #[test]
 #[serial]
+fn environment_get_publish_log_preserves_download_metadata() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let server = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/staging/publish/log"
+            )))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header(
+                        "Content-Disposition",
+                        "attachment; filename=\"publish-log.log\"",
+                    )
+                    .insert_header("x-ms-log-truncated", "true")
+                    .set_body_string("partial\n--- LOG TRUNCATED AT 50000000 BYTES ---"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        server
+    });
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
+        .args([
+            "environment",
+            "get-publish-log",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+        ])
+        .assert()
+        .success();
+    let data = parse_json(&output)["data"].clone();
+    assert_eq!(data["truncated"], true);
+    assert_eq!(
+        data["contentDisposition"],
+        "attachment; filename=\"publish-log.log\""
+    );
+    assert!(
+        data["content"]
+            .as_str()
+            .unwrap()
+            .ends_with("--- LOG TRUNCATED AT 50000000 BYTES ---")
+    );
+}
+
+#[test]
+#[serial]
 fn environment_staging_spark_compute_explicitly_requests_beta() {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()

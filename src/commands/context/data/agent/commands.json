@@ -5136,6 +5136,143 @@
         "examples": [
           "fabio capacity delete-mission-critical-actor --id $CAPACITY --actor-id $ACTOR --dry-run"
         ]
+      },
+      "create-actor-auto-detection-rule": {
+        "description": "Create a capacity actor auto-detection rule",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          },
+          "--actors-subject-to-rule": {
+            "type": "enum",
+            "values": [
+              "AllWorkspaces"
+            ],
+            "required": true,
+            "description": "Actors subject to the rule (currently `AllWorkspaces`)"
+          },
+          "--threshold": {
+            "type": "integer",
+            "required": true,
+            "description": "Per-actor capacity-unit consumption threshold over a rolling 24-hour window (1-100)"
+          },
+          "--block-duration": {
+            "type": "enum",
+            "values": [
+              "Hours",
+              "Indefinite"
+            ],
+            "required": true,
+            "description": "Duration for which an automatically detected actor remains blocked"
+          },
+          "--hours": {
+            "type": "integer",
+            "description": "Number of blocked hours; required for block duration Hours"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "async": false,
+        "examples": [
+          "fabio capacity create-actor-auto-detection-rule --id $CAPACITY --actors-subject-to-rule AllWorkspaces --threshold 25 --block-duration Hours --hours 24 --dry-run",
+          "fabio capacity create-actor-auto-detection-rule --id $CAPACITY --actors-subject-to-rule AllWorkspaces --threshold 50 --block-duration Indefinite --dry-run"
+        ]
+      },
+      "list-actor-auto-detection-rules": {
+        "description": "List capacity actor auto-detection rules",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio capacity list-actor-auto-detection-rules --id $CAPACITY"
+        ]
+      },
+      "show-actor-auto-detection-rule": {
+        "description": "Show a capacity actor auto-detection rule",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          },
+          "--rule-id": {
+            "type": "string",
+            "required": true,
+            "description": "Actor auto-detection rule ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio capacity show-actor-auto-detection-rule --id $CAPACITY --rule-id $RULE"
+        ]
+      },
+      "update-actor-auto-detection-rule": {
+        "description": "Update a capacity actor auto-detection rule",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          },
+          "--rule-id": {
+            "type": "string",
+            "required": true,
+            "description": "Actor auto-detection rule ID"
+          },
+          "--threshold": {
+            "type": "integer",
+            "description": "Per-actor capacity-unit consumption threshold over a rolling 24-hour window (1-100)"
+          },
+          "--block-duration": {
+            "type": "enum",
+            "values": [
+              "Hours",
+              "Indefinite"
+            ],
+            "description": "Replacement block duration; omit to preserve the existing duration"
+          },
+          "--hours": {
+            "type": "integer",
+            "description": "Number of blocked hours; required when replacing the duration with Hours"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "async": false,
+        "examples": [
+          "fabio capacity update-actor-auto-detection-rule --id $CAPACITY --rule-id $RULE --threshold 40 --dry-run",
+          "fabio capacity update-actor-auto-detection-rule --id $CAPACITY --rule-id $RULE --block-duration Indefinite --dry-run"
+        ]
+      },
+      "delete-actor-auto-detection-rule": {
+        "description": "Delete a capacity actor auto-detection rule without clearing existing blocks",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          },
+          "--rule-id": {
+            "type": "string",
+            "required": true,
+            "description": "Actor auto-detection rule ID"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true,
+        "examples": [
+          "fabio capacity delete-actor-auto-detection-rule --id $CAPACITY --rule-id $RULE --dry-run"
+        ]
       }
     }
   },
@@ -5799,12 +5936,31 @@
           "--collation": {
             "type": "string",
             "description": "Collation for the warehouse (create-time only). Values: `Latin1_General_100_BIN2_UTF8` (case-sensitive, default) or `Latin1_General_100_CI_AS_KS_WS_SC_UTF8` (case-insensitive)"
+          },
+          "--definition-file": {
+            "type": "string",
+            "description": "DACPAC or single SQL project definition file to include at creation"
+          },
+          "--definition-dir": {
+            "type": "string",
+            "description": "Directory containing SQL project definition parts to include at creation"
+          },
+          "--definition-format": {
+            "type": "enum",
+            "values": [
+              "dacpac",
+              "sqlproj"
+            ],
+            "description": "Public definition format; omitted format defaults to sqlproj"
           }
         },
         "mutates": true,
         "returns": "object",
+        "async": true,
         "examples": [
-          "fabio warehouse create --workspace $WS --name \"SalesWarehouse\""
+          "fabio warehouse create --workspace $WS --name \"SalesWarehouse\"",
+          "fabio warehouse create --workspace $WS --name \"SalesWarehouse\" --definition-file ./definition.dacpac --definition-format dacpac",
+          "fabio warehouse create --workspace $WS --name \"SalesWarehouse\" --definition-dir ./SalesWarehouse --definition-format sqlproj"
         ],
         "output_fields": [
           "id",
@@ -5857,6 +6013,82 @@
         "mutates": true,
         "returns": "void",
         "destructive": true
+      },
+      "get-definition": {
+        "description": "Get a warehouse public definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse ID"
+          },
+          "--format": {
+            "type": "enum",
+            "values": [
+              "dacpac",
+              "sqlproj"
+            ],
+            "description": "Definition format; omitted format defaults to sqlproj"
+          },
+          "--decode": {
+            "type": "bool",
+            "description": "Decode `InlineBase64` part payloads"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "async": true,
+        "examples": [
+          "fabio warehouse get-definition --workspace $WS --id $WAREHOUSE --format sqlproj --decode"
+        ]
+      },
+      "update-definition": {
+        "description": "Replace a warehouse public definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Warehouse ID"
+          },
+          "--definition-file": {
+            "type": "string",
+            "description": "DACPAC or single SQL project definition file"
+          },
+          "--definition-dir": {
+            "type": "string",
+            "description": "Directory containing all SQL project definition parts"
+          },
+          "--format": {
+            "type": "enum",
+            "values": [
+              "dacpac",
+              "sqlproj"
+            ],
+            "description": "Public definition format; omitted format defaults to sqlproj"
+          },
+          "--update-metadata": {
+            "type": "bool",
+            "description": "Apply metadata from a supplied .platform definition part"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "async": true,
+        "destructive": true,
+        "examples": [
+          "fabio warehouse update-definition --workspace $WS --id $WAREHOUSE --definition-file ./definition.dacpac --format dacpac --dry-run",
+          "fabio warehouse update-definition --workspace $WS --id $WAREHOUSE --definition-dir ./SalesWarehouse --format sqlproj --update-metadata --dry-run"
+        ]
       },
       "query": {
         "description": "Execute a SQL query against a warehouse or SQL endpoint",
@@ -7887,7 +8119,7 @@
             "description": "Data source name or ID"
           },
           "--stage": {
-            "type": "string",
+            "type": "enum",
             "description": "Stage to read: staging (draft) or published (live). Default: staging"
           },
           "--llm-endpoint": {
@@ -7945,7 +8177,7 @@
             "description": "Data agent ID"
           },
           "--stage": {
-            "type": "string",
+            "type": "enum",
             "description": "Stage to read: staging (draft) or published (live). Default: staging"
           }
         },
@@ -8008,7 +8240,7 @@
             "description": "Data agent ID"
           },
           "--stage": {
-            "type": "string",
+            "type": "enum",
             "description": "Stage to read: staging (draft) or published (live). Default: staging"
           }
         },
@@ -8037,7 +8269,7 @@
             "description": "Data source name or ID"
           },
           "--stage": {
-            "type": "string",
+            "type": "enum",
             "description": "Stage to read: staging (draft) or published (live). Default: staging"
           }
         },
@@ -8143,6 +8375,188 @@
         "async": false,
         "examples": [
           "fabio data-agent update-datasource -w $WS --id $AGENT --datasource \"SalesLakehouse\" --instructions \"Contains order history and product catalog. Use for sales analytics queries.\""
+        ]
+      },
+      "list-topics": {
+        "description": "List Markdown topic files attached to a data source",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Data agent ID"
+          },
+          "--datasource": {
+            "type": "string",
+            "required": true,
+            "description": "Data source name or ID"
+          },
+          "--stage": {
+            "type": "enum",
+            "values": [
+              "staging",
+              "published"
+            ],
+            "description": "Stage to read: staging (draft) or published (live)"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio data-agent list-topics --workspace $WS --id $AGENT --datasource $SOURCE --stage staging",
+          "fabio data-agent list-topics --workspace $WS --id $AGENT --datasource $SOURCE --stage published"
+        ]
+      },
+      "download-topic": {
+        "description": "Download a Markdown topic file",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Data agent ID"
+          },
+          "--datasource": {
+            "type": "string",
+            "required": true,
+            "description": "Data source name or ID"
+          },
+          "--file-name": {
+            "type": "string",
+            "required": true,
+            "description": "Topic file name ending in .md"
+          },
+          "--stage": {
+            "type": "enum",
+            "values": [
+              "staging",
+              "published"
+            ],
+            "description": "Stage to read: staging (draft) or published (live)"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio data-agent download-topic --workspace $WS --id $AGENT --datasource $SOURCE --file-name guidance.md --stage staging"
+        ]
+      },
+      "upload-topic": {
+        "description": "Create or replace a staging Markdown topic file",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Data agent ID"
+          },
+          "--datasource": {
+            "type": "string",
+            "required": true,
+            "description": "Data source name or ID"
+          },
+          "--file-name": {
+            "type": "string",
+            "required": true,
+            "description": "Topic file name ending in .md"
+          },
+          "--file": {
+            "type": "string",
+            "description": "UTF-8 Markdown file to upload"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline Markdown content"
+          },
+          "--if-match": {
+            "type": "string",
+            "description": "`ETag` in quotes; upload succeeds only when the current `ETag` matches"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true,
+        "examples": [
+          "fabio data-agent upload-topic --workspace $WS --id $AGENT --datasource $SOURCE --file-name guidance.md --file ./guidance.md --dry-run",
+          "fabio data-agent upload-topic --workspace $WS --id $AGENT --datasource $SOURCE --file-name guidance.md --content '# Guidance' --if-match '\"etag\"' --dry-run"
+        ]
+      },
+      "format-topic": {
+        "description": "Format a staging topic without modifying the stored file",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Data agent ID"
+          },
+          "--datasource": {
+            "type": "string",
+            "required": true,
+            "description": "Data source name or ID"
+          },
+          "--file-name": {
+            "type": "string",
+            "required": true,
+            "description": "Topic file name ending in .md"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "async": true,
+        "examples": [
+          "fabio data-agent format-topic --workspace $WS --id $AGENT --datasource $SOURCE --file-name guidance.md"
+        ]
+      },
+      "delete-topic": {
+        "description": "Delete a staging topic file",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Data agent ID"
+          },
+          "--datasource": {
+            "type": "string",
+            "required": true,
+            "description": "Data source name or ID"
+          },
+          "--file-name": {
+            "type": "string",
+            "required": true,
+            "description": "Topic file name ending in .md"
+          },
+          "--if-match": {
+            "type": "string",
+            "description": "`ETag` in quotes; deletion succeeds only when the current `ETag` matches"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true,
+        "examples": [
+          "fabio data-agent delete-topic --workspace $WS --id $AGENT --datasource $SOURCE --file-name guidance.md --if-match '\"etag\"' --dry-run"
         ]
       },
       "list-fewshots": {
@@ -9423,6 +9837,26 @@
         "async": true,
         "examples": [
           "fabio environment publish --workspace $WS --id $ENV"
+        ]
+      },
+      "get-publish-log": {
+        "description": "Download the driver stdout log for the latest completed publish",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Environment ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio environment get-publish-log --workspace $WS --id $ENV"
         ]
       },
       "cancel-publish": {
@@ -14629,7 +15063,7 @@
           "--source-type": {
             "type": "string",
             "required": true,
-            "description": "Source type (for example `CustomEndpoint`, `Cribl`, `FabricCapacityOperationEvents`, `ReferenceLakehouse`, `SAPDatasphere`)"
+            "description": "Source type (for example `CustomEndpoint`, `CustomStreamConnector`, `Cribl`, `FabricCapacityOperationEvents`, `ReferenceLakehouse`, `SAPDatasphere`)"
           },
           "--properties": {
             "type": "string",

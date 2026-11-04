@@ -349,6 +349,52 @@ pub(super) fn validate_source_properties(source_type: &str, props: &Value) -> Re
         validate_lakehouse_change_feed_source(props)?;
     } else if source_type.eq_ignore_ascii_case("FabricCapacityOperationEvents") {
         validate_capacity_operation_source(props)?;
+    } else if source_type.eq_ignore_ascii_case("CustomStreamConnector") {
+        validate_custom_stream_connector_source(props)?;
+    }
+    Ok(())
+}
+
+fn validate_custom_stream_connector_source(props: &Value) -> Result<()> {
+    for field in ["dataConnectionId", "workspaceId", "itemId"] {
+        if let Some(value) = props.get(field) {
+            let value = value.as_str().ok_or_else(|| {
+                FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!("CustomStreamConnector property '{field}' must be a UUID string"),
+                    format!("Provide '{field}' as a UUID in --properties."),
+                )
+            })?;
+            validate_uuid(value, &format!("CustomStreamConnector {field}"))?;
+        }
+    }
+    if let Some(configurations) = props.get("configurations") {
+        let configurations = configurations.as_array().ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "CustomStreamConnector property 'configurations' must be an array",
+                r#"Example: "configurations":[{"key":"topic","value":"orders"}]"#,
+            )
+        })?;
+        for (index, configuration) in configurations.iter().enumerate() {
+            let object = configuration.as_object().ok_or_else(|| {
+                FabioError::new(
+                    ErrorCode::InvalidInput,
+                    format!("CustomStreamConnector configurations[{index}] must be a JSON object"),
+                )
+            })?;
+            for field in ["key", "value"] {
+                if object.get(field).is_some_and(|value| !value.is_string()) {
+                    return Err(FabioError::new(
+                        ErrorCode::InvalidInput,
+                        format!(
+                            "CustomStreamConnector configurations[{index}].{field} must be a string"
+                        ),
+                    )
+                    .into());
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -1113,6 +1159,7 @@ pub(super) fn list_components(cli: &Cli, category: &str) {
         {"type": "ConfluentCloud", "category": "source", "description": "Confluent Cloud Kafka"},
         {"type": "Cribl", "category": "source", "description": "Cribl via a Kafka-compatible endpoint"},
         {"type": "CustomEndpoint", "category": "source", "description": "Custom app endpoint (Event Hub-compatible)"},
+        {"type": "CustomStreamConnector", "category": "source", "description": "Custom Stream Connector item with server-resolved runtime configuration"},
         {"type": "FabricAnomalyDetectionEvents", "category": "source", "description": "Fabric anomaly detection events"},
         {"type": "FabricCapacityOperationEvents", "category": "source", "description": "Fabric capacity operation started/completed events"},
         {"type": "FabricCapacityOverviewEvents", "category": "source", "description": "Fabric capacity overview events"},
@@ -1215,6 +1262,42 @@ mod tests {
             assert!(OPERATOR_TYPES.contains(&t), "missing operator type {t}");
         }
         assert_eq!(OPERATOR_TYPES.len(), 7);
+    }
+
+    #[test]
+    fn custom_stream_connector_accepts_optional_ids_and_placeholders() {
+        let props = json!({
+            "dataConnectionId": "67a65f1d-6f20-4f80-aef0-a67730de7a2f",
+            "workspaceId": "9625b495-17b3-4d6c-aeea-a81ae76ba369",
+            "itemId": "ee579458-85ea-4652-bd77-5c7d7c298b2a",
+            "configurations": [
+                {"key": "topic", "value": "orders"},
+                {"key": "api.key", "value": "${key}"}
+            ]
+        });
+        assert!(validate_source_properties("CustomStreamConnector", &props).is_ok());
+        assert!(
+            validate_source_properties("CustomStreamConnector", &json!({})).is_ok(),
+            "all connector properties are optional in the API schema"
+        );
+    }
+
+    #[test]
+    fn custom_stream_connector_rejects_invalid_typed_properties() {
+        assert!(
+            validate_source_properties(
+                "CustomStreamConnector",
+                &json!({"workspaceId": "not-a-uuid"})
+            )
+            .is_err()
+        );
+        assert!(
+            validate_source_properties(
+                "CustomStreamConnector",
+                &json!({"configurations": [{"key": 42}]})
+            )
+            .is_err()
+        );
     }
 
     #[test]

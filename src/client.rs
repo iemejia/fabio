@@ -258,6 +258,14 @@ pub struct PaginatedResponse {
     pub continuation_token: Option<String>,
 }
 
+/// Text response plus selected Fabric headers used by file-like endpoints.
+pub struct TextResponse {
+    pub content: String,
+    pub etag: Option<String>,
+    pub content_disposition: Option<String>,
+    pub truncated: bool,
+}
+
 /// Metadata returned by an accepted item-job trigger.
 #[derive(Debug)]
 pub struct TriggeredJob {
@@ -1414,6 +1422,11 @@ impl FabricClient {
     /// GET request returning raw text response as a JSON string value.
     /// Used for endpoints that return non-JSON content (e.g., file downloads).
     pub async fn get_text(&self, path: &str) -> Result<String> {
+        Ok(self.get_text_response(path).await?.content)
+    }
+
+    /// GET request returning UTF-8 text plus file-response metadata.
+    pub async fn get_text_response(&self, path: &str) -> Result<TextResponse> {
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
@@ -1440,14 +1453,39 @@ impl FabricClient {
             if !status.is_success() {
                 return Err(error_from_failed_response(resp).await.into());
             }
-            return Ok(resp.text().await.unwrap_or_default());
+            return Self::text_response(resp).await;
         }
 
         let status = resp.status();
         if !status.is_success() {
             return Err(error_from_failed_response(resp).await.into());
         }
-        Ok(resp.text().await.unwrap_or_default())
+        Self::text_response(resp).await
+    }
+
+    async fn text_response(resp: Response) -> Result<TextResponse> {
+        let etag = resp
+            .headers()
+            .get("ETag")
+            .and_then(|value| value.to_str().ok())
+            .map(String::from);
+        let content_disposition = resp
+            .headers()
+            .get("Content-Disposition")
+            .and_then(|value| value.to_str().ok())
+            .map(String::from);
+        let truncated = resp
+            .headers()
+            .get("x-ms-log-truncated")
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value.eq_ignore_ascii_case("true"));
+        let content = resp.text().await?;
+        Ok(TextResponse {
+            content,
+            etag,
+            content_disposition,
+            truncated,
+        })
     }
 
     /// GET a paginated list from Fabric REST API.
@@ -1562,6 +1600,11 @@ impl FabricClient {
     /// POST request for a semantically read-only API such as query execution.
     pub async fn post_readonly(&self, path: &str, body: &Value) -> Result<Value> {
         self.post_impl(path, Some(body), false).await
+    }
+
+    /// Semantically read-only POST that may return an LRO.
+    pub async fn post_readonly_lro(&self, path: &str, body: &Value) -> Result<Value> {
+        self.post_impl(path, Some(body), true).await
     }
 
     async fn post_impl(&self, path: &str, body: Option<&Value>, poll: bool) -> Result<Value> {
@@ -1806,6 +1849,99 @@ impl FabricClient {
         }
 
         self.handle_bytes_lro_response(resp, &token, accept).await
+    }
+
+    /// Semantically read-only POST without a request body that returns UTF-8 text.
+    pub async fn post_empty_readonly_text_with_accept(
+        &self,
+        path: &str,
+        accept: &str,
+    ) -> Result<TextResponse> {
+        let token = self.require_auth().await?;
+        let url = self.fabric_url(path);
+        let resp = self
+            .http
+            .post(&url)
+            .header(AUTHORIZATION, &token)
+            .header("Accept", accept)
+            .header(CONTENT_LENGTH, "0")
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .http
+                .post(&url)
+                .header(AUTHORIZATION, &token)
+                .header("Accept", accept)
+                .header(CONTENT_LENGTH, "0")
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            return self.handle_text_lro_response(resp, &token, accept).await;
+        }
+
+        self.handle_text_lro_response(resp, &token, accept).await
+    }
+
+    async fn handle_text_lro_response(
+        &self,
+        resp: Response,
+        token: &str,
+        accept: &str,
+    ) -> Result<TextResponse> {
+        if resp.status() != StatusCode::ACCEPTED {
+            if !resp.status().is_success() {
+                return Err(error_from_failed_response(resp).await.into());
+            }
+            return Self::text_response(resp).await;
+        }
+
+        let poll_url = resp
+            .headers()
+            .get("Location")
+            .and_then(|value| value.to_str().ok())
+            .map(String::from)
+            .ok_or_else(|| {
+                FabioError::new(
+                    ErrorCode::ApiError,
+                    "Long-running text response did not include a Location header",
+                )
+            })?;
+        validate_trusted_url(&poll_url, "LRO poll URL")?;
+        let retry_after = retry_after_from_headers(resp.headers()).unwrap_or(LRO_POLL_INTERVAL);
+        let start = std::time::Instant::now();
+        loop {
+            if start.elapsed() > self.lro_max_wait {
+                return Err(FabioError::new(
+                    ErrorCode::Timeout,
+                    format!(
+                        "LRO polling timed out after {}s",
+                        self.lro_max_wait.as_secs()
+                    ),
+                )
+                .into());
+            }
+            sleep(retry_after.min(Duration::from_mins(1))).await;
+            let poll_resp = self
+                .http
+                .get(&poll_url)
+                .header(AUTHORIZATION, token)
+                .header("Accept", accept)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            if poll_resp.status() == StatusCode::ACCEPTED {
+                continue;
+            }
+            if !poll_resp.status().is_success() {
+                return Err(error_from_failed_response(poll_resp).await.into());
+            }
+            return Self::text_response(poll_resp).await;
+        }
     }
 
     /// Handle a response that may be 200 (immediate bytes) or 202 (LRO → poll → bytes).
@@ -2103,6 +2239,42 @@ impl FabricClient {
         handle_response(resp).await
     }
 
+    /// PUT raw text with a caller-selected content type and optional `ETag` precondition.
+    pub async fn put_raw_with_if_match(
+        &self,
+        path: &str,
+        content: &str,
+        content_type: &str,
+        if_match: Option<&str>,
+    ) -> Result<Value> {
+        self.guard_readonly("PUT", path)?;
+        let token = self.require_auth().await?;
+        let url = self.fabric_url(path);
+        let send = |token: &str| {
+            let mut request = self
+                .http
+                .put(&url)
+                .header(AUTHORIZATION, token)
+                .header("Content-Type", content_type)
+                .body(content.to_owned());
+            if let Some(etag) = if_match {
+                request = request.header("If-Match", etag);
+            }
+            request.send()
+        };
+        let mut resp = send(&token)
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            resp = send(&token)
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+        }
+        Self::merge_etag(resp).await
+    }
+
     /// DELETE request to Fabric REST API (retries once on 401).
     pub async fn delete(&self, path: &str) -> Result<Value> {
         self.guard_readonly("DELETE", path)?;
@@ -2135,6 +2307,31 @@ impl FabricClient {
             return handle_response(resp).await;
         }
 
+        handle_response(resp).await
+    }
+
+    /// DELETE request with an optional `ETag` precondition.
+    pub async fn delete_with_if_match(&self, path: &str, if_match: Option<&str>) -> Result<Value> {
+        self.guard_readonly("DELETE", path)?;
+        let token = self.require_auth().await?;
+        let url = self.fabric_url(path);
+        let send = |token: &str| {
+            let mut request = self.http.delete(&url).header(AUTHORIZATION, token);
+            if let Some(etag) = if_match {
+                request = request.header("If-Match", etag);
+            }
+            request.send()
+        };
+        let mut resp = send(&token)
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            resp = send(&token)
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+        }
         handle_response(resp).await
     }
 
