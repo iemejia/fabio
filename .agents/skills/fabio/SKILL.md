@@ -384,6 +384,12 @@ Automatic/SSO bindings may have no connection ID. Never invent IDs, infer identi
 grants, or run credential tests/ownership changes automatically. See
 `fabio context best-practices connection-diagnostics`.
 
+For Spark/environment triage, use `environment diagnostics` with an explicit
+environment ID or selected monitoring item/session. It never starts jobs or
+publishes environments. Historical success is not warm-capacity evidence;
+application telemetry is explicitly not attempt-pinned, and log contents are
+not included. See `fabio context best-practices spark-diagnostics`.
+
 **Lakehouse (files, tables, sync, Iceberg, Materialized Lake Views):**
 ```bash
 fabio lakehouse create --workspace $WS --name "DataLake"

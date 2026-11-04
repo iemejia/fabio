@@ -71,7 +71,16 @@ where
 {
     let interval = std::time::Duration::from_secs(opts.interval.unwrap_or(5).max(1));
     let deadline = tokio::time::Instant::now()
-        + std::time::Duration::from_secs(opts.max_duration.unwrap_or(60));
+        .checked_add(std::time::Duration::from_secs(
+            opts.max_duration.unwrap_or(60),
+        ))
+        .ok_or_else(|| {
+            crate::errors::FabioError::with_hint(
+                crate::errors::ErrorCode::InvalidInput,
+                "Follow duration exceeds the clock's supported range.",
+                "Use a bounded --max-duration in seconds.",
+            )
+        })?;
     let row_limit = cli.limit;
 
     let mut cycle: u64 = 0;
@@ -80,17 +89,34 @@ where
     let mut stop_reason = "max_duration";
 
     loop {
+        if tokio::time::Instant::now() >= deadline {
+            break;
+        }
+        if row_limit.is_some_and(|limit| total_emitted >= limit) {
+            stop_reason = "limit";
+            break;
+        }
         cycle += 1;
         let started = tokio::time::Instant::now();
 
         let mut reached_terminal = false;
-        let event = match fetch().await {
+        let fetched = tokio::select! {
+            result=tokio::time::timeout_at(deadline,fetch()) => result.ok(),
+            Ok(())=tokio::signal::ctrl_c()=> {stop_reason="interrupted";None}
+        };
+        let Some(fetched) = fetched else {
+            break;
+        };
+        let event = match fetched {
             Ok((rows, columns)) => {
                 reached_terminal = stop_when(&rows);
-                let new_rows = match opts.dedup_column.as_deref() {
+                let mut new_rows = match opts.dedup_column.as_deref() {
                     Some(col) => filter_new_rows(&rows, col, &mut last_max),
                     None => rows,
                 };
+                if let Some(limit) = row_limit {
+                    new_rows.truncate(limit.saturating_sub(total_emitted));
+                }
                 total_emitted += new_rows.len();
                 serde_json::json!({
                     "cycle": cycle,
@@ -118,14 +144,14 @@ where
             break;
         }
 
-        let next = started + interval;
+        let next = started.checked_add(interval).unwrap_or(deadline);
         tokio::select! {
             () = tokio::time::sleep_until(next.min(deadline)) => {
                 if tokio::time::Instant::now() >= deadline {
                     break; // stop_reason keeps its default "max_duration"
                 }
             }
-            _ = tokio::signal::ctrl_c() => {
+            Ok(()) = tokio::signal::ctrl_c() => {
                 stop_reason = "interrupted";
                 break;
             }
@@ -230,5 +256,70 @@ mod tests {
         let out = filter_new_rows(&rows, "seq", &mut last);
         assert_eq!(out.len(), 1);
         assert_eq!(last, Some(json!(10)));
+    }
+
+    #[test]
+    fn follow_deadline_also_bounds_a_fetch_that_never_returns() {
+        use clap::Parser as _;
+        std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let cli = crate::cli::Cli::try_parse_from(["fabio", "workspace", "list"]).unwrap();
+                let opts = FollowOptions {
+                    max_duration: Some(1),
+                    ..Default::default()
+                };
+                tokio::runtime::Runtime::new().unwrap().block_on(async {
+                    tokio::time::timeout(
+                        std::time::Duration::from_secs(5),
+                        follow_stream(
+                            &cli,
+                            &opts,
+                            async || {
+                                std::future::pending::<Result<(Vec<Value>, Vec<String>)>>().await
+                            },
+                            |_| false,
+                        ),
+                    )
+                    .await
+                    .expect("in-flight fetch must respect follow deadline")
+                    .unwrap();
+                });
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
+    fn overflowing_poll_interval_is_clamped_to_the_deadline() {
+        use clap::Parser as _;
+        std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let cli = crate::cli::Cli::try_parse_from(["fabio", "workspace", "list"]).unwrap();
+                let options = FollowOptions {
+                    interval: Some(u64::MAX),
+                    max_duration: Some(1),
+                    dedup_column: None,
+                };
+                tokio::runtime::Runtime::new().unwrap().block_on(async {
+                    tokio::time::timeout(
+                        std::time::Duration::from_secs(5),
+                        follow_stream(
+                            &cli,
+                            &options,
+                            async || Ok((Vec::new(), Vec::new())),
+                            |_| false,
+                        ),
+                    )
+                    .await
+                    .expect("oversized interval must remain deadline-bounded")
+                    .unwrap();
+                });
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 }

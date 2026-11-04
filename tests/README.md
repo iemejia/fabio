@@ -39,6 +39,9 @@ cargo test --bin fabio remediation
 cargo test --test e2e_workspace_diagnostics
 cargo test --bin fabio connection::diagnostics
 cargo test --test e2e_connection_diagnostics
+cargo test --bin fabio environment::diagnostics
+cargo test --bin fabio commands::follow
+cargo test --test e2e_environment_diagnostics
 ```
 
 `tests/common/live.rs` is included only by the governance suite. Its deterministic
@@ -74,6 +77,9 @@ variables; never commit them or publish raw tenant output.
 | `FABIO_TEST_ONELAKE_TABLE_URL` | Optional canonical HTTPS OneLake URL of an existing, readable **Delta table, not a SQL view**. This source is read-only. When omitted, the test creates/deletes a schema-enabled lakehouse with a two-row CSV/Delta fixture. |
 | `FABIO_TEST_ENVIRONMENT_ID` | Existing environment in the source workspace, for the read-only diagnostics test. |
 | `FABIO_TEST_POOL_ACTIVATION_ID` | Existing pool-activation job in that environment. No Spark job is started just to create history. |
+| `FABIO_TEST_SPARK_ITEM_ID` | Existing readable Notebook/Lakehouse/Spark job definition owning a monitoring session. |
+| `FABIO_TEST_SPARK_ITEM_TYPE` | `notebook`, `lakehouse`, or `spark-job-definition` for that item. |
+| `FABIO_TEST_SPARK_LIVY_ID` | Existing monitoring session UUID with readable application/log metadata; not an interactive Livy state name. |
 | `FABIO_TEST_CONNECTION_PRINCIPAL_ID` | Explicitly approved **other** principal to receive temporary ownership of a newly created anonymous Web connection. Never an arbitrary discovered tenant user. |
 | `FABIO_TEST_CONNECTION_PRINCIPAL_TYPE` | `User` or `ServicePrincipal` for that recipient. |
 
@@ -107,6 +113,8 @@ cargo test --test e2e_deployment_governance live_unassigned_workspace_hint_requi
 # Pool history/filtering and missing-job errors; optional existing-job diagnostics
 cargo test --test e2e_deployment_governance live_environment_pool_activation_history -- --ignored
 cargo test --test e2e_deployment_governance live_environment_pool_activation_diagnostics -- --ignored
+cargo test --test e2e_deployment_governance live_environment_diagnostics_configuration_only -- --ignored
+cargo test --test e2e_deployment_governance live_environment_diagnostics_runtime_metadata_only -- --ignored
 
 # Connection effective role; admin CRUD and separate explicit-recipient ownership
 cargo test --test e2e_deployment_governance live_connection_effective_role -- --ignored
@@ -158,6 +166,15 @@ cargo test --test e2e_deployment_governance -- --ignored --test-threads=1
   never test stored credentials, grant access, or transfer ownership. Live
   PendingOwner and provisioned identity metadata need explicit approved fixtures;
   source authorization is deliberately not checked by this command at all.
+- Spark/environment diagnostic tests cover explicit/default context, publish and
+  staging observations, bounded history, resource-count validation, scoped
+  monitoring/application reads, redacted metadata-only logs, typed state filters,
+  and terminal-aware follow. Deadlines also bound in-flight requests; row limits
+  are exact. Live runtime tests require existing readable fixtures and do not
+  start jobs, publish, or activate pools. The approved one-off tiny Spark workload
+  was fixture setup, separate from diagnostics; positive activation-detail/follow
+  coverage still needs an existing pool-activation fixture, never a policy change
+  hidden in test setup.
 - The BI recipe test reads the runtime-published workflow instead of duplicating
   its command strings. It captures existing refresh IDs, submits framing once,
   waits for a new terminal refresh with a finite deadline, verifies the fixture's

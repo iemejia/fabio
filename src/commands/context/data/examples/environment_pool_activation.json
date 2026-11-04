@@ -26,7 +26,7 @@
       }
     }
   },
-  "notes": "List filtering supports only state eq '<JobHistoryStatus>'. --query applies to the payload under data, so omit the data prefix; runtimeVersion is a top-level payload field.",
+  "notes": "Prefer list-pool-activations --state <NotStarted|InProgress|Succeeded|Failed|Cancelled|Unknown>; it builds the supported state filter and conflicts with raw --filter. --query applies to one-shot payloads, not activation --follow. Follow emits bounded NDJSON and stops on failure/cancellation as well as success; reason complete is terminal, not successful. Historical Succeeded/resource counts are not current warm-capacity guarantees.",
   "query_examples": [
     {
       "query": "resourceStatusSummary.ready",

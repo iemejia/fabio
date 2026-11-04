@@ -1,0 +1,33 @@
+{
+  "topic": "spark-diagnostics",
+  "title": "Bounded Spark and environment observation workflows",
+  "summary": "GET-only environment diagnostics connects publishing, published/staging compute, bounded pool activation history, resource breakdown, and an explicitly selected monitoring session/application. Telemetry is application-scoped and not attempt-pinned; raw logs, causal claims, automatic restarts/publishing, and invented IDs are excluded. Typed state filters and bounded activation follow distinguish lifecycle completion from success.",
+  "entry_points": [
+    "fabio --wrap-untrusted --readonly environment diagnostics --workspace $WS --id $ENV",
+    "fabio --wrap-untrusted --readonly environment diagnostics --workspace $WS --id $ENV --activation-id $ACTIVATION --include-staging",
+    "fabio --wrap-untrusted --readonly environment diagnostics --workspace $WS --item-type notebook --item-id $NOTEBOOK --livy-id $LIVY --include-logs"
+  ],
+  "selection": [
+    "Select --id for environment metadata, publish state, published compute and activation history. --activation-id selects one exact activation detail instead of listing history. --include-staging compares only mutually reported compute fields; it does not prove library or arbitrary Spark-property parity and never publishes.",
+    "Select --item-id, --item-type and --livy-id together for a monitoring session. Without --id, only workspace Spark defaults and that session/application are inspected; no environment ID is guessed. With --id, both sets of observations are co-located but session/environment/activation binding remains not_verified. Do not infer causality or attachment merely from matching runtime versions.",
+    "The monitoring session UUID, item/workspace reference and item type must match before child application/log probes run. Monitoring states use NotStarted/InProgress/Succeeded/Failed/Cancelled/Unknown, not interactive Livy idle/busy/dead names. Future/absent/mismatched values stay unknown.",
+    "A validated application ID is read from the selected session. Application-scoped telemetry resolves the service's default attempt and is explicitly attemptPinned:false. attemptNumber is an observed counter, NOT a verified URL attempt ID. No alternate application/attempt routes are tried after an error, and exact-attempt correlation is not claimed."
+  ],
+  "interpretation": [
+    "ready means the requested configuration/lifecycle/telemetry observations were recognized, NOT end-to-end readiness. --strict prints the report but exits non-zero unless all requested observations are ready. Failed selected lifecycle states are blocked, ongoing/cancelled states need review, and unknown/unavailable evidence stays unknown.",
+    "Publish Success is not proof of library compatibility. Missing publish state is not proof of an unpublished environment. Staging differences are review signals, never authorization to publish or rewrite configuration.",
+    "History is bounded and not assumed newest-first; a historical failed activation does not establish a current failure cause. Complete empty history is not proof of warm capacity. A Succeeded activation can be finished, not currently available; inspect resourceStatusSummary for observed ready/acquired/failed counts, without claiming current headroom.",
+    "--include-logs reads driver stderr metadata and Livy log metadata, never file contents. Names, file paths, descriptions, cancellation reasons, arbitrary Spark properties and raw API error bodies are excluded. Empty advisor output and readable log metadata do not prove application health.",
+    "The current driver/executor log API requires --file-name even with --meta; for example --type driver --file-name stderr --meta. File names are query-encoded. Livy log metadata uses application id none and needs neither an app ID nor a file name."
+  ],
+  "bounds": [
+    "--timeout bounds the ENTIRE diagnostic read budget including pagination/retries. --page-limit and --activation-limit independently bound history; --all never overrides them. Partial, malformed, cyclic or URI-only continuation evidence stays unknown; arbitrary continuation URLs are never followed.",
+    "environment list-pool-activations --state <STATE> constructs the supported server-side state filter and conflicts with raw --filter. spark list-livy-sessions --state <STATE> filters only the returned page (or --all result); retain continuationToken and do not treat an empty filtered page as complete absence.",
+    "environment show-pool-activation --follow watches ONE explicit activation until Succeeded, Failed or Cancelled, or stops on --max-duration/--limit/Ctrl-C. In-flight reads are deadline-bounded. follow_complete reason complete means a terminal state was observed, not necessarily success. Unknown states are not terminal. Follow emits NDJSON and requires JSON output without --query."
+  ],
+  "safety": [
+    "Diagnostics/follow never start jobs, sessions or activations; publish/cancel environments; change pools; grant access; or fetch source data. Inspection/review nextSteps reuse the shared hint framework and never authorize mutations based on historical or incomplete evidence.",
+    "Source authorization, raw log contents, exact attempt pinning, library parity, session/environment attachment and live capacity headroom remain explicitly notChecked. These require separate, explicitly scoped verification; a diagnostic timeout does not cancel a workload."
+  ],
+  "see_also": ["fabio context examples environment diagnostics", "fabio context examples environment show-pool-activation", "fabio context best-practices remediation-hints", "fabio context best-practices connection-diagnostics"]
+}

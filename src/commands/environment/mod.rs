@@ -6,7 +6,10 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
+mod diagnostics;
+mod pool_activations;
 mod spark_compute;
+use crate::commands::spark_monitoring::JobState;
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 pub enum CustomLivePoolSupport {
@@ -48,6 +51,45 @@ pub enum EnvironmentCommand {
         /// Environment ID
         #[arg(long)]
         id: String,
+    },
+    /// Diagnose environment publishing, pool activation history, and an explicitly selected monitoring session
+    Diagnostics {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Environment ID (not a display name); omit only when selecting a monitoring session
+        #[arg(long, required_unless_present = "livy_id")]
+        id: Option<String>,
+        /// Inspect this exact activation; otherwise inspect bounded history, without assuming newest-first ordering
+        #[arg(long, requires = "id")]
+        activation_id: Option<String>,
+        /// Compare the reported staging compute fields with published compute (does not publish)
+        #[arg(long, requires = "id")]
+        include_staging: bool,
+        /// Explicit item owning the monitoring session; does not prove environment attachment
+        #[arg(long,requires_all=["item_type","livy_id"])]
+        item_id: Option<String>,
+        /// Monitoring item type (not the interactive Livy endpoint)
+        #[arg(long,value_parser=["notebook","spark-job-definition","lakehouse"],requires_all=["item_id","livy_id"])]
+        item_type: Option<String>,
+        /// Exact monitoring Livy session UUID; never creates a session
+        #[arg(long,requires_all=["item_id","item_type"])]
+        livy_id: Option<String>,
+        /// Inspect driver/Livy log metadata only, never raw log content
+        #[arg(long, requires = "livy_id")]
+        include_logs: bool,
+        /// Maximum activation history pages, never overridden by --all
+        #[arg(long,default_value="3",value_parser=clap::value_parser!(u8).range(1..=20))]
+        page_limit: u8,
+        /// Maximum activation rows retained, never overridden by --all
+        #[arg(long,default_value="10",value_parser=clap::value_parser!(u8).range(1..=50))]
+        activation_limit: u8,
+        /// Total seconds for all probes and retries
+        #[arg(long,default_value="30",value_parser=clap::value_parser!(u64).range(1..=300))]
+        timeout: u64,
+        /// Exit non-zero unless all requested observations are ready; still print the report
+        #[arg(long)]
+        strict: bool,
     },
     /// Create a new environment
     #[command(display_order = 3)]
@@ -381,6 +423,9 @@ pub enum EnvironmentCommand {
         /// Filter by state, for example: `state eq 'InProgress'`
         #[arg(long)]
         filter: Option<String>,
+        /// Typed activation state; conflicts with the raw --filter expression
+        #[arg(long, value_enum, conflicts_with = "filter")]
+        state: Option<JobState>,
     },
     /// Show detailed diagnostics for a pool activation
     ShowPoolActivation {
@@ -393,6 +438,15 @@ pub enum EnvironmentCommand {
         /// Pool activation ID
         #[arg(long)]
         activation_id: String,
+        /// Watch this activation until Succeeded, Failed, or Cancelled (not necessarily successful)
+        #[arg(long)]
+        follow: bool,
+        /// Seconds between reads in --follow mode
+        #[arg(long,value_parser=clap::value_parser!(u64).range(1..=300))]
+        interval: Option<u64>,
+        /// Total seconds to watch, including in-flight reads (default 60)
+        #[arg(long,value_parser=clap::value_parser!(u64).range(1..=3600))]
+        max_duration: Option<u64>,
     },
 }
 
@@ -401,6 +455,38 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EnvironmentComm
     match command {
         EnvironmentCommand::List { workspace } => list(cli, client, workspace).await,
         EnvironmentCommand::Show { workspace, id } => show(cli, client, workspace, id).await,
+        EnvironmentCommand::Diagnostics {
+            workspace,
+            id,
+            activation_id,
+            include_staging,
+            item_id,
+            item_type,
+            livy_id,
+            include_logs,
+            page_limit,
+            activation_limit,
+            timeout,
+            strict,
+        } => {
+            diagnostics::execute(
+                cli,
+                client,
+                workspace,
+                id.as_deref(),
+                activation_id.as_deref(),
+                *include_staging,
+                item_id.as_deref(),
+                item_type.as_deref(),
+                livy_id.as_deref(),
+                *include_logs,
+                *page_limit,
+                *activation_limit,
+                *timeout,
+                *strict,
+            )
+            .await
+        }
         EnvironmentCommand::Create {
             workspace,
             name,
@@ -553,72 +639,40 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EnvironmentComm
             id,
             page_size,
             filter,
-        } => list_pool_activations(cli, client, workspace, id, *page_size, filter.as_deref()).await,
+            state,
+        } => {
+            pool_activations::list(
+                cli,
+                client,
+                workspace,
+                id,
+                *page_size,
+                filter.as_deref(),
+                *state,
+            )
+            .await
+        }
         EnvironmentCommand::ShowPoolActivation {
             workspace,
             id,
             activation_id,
-        } => show_pool_activation(cli, client, workspace, id, activation_id).await,
+            follow,
+            interval,
+            max_duration,
+        } => {
+            pool_activations::show(
+                cli,
+                client,
+                workspace,
+                id,
+                activation_id,
+                *follow,
+                *interval,
+                *max_duration,
+            )
+            .await
+        }
     }
-}
-
-async fn list_pool_activations(
-    cli: &Cli,
-    client: &FabricClient,
-    workspace: &str,
-    id: &str,
-    page_size: Option<u32>,
-    filter: Option<&str>,
-) -> Result<()> {
-    let mut url = format!("/workspaces/{workspace}/environments/{id}/poolActivations");
-    let mut params = Vec::new();
-    if let Some(value) = page_size {
-        params.push(format!("pageSize={value}"));
-    }
-    if let Some(value) = filter {
-        params.push(format!("filter={}", urlencoding::encode(value)));
-    }
-    if !params.is_empty() {
-        url.push('?');
-        url.push_str(&params.join("&"));
-    }
-    let response = client
-        .get_list(&url, "value", cli.all, cli.continuation_token.as_deref())
-        .await
-        .map_err(|e| enrich_forbidden(e, "environment list-pool-activations", "Viewer"))?;
-    output::render_list_with_token(
-        cli,
-        &response.items,
-        &[
-            "name",
-            "state",
-            "jobType",
-            "actualStartDateTime",
-            "actualEndDateTime",
-            "jobInstanceId",
-        ],
-        &["NAME", "STATE", "JOB TYPE", "STARTED", "ENDED", "JOB ID"],
-        "jobInstanceId",
-        response.continuation_token.as_deref(),
-    );
-    Ok(())
-}
-
-async fn show_pool_activation(
-    cli: &Cli,
-    client: &FabricClient,
-    workspace: &str,
-    id: &str,
-    activation_id: &str,
-) -> Result<()> {
-    let data = client
-        .get(&format!(
-            "/workspaces/{workspace}/environments/{id}/poolActivations/{activation_id}"
-        ))
-        .await
-        .map_err(|e| enrich_forbidden(e, "environment show-pool-activation", "Viewer"))?;
-    output::render_object(cli, &data, "jobInstanceId");
-    Ok(())
 }
 
 // ─── CRUD ────────────────────────────────────────────────────────────────────

@@ -1,56 +1,23 @@
 //! Connection visibility is not credential health, and caller roles are not the
 //! workspace identity's grants. Only explicit IDs / scoped item references are read.
 
-use std::collections::{HashMap, HashSet};
-use std::time::Duration;
+use std::collections::HashMap;
 
 use anyhow::Result;
 use chrono::Utc;
 use serde::Serialize;
 use serde_json::{Value, json};
-use tokio::time::Instant;
 use uuid::Uuid;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::commands::diagnostics::{Check, Status, error_evidence, id, read, summary};
+use crate::commands::diagnostics::{
+    Check, PageCursor, ReadBudget as Budget, Status, encode_id, error_evidence, id, summary,
+    uuid_target as target,
+};
 use crate::commands::remediation::RecoveryHint;
 use crate::errors::{ErrorCode, FabioError, HintType};
 use crate::output;
-
-struct Budget(Instant);
-
-fn encode_id(value: Option<Uuid>) -> Option<String> {
-    value.map(|value| value.to_string())
-}
-
-impl Budget {
-    async fn get(&self, client: &FabricClient, path: &str) -> Result<Value> {
-        let remaining = self.0.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            return Err(FabioError::new(
-                ErrorCode::Timeout,
-                "Diagnostic deadline reached; no further reads attempted",
-            )
-            .into());
-        }
-        read(client, path, remaining).await
-    }
-}
-
-fn target(value: &str, flag: &str) -> Result<Uuid> {
-    Uuid::parse_str(value)
-        .ok()
-        .filter(|value| !value.is_nil())
-        .ok_or_else(|| {
-            FabioError::with_hint(
-                ErrorCode::InvalidInput,
-                format!("{flag} must be a non-zero UUID"),
-                "Supply the explicit resource ID, not a name, path, or wildcard.",
-            )
-            .into()
-        })
-}
 
 fn connection_show(connection: Uuid) -> String {
     format!("fabio --wrap-untrusted --readonly connection show --id {connection}")
@@ -260,6 +227,8 @@ struct References {
     error: Option<Value>,
     #[serde(skip)]
     rows: Vec<Value>,
+    #[serde(skip)]
+    cursor: PageCursor,
 }
 
 impl References {
@@ -310,25 +279,16 @@ impl References {
                 return None;
             }
         }
-        let token = &body["continuationToken"];
-        let uri = &body["continuationUri"];
-        if (!token.is_null() && !token.is_string()) || (!uri.is_null() && !uri.is_string()) {
-            self.reason = Some("malformed_continuation");
-            return None;
-        }
-        if let Some(token) = token.as_str().filter(|token| !token.is_empty()) {
-            if token.len() > 16_384 {
-                self.reason = Some("continuation_token_limit");
-                return None;
+        match self.cursor.next(body) {
+            Ok(token) => {
+                self.complete = token.is_none();
+                token
             }
-            return Some(token.to_string());
+            Err(reason) => {
+                self.reason = Some(reason);
+                None
+            }
         }
-        if uri.as_str().is_some_and(|uri| !uri.is_empty()) {
-            self.reason = Some("uri_only_continuation");
-        } else {
-            self.complete = true;
-        }
-        None
     }
 }
 
@@ -342,7 +302,6 @@ async fn references(
 ) -> References {
     let mut result = References::default();
     let mut token: Option<String> = None;
-    let mut seen_tokens = HashSet::new();
     let mut seen_ids = HashMap::new();
     for _ in 0..pages {
         let path = format!("/workspaces/{workspace}/items/{item}/connections");
@@ -353,13 +312,9 @@ async fn references(
         match budget.get(client, &path).await {
             Ok(body) => {
                 token = result.page(&body, limit, &mut seen_ids);
-                let Some(next) = &token else {
+                let Some(_) = &token else {
                     return result;
                 };
-                if !seen_tokens.insert(next.clone()) {
-                    result.reason = Some("repeated_continuation");
-                    return result;
-                }
             }
             Err(error) => {
                 result.reason = Some("read_failed");
@@ -409,7 +364,7 @@ pub(super) async fn execute(
     ) {
         return Ok(());
     }
-    let budget = Budget(Instant::now() + Duration::from_secs(timeout));
+    let budget = Budget::new(timeout);
     let metadata = if let Some(workspace) = workspace {
         Some(
             budget

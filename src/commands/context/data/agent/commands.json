@@ -9325,6 +9325,67 @@
         "mutates": false,
         "returns": "object"
       },
+      "diagnostics": {
+        "description": "Diagnose environment publishing, pool activation history, and an explicitly selected monitoring session",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "description": "Environment ID (not a display name); omit only when selecting a monitoring session"
+          },
+          "--activation-id": {
+            "type": "string",
+            "description": "Inspect this exact activation; otherwise inspect bounded history, without assuming newest-first ordering"
+          },
+          "--include-staging": {
+            "type": "bool",
+            "description": "Compare the reported staging compute fields with published compute (does not publish)"
+          },
+          "--item-id": {
+            "type": "string",
+            "description": "Explicit item owning the monitoring session; does not prove environment attachment"
+          },
+          "--item-type": {
+            "type": "enum",
+            "values": [
+              "notebook",
+              "spark-job-definition",
+              "lakehouse"
+            ],
+            "description": "Monitoring item type (not the interactive Livy endpoint)"
+          },
+          "--livy-id": {
+            "type": "string",
+            "description": "Exact monitoring Livy session UUID; never creates a session"
+          },
+          "--include-logs": {
+            "type": "bool",
+            "description": "Inspect driver/Livy log metadata only, never raw log content"
+          },
+          "--page-limit": {
+            "type": "integer",
+            "description": "Maximum activation history pages, never overridden by --all"
+          },
+          "--activation-limit": {
+            "type": "integer",
+            "description": "Maximum activation rows retained, never overridden by --all"
+          },
+          "--timeout": {
+            "type": "integer",
+            "description": "Total seconds for all probes and retries"
+          },
+          "--strict": {
+            "type": "bool",
+            "description": "Exit non-zero unless all requested observations are ready; still print the report"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
       "create": {
         "description": "Create a new environment",
         "flags": {
@@ -9778,6 +9839,18 @@
           "--filter": {
             "type": "string",
             "description": "Filter by state, for example: `state eq 'InProgress'`"
+          },
+          "--state": {
+            "type": "enum",
+            "values": [
+              "NotStarted",
+              "InProgress",
+              "Succeeded",
+              "Failed",
+              "Cancelled",
+              "Unknown"
+            ],
+            "description": "Typed activation state; conflicts with the raw --filter expression"
           }
         },
         "mutates": false,
@@ -9803,6 +9876,18 @@
             "type": "string",
             "required": true,
             "description": "Pool activation ID"
+          },
+          "--follow": {
+            "type": "bool",
+            "description": "Watch this activation until Succeeded, Failed, or Cancelled (not necessarily successful)"
+          },
+          "--interval": {
+            "type": "integer",
+            "description": "Seconds between reads in --follow mode"
+          },
+          "--max-duration": {
+            "type": "integer",
+            "description": "Total seconds to watch, including in-flight reads (default 60)"
           }
         },
         "mutates": false,
@@ -17647,6 +17732,18 @@
             "type": "string",
             "required": true,
             "description": "Workspace ID"
+          },
+          "--state": {
+            "type": "enum",
+            "values": [
+              "NotStarted",
+              "InProgress",
+              "Succeeded",
+              "Failed",
+              "Cancelled",
+              "Unknown"
+            ],
+            "description": "Filter the returned page (or --all result) by monitoring job state, not interactive idle/busy"
           }
         },
         "mutates": false,
@@ -18032,7 +18129,7 @@
           },
           "--file-name": {
             "type": "string",
-            "description": "Specific log file name (e.g. stderr, stdout) — required for driver/executor content"
+            "description": "Specific log file name (e.g. stderr, stdout) — required for driver/executor metadata and content"
           },
           "--meta": {
             "type": "bool",

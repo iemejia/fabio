@@ -88,6 +88,8 @@ diagnostic, and review messages are not shell instructions.
 Connection configuration and identity metadata are a separate scoped diagnostic:
 see [connection diagnostics](../connection-diagnostics/). It distinguishes caller
 roles from untested stored credentials and workspace-identity source grants.
+For runtime/configuration observations, see [Spark diagnostics](../spark-diagnostics/);
+workspace/capacity readiness alone is not Spark readiness.
 
 ## Automation and discovery
 

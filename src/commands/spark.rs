@@ -4,6 +4,7 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
+use crate::commands::spark_monitoring::{JobState, applications_base, spark_item_segment};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
@@ -225,6 +226,9 @@ pub enum SparkCommand {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
         workspace: String,
+        /// Filter the returned page (or --all result) by monitoring job state, not interactive idle/busy
+        #[arg(long, value_enum)]
+        state: Option<JobState>,
     },
     /// Get details of a Livy session
     #[command(display_order = 41)]
@@ -503,7 +507,7 @@ pub enum SparkCommand {
         #[arg(long)]
         attempt_id: Option<String>,
 
-        /// Specific log file name (e.g. stderr, stdout) — required for driver/executor content
+        /// Specific log file name (e.g. stderr, stdout) — required for driver/executor metadata and content
         #[arg(long)]
         file_name: Option<String>,
 
@@ -631,8 +635,8 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SparkCommand) -
             capacity_id,
             pool_id,
         } => delete_capacity_pool(cli, client, capacity_id, pool_id).await,
-        SparkCommand::ListLivySessions { workspace } => {
-            list_livy_sessions(cli, client, workspace).await
+        SparkCommand::ListLivySessions { workspace, state } => {
+            list_livy_sessions(cli, client, workspace, *state).await
         }
         SparkCommand::GetLivySession { workspace, livy_id } => {
             get_livy_session(cli, client, workspace, livy_id).await
@@ -1214,7 +1218,12 @@ async fn delete_capacity_pool(
 
 // ─── Livy Sessions ───────────────────────────────────────────────────────────
 
-async fn list_livy_sessions(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
+async fn list_livy_sessions(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    state: Option<JobState>,
+) -> Result<()> {
     let resp = client
         .get_list(
             &format!("/workspaces/{workspace}/spark/livySessions"),
@@ -1224,12 +1233,17 @@ async fn list_livy_sessions(cli: &Cli, client: &FabricClient, workspace: &str) -
         )
         .await?;
 
+    let items: Vec<_> = resp
+        .items
+        .into_iter()
+        .filter(|row| state.is_none_or(|state| JobState::parse(&row["state"]) == Some(state)))
+        .collect();
     output::render_list_with_token(
         cli,
-        &resp.items,
-        &["id", "name", "state", "kind"],
+        &items,
+        &["livyId", "livyName", "state", "jobType"],
         &["ID", "NAME", "STATE", "KIND"],
-        "id",
+        "livyId",
         resp.continuation_token.as_deref(),
     );
     Ok(())
@@ -1270,36 +1284,6 @@ fn read_json_body(file: Option<&str>, content: Option<&str>, command: &str) -> R
 }
 
 // ─── Spark monitoring APIs (advice / resource usage / logs) ──────────────────
-
-/// Map an `--item-type` value to its Fabric REST URL segment.
-fn spark_item_segment(item_type: &str) -> &'static str {
-    match item_type {
-        "spark-job-definition" => "sparkJobDefinitions",
-        "lakehouse" => "lakehouses",
-        // clap `value_parser` restricts this to the three known values;
-        // "notebook" (and any fallthrough) maps to notebooks.
-        _ => "notebooks",
-    }
-}
-
-/// Build the `applications/{appId}[/{attemptId}]` base path for the monitoring
-/// APIs (advice / resourceUsage / logs).
-fn applications_base(
-    workspace: &str,
-    segment: &str,
-    item_id: &str,
-    livy_id: &str,
-    app_id: &str,
-    attempt_id: Option<&str>,
-) -> String {
-    let base = format!(
-        "/workspaces/{workspace}/{segment}/{item_id}/livySessions/{livy_id}/applications/{app_id}"
-    );
-    match attempt_id {
-        Some(a) => format!("{base}/{a}"),
-        None => base,
-    }
-}
 
 #[allow(clippy::too_many_arguments)]
 async fn get_advice(
@@ -1371,6 +1355,11 @@ async fn get_logs(
             )
         })?
     };
+    if log_type != "livy" && file_name.is_none() {
+        return Err(FabioError::with_hint(ErrorCode::InvalidInput,
+            "--file-name is required for driver/executor metadata as well as content.",
+            "Specify a known file, for example --file-name stderr --meta. Livy log metadata needs no file name.").into());
+    }
     let segment = spark_item_segment(item_type);
     // Livy logs never use an attempt id.
     let attempt = if log_type == "livy" { None } else { attempt_id };
@@ -1386,7 +1375,7 @@ async fn get_logs(
     let mut query = format!("type={log_type}&meta={meta}");
     if let Some(f) = file_name {
         use std::fmt::Write as _;
-        let _ = write!(query, "&fileName={f}");
+        let _ = write!(query, "&fileName={}", urlencoding::encode(f));
     }
     let path = format!("{base}/logs?{query}");
 

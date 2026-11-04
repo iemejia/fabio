@@ -66,4 +66,8 @@ check('CI/CD: repair obsolete deployment-plan definition content', 'fabio contex
 check('CI/CD: repair obsolete deployment-plan definition content',
   '$schema: https://developer.microsoft.com/json-schemas/fabric/item/deploymentPlan/definition/plan/1.0.0/schema.json\nversion: 1.0.0', true);
 check('CI/CD: repair obsolete deployment-plan definition content', 'executableFormat: old\nid: old', false);
+check('Spark diagnostics: session-only triage never invents or publishes an environment',
+  'fabio environment diagnostics --workspace WS --item-type notebook --item-id NB --livy-id LIVY', true);
+check('Spark diagnostics: session-only triage never invents or publishes an environment',
+  'fabio environment diagnostics --workspace WS --item-type Notebook --item-id NB --livy-id LIVY', false);
 console.log(`Validated ${count} JavaScript assertions across ${config.tests.length} cases and the shared Foundry provider.`);

@@ -84,6 +84,7 @@ pub mod snowflake_database;
 pub mod spark;
 pub mod spark_job_definition;
 pub mod spark_livy;
+pub mod spark_monitoring;
 pub mod sql_audit;
 pub mod sql_database;
 pub mod sql_endpoint;

@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::cli::Cli;
 use crate::client::{FabricClient, validate_uuid};
-use crate::commands::diagnostics::{Check, Status, error_evidence, id, read, summary};
+use crate::commands::diagnostics::{Check, PageCursor, Status, error_evidence, id, read, summary};
 use crate::commands::remediation::{self, Kind, RecoveryHint as NextStep};
 use crate::errors::{ErrorCode, FabioError, HintType};
 use crate::output;
@@ -61,6 +61,8 @@ struct ActorScan {
     incomplete_reason: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<Value>,
+    #[serde(skip)]
+    cursor: PageCursor,
 }
 
 impl ActorScan {
@@ -102,28 +104,20 @@ impl ActorScan {
                 }}));
             }
         }
-        let token = &body["continuationToken"];
-        let uri = &body["continuationUri"];
-        if (!token.is_null() && !token.is_string()) || (!uri.is_null() && !uri.is_string()) {
-            self.fail("malformed_continuation");
-            return None;
-        }
-        if let Some(token) = token.as_str().filter(|token| !token.is_empty()) {
-            if token.len() > 16_384 {
-                self.fail("continuation_token_limit");
-                return None;
+        match self.cursor.next(body) {
+            Ok(token) => {
+                self.complete = token.is_none();
+                token
             }
-            self.complete = false;
-            return Some(token.to_string());
+            Err(reason) => {
+                self.fail(if reason == "repeated_continuation" {
+                    "continuation_cycle"
+                } else {
+                    reason
+                });
+                None
+            }
         }
-        if uri.as_str().is_some_and(|uri| !uri.is_empty()) {
-            // Stay on the validated capacity route; never follow an arbitrary
-            // API-returned URL or silently interpret a URI-only page as empty.
-            self.fail("uri_only_continuation");
-        } else {
-            self.complete = true;
-        }
-        None
     }
 }
 
@@ -137,7 +131,6 @@ async fn scan_actors(
     let mut result = ActorScan::default();
     let scan = async {
         let mut token: Option<String> = None;
-        let mut seen = HashSet::new();
         for _ in 0..page_limit {
             let url = token.as_ref().map_or_else(
                 || path.to_string(),
@@ -155,13 +148,9 @@ async fn scan_actors(
                 }
             };
             token = result.page(&body, workspace);
-            let Some(next) = &token else {
+            let Some(_) = &token else {
                 return;
             };
-            if !seen.insert(next.clone()) {
-                result.fail("continuation_cycle");
-                return;
-            }
         }
         result.fail("page_limit");
     };

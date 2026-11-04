@@ -44,6 +44,51 @@ defaultTest:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
 tests:
+  - description: "Spark diagnostics: session-only triage never invents or publishes an environment"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-data-engineering/SKILL.md"
+      user_query: "Diagnose monitoring session LIVY for notebook NB in workspace WS, but I have not supplied an environment ID. Inspect metadata only; do not start Spark work, publish or invent an environment."
+    assert:
+      - type: icontains
+        value: "environment diagnostics"
+      - type: icontains
+        value: "--livy-id"
+      - type: javascript
+        value: |
+          /--item-type\s+["']?notebook\b/.test(output) || /context\s+describe\s+environment\s+diagnostics/.test(output)
+      - type: llm-rubric
+        value: "The supported session-only invocation is environment diagnostics --workspace WS --item-type notebook --item-id NB --livy-id LIVY WITHOUT --id; it is valid and does not need an environment item. Uses that mode or discovers its exact flags. Does not invent --id ENV, launch work, publish, or claim defaults prove session attachment/end-to-end readiness."
+
+  - description: "Spark diagnostics: activation follow completion is not success"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-data-engineering/SKILL.md"
+      user_query: "Watch activation ACT in environment ENV, workspace WS, for at most 60 seconds. Stop if it fails or is cancelled too. Does follow_complete reason complete mean success?"
+    assert:
+      - type: icontains
+        value: "show-pool-activation"
+      - type: icontains
+        value: "--follow"
+      - type: icontains
+        value: "--max-duration"
+      - type: llm-rubric
+        value: "Watches one explicit activation with a bound, never starts/retries it or changes policy. Says complete means a terminal state, including failure or cancellation, not necessarily success. Unknown is not treated as terminal success."
+
+  - description: "Spark diagnostics: attemptNumber is not a verified attempt URI"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-data-engineering/SKILL.md"
+      user_query: "The session reports an attemptNumber and app ID. Should I manufacture an --attempt-id URL segment from the counter, or claim diagnostic application telemetry is exactly pinned to that attempt? I only want metadata, not raw logs."
+    assert:
+      - type: llm-rubric
+        value: "Rejects deriving a verified attempt identifier from attemptNumber. Explains application-scoped service-default telemetry is marked attemptPinned:false, without exact-attempt guarantees or guessed alternate-attempt retries. Logs remain metadata-only. environment diagnostics --include-logs internally selects driver stderr and needs no extra file flag; IF proposing a direct spark get-logs driver/executor metadata command, include a known --file-name such as stderr."
+
+  - description: "Spark diagnostics: history and staging differences never authorize a repair"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-data-engineering/SKILL.md"
+      user_query: "Our activation history has an old failure, the diagnostic scan is partial and staging differs from published compute. Should I automatically publish and restart the pool? Does historical Succeeded prove warm capacity now?"
+    assert:
+      - type: llm-rubric
+        value: "Does not authorize automatic publishing/restart/pool changes. Partial evidence stays unknown, history is not assumed newest-first or causal, and historical Succeeded does not prove currently warm resources/headroom. Recommends explicit scoped inspection and review."
+
   - description: "Connection diagnostics: PendingOwner is not effective ownership"
     vars:
       skill_content: "file://../../.agents/skills/fabio-admin/SKILL.md"

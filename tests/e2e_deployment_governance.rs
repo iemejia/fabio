@@ -985,6 +985,10 @@ fn live_environment_pool_activation_history() {
         .len(),
         0
     );
+    assert_eq!(
+        list(&run(&[args.as_slice(), &["--state", "Failed"]].concat())).len(),
+        0
+    );
     let missing = uuid::Uuid::new_v4().to_string();
     assert_not_found(&[
         "environment",
@@ -997,6 +1001,81 @@ fn live_environment_pool_activation_history() {
         &missing,
     ]);
     resource.delete();
+}
+
+#[test]
+#[ignore = "requires live tenant and explicit environment fixture; never publishes or activates a pool"]
+fn live_environment_diagnostics_configuration_only() {
+    let workspace = required_env("FABIO_TEST_SOURCE_WORKSPACE");
+    let environment = required_env("FABIO_TEST_ENVIRONMENT_ID");
+    let report = run(&[
+        "--readonly",
+        "environment",
+        "diagnostics",
+        "--workspace",
+        &workspace,
+        "--id",
+        &environment,
+        "--include-staging",
+    ]);
+    assert_reference(&report["data"]["environmentId"], &environment);
+    assert_eq!(
+        diagnostic_check(&report, "environment_access")["status"],
+        "ready"
+    );
+    assert_eq!(report["data"]["scope"]["mutates"], false);
+    assert_eq!(report["data"]["activationHistory"]["complete"], true);
+}
+
+#[test]
+#[ignore = "requires a readable existing monitoring session fixture; never starts Spark work"]
+fn live_environment_diagnostics_runtime_metadata_only() {
+    let workspace = required_env("FABIO_TEST_SOURCE_WORKSPACE");
+    let item = required_env("FABIO_TEST_SPARK_ITEM_ID");
+    let kind = required_env("FABIO_TEST_SPARK_ITEM_TYPE");
+    let livy = required_env("FABIO_TEST_SPARK_LIVY_ID");
+    let report = run(&[
+        "--readonly",
+        "environment",
+        "diagnostics",
+        "--workspace",
+        &workspace,
+        "--item-id",
+        &item,
+        "--item-type",
+        &kind,
+        "--livy-id",
+        &livy,
+        "--include-logs",
+        "--timeout",
+        "60",
+    ]);
+    assert!(report["data"]["environmentId"].is_null());
+    assert_eq!(
+        report["data"]["scope"]["applicationAttemptSelection"],
+        "server_default_unpinned"
+    );
+    for key in [
+        "spark_session",
+        "spark_advice",
+        "spark_resource_usage",
+        "driver_log_metadata",
+        "livy_log_metadata",
+    ] {
+        assert_eq!(
+            diagnostic_check(&report, key)["status"],
+            "ready",
+            "runtime metadata observation missing: {key}; tenant details withheld"
+        );
+    }
+    assert_eq!(
+        diagnostic_check(&report, "spark_resource_usage")["evidence"]["attemptPinned"],
+        false
+    );
+    assert_eq!(
+        diagnostic_check(&report, "driver_log_metadata")["evidence"]["contentIncluded"],
+        false
+    );
 }
 
 #[test]

@@ -1,10 +1,12 @@
 //! Shared, GET-only diagnostic contracts. Never copy raw API bodies into evidence.
 
+use std::collections::HashSet;
 use std::time::Duration;
 
 use anyhow::Result;
 use serde::Serialize;
 use serde_json::{Value, json};
+use tokio::time::Instant;
 use uuid::Uuid;
 
 use crate::client::FabricClient;
@@ -93,4 +95,96 @@ pub async fn read(client: &FabricClient, path: &str, timeout: Duration) -> Resul
     tokio::time::timeout(timeout, client.get(path))
         .await
         .map_err(|_| FabioError::new(ErrorCode::Timeout, "Diagnostic read reached its deadline"))?
+}
+
+/// One deadline shared by every probe, including retries and pagination.
+pub struct ReadBudget(Instant);
+
+impl ReadBudget {
+    pub fn new(seconds: u64) -> Self {
+        Self(Instant::now() + Duration::from_secs(seconds))
+    }
+
+    pub async fn get(&self, client: &FabricClient, path: &str) -> Result<Value> {
+        let remaining = self.0.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(FabioError::new(
+                ErrorCode::Timeout,
+                "Diagnostic deadline reached; no further reads attempted",
+            )
+            .into());
+        }
+        read(client, path, remaining).await
+    }
+}
+
+pub fn uuid_target(value: &str, flag: &str) -> Result<Uuid> {
+    Uuid::parse_str(value)
+        .ok()
+        .filter(|value| !value.is_nil())
+        .ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                format!("{flag} must be a non-zero UUID"),
+                "Supply the explicit resource ID, not a name, path, or wildcard.",
+            )
+            .into()
+        })
+}
+
+pub fn encode_id(value: Option<Uuid>) -> Option<String> {
+    value.map(|value| value.to_string())
+}
+
+/// A strict token-only cursor. Never follows a response's arbitrary URI.
+#[derive(Debug, Default)]
+pub struct PageCursor(HashSet<String>);
+
+impl PageCursor {
+    pub fn next(&mut self, body: &Value) -> std::result::Result<Option<String>, &'static str> {
+        let token = &body["continuationToken"];
+        let uri = &body["continuationUri"];
+        if (!token.is_null() && !token.is_string()) || (!uri.is_null() && !uri.is_string()) {
+            return Err("malformed_continuation");
+        }
+        if let Some(token) = token.as_str().filter(|token| !token.is_empty()) {
+            if token.len() > 16_384 {
+                return Err("continuation_token_limit");
+            }
+            if !self.0.insert(token.to_string()) {
+                return Err("repeated_continuation");
+            }
+            return Ok(Some(token.to_string()));
+        }
+        if uri.as_str().is_some_and(|uri| !uri.is_empty()) {
+            return Err("uri_only_continuation");
+        }
+        Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cursor_is_token_only_bounded_and_cycle_aware() {
+        let mut cursor = PageCursor::default();
+        let body = json!({"continuationToken":"opaque/?&value","continuationUri":"https://example.org/private"});
+        assert_eq!(cursor.next(&body), Ok(Some("opaque/?&value".to_string())));
+        assert_eq!(cursor.next(&body), Err("repeated_continuation"));
+        assert_eq!(
+            cursor.next(&json!({"continuationUri":"https://example.org/private"})),
+            Err("uri_only_continuation")
+        );
+        assert_eq!(
+            cursor.next(&json!({"continuationToken":42})),
+            Err("malformed_continuation")
+        );
+        assert_eq!(
+            cursor.next(&json!({"continuationToken":"x".repeat(16_385)})),
+            Err("continuation_token_limit")
+        );
+        assert_eq!(cursor.next(&json!({})), Ok(None));
+    }
 }

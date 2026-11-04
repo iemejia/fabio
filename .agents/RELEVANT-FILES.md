@@ -327,7 +327,12 @@
 - `src/commands/context/data/examples/workspace_diagnostics.json`: diagnostic response/next-step/query contract example
 - `docs/src/content/docs/guides/workspace-diagnostics.md`: user-facing diagnostic scope, status, permissions, bounds, and automation guide
 - `src/commands/remediation.rs`: pure shared inspection/review/remediation builders, guarded preview/missing-input contracts, metadata-preserving error enrichment, and CLI-parser unit tests
-- `src/commands/diagnostics.rs`: shared diagnostic check/status/provenance contracts and bounded GET helper, used by workspace and connection diagnostics
+- `src/commands/diagnostics.rs`: shared check/status/provenance contracts, total read budget, UUID normalization and strict token-only cursor used by workspace, connection and environment diagnostics
+- `src/commands/environment/diagnostics.rs`: bounded environment/defaults, publish/staging, activation history/resource and explicit Spark application/log-metadata observation report
+- `src/commands/environment/pool_activations.rs`: typed state filter, one-shot detail reads, sanitized terminal-aware activation follow and resource-count normalization
+- `src/commands/spark_monitoring.rs`: shared monitoring-state enum and Spark application route primitives (distinct from interactive Livy states)
+- `tests/e2e_environment_diagnostics.rs`: GET-only scope, staging/history/telemetry redaction, typed filters, metadata-only logs and hard follow/deadline regressions
+- `src/commands/context/data/best_practices/spark_diagnostics.json`, `src/commands/context/data/examples/environment_diagnostics.json`, `docs/src/content/docs/guides/spark-diagnostics.md`: canonical operational interpretation, output example and user guide
 - `src/commands/connection/diagnostics.rs`: explicit connection/item reference diagnostics, effective roles, identity configuration, safe evidence, bounded scans and total deadline
 - `tests/e2e_connection_diagnostics.rs`: offline CLI scope validation, GET-only/redaction contracts, PendingOwner, unknown states, automatic bindings, pagination and deadline regressions
 - `src/commands/context/data/best_practices/connection_diagnostics.json`, `src/commands/context/data/examples/connection_diagnostics.json`: canonical interpretation/safety guidance and representative structured output

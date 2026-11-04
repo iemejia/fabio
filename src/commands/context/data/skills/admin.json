@@ -28,6 +28,7 @@
     "Workspace-scoped item CRUD -> use the specific workload skill."
   ],
   "key_gotchas": [
+    "Workspace/capacity configuration readiness does not establish Spark pool/session readiness. Route explicit environment/session triage to environment diagnostics; it never starts Spark work or changes pools. See spark-diagnostics and the data-engineering skill.",
     "Connection diagnostic limits are explicit and never overridden by --all. Partial/forbidden/malformed reference evidence stays unknown, not no-connections or readiness. --timeout covers the whole diagnostic read budget. Read exact bounds with context describe connection diagnostics.",
     "connection diagnostics --id <CONNECTION_ID> optionally accepts --workspace for identity context, not binding proof. --workspace <WS> --item <ITEM> inspects only item-referenced IDs. PendingOwner is not usable ownership; missing roles, implicit Automatic/SSO IDs, partial scans and unavailable metadata stay unknown. credentialHealth/source authorization remain not_checked even when configuration is ready. See connection-diagnostics.",
     "Diagnostic nextSteps and strict error hints reuse evidence-based recovery builders. kind separates inspection/review/remediation; concrete fixes are --readonly --dry-run previews with requiresApproval:true and verifyAfter. Missing inputs stay in commandTemplate/missingInputs, never guessed. See remediation-hints.",
@@ -85,6 +86,7 @@
     }
   ],
   "shared_references": [
+    "spark-diagnostics",
     "connection-diagnostics",
     "remediation-hints",
     "workspace-diagnostics",

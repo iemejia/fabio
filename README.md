@@ -566,6 +566,13 @@ checks distinguish visible metadata, caller roles (including `PendingOwner`), an
 workspace identity configuration from **untested credential health and source
 authorization**. See the [connection diagnostics guide](https://ismaelmejia.com/fabio/guides/connection-diagnostics/).
 
+Use `environment diagnostics` for bounded publishing/compute/activation history
+and explicitly selected Spark session/application observations. Session-only
+mode does not require inventing an environment ID; log reads are metadata-only,
+and application telemetry is explicitly **not attempt-pinned**. Typed state
+filters and activation follow distinguish terminal lifecycle state from success.
+See [Spark diagnostics](https://ismaelmejia.com/fabio/guides/spark-diagnostics/).
+
 Use `fabio context describe <group> <command>` for examples of any specific command. Use `fabio context workflow <name>` for multi-step recipes. Available workflows:
 
 - `lakehouse-etl` -- Lakehouse + notebook + load-table + schedule

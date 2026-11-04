@@ -1,0 +1,27 @@
+{
+  "command": "fabio --wrap-untrusted --readonly environment diagnostics --workspace $WS --id $ENV",
+  "description": "A configuration observation over one environment; no Spark work is started and empty history is not warm-capacity evidence.",
+  "response": {"data": {
+    "workspaceId":"aaaaaaaa-1111-2222-3333-444444444444",
+    "environmentId":"bbbbbbbb-1111-2222-3333-444444444444",
+    "activationId":null,
+    "session":null,
+    "observedAt":"2026-11-04T12:00:00Z",
+    "scope":{"area":"environment_spark_observations","mutates":false,"includeStaging":false,"includeLogMetadata":false,"historyPageLimit":3,"historyActivationLimit":10,"timeoutSeconds":30,"environmentSource":"explicit_item","sessionEnvironmentBinding":"not_verified","applicationAttemptSelection":"not_requested","maxLogicalReads":5},
+    "status":"ready","partial":false,
+    "checks":[
+      {"checkId":"environment_access","status":"ready","message":"The requested environment metadata is visible.","evidence":{"source":"environment"},"nextSteps":[{"kind":"inspection","message":"Inspect the same scoped resource without changing it.","command":"fabio --wrap-untrusted --readonly environment show --workspace aaaaaaaa-1111-2222-3333-444444444444 --id bbbbbbbb-1111-2222-3333-444444444444","hintType":"retry_safe"}]},
+      {"checkId":"publish_state","status":"ready","message":"Only the reported publish state was observed.","evidence":{"source":"environment.properties.publishDetails","state":"Success"},"nextSteps":[{"kind":"inspection","message":"Inspect the same scoped resource without changing it.","command":"fabio --wrap-untrusted --readonly environment show --workspace aaaaaaaa-1111-2222-3333-444444444444 --id bbbbbbbb-1111-2222-3333-444444444444","hintType":"retry_safe"}]},
+      {"checkId":"published_compute","status":"ready","message":"Published configuration is not proof of runnable Spark.","evidence":{"source":"environment.sparkcompute","runtimeVersion":"2.0","poolId":null,"driverCores":4,"executorCores":4},"nextSteps":[{"kind":"inspection","message":"Inspect the same scoped resource without changing it.","command":"fabio --wrap-untrusted --readonly environment get-spark-settings --workspace aaaaaaaa-1111-2222-3333-444444444444 --id bbbbbbbb-1111-2222-3333-444444444444","hintType":"retry_safe"}]},
+      {"checkId":"activation_history","status":"ready","message":"No newest-first ordering or current warm capacity is inferred.","evidence":{"pagesScanned":1,"rowsScanned":0,"complete":true,"reason":null,"error":null,"observations":[]},"nextSteps":[{"kind":"inspection","message":"Inspect the same scoped resource without changing it.","command":"fabio --wrap-untrusted --readonly environment list-pool-activations --workspace aaaaaaaa-1111-2222-3333-444444444444 --id bbbbbbbb-1111-2222-3333-444444444444","hintType":"retry_safe"}]}
+    ],
+    "activationHistory":{"pagesScanned":1,"rowsScanned":0,"complete":true,"reason":null,"error":null,"observations":[]},
+    "notChecked":["session/environment/activation binding","exact application attempt pinning","raw log contents","library compatibility and staged library parity","arbitrary Spark properties","source authorization","live capacity headroom","workload execution"],
+    "limitations":"Configuration/historical observations only, not a causal diagnosis or end-to-end readiness. No work or mutations are started."
+  }},
+  "notes":"Select an explicit monitoring session with --item-id/--item-type/--livy-id; --id may then be omitted to inspect workspace defaults without inventing an environment. Telemetry is application-scoped, attemptPinned:false, and never treated as exact-attempt evidence. --include-logs reads metadata only. --strict retains stdout but exits non-zero for non-ready requested observations.",
+  "query_examples":[
+    {"query":"checks[].{check:checkId,status:status}","description":"Inspect per-observation status without assuming global workload readiness."},
+    {"query":"activationHistory.observations[].{activation:jobInstanceId,state:state}","description":"Inspect bounded history without assuming ordering or current availability."}
+  ]
+}
