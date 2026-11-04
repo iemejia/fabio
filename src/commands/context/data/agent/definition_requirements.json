@@ -132,6 +132,11 @@
       "optionalParts": [".platform"],
       "note": "environment.metadata.json holds Spark compute + libraries. Publish staging after update: fabio environment publish."
     },
+    "Warehouse": {
+      "requiredOneOf": [["definition.dacpac", "sqldw.sqlproj"]],
+      "optionalParts": [".platform", "dbo/**/*.sql", ".sharedqueries/*.sql"],
+      "note": "Public definitions support dacpac (single definition.dacpac) and sqlproj (sqldw.sqlproj plus project files); omitted format defaults to sqlproj. Every part requires path, payload, and payloadType. Create definition is mutually exclusive with creationPayload/collation."
+    },
     "MirroredDatabase": {
       "requiredParts": ["mirroring.json"],
       "optionalParts": [".platform"],

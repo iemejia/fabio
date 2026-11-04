@@ -7,6 +7,7 @@ use crate::client::{FabricClient, validate_uuid};
 use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
+mod actor_rules;
 mod actors;
 
 const ARM_API_VERSION: &str = "2023-11-01";
@@ -51,6 +52,28 @@ pub enum BlockedActorExpirationPolicy {
     NeverExpire,
     #[value(name = "ExpireAfterDate")]
     ExpireAfterDate,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum ActorRuleSubject {
+    #[value(name = "AllWorkspaces")]
+    AllWorkspaces,
+}
+
+impl ActorRuleSubject {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::AllWorkspaces => "AllWorkspaces",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum ActorRuleBlockDuration {
+    #[value(name = "Hours")]
+    Hours,
+    #[value(name = "Indefinite")]
+    Indefinite,
 }
 
 #[derive(Debug, Subcommand)]
@@ -307,6 +330,66 @@ pub enum CapacityCommand {
         #[arg(long)]
         actor_id: String,
     },
+    /// Create a capacity actor auto-detection rule
+    CreateActorAutoDetectionRule {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+        /// Actors subject to the rule (currently `AllWorkspaces`)
+        #[arg(long, value_enum)]
+        actors_subject_to_rule: ActorRuleSubject,
+        /// Per-actor capacity-unit consumption threshold over a rolling 24-hour window (1-100)
+        #[arg(long, value_parser = clap::value_parser!(u8).range(1..=100))]
+        threshold: u8,
+        /// Duration for which an automatically detected actor remains blocked
+        #[arg(long, value_enum)]
+        block_duration: ActorRuleBlockDuration,
+        /// Number of blocked hours; required for block duration Hours
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
+        hours: Option<u32>,
+    },
+    /// List capacity actor auto-detection rules
+    ListActorAutoDetectionRules {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Show a capacity actor auto-detection rule
+    ShowActorAutoDetectionRule {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+        /// Actor auto-detection rule ID
+        #[arg(long)]
+        rule_id: String,
+    },
+    /// Update a capacity actor auto-detection rule
+    UpdateActorAutoDetectionRule {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+        /// Actor auto-detection rule ID
+        #[arg(long)]
+        rule_id: String,
+        /// Per-actor capacity-unit consumption threshold over a rolling 24-hour window (1-100)
+        #[arg(long, value_parser = clap::value_parser!(u8).range(1..=100))]
+        threshold: Option<u8>,
+        /// Replacement block duration; omit to preserve the existing duration
+        #[arg(long, value_enum)]
+        block_duration: Option<ActorRuleBlockDuration>,
+        /// Number of blocked hours; required when replacing the duration with Hours
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
+        hours: Option<u32>,
+    },
+    /// Delete a capacity actor auto-detection rule without clearing existing blocks
+    DeleteActorAutoDetectionRule {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+        /// Actor auto-detection rule ID
+        #[arg(long)]
+        rule_id: String,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -454,6 +537,51 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &CapacityCommand
         }
         CapacityCommand::DeleteMissionCriticalActor { id, actor_id } => {
             actors::delete_mission_critical(cli, client, id, actor_id).await
+        }
+        CapacityCommand::CreateActorAutoDetectionRule {
+            id,
+            actors_subject_to_rule,
+            threshold,
+            block_duration,
+            hours,
+        } => {
+            actor_rules::create(
+                cli,
+                client,
+                id,
+                *actors_subject_to_rule,
+                *threshold,
+                *block_duration,
+                *hours,
+            )
+            .await
+        }
+        CapacityCommand::ListActorAutoDetectionRules { id } => {
+            actor_rules::list(cli, client, id).await
+        }
+        CapacityCommand::ShowActorAutoDetectionRule { id, rule_id } => {
+            actor_rules::show(cli, client, id, rule_id).await
+        }
+        CapacityCommand::UpdateActorAutoDetectionRule {
+            id,
+            rule_id,
+            threshold,
+            block_duration,
+            hours,
+        } => {
+            actor_rules::update(
+                cli,
+                client,
+                id,
+                rule_id,
+                *threshold,
+                *block_duration,
+                *hours,
+            )
+            .await
+        }
+        CapacityCommand::DeleteActorAutoDetectionRule { id, rule_id } => {
+            actor_rules::delete(cli, client, id, rule_id).await
         }
     }
 }

@@ -1,19 +1,38 @@
 {
   "type": "Warehouse",
   "description": "Analytical data warehouse with full T-SQL support. Optimized for large-scale queries and reporting. Supports cross-database queries with lakehouses in the same workspace. Connect via TDS (SQL Server protocol) from any SQL client.",
-  "create_command": "fabio warehouse create --workspace <WS> --name <NAME>",
-  "definition_format": null,
-  "definition_parts": [],
+  "create_command": "fabio warehouse create --workspace <WS> --name <NAME> --definition-dir <SQLPROJ_DIR> --definition-format sqlproj",
+  "definition_format": "dacpac or sqlproj (defaults to sqlproj when omitted)",
+  "definition_parts": [
+    {
+      "path": "definition.dacpac",
+      "description": "Single DACPAC binary encoded as InlineBase64 when format is dacpac."
+    },
+    {
+      "path": "sqldw.sqlproj and project files",
+      "description": "SQL project and SQL source files encoded as separate InlineBase64 parts when format is sqlproj."
+    },
+    {
+      "path": ".platform",
+      "description": "Optional item metadata; update-definition applies it only with --update-metadata."
+    }
+  ],
   "creation_body_template": {
     "displayName": "{{name}}"
   },
   "flags": {
     "--name": "Warehouse display name",
-    "--description": "Optional description"
+    "--description": "Optional description",
+    "--definition-file": "Single DACPAC or SQL project definition file",
+    "--definition-dir": "Directory containing SQL project definition parts",
+    "--definition-format": "dacpac or sqlproj; omission uses sqlproj"
   },
   "notes": [
     "Create is LRO",
-    "No definition parts needed for creation",
+    "A public definition is optional on creation and mutually exclusive with --collation (creationPayload)",
+    "get-definition and update-definition support dacpac and sqlproj; omission defaults to sqlproj",
+    "Every definition part requires path, payload, and payloadType",
+    "Sensitivity labels are not included in or changed by public definitions",
     "Query via TDS: connection string is <id>.datawarehouse.fabric.microsoft.com",
     "Supports three-part naming for cross-database queries within same workspace",
     "SQL input accepts inline --sql, @file path, or stdin piping",
@@ -24,6 +43,8 @@
     "fabio warehouse connection-string --workspace <WS> --id <ID>",
     "fabio warehouse list --workspace <WS>",
     "fabio warehouse show --workspace <WS> --id <ID>",
+    "fabio warehouse get-definition --workspace <WS> --id <ID> --format sqlproj",
+    "fabio warehouse update-definition --workspace <WS> --id <ID> --definition-dir <DIR> --format sqlproj",
     "fabio warehouse delete --workspace <WS> --id <ID>"
   ]
 }

@@ -310,7 +310,7 @@ pub struct ExportResult {
 /// - `deploy apply` skips `updateDefinition` when parts are empty
 ///
 /// Matches fabric-cicd's `SHELL_ONLY_PUBLISH` concept.
-const SHELL_ONLY_TYPES: &[&str] = &["Warehouse", "SQLDatabase", "MLExperiment", "MLModel"];
+const SHELL_ONLY_TYPES: &[&str] = &["SQLDatabase", "MLExperiment", "MLModel"];
 
 /// Item types that are auto-provisioned by Fabric and not independently deployable.
 ///
@@ -671,7 +671,6 @@ mod tests {
 
     #[test]
     fn shell_only_types_recognized() {
-        assert!(is_shell_only_type("Warehouse"));
         assert!(is_shell_only_type("SQLDatabase"));
         assert!(is_shell_only_type("MLExperiment"));
         assert!(is_shell_only_type("MLModel"));
@@ -679,8 +678,6 @@ mod tests {
 
     #[test]
     fn shell_only_type_case_insensitive() {
-        assert!(is_shell_only_type("warehouse"));
-        assert!(is_shell_only_type("WAREHOUSE"));
         assert!(is_shell_only_type("sqldatabase"));
         assert!(is_shell_only_type("mlmodel"));
     }
@@ -693,6 +690,7 @@ mod tests {
         assert!(!is_shell_only_type("SQLEndpoint"));
         assert!(!is_shell_only_type("Report"));
         assert!(!is_shell_only_type("DataPipeline"));
+        assert!(!is_shell_only_type("Warehouse"));
     }
 
     #[test]
@@ -708,8 +706,8 @@ mod tests {
     fn shell_only_types_has_expected_count() {
         assert_eq!(
             SHELL_ONLY_TYPES.len(),
-            4,
-            "SHELL_ONLY_TYPES should have 4 entries; update this test if intentionally changed"
+            3,
+            "SHELL_ONLY_TYPES should have 3 entries; update this test if intentionally changed"
         );
     }
 

@@ -6,6 +6,380 @@ use base64::Engine;
 use common::{TestConfig, extract_count, extract_data, fabio, parse_json, unique_name};
 use predicates::prelude::*;
 use serial_test::serial;
+use wiremock::matchers::{body_string, header, method, path, query_param};
+use wiremock::{Mock, MockServer, ResponseTemplate};
+
+#[test]
+#[serial]
+fn dataagent_topic_upload_sends_markdown_and_etag() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+    let agent = "bbbbbbbb-1111-2222-3333-444444444444";
+    let datasource = "cccccccc-1111-2222-3333-444444444444";
+    let server = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/workspaces/{workspace}/dataAgents/{agent}/staging/datasources"
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [{"id": datasource, "displayName": "Sales"}]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("PUT"))
+            .and(path(format!(
+                "/workspaces/{workspace}/dataAgents/{agent}/staging/datasources/{datasource}/topics"
+            )))
+            .and(query_param("fileName", "sales-guidance.md"))
+            .and(header("Content-Type", "text/markdown"))
+            .and(header("If-Match", "\"etag-1\""))
+            .and(body_string("# Sales guidance"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("ETag", "\"etag-2\"")
+                    .set_body_json(serde_json::json!({})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        server
+    });
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
+        .args([
+            "data-agent",
+            "upload-topic",
+            "--workspace",
+            workspace,
+            "--id",
+            agent,
+            "--datasource",
+            datasource,
+            "--file-name",
+            "sales-guidance.md",
+            "--content",
+            "# Sales guidance",
+            "--if-match",
+            "\"etag-1\"",
+        ])
+        .assert()
+        .success();
+    let data = parse_json(&output)["data"].clone();
+    assert_eq!(data["status"], "uploaded");
+    assert_eq!(data["etag"], "\"etag-2\"");
+}
+
+#[test]
+#[serial]
+fn dataagent_topic_read_format_and_delete_routes_cover_both_stages() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+    let agent = "bbbbbbbb-1111-2222-3333-444444444444";
+    let datasource = "cccccccc-1111-2222-3333-444444444444";
+    let server = runtime.block_on(async {
+        let server = MockServer::start().await;
+        for (prefix, expected) in [("/staging", 4), ("", 2)] {
+            Mock::given(method("GET"))
+                .and(path(format!(
+                    "/workspaces/{workspace}/dataAgents/{agent}{prefix}/datasources"
+                )))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "value": [{"id": datasource, "displayName": "Sales"}]
+                })))
+                .expect(expected)
+                .mount(&server)
+                .await;
+            Mock::given(method("GET"))
+                .and(path(format!(
+                    "/workspaces/{workspace}/dataAgents/{agent}{prefix}/datasources/{datasource}/topics"
+                )))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "value": [{"fileName": "guidance.md"}]
+                })))
+                .expect(1)
+                .mount(&server)
+                .await;
+            Mock::given(method("GET"))
+                .and(path(format!(
+                    "/workspaces/{workspace}/dataAgents/{agent}{prefix}/datasources/{datasource}/topics/content"
+                )))
+                .and(query_param("fileName", "guidance.md"))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .insert_header("ETag", "\"etag-1\"")
+                        .set_body_string("# Guidance"),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+        }
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/workspaces/{workspace}/dataAgents/{agent}/staging/datasources/{datasource}/topics/format"
+            )))
+            .and(query_param("fileName", "guidance.md"))
+            .respond_with(
+                ResponseTemplate::new(202)
+                    .insert_header(
+                        "Location",
+                        format!("{}/operations/format", server.uri()),
+                    )
+                    .insert_header("Retry-After", "0"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/operations/format"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header(
+                        "Location",
+                        format!("{}/operations/format/result", server.uri()),
+                    )
+                    .insert_header("Retry-After", "0")
+                    .set_body_json(serde_json::json!({"status": "Succeeded"})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/operations/format/result"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("ETag", "\"etag-1\"")
+                    .set_body_string("# Formatted guidance"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path(format!(
+                "/workspaces/{workspace}/dataAgents/{agent}/staging/datasources/{datasource}/topics"
+            )))
+            .and(query_param("fileName", "guidance.md"))
+            .and(header("If-Match", "\"etag-1\""))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        server
+    });
+    for (command, stage) in [
+        ("list-topics", "staging"),
+        ("list-topics", "published"),
+        ("download-topic", "staging"),
+        ("download-topic", "published"),
+    ] {
+        let mut args = vec![
+            "data-agent",
+            command,
+            "--workspace",
+            workspace,
+            "--id",
+            agent,
+            "--datasource",
+            datasource,
+            "--stage",
+            stage,
+        ];
+        if command == "download-topic" {
+            args.extend(["--file-name", "guidance.md"]);
+        }
+        fabio()
+            .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+            .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
+            .args(args)
+            .assert()
+            .success();
+    }
+    let formatted = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
+        .args([
+            "data-agent",
+            "format-topic",
+            "--workspace",
+            workspace,
+            "--id",
+            agent,
+            "--datasource",
+            datasource,
+            "--file-name",
+            "guidance.md",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&formatted)["data"]["content"],
+        "# Formatted guidance"
+    );
+    assert_eq!(parse_json(&formatted)["data"]["applied"], false);
+    assert_eq!(parse_json(&formatted)["data"]["etag"], "\"etag-1\"");
+    fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
+        .args([
+            "data-agent",
+            "delete-topic",
+            "--workspace",
+            workspace,
+            "--id",
+            agent,
+            "--datasource",
+            datasource,
+            "--file-name",
+            "guidance.md",
+            "--if-match",
+            "\"etag-1\"",
+        ])
+        .assert()
+        .success();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dataagent_format_topic_lro_failure_is_reported() {
+    let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+    let agent = "bbbbbbbb-1111-2222-3333-444444444444";
+    let datasource = "cccccccc-1111-2222-3333-444444444444";
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/workspaces/{workspace}/dataAgents/{agent}/staging/datasources"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "value": [{"id": datasource, "displayName": "Sales"}]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path(format!(
+            "/workspaces/{workspace}/dataAgents/{agent}/staging/datasources/{datasource}/topics/format"
+        )))
+        .and(query_param("fileName", "guidance.md"))
+        .respond_with(
+            ResponseTemplate::new(202)
+                .insert_header("Location", format!("{}/operations/format", server.uri()))
+                .insert_header("Retry-After", "0"),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/operations/format"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "status": "Failed",
+            "error": {"errorCode": "FormatFailed", "message": "Formatting failed"}
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let output = common::mock_fabio(&server)
+        .args([
+            "--quiet",
+            "data-agent",
+            "format-topic",
+            "--workspace",
+            workspace,
+            "--id",
+            agent,
+            "--datasource",
+            datasource,
+            "--file-name",
+            "guidance.md",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    let error: serde_json::Value =
+        serde_json::from_str(&stderr).unwrap_or_else(|error| panic!("{error}: {stderr}"));
+    assert_eq!(error["error"]["code"], "API_ERROR");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Formatting failed")
+    );
+    assert_eq!(server.received_requests().await.unwrap().len(), 3);
+}
+
+#[test]
+fn dataagent_topic_mutations_have_offline_dry_runs() {
+    let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+    let agent = "bbbbbbbb-1111-2222-3333-444444444444";
+    let datasource = "cccccccc-1111-2222-3333-444444444444";
+    let uploaded = fabio()
+        .args([
+            "--dry-run",
+            "data-agent",
+            "upload-topic",
+            "--workspace",
+            workspace,
+            "--id",
+            agent,
+            "--datasource",
+            datasource,
+            "--file-name",
+            "topic.md",
+            "--content",
+            "# Topic",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&uploaded)["data"]["would_execute"],
+        "data-agent upload-topic"
+    );
+    assert_eq!(parse_json(&uploaded)["data"]["destructive"], true);
+    let deleted = fabio()
+        .args([
+            "--dry-run",
+            "data-agent",
+            "delete-topic",
+            "--workspace",
+            workspace,
+            "--id",
+            agent,
+            "--datasource",
+            datasource,
+            "--file-name",
+            "topic.md",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&deleted)["data"]["would_execute"],
+        "data-agent delete-topic"
+    );
+}
+
+#[test]
+fn dataagent_topic_rejects_unquoted_etag_before_mutation() {
+    fabio()
+        .args([
+            "--dry-run",
+            "data-agent",
+            "delete-topic",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--datasource",
+            "cccccccc-1111-2222-3333-444444444444",
+            "--file-name",
+            "topic.md",
+            "--if-match",
+            "unquoted-etag",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("enclosed in double quotes"));
+}
 
 #[test]
 #[ignore = "requires live Fabric tenant"]

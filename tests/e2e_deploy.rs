@@ -1194,7 +1194,7 @@ fn deploy_export_concurrency_one_sequential() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
-fn deploy_export_shell_only_warehouse() {
+fn deploy_export_warehouse_definitions() {
     let cfg = TestConfig::from_env();
     let dir = tempfile::TempDir::new().unwrap();
     let output_dir = dir.path().join("export_warehouse");
@@ -1219,24 +1219,22 @@ fn deploy_export_shell_only_warehouse() {
     let data = extract_data(&json);
     assert_eq!(data["status"], "exported");
 
-    // If workspace has Warehouses, they should be exported (not skipped)
+    // If workspace has Warehouses, their definitions should be exported.
     let total = data["total_items"].as_u64().unwrap();
     if total > 0 {
-        // Exported count should equal total (shell-only items don't get skipped)
         let exported = data["exported"].as_u64().unwrap();
         assert_eq!(
             exported, total,
-            "All Warehouse items should be exported as shell-only"
+            "All Warehouse items should be exported with their definitions"
         );
 
-        // Skipped should be empty for Warehouse
         let skipped = data["skipped"].as_array().unwrap();
         assert!(
             skipped.is_empty(),
-            "Warehouse items should not be skipped: {skipped:?}"
+            "Warehouse definitions should not be skipped: {skipped:?}"
         );
 
-        // Verify each exported directory has .platform but no other definition files
+        // Verify each exported directory has its metadata and definition parts.
         for entry in std::fs::read_dir(&output_dir).unwrap().flatten() {
             if entry.path().is_dir() {
                 let platform_path = entry.path().join(".platform");
@@ -1251,13 +1249,17 @@ fn deploy_export_shell_only_warehouse() {
                 let meta: serde_json::Value = serde_json::from_str(&content).unwrap();
                 assert_eq!(meta["metadata"]["type"], "Warehouse");
 
-                // Should have NO other files besides .platform (shell-only = no definition parts)
-                let file_count = std::fs::read_dir(entry.path()).unwrap().flatten().count();
-                assert_eq!(
-                    file_count,
-                    1,
-                    "Shell-only Warehouse should only have .platform, found {} files in {}",
-                    file_count,
+                let has_definition =
+                    std::fs::read_dir(entry.path())
+                        .unwrap()
+                        .flatten()
+                        .any(|part| {
+                            let name = part.file_name();
+                            name == "definition.dacpac" || name == "sqldw.sqlproj"
+                        });
+                assert!(
+                    has_definition,
+                    "Warehouse export should include definition parts in {}",
                     entry.path().display()
                 );
             }

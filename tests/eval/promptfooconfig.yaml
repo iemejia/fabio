@@ -3401,3 +3401,90 @@ tests:
       - type: icontains
         value: "--sql"
         metric: snapshot-query-sql
+  - description: "Data Agent topics: stage-aware Markdown lifecycle"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-app-dev/SKILL.md"
+      user_query: "For data agent AGENT and datasource SOURCE in workspace WS: list and download published guidance.md, format the staging copy without applying it, then show guarded upload and delete previews using ETag ETAG."
+    assert:
+      - type: icontains
+        value: "data-agent list-topics"
+      - type: icontains
+        value: "data-agent download-topic"
+      - type: icontains
+        value: "data-agent format-topic"
+      - type: icontains
+        value: "data-agent upload-topic"
+      - type: icontains
+        value: "data-agent delete-topic"
+      - type: icontains
+        value: "--if-match"
+      - type: icontains
+        value: "--dry-run"
+
+  - description: "Capacity governance: actor auto-detection rule lifecycle"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-admin/SKILL.md"
+      user_query: "Show commands to create an AllWorkspaces actor auto-detection rule on capacity CAP at 25 percent for 24 hours, list and show rule RULE, preview changing it to Indefinite, and preview deleting it."
+    assert:
+      - type: icontains
+        value: "capacity create-actor-auto-detection-rule"
+      - type: icontains
+        value: "capacity list-actor-auto-detection-rules"
+      - type: icontains
+        value: "capacity show-actor-auto-detection-rule"
+      - type: icontains
+        value: "capacity update-actor-auto-detection-rule"
+      - type: icontains
+        value: "capacity delete-actor-auto-detection-rule"
+      - type: contains
+        value: "AllWorkspaces"
+      - type: contains
+        value: "Indefinite"
+      - type: icontains
+        value: "--dry-run"
+
+  - description: "Environment publishing: retrieve latest Spark driver log"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-data-engineering/SKILL.md"
+      user_query: "Download the latest completed publish driver stdout log for environment ENV in workspace WS."
+    assert:
+      - type: icontains
+        value: "environment get-publish-log"
+      - type: icontains
+        value: "--workspace"
+      - type: icontains
+        value: "--id"
+
+  - description: "Warehouse definitions: create, retrieve, and guarded replacement"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-warehouse-sql/SKILL.md"
+      user_query: "Create warehouse WH in workspace WS from SQL project directory ./Warehouse, retrieve its sqlproj definition, then preview replacing warehouse ID ID from the same directory while applying .platform metadata."
+    assert:
+      - type: icontains
+        value: "warehouse create"
+      - type: icontains
+        value: "warehouse get-definition"
+      - type: icontains
+        value: "warehouse update-definition"
+      - type: icontains
+        value: "--definition-dir"
+      - type: contains
+        value: "sqlproj"
+      - type: icontains
+        value: "--update-metadata"
+      - type: icontains
+        value: "--dry-run"
+
+  - description: "Eventstream: add Custom Stream Connector source"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-rti-kql/SKILL.md"
+      user_query: "Preview adding a Custom Stream Connector source named orders to eventstream ES in workspace WS, referencing data connection CONN, connector item ITEM, and runtime configuration api.key=${key}."
+    assert:
+      - type: icontains
+        value: "eventstream add-source"
+      - type: contains
+        value: "CustomStreamConnector"
+      - type: icontains
+        value: "--properties"
+      - type: icontains
+        value: "--dry-run"

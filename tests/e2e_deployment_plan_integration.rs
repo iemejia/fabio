@@ -369,6 +369,56 @@ async fn export_uses_assigned_metadata_identity_instead_of_zero_definition_place
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn warehouse_definition_fetch_failure_is_not_exported_as_shell_only() {
+    const WAREHOUSE: &str = "ffffffff-1111-2222-3333-444444444444";
+    let server = MockServer::start().await;
+    let output_dir = tempfile::tempdir().unwrap();
+    Mock::given(method("GET"))
+        .and(path(format!("/workspaces/{WS}/items")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"value": [
+            {"id": WAREHOUSE, "type": "Warehouse", "displayName": "Warehouse fixture"}
+        ]})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path(format!(
+            "/workspaces/{WS}/items/{WAREHOUSE}/getDefinition"
+        )))
+        .respond_with(ResponseTemplate::new(500).set_body_json(json!({
+            "errorCode": "InternalError",
+            "message": "Definition fetch failed"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let output = mock_fabio(&server)
+        .args([
+            "deploy",
+            "export",
+            "--workspace",
+            WS,
+            "--dir",
+            output_dir.path().to_str().unwrap(),
+            "--item-types",
+            "Warehouse",
+        ])
+        .assert()
+        .success();
+
+    let data = parse_json(&output)["data"].clone();
+    assert_eq!(data["exported"], 0);
+    assert_eq!(data["skipped"].as_array().unwrap().len(), 1);
+    assert!(data["skipped"][0].as_str().unwrap().contains("Warehouse"));
+    assert_eq!(
+        std::fs::read_dir(output_dir.path()).unwrap().count(),
+        0,
+        "A failed definition fetch must not create a shell-only export"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn existing_identity_mismatches_fail_before_mutation_even_with_override_flags() {
     let server = MockServer::start().await;
     let source = source_fixture(PLAN);

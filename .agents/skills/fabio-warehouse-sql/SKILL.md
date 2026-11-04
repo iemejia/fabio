@@ -43,6 +43,7 @@ Manage warehouses and run SQL queries
 | `fabio warehouse delete-restore-point` | yes | Delete a restore point |
 | `fabio warehouse describe-table` | no | Describe the columns of a table (from `INFORMATION_SCHEMA.COLUMNS`) |
 | `fabio warehouse get-audit-settings` | no | Get SQL audit settings for a warehouse |
+| `fabio warehouse get-definition` | no | Get a warehouse public definition |
 | `fabio warehouse get-retention` | no | Report the configured data-retention (time-travel) period, in days |
 | `fabio warehouse get-sql-pools-config` | no | Get SQL pools configuration for a workspace (requires workspace Admin) |
 | `fabio warehouse list` | no | List warehouses in a workspace |
@@ -69,6 +70,7 @@ Manage warehouses and run SQL queries
 | `fabio warehouse statistics-update` | yes | Update (refresh) an existing statistic |
 | `fabio warehouse update` | yes | Update warehouse properties (name and/or description) |
 | `fabio warehouse update-audit-settings` | yes | Update SQL audit settings for a warehouse |
+| `fabio warehouse update-definition` | yes | Replace a warehouse public definition |
 | `fabio warehouse update-restore-point` | yes | Update a restore point |
 | `fabio warehouse update-sql-pools-config` | yes | Update SQL pools configuration for a workspace (requires workspace Admin) |
 
@@ -171,6 +173,7 @@ Manage warehouse snapshots
 - A zero-row SELECT returns the LIST envelope {"data":[],"count":0} (a result set with 0 rows), NOT a scalar 'no result set' message; DDL/DML with no result set returns the scalar rows_affected message. Iterate/filter 'data' safely.
 - queryinsights.* views populate asynchronously (up to ~15 min after the first queries on a fresh warehouse) — 'Invalid object name queryinsights.*' is initialization lag, not a bug.
 - 'warehouse set-retention' sets the time-travel window (1-120 days); DECREASING it is irreversible (background GC permanently drops older history) — it is destructive and dry-run guarded. 'warehouse create --collation' is create-time only (case-sensitive default vs Latin1_General_100_CI_AS_KS_WS_SC_UTF8).
+- Warehouse public definitions support dacpac and sqlproj; omission defaults to sqlproj. Create accepts --definition-file/--definition-dir and definition is mutually exclusive with --collation (creationPayload). get-definition requires read+write permission and omits sensitivity labels. update-definition replaces the definition irreversibly; every part requires path/payload/payloadType, and --update-metadata applies a supplied .platform part without changing the sensitivity label.
 - 'sql-endpoint refresh-metadata --tables' accepts a JSON array of {schema,tableNames} selectors (inline or @file), with at most 25 total tables. Its optional --timeout is a Duration JSON object with numeric value and a PascalCase timeUnit (Seconds, Minutes, Hours, or Days), defaults server-side to 15 minutes, and cannot exceed 24 hours. Schema-enabled endpoints return schema-qualified tableName values; non-schema-enabled endpoints resolve under the default schema.
 - 'warehouse mcp-url' / 'sql-endpoint mcp-url' emit the deterministic remote Fabric Data Warehouse MCP server URLs (preview) for external MCP clients (VS Code agent mode, Copilot, Copilot Studio, Azure AI Foundry) — an item-scoped mcpUrl (.../items/{id}/sqlEndpoint, binds to one item) plus a global globalMcpUrl (.../mcp/dataPlane/sqlEndpoint, agent supplies workspace+item per-prompt). That remote server exposes ONE T-SQL execution tool (live tool name 'execute_query'; docs call it 'executeSQL') and NO schema/metadata tools — it's for interactive Copilot SQL authoring. For scripted/composable execution, execution plans, query insights, and statistics, use fabio's native 'warehouse query'/'plan'/'queries-*'/'statistics-*' instead of emitting an MCP URL.
 - Because the remote DW MCP server has NO schema tools, prefer fabio's typed 'list-tables' (tables+views, optional --schema) and 'describe-table --table [schema.]table' (columns/types/nullability) over hand-writing INFORMATION_SCHEMA.TABLES/COLUMNS queries via 'query --sql'. Both accept a Warehouse OR Lakehouse/SQL-endpoint id (schema discovery works on any TDS surface). describe-table returns the LIST envelope (one row per column); a count of 0 means the table/schema does not exist. --table accepts 'schema.table', '[schema].[table]', or a bare 'table' (unqualified matches the name across schemas).

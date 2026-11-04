@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 use serde_json::Value;
 
 use crate::cli::Cli;
@@ -10,6 +10,7 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 mod admin;
 mod authoring;
 mod crud;
+mod definitions;
 mod insights;
 mod mcp;
 pub mod query;
@@ -17,6 +18,23 @@ mod restore_points;
 mod retention;
 pub mod schema;
 mod statistics;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum WarehouseDefinitionFormat {
+    #[value(name = "dacpac")]
+    Dacpac,
+    #[value(name = "sqlproj")]
+    Sqlproj,
+}
+
+impl WarehouseDefinitionFormat {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Dacpac => "dacpac",
+            Self::Sqlproj => "sqlproj",
+        }
+    }
+}
 
 #[derive(Debug, Subcommand)]
 #[command(
@@ -65,6 +83,18 @@ pub enum WarehouseCommand {
         /// `Latin1_General_100_CI_AS_KS_WS_SC_UTF8` (case-insensitive).
         #[arg(long)]
         collation: Option<String>,
+
+        /// DACPAC or single SQL project definition file to include at creation
+        #[arg(long, conflicts_with_all = ["definition_dir", "collation"])]
+        definition_file: Option<String>,
+
+        /// Directory containing SQL project definition parts to include at creation
+        #[arg(long, conflicts_with_all = ["definition_file", "collation"])]
+        definition_dir: Option<String>,
+
+        /// Public definition format; omitted format defaults to sqlproj
+        #[arg(long, value_enum)]
+        definition_format: Option<WarehouseDefinitionFormat>,
     },
     /// Update warehouse properties (name and/or description)
     #[command(display_order = 4)]
@@ -99,6 +129,42 @@ pub enum WarehouseCommand {
         /// Permanently delete (cannot be recovered)
         #[arg(long)]
         hard_delete: bool,
+    },
+    /// Get a warehouse public definition
+    GetDefinition {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Warehouse ID
+        #[arg(long)]
+        id: String,
+        /// Definition format; omitted format defaults to sqlproj
+        #[arg(long, value_enum)]
+        format: Option<WarehouseDefinitionFormat>,
+        /// Decode `InlineBase64` part payloads
+        #[arg(long)]
+        decode: bool,
+    },
+    /// Replace a warehouse public definition
+    UpdateDefinition {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Warehouse ID
+        #[arg(long)]
+        id: String,
+        /// DACPAC or single SQL project definition file
+        #[arg(long, conflicts_with = "definition_dir")]
+        definition_file: Option<String>,
+        /// Directory containing all SQL project definition parts
+        #[arg(long, conflicts_with = "definition_file")]
+        definition_dir: Option<String>,
+        /// Public definition format; omitted format defaults to sqlproj
+        #[arg(long, value_enum)]
+        format: Option<WarehouseDefinitionFormat>,
+        /// Apply metadata from a supplied .platform definition part
+        #[arg(long)]
+        update_metadata: bool,
     },
     /// Execute a SQL query against a warehouse or SQL endpoint
     #[command(display_order = 10)]
@@ -658,6 +724,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
             description,
             sensitivity_label,
             collation,
+            definition_file,
+            definition_dir,
+            definition_format,
         } => {
             crud::create(
                 cli,
@@ -667,6 +736,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
                 description.as_deref(),
                 sensitivity_label.as_deref(),
                 collation.as_deref(),
+                definition_file.as_deref(),
+                definition_dir.as_deref(),
+                *definition_format,
             )
             .await
         }
@@ -691,6 +763,32 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
             id,
             hard_delete,
         } => crud::delete_warehouse(cli, client, workspace, id, *hard_delete).await,
+        WarehouseCommand::GetDefinition {
+            workspace,
+            id,
+            format,
+            decode,
+        } => definitions::get(cli, client, workspace, id, *format, *decode).await,
+        WarehouseCommand::UpdateDefinition {
+            workspace,
+            id,
+            definition_file,
+            definition_dir,
+            format,
+            update_metadata,
+        } => {
+            definitions::update(
+                cli,
+                client,
+                workspace,
+                id,
+                definition_file.as_deref(),
+                definition_dir.as_deref(),
+                *format,
+                *update_metadata,
+            )
+            .await
+        }
         WarehouseCommand::Query {
             workspace,
             id,
