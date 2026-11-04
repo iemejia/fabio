@@ -3775,7 +3775,12 @@ type ErrorMetadata = (
 );
 
 fn extract_error_metadata(parsed: Option<&Value>) -> ErrorMetadata {
-    let error_obj = parsed.and_then(|v| v.get("error"));
+    let error_obj = parsed.map(|value| {
+        value
+            .get("error")
+            .filter(|error| error.is_object())
+            .unwrap_or(value)
+    });
 
     // isRetriable: indicates whether the client can retry
     let retriable = error_obj
@@ -4261,6 +4266,22 @@ mod tests {
         assert_eq!(params.len(), 1);
         assert_eq!(params[0].name.as_deref(), Some("itemId"));
         assert_eq!(err.request_id.as_deref(), Some("req-9"));
+    }
+
+    #[test]
+    fn error_metadata_preserves_flat_and_wrapped_fabric_shapes() {
+        let body = serde_json::json!({"errorCode":"EntityNotFound", "requestId":"fixture-request", "isRetriable":false,
+            "parameters":[{"name":"scope","value":"fixture"}],
+            "relatedResource":{"resourceId":"fixture","resourceType":"Connection"},
+            "moreDetails":[{"errorCode":"Detail","message":"fixture"}]});
+        for value in [body.clone(), serde_json::json!({"error":body})] {
+            let error = error_from_status_body(404, &value.to_string(), None);
+            assert_eq!(error.request_id.as_deref(), Some("fixture-request"));
+            assert_eq!(error.retriable, Some(false));
+            assert_eq!(error.parameters.unwrap()[0].name.as_deref(), Some("scope"));
+            assert_eq!(error.related_resource.unwrap().resource_type, "Connection");
+            assert_eq!(error.more_details.unwrap()[0].error_code, "Detail");
+        }
     }
 
     // ── validate_trusted_url ─────────────────────────────────────────────

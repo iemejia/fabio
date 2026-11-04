@@ -85,6 +85,10 @@ and remediation. See [remediation hints](../remediation-hints/) for guarded fix
 previews and missing-input templates. A proposed fix is never executed by the
 diagnostic, and review messages are not shell instructions.
 
+Connection configuration and identity metadata are a separate scoped diagnostic:
+see [connection diagnostics](../connection-diagnostics/). It distinguishes caller
+roles from untested stored credentials and workspace-identity source grants.
+
 ## Automation and discovery
 
 Without `--strict`, producing a diagnostic report exits zero regardless of its

@@ -1,0 +1,29 @@
+{
+  "topic": "connection-diagnostics",
+  "title": "Scoped connection and workspace identity diagnostics",
+  "summary": "GET-only connection diagnostics separates visible metadata, caller effective role, credential configuration, and workspace identity identifiers from untested credential health/source authorization. Inspect one explicit connection or only the references of one selected item; respect bounded scans, Automatic/SSO bindings, PendingOwner, unknown evidence, and strict configuration-only status.",
+  "entry_points": [
+    "fabio --wrap-untrusted --readonly connection diagnostics --id $CONNECTION_ID",
+    "fabio --wrap-untrusted --readonly connection diagnostics --id $CONNECTION_ID --workspace $WS",
+    "fabio --wrap-untrusted --readonly connection diagnostics --workspace $WS --item $ITEM"
+  ],
+  "scope": [
+    "Choose --id OR --workspace plus --item. An optional --workspace with --id supplies identity context, not proof that the connection is bound in that workspace.",
+    "Item mode reads only the selected item's connection references, then metadata for their known IDs. It never inventories tenant/global connections, enumerates workspace items, scans role assignments, or probes admin APIs. Duplicated explicit IDs are inspected once. Per-reference GETs avoid a global connection inventory; no bulk GET-by-selected-IDs API is available.",
+    "--connection-limit (default 10, maximum 20) bounds inspected bindings, --page-limit (default 3, maximum 20) bounds reference pages, and --timeout (default 30 seconds, maximum 300) bounds the ENTIRE diagnostic read budget including retries. --all never overrides these bounds. --dry-run is offline, after UUID/scope validation.",
+    "Item reference reads need item ReadWrite permission and can be blocked by protected sensitivity labels. A workspace read or readable connection is not proof of access to the item or its source. Forbidden/not-found responses stay unknown; neither proves resource deletion."
+  ],
+  "interpretation": [
+    "ready means only the REQUESTED configuration observations succeeded, never credential health or end-to-end workload readiness. --strict prints the same report but exits non-zero for unknown/needs_action/blocked requested checks.",
+    "Owner, User, and UserWithReshare establish the CALLER's reported connection role. PendingOwner is needs_action, not usable ownership: the assignee must review/update credentials before ownership becomes effective. Missing or future roles remain unknown; do not infer identity grants from caller roles.",
+    "credentialHealth is always not_checked. A recognized credential type, skipTestConnection:false, and recent credential-use timestamps do not establish CURRENT validity. Diagnostics never calls testConnection, acquires a workspace identity token, accesses the source, or writes credentials.",
+    "WorkspaceIdentity credentials require explicit workspace context. Valid applicationId/servicePrincipalId are configuration observations only; source authorization remains not_checked. Explicit null identity is needs_action; omitted/malformed metadata or unsupported/mismatched identity references remain unknown. No identity is provisioned or source grant performed.",
+    "Item references can be Automatic/SSO without IDs. These remain unknown for explicit connection authorization: no connection ID is fabricated, and no global search is attempted. connectivityType None is an unbound reference needing review. Empty complete references do not imply that every workload's external dependencies are exposed by this API.",
+    "Partial/URI-only/repeated-token/malformed scans never establish absence or complete readiness. Only validated continuation tokens on the original scoped path are used; arbitrary continuation URLs are never followed."
+  ],
+  "safety": [
+    "nextSteps reuses the shared inspection/review hint contract. PendingOwner and missing identity metadata do not authorize ownership transfer, credential writes, provisioning, or access grants. No mutation commands or automatic remediation are generated.",
+    "Evidence is allowlisted: IDs, known role/credential enums, bounded scan counts, and safe error provenance. Names, connection paths, credential values, API error bodies, and source URLs are omitted. notChecked explicitly includes source authorization, credentials, gateway health, code-first usage eligibility, and workload execution."
+  ],
+  "see_also": ["fabio context examples connection diagnostics", "fabio context best-practices remediation-hints", "fabio context best-practices workspace-diagnostics"]
+}

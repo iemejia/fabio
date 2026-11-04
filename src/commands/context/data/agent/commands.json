@@ -25618,6 +25618,41 @@
         "mutates": false,
         "returns": "object"
       },
+      "diagnostics": {
+        "description": "Diagnose one connection or the references of one item using bounded GET-only checks",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "description": "Explicit connection ID; cannot be combined with --item"
+          },
+          "--item": {
+            "type": "string",
+            "description": "Inspect only this item's connection references; requires --workspace"
+          },
+          "--workspace": {
+            "type": "string",
+            "description": "Workspace identity context (not proof that an explicit connection is bound here)"
+          },
+          "--connection-limit": {
+            "type": "integer",
+            "description": "Maximum connection bindings inspected (never overridden by --all)"
+          },
+          "--page-limit": {
+            "type": "integer",
+            "description": "Maximum item-reference pages inspected (never overridden by --all)"
+          },
+          "--timeout": {
+            "type": "integer",
+            "description": "Total seconds for all diagnostic reads, including retries"
+          },
+          "--strict": {
+            "type": "bool",
+            "description": "Exit non-zero unless all requested configuration checks are ready"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
       "create": {
         "description": "Create a new connection",
         "flags": {

@@ -43,6 +43,7 @@
     "Refreshing on inactive capacity (CAPACITY_INACTIVE)."
   ],
   "key_gotchas": [
+    "connection diagnostics --workspace <WS> --item <MODEL_OR_REPORT> inspects only that item's exposed connection references. Automatic/SSO bindings can lack IDs, and a complete list is not proof that all external dependencies are exposed. Metadata/caller roles never prove credential health or workspace identity source authorization.",
     "Capacity-specific refresh/query failures may suggest workspace diagnostics without automatically probing or changing policy. Remediation previews require confirmed evidence and approval; missing ARM/target identifiers are not guessed. See remediation-hints.",
     "'dataset' (legacy Power BI term) == semantic model; Power BI REST still uses /datasets (reach it via rest call --api powerbi).",
     "Schema introspection uses DAX INFO.VIEW.* (list-tables/columns/measures/relationships) over the same executeQueries endpoint as query --dax; the raw INFO.TABLES()/INFO.COLUMNS() variants are rejected by executeQueries (HTTP 400) — only INFO.VIEW.* works.",
@@ -87,6 +88,7 @@
     "semantic-model analyze --fix overwrites the model definition (irreversible) to apply the safe summarization fix — it is dry-run guarded; preview with --dry-run first. It only changes default summarization on identifier columns, never renames or restructures."
   ],
   "shared_references": [
+    "connection-diagnostics",
     "remediation-hints",
     "throttling",
     "pagination",

@@ -37,6 +37,8 @@ cargo test --test e2e_bi_guidance
 cargo test --bin fabio workspace::diagnostics
 cargo test --bin fabio remediation
 cargo test --test e2e_workspace_diagnostics
+cargo test --bin fabio connection::diagnostics
+cargo test --test e2e_connection_diagnostics
 ```
 
 `tests/common/live.rs` is included only by the governance suite. Its deterministic
@@ -108,6 +110,7 @@ cargo test --test e2e_deployment_governance live_environment_pool_activation_dia
 
 # Connection effective role; admin CRUD and separate explicit-recipient ownership
 cargo test --test e2e_deployment_governance live_connection_effective_role -- --ignored
+cargo test --test e2e_deployment_governance live_connection_diagnostics_ -- --ignored --test-threads=1
 cargo test --test e2e_deployment_governance live_admin_connection_ -- --ignored --test-threads=1
 
 # KQL dashboard creation/read/delete after the response-header spec change
@@ -147,6 +150,14 @@ cargo test --test e2e_deployment_governance -- --ignored --test-threads=1
   hints and confirms the block remains until explicit test-owned cleanup. The
   unassigned test fills the target from an explicit fixture solely for a preview;
   the workspace remains unassigned. ARM resume is not executed live.
+- Connection diagnostics tests cover offline scope validation, safe provenance,
+  PendingOwner, unknown roles/credentials, workspace identity context, implicit
+  Automatic/SSO and unbound references, redaction, deduplication, bounded pagination,
+  and total deadlines. Every diagnostic request is GET. The live tests use a
+  test-owned anonymous connection and a Delta/native semantic-model fixture; they
+  never test stored credentials, grant access, or transfer ownership. Live
+  PendingOwner and provisioned identity metadata need explicit approved fixtures;
+  source authorization is deliberately not checked by this command at all.
 - The BI recipe test reads the runtime-published workflow instead of duplicating
   its command strings. It captures existing refresh IDs, submits framing once,
   waits for a new terminal refresh with a finite deadline, verifies the fixture's

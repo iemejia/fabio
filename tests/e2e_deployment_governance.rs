@@ -1097,6 +1097,109 @@ fn live_admin_connection_lifecycle() {
 }
 
 #[test]
+#[ignore = "requires live Fabric tenant; creates only a test-owned anonymous connection and never tests its credentials"]
+fn live_connection_diagnostics_is_configuration_only() {
+    let (id, mut resource) = create_connection();
+    let before = run(&["connection", "show", "--id", &id]);
+    let report = run(&[
+        "--readonly",
+        "connection",
+        "diagnostics",
+        "--id",
+        &id,
+        "--strict",
+    ]);
+    assert_eq!(report["data"]["status"], "ready");
+    assert_reference(&report["data"]["connectionId"], &id);
+    assert_eq!(
+        report["data"]["connections"][0]["credentialHealth"],
+        "not_checked"
+    );
+    let checks = &report["data"]["connections"][0]["checks"];
+    let role = checks
+        .as_array()
+        .expect("connection checks")
+        .iter()
+        .find(|check| check["checkId"] == "effective_role")
+        .expect("role check");
+    assert_eq!(role["evidence"]["myRole"], "Owner");
+    let after = run(&["connection", "show", "--id", &id]);
+    assert!(
+        before["data"] == after["data"],
+        "metadata changed during a read-only diagnostic; tenant details withheld"
+    );
+    resource.delete();
+    let missing = run(&["--readonly", "connection", "diagnostics", "--id", &id]);
+    assert_eq!(missing["data"]["status"], "unknown");
+}
+
+#[test]
+#[ignore = "requires live tenant and source workspace; creates a Delta/semantic-model fixture but never runs a credential test"]
+fn live_connection_diagnostics_item_references_are_scoped() {
+    let workspace = required_env("FABIO_TEST_SOURCE_WORKSPACE");
+    let (table, _lakehouse_resource) = one_lake_fixture(&workspace);
+    let (model, mut resource) =
+        create_item("semantic-model", &workspace, &["--one-lake-table", &table]);
+    let report = run(&[
+        "--readonly",
+        "connection",
+        "diagnostics",
+        "--workspace",
+        &workspace,
+        "--item",
+        &model,
+    ]);
+    assert_reference(&report["data"]["workspaceId"], &workspace);
+    assert_reference(&report["data"]["itemId"], &model);
+    assert_eq!(report["data"]["references"]["complete"], true);
+    assert_eq!(report["data"]["scope"]["itemBindingsOnly"], true);
+    let connections = report["data"]["connections"]
+        .as_array()
+        .expect("connection reports");
+    assert_ne!(
+        connections.len(),
+        0,
+        "fixture must expose a binding; tenant details withheld"
+    );
+    assert!(
+        connections
+            .iter()
+            .all(|connection| connection["credentialHealth"] == "not_checked")
+    );
+    let direct = run(&[
+        "item",
+        "list-connections",
+        "--workspace",
+        &workspace,
+        "--id",
+        &model,
+        "--all",
+    ]);
+    assert_eq!(
+        report["data"]["references"]["bindingsScanned"].as_u64(),
+        Some(list(&direct).len() as u64)
+    );
+    let automatic = list(&direct)
+        .iter()
+        .filter(|row| row["connectivityType"] == "Automatic")
+        .count();
+    assert_ne!(
+        automatic, 0,
+        "native Direct Lake fixture must expose an Automatic binding; tenant details withheld"
+    );
+    assert_eq!(
+        connections
+            .iter()
+            .filter(|connection| connection["connectionId"].is_null()
+                && connection["checks"][0]["evidence"]["connectivityType"] == "Automatic"
+                && connection["checks"][0]["status"] == "unknown")
+            .count(),
+        automatic
+    );
+    resource.delete();
+}
+
+#[test]
 #[ignore = "requires Fabric Administrator and FABIO_TEST_CONNECTION_PRINCIPAL_ID"]
 fn live_admin_connection_ownership_lifecycle() {
     // Explicit opt-in recipient: never grant ownership on an existing connection

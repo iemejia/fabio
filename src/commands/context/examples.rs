@@ -97,6 +97,10 @@ pub(super) const fn example_entries() -> &'static [(&'static str, &'static str)]
 
 const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
+        "connection/diagnostics",
+        include_str!("data/examples/connection_diagnostics.json"),
+    ),
+    (
         "workspace/diagnostics",
         include_str!("data/examples/workspace_diagnostics.json"),
     ),

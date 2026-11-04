@@ -20,6 +20,7 @@ pub mod datamart;
 pub mod deploy;
 pub mod deployment_pipeline;
 pub mod deployment_plan;
+pub mod diagnostics;
 pub mod digital_twin_builder;
 pub mod digital_twin_builder_flow;
 pub mod domain;

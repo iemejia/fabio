@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use crate::cli::Cli;
 use crate::client::{FabricClient, validate_uuid};
+use crate::commands::diagnostics::{Check, Status, error_evidence, id, read, summary};
 use crate::commands::remediation::{self, Kind, RecoveryHint as NextStep};
 use crate::errors::{ErrorCode, FabioError, HintType};
 use crate::output;
@@ -19,103 +20,26 @@ use crate::output;
 const MAX_ACTORS: usize = 1_000;
 const MAX_MATCHES: usize = 10;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-enum Status {
-    Ready,
-    Blocked,
-    NeedsAction,
-    Unknown,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Check {
-    #[serde(rename = "checkId")]
-    key: &'static str,
-    status: Status,
-    message: String,
-    evidence: Value,
-    next_steps: Vec<NextStep>,
-}
-
-impl Check {
-    fn new(
-        name: &'static str,
-        status: Status,
-        message: impl Into<String>,
-        evidence: Value,
-        next: String,
-    ) -> Self {
-        Self {
-            key: name,
-            status,
-            message: message.into(),
-            evidence,
-            next_steps: vec![NextStep::inspection(
-                "Inspect the same scoped resource without changing it.",
-                next,
-            )],
-        }
+fn probe_error(name: &'static str, error: &anyhow::Error, source: &str, next: String) -> Check {
+    let mut check = Check::error(name, error, source, next);
+    if matches!(
+        check.evidence["error"]["code"].as_str(),
+        Some("AUTH_REQUIRED" | "FORBIDDEN")
+    ) {
+        let permission = match name {
+            "workspace_access" => {
+                "Use the intended identity with workspace read access. No authentication configuration, role, or policy was changed."
+            }
+            "capacity_state" => {
+                "Reading capacity metadata requires administrator or contributor permissions on the capacity; workspace access alone may be insufficient. No permissions were changed."
+            }
+            _ => {
+                "Surge-protection reads require capacity-admin access; workspace access alone is insufficient. Ask an authorized administrator to review; no permissions were changed."
+            }
+        };
+        check.next_steps.push(NextStep::review(permission));
     }
-
-    fn error(name: &'static str, error: &anyhow::Error, source: &str, next: String) -> Self {
-        let error = error_evidence(error);
-        let mut check = Self::new(
-            name,
-            Status::Unknown,
-            "The requested evidence could not be read; this is not proof of readiness or resource absence.",
-            json!({"source": source, "error": error}),
-            next,
-        );
-        if matches!(
-            check.evidence["error"]["code"].as_str(),
-            Some("AUTH_REQUIRED" | "FORBIDDEN")
-        ) {
-            let permission = match name {
-                "workspace_access" => {
-                    "Use the intended identity with workspace read access. No authentication configuration, role, or policy was changed."
-                }
-                "capacity_state" => {
-                    "Reading capacity metadata requires administrator or contributor permissions on the capacity; workspace access alone may be insufficient. No permissions were changed."
-                }
-                _ => {
-                    "Surge-protection reads require capacity-admin access; workspace access alone is insufficient. Ask an authorized administrator to review; no permissions were changed."
-                }
-            };
-            check.next_steps.push(NextStep::review(permission));
-        }
-        check
-    }
-}
-
-fn error_evidence(error: &anyhow::Error) -> Value {
-    // Keep machine-readable provenance without copying an unbounded API body,
-    // credential-bearing URL, or misleading generic permission-recovery hint.
-    error.downcast_ref::<FabioError>().map_or_else(
-        || json!({"code": "UNKNOWN"}),
-        |error| json!({"code": error.code, "requestId": error.request_id.as_deref().filter(|value| value.len() <= 128), "retriable": error.retriable}),
-    )
-}
-
-fn summary(checks: &[Check]) -> Status {
-    checks
-        .iter()
-        .map(|check| check.status)
-        .max_by_key(|status| match status {
-            Status::Ready => 0,
-            Status::Unknown => 1,
-            Status::NeedsAction => 2,
-            Status::Blocked => 3,
-        })
-        .unwrap_or(Status::Unknown)
-}
-
-fn id(value: &Value) -> Option<Uuid> {
-    value
-        .as_str()
-        .and_then(|value| Uuid::parse_str(value).ok())
-        .filter(|id| !id.is_nil())
+    check
 }
 
 fn text(value: &Value, max_bytes: usize) -> Option<&str> {
@@ -124,12 +48,6 @@ fn text(value: &Value, max_bytes: usize) -> Option<&str> {
 
 fn readonly(group: &str, command: &str, target: &str) -> String {
     format!("fabio --wrap-untrusted --readonly {group} {command} --id {target}")
-}
-
-async fn read(client: &FabricClient, path: &str, timeout: Duration) -> Result<Value> {
-    tokio::time::timeout(timeout, client.get(path))
-        .await
-        .map_err(|_| FabioError::new(ErrorCode::Timeout, "Diagnostic read reached its deadline"))?
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -313,7 +231,7 @@ fn assignment(workspace: &Value, target: &str) -> Check {
 fn capacity_state(body: Result<Value>, capacity: &str) -> Check {
     let next = readonly("capacity", "show", capacity);
     match body {
-        Err(error) => Check::error("capacity_state", &error, "capacity", next),
+        Err(error) => probe_error("capacity_state", &error, "capacity", next),
         Ok(body) => {
             let (status, message) = if id(&body["id"]).is_none_or(|id| id.to_string() != capacity) {
                 (
@@ -359,7 +277,7 @@ fn capacity_state(body: Result<Value>, capacity: &str) -> Check {
 fn surge_configuration(body: Result<Value>, capacity: &str) -> Check {
     let next = readonly("capacity", "get-surge-protection", capacity);
     match body {
-        Err(error) => Check::error(
+        Err(error) => probe_error(
             "surge_configuration",
             &error,
             "capacity surgeProtection",
@@ -607,7 +525,7 @@ pub(super) async fn execute(
     let mut checks = Vec::new();
     let mut capacity_id = None;
     match read(client, &format!("/workspaces/{workspace_id}"), timeout).await {
-        Err(error) => checks.push(Check::error(
+        Err(error) => checks.push(probe_error(
             "workspace_access",
             &error,
             "workspace",

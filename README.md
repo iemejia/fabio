@@ -560,6 +560,12 @@ capacity-related workload errors suggest inspection without hidden probes. See
 [remediation hints](https://ismaelmejia.com/fabio/guides/remediation-hints/) before
 executing a proposed change.
 
+For connection and identity triage, use `connection diagnostics --id "$CONNECTION_ID"`
+or `connection diagnostics --workspace "$WS" --item "$ITEM"`. These bounded GET-only
+checks distinguish visible metadata, caller roles (including `PendingOwner`), and
+workspace identity configuration from **untested credential health and source
+authorization**. See the [connection diagnostics guide](https://ismaelmejia.com/fabio/guides/connection-diagnostics/).
+
 Use `fabio context describe <group> <command>` for examples of any specific command. Use `fabio context workflow <name>` for multi-step recipes. Available workflows:
 
 - `lakehouse-etl` -- Lakehouse + notebook + load-table + schedule

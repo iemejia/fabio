@@ -327,5 +327,10 @@
 - `src/commands/context/data/examples/workspace_diagnostics.json`: diagnostic response/next-step/query contract example
 - `docs/src/content/docs/guides/workspace-diagnostics.md`: user-facing diagnostic scope, status, permissions, bounds, and automation guide
 - `src/commands/remediation.rs`: pure shared inspection/review/remediation builders, guarded preview/missing-input contracts, metadata-preserving error enrichment, and CLI-parser unit tests
+- `src/commands/diagnostics.rs`: shared diagnostic check/status/provenance contracts and bounded GET helper, used by workspace and connection diagnostics
+- `src/commands/connection/diagnostics.rs`: explicit connection/item reference diagnostics, effective roles, identity configuration, safe evidence, bounded scans and total deadline
+- `tests/e2e_connection_diagnostics.rs`: offline CLI scope validation, GET-only/redaction contracts, PendingOwner, unknown states, automatic bindings, pagination and deadline regressions
+- `src/commands/context/data/best_practices/connection_diagnostics.json`, `src/commands/context/data/examples/connection_diagnostics.json`: canonical interpretation/safety guidance and representative structured output
+- `docs/src/content/docs/guides/connection-diagnostics.md`: user-facing scoped connection/identity troubleshooting guide
 - `src/commands/context/data/best_practices/remediation_hints.json`: canonical recovery-hint safety, interpretation, supported cases, and verification guidance
 - `docs/src/content/docs/guides/remediation-hints.md`: user-facing recovery previews, approval boundaries, error hints, and missing-input guide

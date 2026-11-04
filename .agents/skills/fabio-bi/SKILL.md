@@ -210,6 +210,7 @@ Manage Power BI Goals scorecards (Power BI Metrics, not a Fabric item)
 - Refreshing on inactive capacity (CAPACITY_INACTIVE).
 
 ## Key gotchas
+- connection diagnostics --workspace <WS> --item <MODEL_OR_REPORT> inspects only that item's exposed connection references. Automatic/SSO bindings can lack IDs, and a complete list is not proof that all external dependencies are exposed. Metadata/caller roles never prove credential health or workspace identity source authorization.
 - Capacity-specific refresh/query failures may suggest workspace diagnostics without automatically probing or changing policy. Remediation previews require confirmed evidence and approval; missing ARM/target identifiers are not guessed. See remediation-hints.
 - 'dataset' (legacy Power BI term) == semantic model; Power BI REST still uses /datasets (reach it via rest call --api powerbi).
 - Schema introspection uses DAX INFO.VIEW.* (list-tables/columns/measures/relationships) over the same executeQueries endpoint as query --dax; the raw INFO.TABLES()/INFO.COLUMNS() variants are rejected by executeQueries (HTTP 400) — only INFO.VIEW.* works.
@@ -245,6 +246,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 
 | Reference | Covers |
 |---|---|
+| `fabio context best-practices connection-diagnostics` | GET-only connection diagnostics separates visible metadata, caller effective role, credential configuration, and workspace identity identifiers from untested credential health/source authorization. Inspect one explicit connection or only the references of one selected item; respect bounded scans, Automatic/SSO bindings, PendingOwner, unknown evidence, and strict configuration-only status. |
 | `fabio context best-practices remediation-hints` | Use existing error hint/hintType/verifyAfter and diagnostic nextSteps to distinguish inspection, review, and approved remediation. Concrete commands are guarded previews, missing inputs stay explicit, metadata is preserved, and hints never execute actions or trigger hidden probes. |
 | `fabio context best-practices throttling` | fabio transparently handles 429 (Too Many Requests) and gateway errors. Agents do NOT need to implement retry logic. |
 | `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |

@@ -12,6 +12,7 @@ license: MIT
 > **Prefer runtime introspection.** This index is a snapshot; the installed binary is always authoritative. Use `fabio context agent --group <group>` and `fabio context describe <group> <command>` for exact flags and output shapes.
 
 ## When to use
+- Connection/identity triage: connection diagnostics inspects one explicit connection or only one item's references, never stored credentials or tenant inventories.
 - Read-only workspace/capacity triage: workspace diagnostics checks assignment/state; opt in to capacity-admin surge and actor evidence with --include-surge-protection.
 - Workspace lifecycle and governance: create/assign-capacity, recover or permanently delete soft-deleted items, role assignments, folders, domains, networking/firewall/encryption policies, git outbound policy, OneLake settings.
 - Capacity lifecycle: list, resume, suspend, create, delete (ARM-scoped), plus Fabric surge-protection and overage configuration.
@@ -236,6 +237,7 @@ Manage connections (cloud, on-premises, virtual network)
 | `fabio connection create` | yes | Create a new connection |
 | `fabio connection delete` | yes | Delete a connection |
 | `fabio connection delete-role-assignment` | yes | Delete a role assignment from a connection |
+| `fabio connection diagnostics` | no | Diagnose one connection or the references of one item using bounded GET-only checks |
 | `fabio connection find-duplicates` | no | Find duplicate connections — multiple connections that reach the same target (same type, path, connectivity type, and gateway). Reports the redundant connections (keeping the most-recently-used one) as candidates for consolidation. Read-only |
 | `fabio connection find-single-owner` | no | Find connections whose only Owner is a single individual user — an orphan risk if that user leaves the organization. Prefer adding a Microsoft Entra group as a second owner. Read-only |
 | `fabio connection find-stale` | no | Find stale connections (never bound to an item, or whose credentials haven't been used recently) — a governance aid for reducing connection sprawl. Read-only: reports candidates for review, does not delete |
@@ -289,7 +291,7 @@ Manage governance policy sets and policy rules
 
 ## Must / Prefer / Avoid
 ### MUST
-- Use --workspace only when the subcommand requires a workspace resource or reference. Tenant-scoped list/show operations in capacity, connection, gateway, domain, deployment-pipeline, and admin normally omit it. Exceptions: admin activate-policy-set requires the policy-set workspace; capacity create-blocked-actor and create-mission-critical-actor require the target workspace as the actor reference, not as the API scope.
+- Use --workspace only when the subcommand accepts a workspace resource or reference. Tenant-scoped list/show operations in capacity, connection, gateway, domain, deployment-pipeline, and admin normally omit it. Exceptions: admin activate-policy-set requires the policy-set workspace; capacity create-blocked-actor and create-mission-critical-actor require the target workspace as the actor reference, not as the API scope; connection diagnostics accepts workspace identity context or requires --workspace with --item.
 - Have a Fabric admin role before using admin commands (they FORBIDDEN otherwise).
 
 ### PREFER
@@ -303,6 +305,8 @@ Manage governance policy sets and policy rules
 - Bulk tenant-setting changes without confirming the scope with the user.
 
 ## Key gotchas
+- Connection diagnostic limits are explicit and never overridden by --all. Partial/forbidden/malformed reference evidence stays unknown, not no-connections or readiness. --timeout covers the whole diagnostic read budget. Read exact bounds with context describe connection diagnostics.
+- connection diagnostics --id <CONNECTION_ID> optionally accepts --workspace for identity context, not binding proof. --workspace <WS> --item <ITEM> inspects only item-referenced IDs. PendingOwner is not usable ownership; missing roles, implicit Automatic/SSO IDs, partial scans and unavailable metadata stay unknown. credentialHealth/source authorization remain not_checked even when configuration is ready. See connection-diagnostics.
 - Diagnostic nextSteps and strict error hints reuse evidence-based recovery builders. kind separates inspection/review/remediation; concrete fixes are --readonly --dry-run previews with requiresApproval:true and verifyAfter. Missing inputs stay in commandTemplate/missingInputs, never guessed. See remediation-hints.
 - workspace diagnostics --id <WS> is a scoped, GET-only configuration report, not a workload execution guarantee. --include-surge-protection is opt-in. Permission failures, partial actor scans, and enabled surge settings without live telemetry remain unknown; --strict exits non-zero unless all requested checks are ready. See workspace-diagnostics.
 - capacity suspend/resume/create/delete use the ARM scope (management.azure.com), not the Fabric scope.
@@ -338,6 +342,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 
 | Reference | Covers |
 |---|---|
+| `fabio context best-practices connection-diagnostics` | GET-only connection diagnostics separates visible metadata, caller effective role, credential configuration, and workspace identity identifiers from untested credential health/source authorization. Inspect one explicit connection or only the references of one selected item; respect bounded scans, Automatic/SSO bindings, PendingOwner, unknown evidence, and strict configuration-only status. |
 | `fabio context best-practices remediation-hints` | Use existing error hint/hintType/verifyAfter and diagnostic nextSteps to distinguish inspection, review, and approved remediation. Concrete commands are guarded previews, missing inputs stay explicit, metadata is preserved, and hints never execute actions or trigger hidden probes. |
 | `fabio context best-practices workspace-diagnostics` | Diagnose capacity assignment, capacity state, and optional capacity-admin surge-protection evidence without remediation. Interpret ready/blocked/needs_action/unknown, partial scans, expired blocks, conflicting classifications, bounded requests, and strict exit behavior. |
 | `fabio context best-practices admin-apis` | fabio has both workspace-scoped commands (for regular users) and admin commands (for Fabric administrators). Use admin commands only when explicitly needed. |

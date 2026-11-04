@@ -344,7 +344,10 @@ fabio workspace create --name "MyProject"
 fabio workspace assign-capacity --id $WS --capacity $CAP    # two-step: create, THEN assign
 fabio workspace list                                         # returns {"data":[...],"count":N}
 fabio workspace diagnostics --id $WS --readonly             # scoped configuration checks, GET-only; not full workload readiness
+fabio connection diagnostics --id $CONN --readonly          # caller role/configuration only; credentials are not tested
+fabio connection diagnostics --workspace $WS --item $ITEM --readonly # only the selected item's references; no tenant inventory
 fabio workspace diagnostics --id $WS --readonly --include-surge-protection # opt-in capacity-admin reads; unknown != ready
+
 fabio workspace clone --source $SRC_WS --dest $DST_WS       # bulk clone via export/import APIs
 fabio workspace clone --source $SRC_WS --dest $DST_WS --allow-pairing-by-name  # initial clone (no logicalId match)
 fabio workspace clone --source $SRC_WS --dest $DST_WS --item-types "Notebook,DataPipeline"  # selective: only these item types
@@ -374,6 +377,12 @@ fabio deployment-pipeline deploy --id $DP --source-stage-id $SRC --target-stage-
 # Command aliases: app-backend (aliases: rayfin-app, data-app), data-build-tool-job (aliases: dbt-job, dbt)
 fabio dbt list --workspace $WS                               # same as: fabio data-build-tool-job list
 ```
+
+Connection diagnostics separates visible metadata and caller roles from untested
+credential health/source authorization. `PendingOwner` is not usable ownership;
+Automatic/SSO bindings may have no connection ID. Never invent IDs, infer identity
+grants, or run credential tests/ownership changes automatically. See
+`fabio context best-practices connection-diagnostics`.
 
 **Lakehouse (files, tables, sync, Iceberg, Materialized Lake Views):**
 ```bash
@@ -797,7 +806,7 @@ Agents can branch on `$?` without parsing JSON:
 These cause silent failures if ignored:
 
 1. **PascalCase values are MANDATORY** — `--mode Overwrite` (not `overwrite`), `--format Csv` (not `csv`), `--format Parquet` (not `parquet`). load-table ONLY supports `Csv` and `Parquet` — **JSON format is NOT supported** (convert to CSV/Parquet first).
-2. **Tenant-scoped commands** — `deployment-pipeline`, `connection`, `capacity`, `domain`, `gateway`, and `admin` normally operate without `--workspace`. Check the subcommand schema: `admin activate-policy-set` requires the policy-set workspace; `capacity create-blocked-actor` and `capacity create-mission-critical-actor` require `--workspace` as the target actor reference, not as the API scope. Do not infer accepted flags from the group alone.
+2. **Tenant-scoped commands** — `deployment-pipeline`, `connection`, `capacity`, `domain`, `gateway`, and `admin` normally operate without `--workspace`. Check the subcommand schema: `admin activate-policy-set` requires the policy-set workspace; `capacity create-blocked-actor` and `capacity create-mission-critical-actor` require the target workspace as an actor reference, not the API scope; `connection diagnostics` accepts workspace identity context or requires `--workspace` with `--item`. Do not infer accepted flags from the group alone.
 3. **LRO default behavior** — Create, getDefinition, updateDefinition use LRO (202 + polling). Default: **2-second polling interval, 120-second max wait**. Jobs use `--wait` + `--timeout` (default 600s). Deploy apply handles LRO automatically for all item operations.
 4. **Delete requires Member/Admin role** — Delete operations return FORBIDDEN without sufficient workspace role. Error hints show the required role.
 5. **Token sharing** — Same Fabric token (`https://api.fabric.microsoft.com/.default`) works for Power BI API. Use `fabio rest call --api powerbi` for Power BI endpoints.

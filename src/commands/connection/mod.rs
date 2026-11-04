@@ -3,6 +3,7 @@
 //! connection-recency signals returned by the List Connections API.
 
 mod crud;
+mod diagnostics;
 mod hygiene;
 mod roles;
 
@@ -26,6 +27,30 @@ pub enum ConnectionCommand {
         /// Connection ID
         #[arg(long)]
         id: String,
+    },
+    /// Diagnose one connection or the references of one item using bounded GET-only checks
+    Diagnostics {
+        /// Explicit connection ID; cannot be combined with --item
+        #[arg(long, required_unless_present = "item", conflicts_with = "item")]
+        id: Option<String>,
+        /// Inspect only this item's connection references; requires --workspace
+        #[arg(long, requires = "workspace", required_unless_present = "id")]
+        item: Option<String>,
+        /// Workspace identity context (not proof that an explicit connection is bound here)
+        #[arg(long)]
+        workspace: Option<String>,
+        /// Maximum connection bindings inspected (never overridden by --all)
+        #[arg(long, default_value = "10", value_parser = clap::value_parser!(u8).range(1..=20))]
+        connection_limit: u8,
+        /// Maximum item-reference pages inspected (never overridden by --all)
+        #[arg(long, default_value = "3", value_parser = clap::value_parser!(u8).range(1..=20))]
+        page_limit: u8,
+        /// Total seconds for all diagnostic reads, including retries
+        #[arg(long, default_value = "30", value_parser = clap::value_parser!(u64).range(1..=300))]
+        timeout: u64,
+        /// Exit non-zero unless all requested configuration checks are ready
+        #[arg(long)]
+        strict: bool,
     },
     /// Create a new connection
     #[command(display_order = 3)]
@@ -218,10 +243,33 @@ pub enum ConnectionCommand {
     FindSingleOwner,
 }
 
+#[allow(clippy::too_many_lines)] // Dispatch only; handlers live in submodules.
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &ConnectionCommand) -> Result<()> {
     match command {
         ConnectionCommand::List => crud::list(cli, client).await,
         ConnectionCommand::Show { id } => crud::show(cli, client, id).await,
+        ConnectionCommand::Diagnostics {
+            id,
+            item,
+            workspace,
+            connection_limit,
+            page_limit,
+            timeout,
+            strict,
+        } => {
+            diagnostics::execute(
+                cli,
+                client,
+                id.as_deref(),
+                item.as_deref(),
+                workspace.as_deref(),
+                *connection_limit,
+                *page_limit,
+                *timeout,
+                *strict,
+            )
+            .await
+        }
         ConnectionCommand::Create {
             name,
             connectivity_type,

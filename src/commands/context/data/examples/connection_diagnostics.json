@@ -1,0 +1,33 @@
+{
+  "command": "fabio --wrap-untrusted --readonly connection diagnostics --id $CONNECTION_ID",
+  "description": "Connection metadata and caller role are observable, but stored credential validity is explicitly not tested.",
+  "response": {
+    "data": {
+      "connectionId": "bbbbbbbb-1111-2222-3333-444444444444",
+      "workspaceId": null,
+      "itemId": null,
+      "observedAt": "2026-11-03T12:00:00Z",
+      "scope": {"area":"connection_identity_configuration","mutates":false,"itemBindingsOnly":false,"workspaceContextIsNotBindingProof":false,"connectionLimit":10,"pageLimit":3,"timeoutSeconds":30,"maxLogicalReads":1},
+      "status": "ready",
+      "partial": false,
+      "checks": [],
+      "connections": [{
+        "connectionId":"bbbbbbbb-1111-2222-3333-444444444444",
+        "credentialHealth":"not_checked",
+        "checks":[
+          {"checkId":"connection_access","status":"ready","message":"Metadata is visible; credential health is not established.","evidence":{"source":"connection","connectionId":"bbbbbbbb-1111-2222-3333-444444444444"},"nextSteps":[{"kind":"inspection","message":"Inspect the same scoped resource without changing it.","command":"fabio --wrap-untrusted --readonly connection show --id bbbbbbbb-1111-2222-3333-444444444444","hintType":"retry_safe"}]},
+          {"checkId":"effective_role","status":"ready","message":"Caller role is not the workspace identity's source authorization.","evidence":{"source":"connection.myRole","myRole":"Owner","roleReported":true},"nextSteps":[{"kind":"inspection","message":"Inspect the same scoped resource without changing it.","command":"fabio --wrap-untrusted --readonly connection show --id bbbbbbbb-1111-2222-3333-444444444444","hintType":"retry_safe"}]},
+          {"checkId":"credential_configuration","status":"ready","message":"Credential type is reported; validity was not tested.","evidence":{"source":"connection.credentialDetails","credentialType":"Anonymous","credentialHealth":"not_checked"},"nextSteps":[{"kind":"inspection","message":"Inspect the same scoped resource without changing it.","command":"fabio --wrap-untrusted --readonly connection show --id bbbbbbbb-1111-2222-3333-444444444444","hintType":"retry_safe"}]}
+        ]
+      }],
+      "references": null,
+      "notChecked":["stored credential validity","source authorization","workspace identity token acquisition","gateway health","code-first usage eligibility","workload execution"],
+      "limitations":"Configuration observations only; no source requests, mutations, admin probes, or automatic credential tests."
+    }
+  },
+  "notes": "In item mode references.complete=false makes item_connections unknown. Automatic/SSO rows can have no connection ID. PendingOwner makes effective_role needs_action, not ready. An optional workspace is identity context, not proof of connection binding. --strict fails for any non-ready requested check; credential/source health remains explicitly untested even in a ready configuration report.",
+  "query_examples": [
+    {"query":"connections[].{id:connectionId,credentialHealth:credentialHealth,checks:checks[].{check:checkId,status:status}}","description":"Separate caller/configuration observations from untested credentials."},
+    {"query":"connections[].checks[] | [?status!='ready']","description":"Find connection checks that need investigation without changing anything."}
+  ]
+}
