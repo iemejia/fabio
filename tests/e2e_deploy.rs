@@ -1249,13 +1249,14 @@ fn deploy_export_warehouse_definitions() {
                 let meta: serde_json::Value = serde_json::from_str(&content).unwrap();
                 assert_eq!(meta["metadata"]["type"], "Warehouse");
 
-                let has_definition = std::fs::read_dir(entry.path())
-                    .unwrap()
-                    .flatten()
-                    .any(|part| {
-                        let name = part.file_name();
-                        name == "definition.dacpac" || name == "sqldw.sqlproj"
-                    });
+                let has_definition =
+                    std::fs::read_dir(entry.path())
+                        .unwrap()
+                        .flatten()
+                        .any(|part| {
+                            let name = part.file_name();
+                            name == "definition.dacpac" || name == "sqldw.sqlproj"
+                        });
                 assert!(
                     has_definition,
                     "Warehouse export should include definition parts in {}",

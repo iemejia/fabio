@@ -122,6 +122,33 @@ fn dataagent_topic_read_format_and_delete_routes_cover_both_stages() {
             )))
             .and(query_param("fileName", "guidance.md"))
             .respond_with(
+                ResponseTemplate::new(202)
+                    .insert_header(
+                        "Location",
+                        format!("{}/operations/format", server.uri()),
+                    )
+                    .insert_header("Retry-After", "0"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/operations/format"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header(
+                        "Location",
+                        format!("{}/operations/format/result", server.uri()),
+                    )
+                    .insert_header("Retry-After", "0")
+                    .set_body_json(serde_json::json!({"status": "Succeeded"})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/operations/format/result"))
+            .respond_with(
                 ResponseTemplate::new(200)
                     .insert_header("ETag", "\"etag-1\"")
                     .set_body_string("# Formatted guidance"),
@@ -191,6 +218,7 @@ fn dataagent_topic_read_format_and_delete_routes_cover_both_stages() {
         "# Formatted guidance"
     );
     assert_eq!(parse_json(&formatted)["data"]["applied"], false);
+    assert_eq!(parse_json(&formatted)["data"]["etag"], "\"etag-1\"");
     fabio()
         .env("FABIO_ACCESS_TOKEN", "fake-test-token")
         .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
@@ -210,6 +238,74 @@ fn dataagent_topic_read_format_and_delete_routes_cover_both_stages() {
         ])
         .assert()
         .success();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dataagent_format_topic_lro_failure_is_reported() {
+    let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+    let agent = "bbbbbbbb-1111-2222-3333-444444444444";
+    let datasource = "cccccccc-1111-2222-3333-444444444444";
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/workspaces/{workspace}/dataAgents/{agent}/staging/datasources"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "value": [{"id": datasource, "displayName": "Sales"}]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path(format!(
+            "/workspaces/{workspace}/dataAgents/{agent}/staging/datasources/{datasource}/topics/format"
+        )))
+        .and(query_param("fileName", "guidance.md"))
+        .respond_with(
+            ResponseTemplate::new(202)
+                .insert_header("Location", format!("{}/operations/format", server.uri()))
+                .insert_header("Retry-After", "0"),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/operations/format"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "status": "Failed",
+            "error": {"errorCode": "FormatFailed", "message": "Formatting failed"}
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let output = common::mock_fabio(&server)
+        .args([
+            "--quiet",
+            "data-agent",
+            "format-topic",
+            "--workspace",
+            workspace,
+            "--id",
+            agent,
+            "--datasource",
+            datasource,
+            "--file-name",
+            "guidance.md",
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    let error: serde_json::Value =
+        serde_json::from_str(&stderr).unwrap_or_else(|error| panic!("{error}: {stderr}"));
+    assert_eq!(error["error"]["code"], "API_ERROR");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Formatting failed")
+    );
+    assert_eq!(server.received_requests().await.unwrap().len(), 3);
 }
 
 #[test]

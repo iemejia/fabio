@@ -61,11 +61,14 @@ fn definition_from_inputs(
 
 fn definition_from_dir(path: &str) -> Result<Value> {
     let root = Path::new(path);
-    if !root.is_dir() {
+    if !fs::symlink_metadata(root).is_ok_and(|metadata| metadata.file_type().is_dir()) {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
-            format!("Definition directory does not exist: '{}'", root.display()),
-            "Point --definition-dir at the root of the SQL project definition.",
+            format!(
+                "Definition directory does not exist or is not a regular directory: '{}'",
+                root.display()
+            ),
+            "Point --definition-dir at a non-symlink root directory of the SQL project definition.",
         )
         .into());
     }
@@ -78,18 +81,33 @@ fn definition_from_dir(path: &str) -> Result<Value> {
                 format!("Failed to read '{}': {error}", current.display()),
             )
         })? {
-            let path = entry
-                .map_err(|error| {
-                    FabioError::new(
-                        ErrorCode::InvalidInput,
-                        format!("Failed to read directory entry: {error}"),
-                    )
-                })?
-                .path();
-            if path.is_dir() {
+            let entry = entry.map_err(|error| {
+                FabioError::new(
+                    ErrorCode::InvalidInput,
+                    format!("Failed to read directory entry: {error}"),
+                )
+            })?;
+            let path = entry.path();
+            let file_type = entry.file_type().map_err(|error| {
+                FabioError::new(
+                    ErrorCode::InvalidInput,
+                    format!("Failed to inspect '{}': {error}", path.display()),
+                )
+            })?;
+            if file_type.is_dir() {
                 stack.push(path);
-            } else {
+            } else if file_type.is_file() {
                 paths.push(path);
+            } else {
+                return Err(FabioError::with_hint(
+                    ErrorCode::InvalidInput,
+                    format!(
+                        "Warehouse definition contains a symlink or non-regular entry: '{}'",
+                        path.display()
+                    ),
+                    "Remove symbolic links and special files from the definition directory.",
+                )
+                .into());
             }
         }
     }
@@ -262,5 +280,13 @@ mod tests {
     fn empty_definition_directory_is_rejected_before_update() {
         let directory = tempfile::tempdir().unwrap();
         assert!(definition_from_inputs(None, directory.path().to_str(), None).is_err());
+    }
+
+    #[test]
+    fn definition_directory_must_be_a_directory() {
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("not-a-directory");
+        fs::write(&file, b"content").unwrap();
+        assert!(definition_from_inputs(None, file.to_str(), None).is_err());
     }
 }

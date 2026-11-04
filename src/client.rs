@@ -1912,7 +1912,7 @@ impl FabricClient {
                 )
             })?;
         validate_trusted_url(&poll_url, "LRO poll URL")?;
-        let retry_after = retry_after_from_headers(resp.headers()).unwrap_or(LRO_POLL_INTERVAL);
+        let mut retry_after = retry_after_from_headers(resp.headers()).unwrap_or(LRO_POLL_INTERVAL);
         let start = std::time::Instant::now();
         loop {
             if start.elapsed() > self.lro_max_wait {
@@ -1930,17 +1930,56 @@ impl FabricClient {
                 .http
                 .get(&poll_url)
                 .header(AUTHORIZATION, token)
-                .header("Accept", accept)
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            if let Some(interval) = retry_after_from_headers(poll_resp.headers()) {
+                retry_after = interval;
+            }
             if poll_resp.status() == StatusCode::ACCEPTED {
                 continue;
             }
             if !poll_resp.status().is_success() {
                 return Err(error_from_failed_response(poll_resp).await.into());
             }
-            return Self::text_response(poll_resp).await;
+
+            let result_location = poll_resp
+                .headers()
+                .get("Location")
+                .and_then(|value| value.to_str().ok())
+                .map(String::from);
+            let body: Value = poll_resp.json().await?;
+            let operation_status = body
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if operation_status.eq_ignore_ascii_case("Succeeded") {
+                let result_location = result_location.ok_or_else(|| {
+                    FabioError::new(
+                        ErrorCode::ApiError,
+                        "Completed long-running text response did not include a result location",
+                    )
+                })?;
+                validate_trusted_url(&result_location, "LRO result URL")?;
+                let result_resp = self
+                    .http
+                    .get(&result_location)
+                    .header(AUTHORIZATION, token)
+                    .header("Accept", accept)
+                    .send()
+                    .await
+                    .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+                if !result_resp.status().is_success() {
+                    return Err(error_from_failed_response(result_resp).await.into());
+                }
+                return Self::text_response(result_resp).await;
+            }
+            if operation_status.eq_ignore_ascii_case("Failed")
+                || operation_status.eq_ignore_ascii_case("Canceled")
+                || operation_status.eq_ignore_ascii_case("Cancelled")
+            {
+                return Err(failed_lro_error(&body).into());
+            }
         }
     }
 
