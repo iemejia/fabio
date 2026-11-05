@@ -1,4 +1,7 @@
 ## Relevant Files
+- `src/commands/semantic_model/readiness.rs`: bounded schema/selected-table counts, exact-refresh and report-binding observations, no refresh/rebind orchestration
+- `tests/e2e_bi_readiness.rs`: constrained read-only Power BI transport, strict HTTP-200 DAX parsing, readiness bounds/scope and mutation guard regressions
+- `src/commands/context/data/workflows/bi_readiness.json`, `src/commands/context/data/examples/semantic_model_readiness.json`, `docs/src/content/docs/guides/bi-readiness.md`: canonical readiness recipe, output shape and guide (judgment remains in `bi_creation.json`)
 - `Cargo.toml`: Project config, dependencies, clippy/lints config, release profile (LTO+strip)
 - `clippy.toml`: Clippy tuning — lowers `future-size-threshold` to 16000 (below the 16384 default) so `clippy::large_futures` is caught by the host clippy before it trips the Windows/macOS CI matrix
 - `rust-toolchain.toml`: stable channel, rustfmt+clippy components

@@ -154,32 +154,49 @@ pub async fn run_dax_rows(
     id: &str,
     dax: &str,
 ) -> Result<Vec<Value>> {
-    let body = serde_json::json!({
-        "queries": [{"query": dax}],
-        "serializerSettings": {"includeNulls": true}
-    });
     let data = client
-        .post_powerbi(
-            &format!("/groups/{workspace}/datasets/{id}/executeQueries"),
-            &body,
-        )
+        .query_powerbi(workspace, id, dax)
         .await
-        .map_err(|e| {
-            enrich_dax_error(enrich_forbidden(e, "semantic-model schema query", "Viewer"))
-        })?;
+        .map_err(|e| enrich_dax_error(enrich_forbidden(e, "semantic-model query", "Viewer")))?;
 
-    let rows = data
-        .get("results")
-        .and_then(Value::as_array)
-        .and_then(|arr| arr.first())
-        .and_then(|t| t.get("tables"))
-        .and_then(Value::as_array)
-        .and_then(|arr| arr.first())
-        .and_then(|t| t.get("rows"))
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    Ok(rows)
+    parse_dax_rows(&data)
+}
+
+/// executeQueries supports one query/table per request. Never turn partial,
+/// error-bearing or malformed HTTP-200 results into an empty successful list.
+pub(super) fn parse_dax_rows(data: &Value) -> Result<Vec<Value>> {
+    let invalid = || {
+        FabioError::with_hint(
+            ErrorCode::ApiError,
+            "Power BI returned an error-bearing, partial, or malformed DAX result.",
+            "Expected one result table with object rows. Inspect query permissions, DAX syntax and service limits; HTTP success alone does not establish query readiness.",
+        )
+    };
+    let has_error = |value: &Value| value.get("error").is_some_and(|error| !error.is_null());
+    if has_error(data) {
+        return Err(invalid().into());
+    }
+    let results = data["results"]
+        .as_array()
+        .filter(|rows| rows.len() == 1)
+        .ok_or_else(invalid)?;
+    let result = &results[0];
+    if has_error(result) {
+        return Err(invalid().into());
+    }
+    let tables = result["tables"]
+        .as_array()
+        .filter(|rows| rows.len() == 1)
+        .ok_or_else(invalid)?;
+    let table = &tables[0];
+    if has_error(table) {
+        return Err(invalid().into());
+    }
+    let rows = table["rows"]
+        .as_array()
+        .filter(|rows| rows.iter().all(Value::is_object))
+        .ok_or_else(invalid)?;
+    Ok(rows.clone())
 }
 
 /// Fetch an `INFO.VIEW.<function>()` introspection result as cleaned rows
@@ -373,47 +390,32 @@ pub(super) async fn execute_dax_and_render(
     dax_query: &str,
     command_name: &str,
 ) -> Result<()> {
-    let body = serde_json::json!({
-        "queries": [{"query": dax_query}],
-        "serializerSettings": {"includeNulls": true}
-    });
-
-    let data = client
-        .post_powerbi(
-            &format!("/groups/{workspace}/datasets/{id}/executeQueries"),
-            &body,
-        )
-        .await
-        .map_err(|e| enrich_dax_error(enrich_forbidden(e, command_name, "Viewer")))?;
-
-    let rows = data
-        .get("results")
-        .and_then(|r| r.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|t| t.get("tables"))
-        .and_then(|t| t.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|t| t.get("rows"))
-        .and_then(Value::as_array);
-
-    if let Some(rows) = rows {
-        let columns: Vec<&str> = rows
-            .first()
-            .and_then(Value::as_object)
-            .map_or_else(Vec::new, |first| first.keys().map(String::as_str).collect());
-
-        let items: Vec<Value> = rows.clone();
-        output::render_list_with_token(
-            cli,
-            &items,
-            &columns,
-            &columns,
-            columns.first().copied().unwrap_or("value"),
-            None,
-        );
-    } else {
-        output::render_object(cli, &data, "results");
+    crate::client::validate_uuid(workspace, "workspace")?;
+    crate::client::validate_uuid(id, "semantic model")?;
+    if dax_query.trim().is_empty() {
+        return Err(FabioError::new(ErrorCode::InvalidInput, "DAX query must not be empty").into());
     }
+    if output::dry_run_guard(
+        cli,
+        command_name,
+        &serde_json::json!({"workspaceId":workspace,"modelId":id,"queryProvided":true}),
+    ) {
+        return Ok(());
+    }
+    let rows = run_dax_rows(client, workspace, id, dax_query).await?;
+    let columns: Vec<&str> = rows
+        .first()
+        .and_then(Value::as_object)
+        .map_or_else(Vec::new, |first| first.keys().map(String::as_str).collect());
+
+    output::render_list_with_token(
+        cli,
+        &rows,
+        &columns,
+        &columns,
+        columns.first().copied().unwrap_or("value"),
+        None,
+    );
 
     Ok(())
 }
@@ -958,6 +960,33 @@ fn enrich_dax_error(err: anyhow::Error) -> anyhow::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dax_parser_rejects_malformed_partial_and_http_200_errors() {
+        use serde_json::json;
+        assert_eq!(
+            parse_dax_rows(&json!({"results":[{"tables":[{"rows":[]}]}]})).unwrap(),
+            Vec::<Value>::new()
+        );
+        assert_eq!(
+            parse_dax_rows(&json!({"results":[{"tables":[{"rows":[{"[x]":1}]}]}]})).unwrap(),
+            vec![json!({"[x]":1})]
+        );
+        for invalid in [
+            json!({}),
+            json!({"results":[]}),
+            json!({"results":[{"tables":[{}]}]}),
+            json!({"results":[{"tables":[{"rows":[1]}]}]}),
+            json!({"results":[{"tables":[{"rows":[]}]}],"error":{"message":"private"}}),
+            json!({"results":[{"error":{"message":"private"},"tables":[{"rows":[]}]}]}),
+            json!({"results":[{"tables":[{"error":{"message":"private"},"rows":[{"[x]":1}]}]}]}),
+            json!({"results":[{"tables":[{"rows":[]},{"rows":[]}]}]}),
+            json!({"results":[{"tables":[{"rows":[]}]},{"tables":[{"rows":[]}]}]}),
+        ] {
+            let error = parse_dax_rows(&invalid).unwrap_err();
+            assert!(!error.to_string().contains("private"));
+        }
+    }
 
     #[test]
     fn bind_body_uses_connection_binding_object() {

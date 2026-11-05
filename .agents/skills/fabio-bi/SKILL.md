@@ -12,6 +12,7 @@ license: MIT
 > **Prefer runtime introspection.** This index is a snapshot; the installed binary is always authoritative. Use `fabio context agent --group <group>` and `fabio context describe <group> <command>` for exact flags and output shapes.
 
 ## When to use
+- Bounded read-only BI readiness: model schema, opt-in selected-table data counts, exact refresh request completion and report binding without resubmitting refreshes or changing modes.
 - Optimizing a semantic model / checking it against best practices (semantic-model analyze — Best Practice Analyzer over INFO.VIEW; measure-dependencies for AI data schema scoping).
 - Creating native Direct Lake models from known compatible Delta table URLs, or choosing schema-aware generation from a lakehouse/warehouse without hand-authored TMDL.
 - Creating/updating semantic models from TMDL and binding them to a SQL endpoint.
@@ -99,6 +100,7 @@ Manage semantic models (Power BI datasets)
 | `fabio semantic-model measure-dependencies` | no | List each measure's dependencies (the measures/columns/tables its DAX references) — useful for including dependent objects in an AI data schema |
 | `fabio semantic-model move-measure` | yes | Move a measure to a different home table (name and definition preserved). Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio semantic-model query` | no | Execute a DAX query against a semantic model |
+| `fabio semantic-model readiness` | no | Observe model schema, optional data counts, exact refresh completion and report binding without changing them |
 | `fabio semantic-model refresh` | yes | Refresh a semantic model (required to frame Direct Lake models after creation) |
 | `fabio semantic-model refresh-details` | no | Get execution details of a specific (enhanced) refresh by its request id |
 | `fabio semantic-model refresh-status` | no | Get refresh history and status for a semantic model |
@@ -210,6 +212,11 @@ Manage Power BI Goals scorecards (Power BI Metrics, not a Fabric item)
 - Refreshing on inactive capacity (CAPACITY_INACTIVE).
 
 ## Key gotchas
+- semantic-model readiness --workspace <WS> --id <MODEL> checks model/schema visibility only by default. Repeat --expected-table (at most 20) to assert model tables; --probe-data opts into COUNTROWS and --min-rows 1 requires each table to be nonempty (default minimum 0). Reads may consume capacity and prove only current-caller counts, NOT Delta compatibility, freshness, source grants for others or exact storage/fallback mode.
+- Readiness --refresh-id observes an EXACT request, never selects latest history or resubmits work. If submission exposes no request ID, compare refresh-status against the pre-submission baseline and select one unambiguous new request; an old Completed request is not proof of the new one. Failed/cancelled/disabled selected refresh stops --wait, even when schema queries work. generator framed:true is legacy submission-only evidence.
+- Readiness --report-id [--report-workspace] compares the report's Power BI datasetId with the selected model. Matching binding is not proof of visuals/rendering/viewer access; no rebind, takeover or definition read/write occurs. Unreported dataset workspace is explicitly recorded, not invented.
+- Readiness --wait repeats only read-only observations, bounded by total --timeout including in-flight requests AND --max-attempts. --strict prints checks/notChecked then fails unless requested checks are ready. Missing, malformed, truncated or unavailable evidence stays unknown. Omitted data/refresh/report checks are NOT established by a default ready status.
+- DAX queries and INFO.VIEW schema reads work with --readonly via the constrained executeQueries transport; other Power BI POST mutations remain blocked. Error-bearing/partial/malformed HTTP-200 query results fail, not empty success. Use --dry-run to preview readiness reads offline after scope validation.
 - connection diagnostics --workspace <WS> --item <MODEL_OR_REPORT> inspects only that item's exposed connection references. Automatic/SSO bindings can lack IDs, and a complete list is not proof that all external dependencies are exposed. Metadata/caller roles never prove credential health or workspace identity source authorization.
 - Capacity-specific refresh/query failures may suggest workspace diagnostics without automatically probing or changing policy. Remediation previews require confirmed evidence and approval; missing ARM/target identifiers are not guessed. See remediation-hints.
 - 'dataset' (legacy Power BI term) == semantic model; Power BI REST still uses /datasets (reach it via rest call --api powerbi).

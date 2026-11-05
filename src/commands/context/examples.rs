@@ -97,6 +97,10 @@ pub(super) const fn example_entries() -> &'static [(&'static str, &'static str)]
 
 const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
+        "semantic-model/readiness",
+        include_str!("data/examples/semantic_model_readiness.json"),
+    ),
+    (
         "environment/diagnostics",
         include_str!("data/examples/environment_diagnostics.json"),
     ),

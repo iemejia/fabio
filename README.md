@@ -573,6 +573,13 @@ and application telemetry is explicitly **not attempt-pinned**. Typed state
 filters and activation follow distinguish terminal lifecycle state from success.
 See [Spark diagnostics](https://ismaelmejia.com/fabio/guides/spark-diagnostics/).
 
+Use `semantic-model readiness` for bounded model-schema observations, opt-in
+selected-table counts, exact refresh-request completion and report dataset
+binding. DAX queries work under `--readonly`; readiness never resubmits work or
+changes native/generated/authored binding modes. Review `notChecked`: successful
+queries are not proof of source compatibility, freshness or report rendering.
+See [BI readiness](https://ismaelmejia.com/fabio/guides/bi-readiness/).
+
 Use `fabio context describe <group> <command>` for examples of any specific command. Use `fabio context workflow <name>` for multi-step recipes. Available workflows:
 
 - `lakehouse-etl` -- Lakehouse + notebook + load-table + schedule

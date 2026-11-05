@@ -576,6 +576,141 @@ fn one_lake_fixture(workspace: &str) -> (String, Option<CreatedResource>) {
 }
 
 #[test]
+#[ignore = "requires live Fabric tenant; creates isolated BI/Delta fixtures, submits framing ONCE, verifies read-only readiness and cleans up"]
+#[allow(clippy::too_many_lines)] // Keep the isolated lifecycle and cleanup visible together.
+fn live_bi_readiness_verifies_queries_refresh_and_binding() {
+    let (workspace, _workspace_resource) = new_workspace();
+    let (url, lakehouse_resource) = one_lake_fixture(&workspace);
+    let table =
+        urlencoding::decode(url.rsplit('/').next().expect("fixture table")).expect("table name");
+    let (model, mut model_resource) =
+        create_item("semantic-model", &workspace, &["--one-lake-table", &url]);
+    let previous = run(&[
+        "--readonly",
+        "semantic-model",
+        "refresh-status",
+        "--workspace",
+        &workspace,
+        "--id",
+        &model,
+    ]);
+    let previous_ids: std::collections::HashSet<_> = list(&previous)
+        .iter()
+        .filter_map(|row| row["requestId"].as_str())
+        .map(str::to_string)
+        .collect();
+    run(&[
+        "semantic-model",
+        "refresh",
+        "--workspace",
+        &workspace,
+        "--id",
+        &model,
+    ]);
+    let status_args = [
+        "--readonly",
+        "semantic-model",
+        "refresh-status",
+        "--workspace",
+        &workspace,
+        "--id",
+        &model,
+    ];
+    wait_for_ready(
+        || try_run(&status_args),
+        |result| {
+            result["data"].as_array().is_some_and(|rows| {
+                rows.iter().any(|row| {
+                    row["requestId"]
+                        .as_str()
+                        .is_some_and(|id| !previous_ids.contains(id))
+                })
+            })
+        },
+        Duration::from_mins(2),
+    )
+    .expect("new refresh identity not exposed; tenant details withheld");
+    let history = run(&status_args);
+    let candidates: Vec<_> = list(&history)
+        .iter()
+        .filter_map(|row| row["requestId"].as_str())
+        .filter(|id| !previous_ids.contains(*id))
+        .collect();
+    assert_eq!(
+        candidates.len(),
+        1,
+        "ambiguous refresh identity; tenant details withheld"
+    );
+    let refresh = candidates[0];
+    let (report, mut report_resource) =
+        create_item("report", &workspace, &["--semantic-model", &model]);
+    let minimum = if lakehouse_resource.is_some() {
+        "2"
+    } else {
+        "0"
+    };
+    let result = run(&[
+        "--readonly",
+        "semantic-model",
+        "readiness",
+        "--workspace",
+        &workspace,
+        "--id",
+        &model,
+        "--expected-table",
+        &table,
+        "--probe-data",
+        "--min-rows",
+        minimum,
+        "--refresh-id",
+        refresh,
+        "--report-id",
+        &report,
+        "--wait",
+        "--max-attempts",
+        "20",
+        "--interval",
+        "5",
+        "--timeout",
+        "180",
+        "--strict",
+    ]);
+    assert_eq!(result["data"]["status"], "ready");
+    for key in [
+        "model_access",
+        "model_schema",
+        "data_query",
+        "selected_refresh",
+        "report_binding",
+    ] {
+        assert_eq!(
+            diagnostic_check(&result, key)["status"],
+            "ready",
+            "missing BI readiness evidence: {key}; tenant details withheld"
+        );
+    }
+    assert_eq!(
+        diagnostic_check(&result, "selected_refresh")["evidence"]["correlation"],
+        "exact_request_endpoint"
+    );
+    let dax = format!("EVALUATE FILTER('{}', FALSE())", table.replace('\'', "''"));
+    let empty = run(&[
+        "--readonly",
+        "semantic-model",
+        "query",
+        "--workspace",
+        &workspace,
+        "--id",
+        &model,
+        "--dax",
+        &dax,
+    ]);
+    assert_eq!(list(&empty).len(), 0);
+    report_resource.delete();
+    model_resource.delete();
+}
+
+#[test]
 #[ignore = "requires live Fabric tenant and FABIO_TEST_SOURCE_WORKSPACE"]
 fn live_report_native_model_reference() {
     let workspace = required_env("FABIO_TEST_SOURCE_WORKSPACE");

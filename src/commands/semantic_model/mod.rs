@@ -13,6 +13,7 @@ mod partitions;
 mod pbi_mcp;
 mod perspectives;
 mod powerbi;
+mod readiness;
 mod relationships;
 mod roles;
 mod tables;
@@ -49,6 +50,48 @@ pub enum SemanticModelCommand {
         /// Semantic model ID
         #[arg(long)]
         id: String,
+    },
+    /// Observe model schema, optional data counts, exact refresh completion and report binding without changing them
+    Readiness {
+        /// Model workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Semantic model ID
+        #[arg(long)]
+        id: String,
+        /// Required model table name (repeatable, at most 20; not a source path)
+        #[arg(long = "expected-table")]
+        expected_table: Vec<String>,
+        /// Execute one bounded-result COUNTROWS query over the expected tables (may scan source data)
+        #[arg(long, requires = "expected_table")]
+        probe_data: bool,
+        /// Minimum row count for EACH expected table; requires --probe-data (default 0)
+        #[arg(long, requires = "probe_data")]
+        min_rows: Option<u64>,
+        /// Exact refresh request UUID to observe; never selects an older/latest refresh or submits one
+        #[arg(long)]
+        refresh_id: Option<String>,
+        /// Explicit report ID whose Power BI dataset binding must match this model
+        #[arg(long)]
+        report_id: Option<String>,
+        /// Report workspace (default: model workspace); requires --report-id
+        #[arg(long, requires = "report_id")]
+        report_workspace: Option<String>,
+        /// Repeat read-only observations until ready, blocked, or bounded out
+        #[arg(long)]
+        wait: bool,
+        /// Maximum observation cycles with --wait (default 6)
+        #[arg(long,requires="wait",value_parser=clap::value_parser!(u8).range(1..=20))]
+        max_attempts: Option<u8>,
+        /// Seconds between cycles with --wait (default 5)
+        #[arg(long,requires="wait",value_parser=clap::value_parser!(u64).range(1..=60))]
+        interval: Option<u64>,
+        /// Total seconds for ALL observations, retries, waits and in-flight reads
+        #[arg(long,default_value="30",value_parser=clap::value_parser!(u64).range(1..=300))]
+        timeout: u64,
+        /// Print report and exit non-zero unless all requested checks are ready
+        #[arg(long)]
+        strict: bool,
     },
     /// Create a semantic model from a definition, `OneLake` tables, or empty
     #[command(display_order = 3)]
@@ -1962,6 +2005,40 @@ pub async fn execute(
         SemanticModelCommand::List { workspace } => crud::list(cli, client, workspace).await,
         SemanticModelCommand::Show { workspace, id } => {
             crud::show(cli, client, workspace, id).await
+        }
+        SemanticModelCommand::Readiness {
+            workspace,
+            id,
+            expected_table,
+            probe_data,
+            min_rows,
+            refresh_id,
+            report_id,
+            report_workspace,
+            wait,
+            max_attempts,
+            interval,
+            timeout,
+            strict,
+        } => {
+            readiness::execute(
+                cli,
+                client,
+                workspace,
+                id,
+                expected_table,
+                *probe_data,
+                *min_rows,
+                refresh_id.as_deref(),
+                report_id.as_deref(),
+                report_workspace.as_deref(),
+                *wait,
+                *max_attempts,
+                *interval,
+                *timeout,
+                *strict,
+            )
+            .await
         }
         SemanticModelCommand::Create {
             workspace,

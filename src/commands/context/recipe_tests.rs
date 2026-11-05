@@ -71,7 +71,10 @@ fn published_bi_recipes_parse_with_the_current_cli() {
     with_cli(|cli| {
         let mut documents = Vec::new();
         for (name, content) in super::workflows::entries() {
-            if matches!(*name, "direct-lake-report" | "report-authoring") {
+            if matches!(
+                *name,
+                "direct-lake-report" | "report-authoring" | "bi-readiness"
+            ) {
                 documents.push((*name, *content));
             }
         }
@@ -81,13 +84,13 @@ fn published_bi_recipes_parse_with_the_current_cli() {
             }
         }
         for (name, content) in super::examples::example_entries() {
-            if *name == "semantic-model/create" {
+            if matches!(*name, "semantic-model/create" | "semantic-model/readiness") {
                 documents.push((*name, *content));
             }
         }
         assert_eq!(
             documents.len(),
-            5,
+            7,
             "Keep the selected knowledge surfaces covered"
         );
         for (name, content) in documents {

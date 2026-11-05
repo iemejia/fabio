@@ -42,6 +42,7 @@ cargo test --test e2e_connection_diagnostics
 cargo test --bin fabio environment::diagnostics
 cargo test --bin fabio commands::follow
 cargo test --test e2e_environment_diagnostics
+cargo test --test e2e_bi_readiness
 ```
 
 `tests/common/live.rs` is included only by the governance suite. Its deterministic
@@ -115,6 +116,7 @@ cargo test --test e2e_deployment_governance live_environment_pool_activation_his
 cargo test --test e2e_deployment_governance live_environment_pool_activation_diagnostics -- --ignored
 cargo test --test e2e_deployment_governance live_environment_diagnostics_configuration_only -- --ignored
 cargo test --test e2e_deployment_governance live_environment_diagnostics_runtime_metadata_only -- --ignored
+cargo test --test e2e_deployment_governance live_bi_readiness_verifies_queries_refresh_and_binding -- --ignored
 
 # Connection effective role; admin CRUD and separate explicit-recipient ownership
 cargo test --test e2e_deployment_governance live_connection_effective_role -- --ignored

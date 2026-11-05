@@ -44,6 +44,49 @@ defaultTest:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
 tests:
+  - description: "BI readiness: bounded exact-refresh and selected-data verification"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"
+      user_query: "Verify model MODEL in WS, table Sales must be nonempty, refresh request REQ must have completed, and report REPORT must point to it. Wait at most 60 seconds. Do not refresh or rebind anything."
+    assert:
+      - type: icontains
+        value: "semantic-model readiness"
+      - type: icontains
+        value: "--probe-data"
+      - type: icontains
+        value: "--refresh-id"
+      - type: icontains
+        value: "--report-id"
+      - type: icontains
+        value: "--timeout"
+      - type: llm-rubric
+        value: "Uses the supported semantic-model readiness command with explicit model/table, data probe and minimum rows 1, exact refresh request and report ID. Waiting is bounded to 60 seconds. Does not submit refresh, rebind, take over or switch creation/storage mode."
+
+  - description: "BI readiness: default ready does not prove freshness or visual rendering"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"
+      user_query: "The default semantic-model readiness report says ready, but I supplied no data probe, refresh ID or report ID. Does that prove fresh data, completed framing and a rendered report?"
+    assert:
+      - type: llm-rubric
+        value: "Says no: default ready covers only requested metadata/schema observations, with omitted checks unverified. Distinguishes optional table-data probing, exact refresh completion and report binding. Does not equate counts with freshness or binding with rendered visuals. Must not claim a data probe establishes Delta compatibility, grants for others or exact fallback mode; it need not enumerate every unasked limitation."
+
+  - description: "BI readiness: ambiguous accepted refresh is not resubmitted or replaced by an old success"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"
+      user_query: "Our generate output has framed true, but I have no request ID. History includes an old Completed refresh. Should I treat framing as done, sleep 20 seconds, or submit another refresh while polling? Preserve the native/generated binding mode."
+    assert:
+      - type: llm-rubric
+        value: "Rejects all three shortcuts: framed true is legacy submission-only evidence, an old completion is not the selected new refresh, and fixed sleep is not proof. Does not resubmit accepted work or change binding mode. Advises correlate one unambiguous new request against a pre-submission baseline when available; missing/ambiguous correlation stays unknown."
+
+  - description: "BI readiness: readonly DAX remains distinct from Power BI mutations"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"
+      user_query: "Run a DAX validation read against model MODEL in WS with readonly safeguards. Does readonly need disabling because executeQueries uses POST, and does HTTP 200 with a result-level error count as an empty successful result?"
+    assert:
+      - type: icontains
+        value: "--readonly"
+      - type: llm-rubric
+        value: "Keeps readonly enabled for semantic-model query or supported readiness and explains executeQueries is a semantically read-only constrained POST transport. Does not suggest this exception permits mutating operations. Error-bearing/partial/malformed HTTP-200 DAX envelopes fail rather than empty success. Explicitly listing unrelated mutation commands is not required."
   - description: "Spark diagnostics: session-only triage never invents or publishes an environment"
     vars:
       skill_content: "file://../../.agents/skills/fabio-data-engineering/SKILL.md"

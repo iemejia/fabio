@@ -1,0 +1,11 @@
+{
+  "name":"BI Readiness Verification",
+  "description":"Observe an existing semantic model's schema, opt-in data counts, an explicitly correlated refresh and report binding with a total deadline. Preserves native/generated/authored mode and never resubmits work or rebinds.",
+  "prerequisites":["Existing model and report with explicit IDs, and a known model table name.","Select REFRESH_ID only after correlating the requested refresh. If submission returned no identity, compare refresh-status against a pre-submission baseline; do not choose an older success or resubmit ambiguously accepted work.","The opt-in COUNTROWS data check may scan data and consume capacity; it runs under the current identity only."],
+  "variables":{"WS":"Model workspace UUID.","MODEL":"Existing model UUID.","REPORT":"Existing report UUID in the same workspace; add --report-workspace for another report workspace.","REFRESH_ID":"Explicit correlated refresh request UUID, not latest history.","TABLE":"Exact model table name."},
+  "steps":[
+    {"step_number":1,"command":"fabio --wrap-untrusted --readonly semantic-model readiness --workspace $WS --id $MODEL --expected-table \"$TABLE\" --probe-data --min-rows 1 --refresh-id $REFRESH_ID --report-id $REPORT --dry-run","description":"Preview validated read scope. No network calls, data query, refresh or rebind occurs in dry-run."},
+    {"step_number":2,"command":"fabio --wrap-untrusted --readonly semantic-model readiness --workspace $WS --id $MODEL --expected-table \"$TABLE\" --probe-data --min-rows 1 --refresh-id $REFRESH_ID --report-id $REPORT --wait --max-attempts 6 --interval 5 --timeout 60 --strict","description":"Verify all selected observations under one deadline. Review checks and notChecked even when ready; zero rows fail this minimum but do not prove source absence. Stop on failed selected refresh or bounds; no automatic mutations."}
+  ],
+  "limitations":["Schema and query readiness do not establish Delta schema/protocol compatibility or freshness, storage/fallback mode or viewer/source grants.","Binding does not author or render report visuals. Keep source validation and report authoring as separate explicitly chosen workflows."]
+}

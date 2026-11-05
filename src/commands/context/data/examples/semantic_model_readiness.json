@@ -1,0 +1,18 @@
+{
+  "command":"fabio --wrap-untrusted --readonly semantic-model readiness --workspace $WS --id $MODEL --expected-table Sales --probe-data --min-rows 1 --strict",
+  "description":"Schema/data readiness over one expected model table. Refresh and report checks are explicitly not requested.",
+  "response":{"data":{
+    "workspaceId":"aaaaaaaa-1111-2222-3333-444444444444","modelId":"bbbbbbbb-1111-2222-3333-444444444444","observedAt":"2026-11-04T12:00:00Z",
+    "scope":{"mutates":false,"queryTransport":"powerbi.executeQueries","expectedTableCount":1,"probeData":true,"refreshId":null,"reportId":null,"reportWorkspaceId":null,"timeoutSeconds":30,"maxAttempts":1,"maxLogicalReads":3},
+    "status":"ready","partial":false,"attempts":1,"stopReason":"ready",
+    "checks":[
+      {"checkId":"model_access","status":"ready","message":"Metadata visibility is not query or source readiness.","evidence":{"scopeMatched":true},"nextSteps":[{"kind":"inspection","message":"Inspect the same scoped resource without changing it.","command":"fabio --wrap-untrusted --readonly semantic-model show --workspace aaaaaaaa-1111-2222-3333-444444444444 --id bbbbbbbb-1111-2222-3333-444444444444","hintType":"retry_safe"}]},
+      {"checkId":"model_schema","status":"ready","message":"Schema visibility is not source compatibility.","evidence":{"tableCountObserved":1,"complete":true,"schemaTableLimit":200,"expectedTableCount":1,"missingExpectedTableIndexes":[]},"nextSteps":[{"kind":"inspection","message":"Inspect the same scoped resource without changing it.","command":"fabio --wrap-untrusted --readonly semantic-model list-tables --workspace aaaaaaaa-1111-2222-3333-444444444444 --id bbbbbbbb-1111-2222-3333-444444444444","hintType":"retry_safe"}]},
+      {"checkId":"data_query","status":"ready","message":"Counts cover only the selected tables under the caller's current identity.","evidence":{"expectedTableCount":1,"minimumRowsPerTable":1,"rowCountsByExpectedTableIndex":[2],"queryResultsIncluded":false},"nextSteps":[{"kind":"inspection","message":"Inspect the same scoped resource without changing it.","command":"fabio --wrap-untrusted --readonly semantic-model list-tables --workspace aaaaaaaa-1111-2222-3333-444444444444 --id bbbbbbbb-1111-2222-3333-444444444444","hintType":"retry_safe"}]}
+    ],
+    "notChecked":["source Delta schema/protocol compatibility","source grants and credentials for other identities","data freshness and exact storage/fallback mode","report visual rendering","creation/binding mode changes","refresh completion/correlation (requires --refresh-id)","report binding (requires --report-id)"],
+    "limitations":"Only requested observations under the current identity. No refresh, rebind, takeover or repair occurs."
+  }},
+  "notes":"Index 0 in rowCountsByExpectedTableIndex refers to the first --expected-table argument. Add --refresh-id to observe an exact request and --report-id [--report-workspace] for binding. --wait has both a total deadline and attempt cap; strict retains stdout on failure. Never interpret default ready as data freshness or completion of an unselected refresh.",
+  "query_examples":[{"query":"checks[].{check:checkId,status:status}","description":"Inspect each requested observation."},{"query":"notChecked","description":"Review unverified properties before interpreting readiness."}]
+}

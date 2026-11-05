@@ -94,7 +94,7 @@ pub struct Cli {
     pub lro_timeout: Option<u64>,
 
     /// Block all mutating operations (POST/PUT/PATCH/DELETE) before network dispatch.
-    /// Read-only operations (GET/HEAD) are unaffected. Use for agent safety.
+    /// GET/HEAD and explicit semantically read-only query POSTs (including DAX executeQueries) are unaffected. Use for agent safety.
     #[arg(long, global = true, env = "FABIO_READONLY")]
     pub readonly: bool,
 

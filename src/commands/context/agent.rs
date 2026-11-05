@@ -1098,7 +1098,7 @@ fn global_flags() -> Vec<Flag> {
         Flag {
             name: "--readonly",
             kind: "bool",
-            description: "Block all mutating operations (POST/PUT/PATCH/DELETE) before network dispatch. Read-only operations (GET/HEAD) are unaffected. Use for agent safety.",
+            description: "Block all mutating operations before network dispatch. GET/HEAD and explicit semantically read-only query POSTs (including DAX executeQueries) are unaffected. Use for agent safety.",
             default: Some("false"),
         },
         Flag {
@@ -1647,6 +1647,7 @@ fn infer_mutates(cmd_name: &str) -> bool {
         "validate",
         "search",
         "diagnostics",
+        "readiness",
         "deeplink",
         "connection-string",
         "exists",
@@ -1733,6 +1734,12 @@ fn infer_destructive(cmd_name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn readiness_metadata_is_readonly_and_returns_an_object() {
+        assert!(!super::infer_mutates("readiness"));
+        assert_eq!(super::infer_returns("readiness"), "object");
+        assert!(!super::infer_destructive("readiness"));
+    }
     use super::*;
 
     #[test]

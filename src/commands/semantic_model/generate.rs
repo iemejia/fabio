@@ -277,7 +277,7 @@ async fn create_and_frame(
         );
     } else {
         framed = true;
-        note.push_str(" Framed (allow ~15-30s before the first DAX query).");
+        note.push_str(" Framing refresh submitted, not completed. The legacy framed flag means submission only. Verify a correlated refresh and semantic-model readiness with a data probe; do not resubmit an accepted refresh or assume a fixed delay proves readiness.");
     }
     Ok((id, framed, note))
 }

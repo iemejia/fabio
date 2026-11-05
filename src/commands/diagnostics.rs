@@ -1,4 +1,4 @@
-//! Shared, GET-only diagnostic contracts. Never copy raw API bodies into evidence.
+//! Shared read-only diagnostic contracts. Never copy raw API bodies into evidence.
 
 use std::collections::HashSet;
 use std::time::Duration;
@@ -106,6 +106,16 @@ impl ReadBudget {
     }
 
     pub async fn get(&self, client: &FabricClient, path: &str) -> Result<Value> {
+        self.run(client.get(path)).await
+    }
+
+    pub fn expired(&self) -> bool {
+        Instant::now() >= self.0
+    }
+
+    /// Apply the SAME deadline to a semantically read-only query or probe.
+    /// Callers must never pass a mutation to this helper.
+    pub async fn run<T>(&self, probe: impl std::future::Future<Output = Result<T>>) -> Result<T> {
         let remaining = self.0.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
             return Err(FabioError::new(
@@ -114,7 +124,9 @@ impl ReadBudget {
             )
             .into());
         }
-        read(client, path, remaining).await
+        tokio::time::timeout(remaining, probe).await.map_err(|_| {
+            FabioError::new(ErrorCode::Timeout, "Diagnostic read reached its deadline")
+        })?
     }
 }
 
@@ -166,6 +178,23 @@ impl PageCursor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn expired_budget_does_not_poll_a_readonly_probe() {
+        let budget = ReadBudget::new(0);
+        let calls = std::cell::Cell::new(0);
+        assert!(budget.expired());
+        assert!(
+            budget
+                .run(async {
+                    calls.set(calls.get() + 1);
+                    Ok(())
+                })
+                .await
+                .is_err()
+        );
+        assert_eq!(calls.get(), 0);
+    }
 
     #[test]
     fn cursor_is_token_only_bounded_and_cycle_aware() {

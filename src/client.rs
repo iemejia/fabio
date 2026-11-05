@@ -2207,6 +2207,26 @@ impl FabricClient {
 
     pub async fn post_powerbi(&self, path: &str, body: &Value) -> Result<Value> {
         self.guard_readonly("POST", path)?;
+        self.post_powerbi_impl(path, body).await
+    }
+
+    /// Semantically read-only DAX transport. The route is constructed here, not
+    /// accepted from callers, so readonly mode cannot be bypassed for mutations.
+    pub async fn query_powerbi(&self, workspace: &str, model: &str, dax: &str) -> Result<Value> {
+        validate_uuid(workspace, "workspace")?;
+        validate_uuid(model, "semantic model")?;
+        if dax.trim().is_empty() {
+            return Err(
+                FabioError::new(ErrorCode::InvalidInput, "DAX query must not be empty").into(),
+            );
+        }
+        self.post_powerbi_impl(
+            &format!("/groups/{workspace}/datasets/{model}/executeQueries"),
+            &serde_json::json!({"queries":[{"query":dax}],"serializerSettings":{"includeNulls":true}}),
+        ).await
+    }
+
+    async fn post_powerbi_impl(&self, path: &str, body: &Value) -> Result<Value> {
         let token = self.require_auth().await?;
         let url = format!("{}{path}", *POWERBI_BASE_URL);
 
