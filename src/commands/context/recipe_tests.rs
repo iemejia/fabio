@@ -84,13 +84,16 @@ fn published_bi_recipes_parse_with_the_current_cli() {
             }
         }
         for (name, content) in super::examples::example_entries() {
-            if matches!(*name, "semantic-model/create" | "semantic-model/readiness") {
+            if matches!(
+                *name,
+                "semantic-model/create" | "semantic-model/readiness" | "semantic-model/refresh"
+            ) {
                 documents.push((*name, *content));
             }
         }
         assert_eq!(
             documents.len(),
-            7,
+            8,
             "Keep the selected knowledge surfaces covered"
         );
         for (name, content) in documents {

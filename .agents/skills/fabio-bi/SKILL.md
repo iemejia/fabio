@@ -74,7 +74,7 @@ Manage semantic models (Power BI datasets)
 | `fabio semantic-model delete-user` | yes | Remove a user from a semantic model |
 | `fabio semantic-model evaluate-measure` | no | Evaluate one or more measures (optionally grouped by columns) — the fabio equivalent of semantic-link's `evaluate_measure` |
 | `fabio semantic-model export-pbix` | no | Export a semantic model as a .pbix file |
-| `fabio semantic-model generate` | yes | Generate a Direct Lake semantic model from a lakehouse or warehouse (reads the SQL analytics endpoint schema and picks tables, like the Fabric portal's "New semantic model") |
+| `fabio semantic-model generate` | yes | Generate a Direct Lake semantic model from a lakehouse or warehouse (reads the SQL analytics endpoint schema and picks tables, like the Fabric portal's "New semantic model") Returns a framing acknowledgement/refresh ID when available; the legacy framed flag is not completion |
 | `fabio semantic-model generate-dax` | no | Generate a DAX query from a natural-language prompt using the remote Power BI MCP server (Copilot-powered) |
 | `fabio semantic-model get-bound-gateway-datasources` | no | List the gateway datasources bound to a semantic model |
 | `fabio semantic-model get-definition` | no | Get the definition of a semantic model |
@@ -101,7 +101,7 @@ Manage semantic models (Power BI datasets)
 | `fabio semantic-model move-measure` | yes | Move a measure to a different home table (name and definition preserved). Overwrites the definition (irreversible) — dry-run guarded |
 | `fabio semantic-model query` | no | Execute a DAX query against a semantic model |
 | `fabio semantic-model readiness` | no | Observe model schema, optional data counts, exact refresh completion and report binding without changing them |
-| `fabio semantic-model refresh` | yes | Refresh a semantic model (required to frame Direct Lake models after creation) |
+| `fabio semantic-model refresh` | yes | Refresh a semantic model (required to frame Direct Lake models after creation) Returns an acknowledgement and exact-scope refresh ID when available, never completion |
 | `fabio semantic-model refresh-details` | no | Get execution details of a specific (enhanced) refresh by its request id |
 | `fabio semantic-model refresh-status` | no | Get refresh history and status for a semantic model |
 | `fabio semantic-model remove-perspective-member` | yes | Remove a member from a perspective (a whole table, or one of its members). Overwrites the definition (irreversible) — dry-run guarded |
@@ -212,8 +212,10 @@ Manage Power BI Goals scorecards (Power BI Metrics, not a Fabric item)
 - Refreshing on inactive capacity (CAPACITY_INACTIVE).
 
 ## Key gotchas
+- refresh exposes a submission receipt; generate exposes the same structure as framing. Capture top-level refreshId only with correlationStatus:verified (a validated exact-scope Location, never followed). Transport trace x-ms-request-id alone, malformed/missing/conflicting headers and latest history are NOT operation identity. completionStatus is not_checked even when acknowledgement/correlation succeeded.
+- Unreadable successful refresh responses preserve acknowledgement/verified headers; do not resubmit. Error-bearing success and uncertain network/server failures stay unknown (the latter are non-retriable). generate preserves the created model and sanitized framing.state unknown/rejected/skipped instead of asking for a blind retry. Legacy framed:true means acknowledged, not complete; false does not prove an unknown request was rejected.
 - semantic-model readiness --workspace <WS> --id <MODEL> checks model/schema visibility only by default. Repeat --expected-table (at most 20) to assert model tables; --probe-data opts into COUNTROWS and --min-rows 1 requires each table to be nonempty (default minimum 0). Reads may consume capacity and prove only current-caller counts, NOT Delta compatibility, freshness, source grants for others or exact storage/fallback mode.
-- Readiness --refresh-id observes an EXACT request, never selects latest history or resubmits work. If submission exposes no request ID, compare refresh-status against the pre-submission baseline and select one unambiguous new request; an old Completed request is not proof of the new one. Failed/cancelled/disabled selected refresh stops --wait, even when schema queries work. generator framed:true is legacy submission-only evidence.
+- Readiness --refresh-id observes an EXACT request, preferably using the verified submission/framing receipt's refreshId. It never selects latest history or resubmits work. If no verified ID is exposed, compare refresh-status against the pre-submission baseline and select one unambiguous new request; an old Completed request is not proof of the new one. Failed/cancelled/disabled selected refresh stops --wait, even when schema queries work.
 - Readiness --report-id [--report-workspace] compares the report's Power BI datasetId with the selected model. Matching binding is not proof of visuals/rendering/viewer access; no rebind, takeover or definition read/write occurs. Unreported dataset workspace is explicitly recorded, not invented.
 - Readiness --wait repeats only read-only observations, bounded by total --timeout including in-flight requests AND --max-attempts. --strict prints checks/notChecked then fails unless requested checks are ready. Missing, malformed, truncated or unavailable evidence stays unknown. Omitted data/refresh/report checks are NOT established by a default ready status.
 - DAX queries and INFO.VIEW schema reads work with --readonly via the constrained executeQueries transport; other Power BI POST mutations remain blocked. Error-bearing/partial/malformed HTTP-200 query results fail, not empty success. Use --dry-run to preview readiness reads offline after scope validation.

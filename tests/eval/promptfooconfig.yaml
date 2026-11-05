@@ -44,6 +44,43 @@ defaultTest:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
 tests:
+  - description: "BI receipts: verified identity routes to bounded read-only readiness"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"
+      user_query: "One intended refresh of MODEL in WS returned submission.state accepted, correlationStatus verified, refreshId REQ and completionStatus not_checked. Verify that exact request within 60 seconds without submitting work again."
+    assert:
+      - type: icontains
+        value: "semantic-model readiness"
+      - type: icontains
+        value: "--refresh-id"
+      - type: icontains
+        value: "--timeout"
+      - type: llm-rubric
+        value: "Uses the verified REQ identity for bounded read-only observation, not latest history, another refresh/create, or rebinding. Acknowledgement/correlation is not completion. Uses a 60-second readiness bound and retains readonly safeguards."
+
+  - description: "BI receipts: trace-only acceptance is not operation identity or permission to resubmit"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"
+      user_query: "Refresh returned HTTP 202, state accepted, refreshId null, correlationStatus unavailable, and a transportRequestId UUID but no Location. Can I use the trace UUID as refresh-id, pick the latest Completed row, or submit another refresh to get an ID?"
+    assert:
+      - type: llm-rubric
+        value: "Rejects all shortcuts: a transport trace alone is not operation identity, latest/old completion is not correlation, and accepted work must not be blindly resubmitted. Preserves the receipt; only unambiguous correlation with a pre-submission baseline when available can establish a request, otherwise identity stays unknown."
+
+  - description: "BI receipts: generator unknown framing does not authorize duplicate creation or refresh"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"
+      user_query: "The generated model exists, but framing.state is unknown after a network interruption and legacy framed is false. Should I regenerate the model or immediately submit another refresh?"
+    assert:
+      - type: llm-rubric
+        value: "Preserves the existing model, explains framed:false does not prove a network-uncertain request was rejected, and does not automatically regenerate, refresh, rebind or change modes. Work may already be running; inspect/correlate existing evidence without inventing an ID. Unknown submission outcomes are not automatic retry opportunities."
+
+  - description: "BI receipts: unreadable success body preserves acknowledgement instead of retrying"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"
+      user_query: "A refresh response body was malformed JSON, but the receipt preserved HTTP 202 accepted with a verified refreshId and responseBodyStatus unreadable. Does the body parse problem mean I should retry the submission?"
+    assert:
+      - type: llm-rubric
+        value: "Says no: the server acknowledgement and verified header identity survive a success-body decode failure. Observes the same request without resubmission; completion remains unverified until separately read. Must not treat malformed success content as proof the mutation failed or advise another refresh."
   - description: "BI readiness: bounded exact-refresh and selected-data verification"
     vars:
       skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"

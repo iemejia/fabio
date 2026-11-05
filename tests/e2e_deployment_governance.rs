@@ -599,7 +599,7 @@ fn live_bi_readiness_verifies_queries_refresh_and_binding() {
         .filter_map(|row| row["requestId"].as_str())
         .map(str::to_string)
         .collect();
-    run(&[
+    let submitted = run(&[
         "semantic-model",
         "refresh",
         "--workspace",
@@ -607,6 +607,17 @@ fn live_bi_readiness_verifies_queries_refresh_and_binding() {
         "--id",
         &model,
     ]);
+    assert_eq!(submitted["data"]["submission"]["state"], "accepted");
+    assert_eq!(
+        submitted["data"]["submission"]["correlationStatus"],
+        "verified"
+    );
+    let refresh = field(&submitted["data"], "refreshId");
+    assert_reference(&submitted["data"]["submission"]["refreshId"], &refresh);
+    assert!(
+        !previous_ids.contains(&refresh),
+        "receipt reused an old request identity; tenant details withheld"
+    );
     let status_args = [
         "--readonly",
         "semantic-model",
@@ -620,28 +631,13 @@ fn live_bi_readiness_verifies_queries_refresh_and_binding() {
         || try_run(&status_args),
         |result| {
             result["data"].as_array().is_some_and(|rows| {
-                rows.iter().any(|row| {
-                    row["requestId"]
-                        .as_str()
-                        .is_some_and(|id| !previous_ids.contains(id))
-                })
+                rows.iter()
+                    .any(|row| row["requestId"].as_str() == Some(refresh.as_str()))
             })
         },
         Duration::from_mins(2),
     )
     .expect("new refresh identity not exposed; tenant details withheld");
-    let history = run(&status_args);
-    let candidates: Vec<_> = list(&history)
-        .iter()
-        .filter_map(|row| row["requestId"].as_str())
-        .filter(|id| !previous_ids.contains(*id))
-        .collect();
-    assert_eq!(
-        candidates.len(),
-        1,
-        "ambiguous refresh identity; tenant details withheld"
-    );
-    let refresh = candidates[0];
     let (report, mut report_resource) =
         create_item("report", &workspace, &["--semantic-model", &model]);
     let minimum = if lakehouse_resource.is_some() {
@@ -663,7 +659,7 @@ fn live_bi_readiness_verifies_queries_refresh_and_binding() {
         "--min-rows",
         minimum,
         "--refresh-id",
-        refresh,
+        &refresh,
         "--report-id",
         &report,
         "--wait",
@@ -706,8 +702,91 @@ fn live_bi_readiness_verifies_queries_refresh_and_binding() {
         &dax,
     ]);
     assert_eq!(list(&empty).len(), 0);
+    if lakehouse_resource.is_some() {
+        verify_generated_framing_receipt(&workspace, &url, &table);
+    }
     report_resource.delete();
     model_resource.delete();
+}
+
+fn verify_generated_framing_receipt(workspace: &str, url: &str, table: &str) {
+    let url = reqwest::Url::parse(url).expect("owned fixture URL");
+    let lakehouse = url
+        .path_segments()
+        .and_then(|mut segments| segments.nth(1))
+        .expect("owned lakehouse reference");
+    let name = unique_name("fabio_e2e");
+    let generate = [
+        "semantic-model",
+        "generate",
+        "--workspace",
+        workspace,
+        "--name",
+        &name,
+        "--lakehouse",
+        lakehouse,
+        "--tables",
+        table,
+        "--storage-mode",
+        "onelake",
+    ];
+    // Fixture SQL metadata can lag Delta ingestion. These are bounded READ-ONLY
+    // generation plans, never retries of a create or refresh submission.
+    let mut schema_ready = false;
+    for attempt in 0..8 {
+        if try_run(&[generate.as_slice(), &["--dry-run"]].concat()).is_ok() {
+            schema_ready = true;
+            break;
+        }
+        if attempt < 7 {
+            std::thread::sleep(Duration::from_secs(10));
+        }
+    }
+    assert!(
+        schema_ready,
+        "owned SQL schema unavailable for generator validation; tenant details withheld"
+    );
+    let result = run(&generate);
+    let model = field(&result["data"], "id");
+    let mut resource = CreatedResource::new(&[
+        "semantic-model",
+        "delete",
+        "--workspace",
+        workspace,
+        "--id",
+        &model,
+    ]);
+    assert_eq!(result["data"]["storageMode"], "directLakeOnOneLake");
+    assert_eq!(result["data"]["framed"], true);
+    assert_eq!(result["data"]["framing"]["state"], "accepted");
+    assert_eq!(result["data"]["framing"]["correlationStatus"], "verified");
+    assert_eq!(result["data"]["framing"]["completionStatus"], "not_checked");
+    let refresh = field(&result["data"], "refreshId");
+    assert_reference(&result["data"]["framing"]["refreshId"], &refresh);
+    let ready = run(&[
+        "--readonly",
+        "semantic-model",
+        "readiness",
+        "--workspace",
+        workspace,
+        "--id",
+        &model,
+        "--expected-table",
+        table,
+        "--probe-data",
+        "--min-rows",
+        "2",
+        "--refresh-id",
+        &refresh,
+        "--wait",
+        "--max-attempts",
+        "20",
+        "--timeout",
+        "180",
+        "--strict",
+    ]);
+    assert_eq!(ready["data"]["status"], "ready");
+    resource.delete();
 }
 
 #[test]

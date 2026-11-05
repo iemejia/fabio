@@ -48,6 +48,15 @@ const MAX_ERROR_BODY_LEN: usize = 500;
 /// a separate code path without this limit.
 const MAX_API_RESPONSE_SIZE: u64 = 50 * 1024 * 1024;
 
+/// A successful Power BI acknowledgement, including headers needed to correlate
+/// asynchronous work. `body: None` means the SUCCESS body could not be decoded;
+/// it must not turn an acknowledged mutation into a retryable submission error.
+pub struct PowerBiAcknowledgement {
+    pub status: StatusCode,
+    pub headers: HeaderMap,
+    pub body: Option<Value>,
+}
+
 // ── Base URL defaults (overridable via environment variables) ─────────────
 //
 // All four API base endpoints can be overridden via environment variables for
@@ -2210,6 +2219,32 @@ impl FabricClient {
         self.post_powerbi_impl(path, body).await
     }
 
+    /// Guarded mutation transport preserving acknowledgement metadata. Never
+    /// retries after an accepted response, malformed success body or network error.
+    pub async fn post_powerbi_with_metadata(
+        &self,
+        path: &str,
+        body: &Value,
+    ) -> Result<PowerBiAcknowledgement> {
+        self.guard_readonly("POST", path)?;
+        let response = self.send_powerbi_post(path, body).await?;
+        let status = response.status();
+        let headers = response.headers().clone();
+        match handle_response(response).await {
+            Ok(body) => Ok(PowerBiAcknowledgement {
+                status,
+                headers,
+                body: Some(body),
+            }),
+            Err(_) if status.is_success() => Ok(PowerBiAcknowledgement {
+                status,
+                headers,
+                body: None,
+            }),
+            Err(error) => Err(error),
+        }
+    }
+
     /// Semantically read-only DAX transport. The route is constructed here, not
     /// accepted from callers, so readonly mode cannot be bypassed for mutations.
     pub async fn query_powerbi(&self, workspace: &str, model: &str, dax: &str) -> Result<Value> {
@@ -2227,6 +2262,10 @@ impl FabricClient {
     }
 
     async fn post_powerbi_impl(&self, path: &str, body: &Value) -> Result<Value> {
+        handle_response(self.send_powerbi_post(path, body).await?).await
+    }
+
+    async fn send_powerbi_post(&self, path: &str, body: &Value) -> Result<Response> {
         let token = self.require_auth().await?;
         let url = format!("{}{path}", *POWERBI_BASE_URL);
 
@@ -2259,10 +2298,16 @@ impl FabricClient {
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            return handle_response(resp).await;
+            return Ok(resp);
         }
 
-        handle_response(resp).await
+        Ok(resp)
+    }
+
+    /// Validated endpoint configuration, used only to compare acknowledgement
+    /// metadata with the original request scope. Never follow a returned URL.
+    pub fn powerbi_endpoint() -> &'static str {
+        POWERBI_BASE_URL.as_str()
     }
 
     /// PUT request to Power BI REST API (retries once on 401).

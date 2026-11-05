@@ -11554,7 +11554,7 @@
         ]
       },
       "generate": {
-        "description": "Generate a Direct Lake semantic model from a lakehouse or warehouse (reads the SQL analytics endpoint schema and picks tables, like the Fabric portal's \"New semantic model\")",
+        "description": "Generate a Direct Lake semantic model from a lakehouse or warehouse (reads the SQL analytics endpoint schema and picks tables, like the Fabric portal's \"New semantic model\") Returns a framing acknowledgement/refresh ID when available; the legacy framed flag is not completion",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11858,7 +11858,7 @@
         "returns": "void"
       },
       "refresh": {
-        "description": "Refresh a semantic model (required to frame Direct Lake models after creation)",
+        "description": "Refresh a semantic model (required to frame Direct Lake models after creation) Returns an acknowledgement and exact-scope refresh ID when available, never completion",
         "flags": {
           "--workspace": {
             "type": "string",

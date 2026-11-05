@@ -12,7 +12,7 @@
       "rowCount": 3
     }
   },
-  "notes": "Requires the semantic model to be refreshed (framed). Direct Lake models need at least one POST /refreshes call after creation. DAX query must use EVALUATE for table results or DEFINE + EVALUATE for measures. Use double quotes for DAX strings inside the query.",
+  "notes": "When Direct Lake framing is needed, submit once and retain the refresh/generator receipt. Only correlationStatus:verified establishes refreshId; verify that exact request before querying and never blindly resubmit accepted/unknown work. Query readiness is not source compatibility or freshness. DAX must use EVALUATE for table results or DEFINE + EVALUATE for measures. Use double quotes for DAX strings inside the query.",
   "query_examples": [
     {"query": "rows", "description": "All result rows."},
     {"query": "columns", "description": "Column names from the DAX result."},

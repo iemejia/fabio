@@ -1,4 +1,6 @@
 ## Relevant Files
+- `src/commands/semantic_model/refresh.rs`: submit-once framing/refresh receipts, strict exact-scope Location correlation, conservative unknown/rejected outcomes and sanitized generator metadata
+- `tests/e2e_bi_refresh.rs`, `src/commands/context/data/examples/semantic_model_refresh.json`: acknowledgement/header/body ambiguity regression tests and canonical receipt output shape
 - `src/commands/semantic_model/readiness.rs`: bounded schema/selected-table counts, exact-refresh and report-binding observations, no refresh/rebind orchestration
 - `tests/e2e_bi_readiness.rs`: constrained read-only Power BI transport, strict HTTP-200 DAX parsing, readiness bounds/scope and mutation guard regressions
 - `src/commands/context/data/workflows/bi_readiness.json`, `src/commands/context/data/examples/semantic_model_readiness.json`, `docs/src/content/docs/guides/bi-readiness.md`: canonical readiness recipe, output shape and guide (judgment remains in `bi_creation.json`)

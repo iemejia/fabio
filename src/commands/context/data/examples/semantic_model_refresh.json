@@ -1,0 +1,14 @@
+{
+  "command":"fabio --wrap-untrusted semantic-model refresh --workspace $WS --id $MODEL",
+  "description":"Submit one refresh and retain its exact-scope acknowledgement. Never interpret a receipt as completion or repeat an ambiguously accepted submission.",
+  "response":{"data":{
+    "id":"bbbbbbbb-1111-2222-3333-444444444444","type":"Full","status":"refresh_triggered",
+    "refreshId":"cccccccc-1111-2222-3333-444444444444",
+    "submission":{"state":"accepted","httpStatus":202,"refreshId":"cccccccc-1111-2222-3333-444444444444","correlationStatus":"verified","correlationReason":null,"responseBodyStatus":"empty","transportRequestId":"cccccccc-1111-2222-3333-444444444444","completionStatus":"not_checked","error":null,"warnings":[]}
+  }},
+  "notes":"Capture data.refreshId only when submission.correlationStatus is verified. It is parsed from an exact model/workspace Location without following that URL. The origin must match the configured endpoint, or be the public API's live-verified HTTPS regional analysis.windows.net alias. A transport trace UUID alone is NOT a refresh identity. Missing, malformed, duplicate or conflicting headers retain acknowledgement but return refreshId:null. Unreadable success bodies preserve acceptance/verified headers and do not invite resubmission. An error-bearing success returns refresh_outcome_unknown. Network/server ambiguity errors are non-retriable; investigate existing evidence. generate exposes the same receipt under framing plus top-level refreshId; framed remains legacy acknowledgement-only, and false does not prove an unknown submission failed.",
+  "query_examples":[
+    {"query":"refreshId","description":"Extract the verified refresh UUID, or null; never substitute the newest history row when it is absent."},
+    {"query":"submission.{state:state,correlation:correlationStatus,completion:completionStatus}","description":"Keep acknowledgement, correlation and completion distinct."}
+  ]
+}

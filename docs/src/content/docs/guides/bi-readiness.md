@@ -41,10 +41,42 @@ or arbitrary metadata. Success covers only those tables under the current caller
 
 An accepted refresh is not a completed refresh. Pass the **exact request UUID**
 to `--refresh-id`; readiness never picks the latest refresh or an older success.
-If submission exposes no request identity, compare `refresh-status` against a
-pre-submission baseline and select one unambiguous new request. Ambiguity needs
+`semantic-model refresh` now returns `submission` receipt metadata and a
+top-level `refreshId`. `generate` returns the same metadata as `framing` plus
+`refreshId`; `--no-refresh` records an explicit `skipped` state.
+
+Capture `refreshId` **only when `correlationStatus` is `verified`**. The identifier
+comes from a canonical `Location` for the exact workspace/model refresh route.
+Its origin must match the configured endpoint, except the public API's
+live-verified HTTPS regional `*.analysis.windows.net` alias on port 443.
+Arbitrary origins remain invalid. The URL is parsed, **never followed**. A transport trace
+UUID (`x-ms-request-id`) alone is not a refresh identity; when present it must
+agree with the validated location. Missing, duplicate, malformed, wrong-scope or
+conflicting headers retain the acknowledgement but leave `refreshId` null.
+
+```bash
+# Submit ONCE and preserve the JSON receipt privately
+fabio --wrap-untrusted semantic-model refresh \
+  --workspace "$WS" --id "$MODEL" > refresh-receipt.json
+
+# Once correlation is verified, use that receipt's refreshId as REFRESH_ID
+fabio --wrap-untrusted --readonly semantic-model readiness \
+  --workspace "$WS" --id "$MODEL" --refresh-id "$REFRESH_ID" \
+  --wait --timeout 60 --strict
+```
+
+If no verified identity is available, compare history against a **pre-submission**
+baseline when one exists and require unambiguous correlation. Ambiguity needs
 review, not another submission. A generator's legacy `framed: true` means only
-that framing was submitted—not completed or verified by a fixed sleep.
+acknowledgement—not completion. **`framed: false` does not prove rejection** when
+the new `framing.state` is `unknown`.
+
+An unreadable success body preserves acknowledgement and any verified header
+identity instead of becoming a retryable submission failure. Error-bearing
+success bodies produce an unknown outcome. Network/server ambiguity errors are
+explicitly non-retriable: work may already be running. The generator preserves
+the created model and a sanitized `unknown`/`rejected` receipt instead of advising
+a blind retry. Never confuse `completionStatus: not_checked` with completion.
 
 The selected request is read through its detail endpoint. Missing/unknown status
 or a conflicting returned request identity stays `unknown`. A failed, cancelled

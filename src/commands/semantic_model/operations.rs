@@ -472,6 +472,8 @@ pub(super) async fn refresh(
         "DataOnly",
         "Defragment",
     ];
+    crate::commands::diagnostics::uuid_target(workspace, "--workspace")?;
+    crate::commands::diagnostics::uuid_target(id, "--id")?;
 
     // Case-insensitive normalization
     let refresh_type = VALID_TYPES
@@ -516,18 +518,16 @@ pub(super) async fn refresh(
         return Ok(());
     }
 
-    client
-        .post_powerbi(
-            &format!("/groups/{workspace}/datasets/{id}/refreshes"),
-            &body,
-        )
+    let submission = super::refresh::submit(client, workspace, id, &body)
         .await
         .map_err(|e| enrich_forbidden(e, "semantic-model refresh", "Contributor"))?;
 
     let obj = serde_json::json!({
         "id": id,
         "type": refresh_type,
-        "status": "refresh_triggered"
+        "status": if submission.acknowledged(){"refresh_triggered"}else{"refresh_outcome_unknown"},
+        "refreshId":submission.refresh_id,
+        "submission":submission
     });
     output::render_object(cli, &obj, "status");
     Ok(())

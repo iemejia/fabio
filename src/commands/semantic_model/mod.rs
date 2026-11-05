@@ -14,6 +14,7 @@ mod pbi_mcp;
 mod perspectives;
 mod powerbi;
 mod readiness;
+mod refresh;
 mod relationships;
 mod roles;
 mod tables;
@@ -137,6 +138,7 @@ pub enum SemanticModelCommand {
     /// Generate a Direct Lake semantic model from a lakehouse or warehouse
     /// (reads the SQL analytics endpoint schema and picks tables, like the
     /// Fabric portal's "New semantic model")
+    /// Returns a framing acknowledgement/refresh ID when available; the legacy framed flag is not completion.
     #[command(display_order = 3)]
     Generate {
         /// Workspace ID
@@ -354,6 +356,7 @@ pub enum SemanticModelCommand {
         connection_id: String,
     },
     /// Refresh a semantic model (required to frame Direct Lake models after creation)
+    /// Returns an acknowledgement and exact-scope refresh ID when available, never completion.
     ///
     /// Basic refresh sends just --type. Passing --objects / --commit-mode /
     /// --max-parallelism / --retry-count triggers an ENHANCED refresh (the TMSL

@@ -26,6 +26,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::Value;
 
+use super::refresh::{self, Submission};
 use crate::cli::Cli;
 use crate::client::FabricClient;
 use crate::commands::tds_utils::{execute_sql_rows, parse_connection_string};
@@ -171,7 +172,7 @@ pub(super) async fn generate(
         return Ok(());
     }
 
-    let (id, framed, note) = create_and_frame(
+    let (id, framing, note) = create_and_frame(
         client,
         workspace,
         name,
@@ -190,7 +191,9 @@ pub(super) async fn generate(
             "name": name,
             "source": src.source,
             "storageMode": storage_label,
-            "framed": framed,
+            "framed": framing.acknowledged(),
+            "refreshId":framing.refresh_id,
+            "framing":framing,
             "summary": summary,
             "note": note,
         }),
@@ -209,9 +212,9 @@ const fn storage_mode_label(mode: StorageMode) -> &'static str {
 
 /// Create the semantic model from the synthesized TMDL definition parts and
 /// frame it with a `Full` refresh (unless `no_refresh`). Returns
-/// `(id, framed, note)`. A freshly created Direct Lake model errors on DAX until
-/// framed, so framing is triggered by default but is NON-FATAL — the note
-/// records what happened so the caller can retry with `semantic-model refresh`.
+/// `(id, framing receipt, note)`. Submission is NON-FATAL so a model is not lost
+/// when acknowledgement/correlation is unavailable. An unknown transport
+/// outcome must never invite an automatic resubmission.
 async fn create_and_frame(
     client: &FabricClient,
     workspace: &str,
@@ -220,7 +223,7 @@ async fn create_and_frame(
     description: Option<&str>,
     sensitivity_label: Option<&str>,
     no_refresh: bool,
-) -> Result<(String, bool, String)> {
+) -> Result<(String, Submission, String)> {
     let definition_parts: Vec<Value> = parts
         .iter()
         .map(|(path, content)| {
@@ -256,30 +259,34 @@ async fn create_and_frame(
         .ok_or_else(|| FabioError::new(ErrorCode::ApiError, "Create returned no id"))?
         .to_string();
 
-    let mut framed = false;
-    let mut note = String::from(
-        "Direct Lake model created. Relationships/measures are not generated (like the portal) — add them via update-definition. Query with: fabio semantic-model query.",
-    );
-    if no_refresh {
-        note.push_str(
-            " Framing skipped (--no-refresh): run `fabio semantic-model refresh` before querying.",
-        );
-    } else if let Err(e) = client
-        .post_powerbi(
-            &format!("/groups/{workspace}/datasets/{id}/refreshes"),
-            &serde_json::json!({ "type": "Full" }),
-        )
-        .await
-    {
-        let _ = write!(
-            note,
-            " Framing refresh could not be triggered ({e}); run `fabio semantic-model refresh --workspace {workspace} --id {id}` before querying."
-        );
+    let framing = if no_refresh {
+        Submission::skipped()
     } else {
-        framed = true;
-        note.push_str(" Framing refresh submitted, not completed. The legacy framed flag means submission only. Verify a correlated refresh and semantic-model readiness with a data probe; do not resubmit an accepted refresh or assume a fixed delay proves readiness.");
-    }
-    Ok((id, framed, note))
+        match refresh::submit(client, workspace, &id, &serde_json::json!({"type":"Full"})).await {
+            Ok(submission) => submission,
+            Err(error) => Submission::failed(&error),
+        }
+    };
+    let note = framing_note(&framing);
+    Ok((id, framing, note))
+}
+
+fn framing_note(framing: &Submission) -> String {
+    let outcome = match framing.state {
+        "skipped" => "Framing was deliberately skipped (--no-refresh); submit only when intended.",
+        "accepted" | "acknowledged" => {
+            "Framing was acknowledged, not completed. Use refreshId only when correlation is verified, then perform bounded readiness checks. Never resubmit accepted work or rely on a fixed sleep."
+        }
+        "rejected" => {
+            "Framing submission was rejected. Inspect framing.error before deciding on a new submission; no automatic retry was made."
+        }
+        _ => {
+            "Framing outcome is unknown and may already be running. Do not retry automatically; inspect existing refresh evidence and establish correlation first."
+        }
+    };
+    format!(
+        "Direct Lake model created; relationships/measures are not inferred. {outcome} The legacy framed flag records acknowledgement only, not completion; false does not prove an unknown submission was rejected."
+    )
 }
 
 /// Resolve the source item to a [`ResolvedSource`].
@@ -621,6 +628,18 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    #[test]
+    fn framing_notes_do_not_equate_an_unknown_submission_with_rejection() {
+        let error = anyhow::Error::from(FabioError::new(ErrorCode::NetworkError, "private"));
+        let receipt = Submission::failed(&error);
+        assert_eq!(receipt.state, "unknown");
+        let note = framing_note(&receipt);
+        assert!(note.contains("Do not retry automatically"));
+        assert!(note.contains("false does not prove"));
+        assert!(!note.contains("private"));
+        let note = framing_note(&Submission::skipped());
+        assert!(note.contains("deliberately skipped"));
+    }
     /// A minimal SQL-mode [`ResolvedSource`] for TMDL-shape tests.
     fn sql_source(server: &str, catalog: &str) -> ResolvedSource {
         ResolvedSource {

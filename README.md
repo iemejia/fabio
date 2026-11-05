@@ -580,6 +580,12 @@ changes native/generated/authored binding modes. Review `notChecked`: successful
 queries are not proof of source compatibility, freshness or report rendering.
 See [BI readiness](https://ismaelmejia.com/fabio/guides/bi-readiness/).
 
+Refresh and generator outputs now retain submission/framing receipts and expose
+`refreshId` only when exact-scope response-header correlation is verified.
+Acknowledgement is not completion; missing/conflicting identity or unreadable
+acknowledgement bodies never authorize resubmission. Generator `framed` remains
+a legacy acknowledgement flag—inspect the structured `framing` receipt.
+
 Use `fabio context describe <group> <command>` for examples of any specific command. Use `fabio context workflow <name>` for multi-step recipes. Available workflows:
 
 - `lakehouse-etl` -- Lakehouse + notebook + load-table + schedule
