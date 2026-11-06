@@ -123,3 +123,5 @@ For complementary checks, see [connection diagnostics](../connection-diagnostics
 and [workspace diagnostics](../workspace-diagnostics/). Runtime schema and source
 preflight are distinct: valid OneLake URL syntax alone never establishes a
 compatible or authorized Delta source.
+Use [source preflight](../bi-source-preflight/) for standalone source metadata
+checks or the opt-in `--check-source` gate on native and generated creation.

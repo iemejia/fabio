@@ -1,4 +1,7 @@
 ## Relevant Files
+- `src/commands/semantic_model/source.rs`, `src/commands/semantic_model/source_delta.rs`: source URL/scope validation, shared bounded observations and creation gate, conservative Delta protocol/schema/mapping checks
+- `src/client/onelake_metadata.rs`: shared authenticated OneLake GET and strict bounded directory/file body readers (existing downloads/directory reads reuse the transport)
+- `tests/e2e_bi_source.rs`, `src/commands/context/data/best_practices/bi_source_preflight.json`, `src/commands/context/data/workflows/source_checked_creation.json`, `src/commands/context/data/examples/semantic_model_check_source.json`, `docs/src/content/docs/guides/bi-source-preflight.md`: source gate regressions, canonical guidance/recipe/output and human guide
 - `src/commands/semantic_model/refresh.rs`: submit-once framing/refresh receipts, strict exact-scope Location correlation, conservative unknown/rejected outcomes and sanitized generator metadata
 - `tests/e2e_bi_refresh.rs`, `src/commands/context/data/examples/semantic_model_refresh.json`: acknowledgement/header/body ambiguity regression tests and canonical receipt output shape
 - `src/commands/semantic_model/readiness.rs`: bounded schema/selected-table counts, exact-refresh and report-binding observations, no refresh/rebind orchestration

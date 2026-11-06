@@ -44,6 +44,9 @@ cargo test --bin fabio commands::follow
 cargo test --test e2e_environment_diagnostics
 cargo test --test e2e_bi_readiness
 cargo test --test e2e_bi_refresh
+cargo test --test e2e_bi_source
+cargo test --bin fabio semantic_model::source
+cargo test --bin fabio onelake_metadata
 ```
 
 `tests/common/live.rs` is included only by the governance suite. Its deterministic
@@ -121,6 +124,8 @@ cargo test --test e2e_deployment_governance live_bi_readiness_verifies_queries_r
 # The BI live test now uses returned verified refresh IDs and, for an owned
 # source fixture, validates generated OneLake framing receipts after SQL-schema
 # preflight. It submits each intended refresh ONCE and cleans up created items.
+# It also validates standalone source checks and --check-source integration for
+# native and generated creation. Source checks themselves never create/frame.
 
 # Connection effective role; admin CRUD and separate explicit-recipient ownership
 cargo test --test e2e_deployment_governance live_connection_effective_role -- --ignored

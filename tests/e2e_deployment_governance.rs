@@ -583,8 +583,27 @@ fn live_bi_readiness_verifies_queries_refresh_and_binding() {
     let (url, lakehouse_resource) = one_lake_fixture(&workspace);
     let table =
         urlencoding::decode(url.rsplit('/').next().expect("fixture table")).expect("table name");
-    let (model, mut model_resource) =
-        create_item("semantic-model", &workspace, &["--one-lake-table", &url]);
+    let preflight = run(&[
+        "--readonly",
+        "semantic-model",
+        "check-source",
+        "--one-lake-table",
+        &url,
+        "--source-timeout",
+        "60",
+    ]);
+    assert_source_evidence_ready(&preflight["data"]);
+    let (model, mut model_resource) = create_item(
+        "semantic-model",
+        &workspace,
+        &[
+            "--one-lake-table",
+            &url,
+            "--check-source",
+            "--source-timeout",
+            "60",
+        ],
+    );
     let previous = run(&[
         "--readonly",
         "semantic-model",
@@ -729,6 +748,9 @@ fn verify_generated_framing_receipt(workspace: &str, url: &str, table: &str) {
         table,
         "--storage-mode",
         "onelake",
+        "--check-source",
+        "--source-timeout",
+        "60",
     ];
     // Fixture SQL metadata can lag Delta ingestion. These are bounded READ-ONLY
     // generation plans, never retries of a create or refresh submission.
@@ -757,6 +779,7 @@ fn verify_generated_framing_receipt(workspace: &str, url: &str, table: &str) {
         &model,
     ]);
     assert_eq!(result["data"]["storageMode"], "directLakeOnOneLake");
+    assert_source_evidence_ready(&result["data"]["sourceCheck"]);
     assert_eq!(result["data"]["framed"], true);
     assert_eq!(result["data"]["framing"]["state"], "accepted");
     assert_eq!(result["data"]["framing"]["correlationStatus"], "verified");
@@ -787,6 +810,36 @@ fn verify_generated_framing_receipt(workspace: &str, url: &str, table: &str) {
     ]);
     assert_eq!(ready["data"]["status"], "ready");
     resource.delete();
+}
+
+fn assert_source_evidence_ready(data: &Value) {
+    let checks = data["checks"].as_array().into_iter().flatten().chain(
+        data["sources"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .flat_map(|source| source["checks"].as_array().into_iter().flatten()),
+    );
+    for check in checks {
+        let key = check["checkId"].as_str().unwrap_or("unknown_check");
+        let reason = check["evidence"]["reason"]
+            .as_str()
+            .or_else(|| check["evidence"]["error"]["code"].as_str())
+            .unwrap_or("review_metadata");
+        assert!(
+            key != "delta_protocol" || check["status"] == "ready",
+            "source protocol reader={:?}, writer={:?}, known reader features={}, known writer-only features={}; tenant details withheld",
+            check["evidence"]["minReaderVersion"].as_u64(),
+            check["evidence"]["minWriterVersion"].as_u64(),
+            check["evidence"]["recognizedReaderFeatures"],
+            check["evidence"]["recognizedWriterOnlyFeatures"]
+        );
+        assert!(
+            check["status"] == "ready",
+            "source check {key}: {reason}; tenant details withheld"
+        );
+    }
+    assert_eq!(data["status"], "ready");
 }
 
 #[test]

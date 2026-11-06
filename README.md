@@ -586,6 +586,12 @@ Acknowledgement is not completion; missing/conflicting identity or unreadable
 acknowledgement bodies never authorize resubmission. Generator `framed` remains
 a legacy acknowledgement flag—inspect the structured `framing` receipt.
 
+Source checking is integrated with native and generated model creation via
+opt-in `--check-source`, and is independently available as `semantic-model
+check-source`. Both use the same bounded metadata engine; non-ready source
+findings stop before creation, without switching modes or scanning table rows.
+See [source preflight](https://ismaelmejia.com/fabio/guides/bi-source-preflight/).
+
 Use `fabio context describe <group> <command>` for examples of any specific command. Use `fabio context workflow <name>` for multi-step recipes. Available workflows:
 
 - `lakehouse-etl` -- Lakehouse + notebook + load-table + schedule

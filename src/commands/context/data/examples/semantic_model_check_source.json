@@ -1,0 +1,20 @@
+{
+  "command":"fabio --wrap-untrusted --readonly semantic-model check-source --one-lake-table $URL --strict",
+  "description":"Bounded source evidence over one explicit table, shared with --check-source creation gates. Ready is not complete compatibility or loaded-data proof.",
+  "response":{"data":{
+    "status":"ready","observedAt":"2026-11-05T12:00:00Z","partial":false,
+    "scope":{"mutates":false,"creationMode":"native","sourceCount":1,"uniqueSourceItems":1,"bounds":{"timeoutSeconds":30,"pageLimit":3,"logLimit":5,"oneLakeBodyByteLimit":1048576},"maxLogicalReads":10,"readsTableRows":false,"readsParquet":false,"status":"observed"},
+    "usage":{"pages":1,"logFiles":1,"bodyBytesCharged":1200,"byteUsageExact":true},
+    "checks":[{"checkId":"inferred_name_collisions","status":"ready","message":"Different source tables with the same basename may collide during model inference. No table is dropped or renamed automatically.","evidence":{"sourceIndexGroups":[]},"nextSteps":[]}],
+    "sources":[{"sourceIndex":0,"workspaceId":"aaaaaaaa-1111-2222-3333-444444444444","itemId":"bbbbbbbb-1111-2222-3333-444444444444","schemaQualified":true,"checks":[
+      {"checkId":"source_metadata","status":"ready","message":"Metadata visibility is not access for other identities.","evidence":{"itemType":"Lakehouse"},"nextSteps":[{"kind":"inspection","message":"Inspect the same scoped resource without changing it.","command":"fabio --wrap-untrusted --readonly item show --workspace aaaaaaaa-1111-2222-3333-444444444444 --id bbbbbbbb-1111-2222-3333-444444444444","hintType":"retry_safe"}]},
+      {"checkId":"source_layout","status":"ready","message":"Unrecognized layouts remain unknown, not an automatic mode change.","evidence":{"schemaEnabled":true,"nativeSchemaLessRisk":false},"nextSteps":[]},
+      {"checkId":"delta_coverage","status":"ready","message":"A contiguous metadata/protocol suffix was observed, not an atomic current snapshot.","evidence":{"latestObservedCommit":0,"protocolCommit":0,"schemaCommit":0,"jsonFilesInspected":1,"deletionVectorDescriptorsObserved":0,"atomicSnapshot":false},"nextSteps":[]},
+      {"checkId":"delta_protocol","status":"ready","message":"Reader requirements are distinct from writer requirements.","evidence":{"minReaderVersion":1,"minWriterVersion":2,"protocolProfileRecognized":true,"columnMappingReader":false,"deletionVectorReader":false,"recognizedReaderFeatures":[],"recognizedWriterOnlyFeatures":[],"writerFeatureCount":null},"nextSteps":[]},
+      {"checkId":"delta_schema","status":"ready","message":"Primitive metadata only, not source values, precision or service inference.","evidence":{"columnCount":2,"unsupportedComplexOrBinaryColumns":0,"unrecognizedColumnTypes":0,"namesAndValuesIncluded":false},"nextSteps":[]}
+    ]}],
+    "notChecked":["Parquet/table rows, row counts, statistics values and loaded data","data freshness or an atomic snapshot","native service acceptance, complete type mapping and precision","target workspace permissions, capacity and cross-region alignment","model relationships, framing and DAX readiness","SQL security, storage/fallback mode and grants for other identities","checkpoint/sidecar replay and unsupported Delta features","deletion-vector files and row-mask correctness"]
+  }},
+  "notes":"sourceIndex refers to the corresponding --one-lake-table input; arbitrary source names and log data are not echoed. Creation --check-source embeds this report as sourceCheck, fails before POST for any non-ready finding, and cannot be bypassed by --force. Exact duplicate URLs fail offline; potential inferred-name collisions are findings. Native/standalone dry-run is offline; generator dry-run retains existing SQL discovery but skips OneLake probes and creation.",
+  "query_examples":[{"query":"sources[].{index:sourceIndex,checks:checks[].{check:checkId,status:status}}","description":"Inspect source findings without dumping table names or raw metadata."},{"query":"notChecked","description":"Review unverified properties before interpreting ready."}]
+}

@@ -12,6 +12,7 @@ license: MIT
 > **Prefer runtime introspection.** This index is a snapshot; the installed binary is always authoritative. Use `fabio context agent --group <group>` and `fabio context describe <group> <command>` for exact flags and output shapes.
 
 ## When to use
+- Bounded OneLake/Delta source inspection before model creation, standalone check-source or opt-in --check-source on native create and both generator storage modes.
 - Bounded read-only BI readiness: model schema, opt-in selected-table data counts, exact refresh request completion and report binding without resubmitting refreshes or changing modes.
 - Optimizing a semantic model / checking it against best practices (semantic-model analyze — Best Practice Analyzer over INFO.VIEW; measure-dependencies for AI data schema scoping).
 - Creating native Direct Lake models from known compatible Delta table URLs, or choosing schema-aware generation from a lakehouse/warehouse without hand-authored TMDL.
@@ -53,6 +54,7 @@ Manage semantic models (Power BI datasets)
 | `fabio semantic-model bind-connection` | yes | Bind a semantic model to a connection |
 | `fabio semantic-model bind-to-gateway` | yes | Bind a semantic model's data sources to an on-premises/VNet data gateway |
 | `fabio semantic-model cancel-refresh` | yes | Cancel an in-progress enhanced refresh by its request id |
+| `fabio semantic-model check-source` | no | Inspect bounded OneLake/Delta source metadata without creating a model or scanning table rows |
 | `fabio semantic-model clone` | yes | Clone a semantic model to the same or different workspace |
 | `fabio semantic-model copilot-schema` | no | Get the Copilot-oriented schema (tables/columns/measures/relationships + author custom instructions) from the remote Power BI MCP server |
 | `fabio semantic-model create` | yes | Create a semantic model from a definition, `OneLake` tables, or empty |
@@ -212,6 +214,11 @@ Manage Power BI Goals scorecards (Power BI Metrics, not a Fabric item)
 - Refreshing on inactive capacity (CAPACITY_INACTIVE).
 
 ## Key gotchas
+- Source checking IS integrated with model creation: create --one-lake-table ... --check-source and generate --lakehouse/--warehouse ... --check-source share one strict pre-POST gate. It is opt-in; existing calls gain no extra source reads/permissions. Unknown/partial/unsupported findings stop creation with not_created/sourceCheck, never change modes or drop columns. Authored/empty create cannot use the flag because source expressions are not guessed.
+- semantic-model check-source --one-lake-table <URL> is standalone/read-only and takes no --workspace/--id: source scope is in the URL. --creation-mode native is default; generated is only for a deliberately planned generator path, not a native bypass. --strict fails for non-ready observations. Successful checked creation embeds sourceCheck with the normal model ID.
+- Native create and standalone check-source dry-runs remain OFFLINE; generator dry-run still performs existing SQL schema discovery but skips added OneLake probes/creation. --source-timeout covers only the additional preflight phase, not SQL discovery or creation LRO time. Source limit flags on creation require --check-source.
+- Source bounds are TOTAL across sources: default 30 seconds, 3 directory pages, 5 commit files and 1 MiB OneLake bodies; --source-timeout/--source-page-limit/--source-log-limit/--source-byte-limit set explicit caps. --all/--force never bypass them or force checked creation. Directory truncation, gaps, newer/checkpoint-only evidence and unknown reader/features stay unknown.
+- Source ready is metadata evidence, NOT loaded/nonempty/fresh data, native service acceptance, complete type inference/precision, SQL security, capacity/region alignment, grants for other identities or model query readiness. No Parquet/row scans, Spark work, grants, source conversions or framing occur. Protocol checks distinguish writer-only features from reader requirements; writer-v7 is not automatically reader-v3. See bi-source-preflight.
 - refresh exposes a submission receipt; generate exposes the same structure as framing. Capture top-level refreshId only with correlationStatus:verified (a validated exact-scope Location, never followed). Transport trace x-ms-request-id alone, malformed/missing/conflicting headers and latest history are NOT operation identity. completionStatus is not_checked even when acknowledgement/correlation succeeded.
 - Unreadable successful refresh responses preserve acknowledgement/verified headers; do not resubmit. Error-bearing success and uncertain network/server failures stay unknown (the latter are non-retriable). generate preserves the created model and sanitized framing.state unknown/rejected/skipped instead of asking for a blind retry. Legacy framed:true means acknowledged, not complete; false does not prove an unknown request was rejected.
 - semantic-model readiness --workspace <WS> --id <MODEL> checks model/schema visibility only by default. Repeat --expected-table (at most 20) to assert model tables; --probe-data opts into COUNTROWS and --min-rows 1 requires each table to be nonempty (default minimum 0). Reads may consume capacity and prove only current-caller counts, NOT Delta compatibility, freshness, source grants for others or exact storage/fallback mode.
@@ -255,6 +262,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 
 | Reference | Covers |
 |---|---|
+| `fabio context best-practices bi-source-preflight` | Inspect explicit OneLake/Delta source metadata independently or gate native create and schema-aware generate with --check-source. Shared total time/page/file/body-byte budgets, conservative protocol/schema findings, checkpoint/gap unknowns, no row scans and no automatic mode changes. |
 | `fabio context best-practices connection-diagnostics` | GET-only connection diagnostics separates visible metadata, caller effective role, credential configuration, and workspace identity identifiers from untested credential health/source authorization. Inspect one explicit connection or only the references of one selected item; respect bounded scans, Automatic/SSO bindings, PendingOwner, unknown evidence, and strict configuration-only status. |
 | `fabio context best-practices remediation-hints` | Use existing error hint/hintType/verifyAfter and diagnostic nextSteps to distinguish inspection, review, and approved remediation. Concrete commands are guarded previews, missing inputs stay explicit, metadata is preserved, and hints never execute actions or trigger hidden probes. |
 | `fabio context best-practices throttling` | fabio transparently handles 429 (Too Many Requests) and gateway errors. Agents do NOT need to implement retry logic. |

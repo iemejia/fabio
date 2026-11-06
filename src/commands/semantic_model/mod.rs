@@ -17,6 +17,7 @@ mod readiness;
 mod refresh;
 mod relationships;
 mod roles;
+mod source;
 mod tables;
 mod tmdl;
 mod translations;
@@ -34,6 +35,20 @@ use crate::errors::{ErrorCode, FabioError};
     after_help = "Before using this command, run: fabio context examples semantic-model\nAlso available: fabio context schema SemanticModel | fabio context workflow direct-lake-report"
 )]
 pub enum SemanticModelCommand {
+    /// Inspect bounded OneLake/Delta source metadata without creating a model or scanning table rows
+    CheckSource {
+        /// Explicit canonical `OneLake` table URL (repeatable, at most 100)
+        #[arg(long = "one-lake-table", required = true)]
+        one_lake_table: Vec<String>,
+        /// Interpret layout findings for native creation or explicit generated definitions
+        #[arg(long,value_enum,default_value_t=source::Mode::Native)]
+        creation_mode: source::Mode,
+        #[command(flatten)]
+        source_limits: source::Limits,
+        /// Print report and exit non-zero unless all requested observations are ready
+        #[arg(long)]
+        strict: bool,
+    },
     /// List semantic models in a workspace
     #[command(display_order = 1)]
     List {
@@ -123,6 +138,12 @@ pub enum SemanticModelCommand {
         #[arg(long = "one-lake-table", conflicts_with_all = ["file", "definition"])]
         one_lake_table: Vec<String>,
 
+        /// Require bounded source checks before native `OneLake` creation; never switches mode
+        #[arg(long,requires="one_lake_table",conflicts_with_all=["file","definition","connection","allow_purge_data"])]
+        check_source: bool,
+        #[command(flatten)]
+        source_limits: source::Limits,
+
         /// SQL endpoint or lakehouse ID for live connection (generates definition.pbism)
         #[arg(long, visible_alias = "connection-id")]
         connection: Option<String>,
@@ -175,6 +196,12 @@ pub enum SemanticModelCommand {
         /// Skip the framing refresh (you must run `semantic-model refresh` before querying)
         #[arg(long)]
         no_refresh: bool,
+
+        /// Require bounded source checks before creating the generated model; preserves storage mode
+        #[arg(long)]
+        check_source: bool,
+        #[command(flatten)]
+        source_limits: source::Limits,
 
         /// Optional description
         #[arg(long)]
@@ -2005,6 +2032,22 @@ pub async fn execute(
     command: &SemanticModelCommand,
 ) -> Result<()> {
     match command {
+        SemanticModelCommand::CheckSource {
+            one_lake_table,
+            creation_mode,
+            source_limits,
+            strict,
+        } => {
+            source::execute(
+                cli,
+                client,
+                one_lake_table,
+                source_limits,
+                *creation_mode,
+                *strict,
+            )
+            .await
+        }
         SemanticModelCommand::List { workspace } => crud::list(cli, client, workspace).await,
         SemanticModelCommand::Show { workspace, id } => {
             crud::show(cli, client, workspace, id).await
@@ -2050,6 +2093,8 @@ pub async fn execute(
             file,
             definition,
             one_lake_table,
+            check_source,
+            source_limits,
             connection,
             sensitivity_label,
             allow_purge_data,
@@ -2063,6 +2108,8 @@ pub async fn execute(
                 file.as_deref(),
                 definition.as_deref(),
                 one_lake_table,
+                *check_source,
+                source_limits,
                 connection.as_deref(),
                 sensitivity_label.as_deref(),
                 *allow_purge_data,
@@ -2078,6 +2125,8 @@ pub async fn execute(
             schema,
             storage_mode,
             no_refresh,
+            check_source,
+            source_limits,
             description,
             sensitivity_label,
         } => {
@@ -2092,6 +2141,8 @@ pub async fn execute(
                 schema,
                 *storage_mode,
                 *no_refresh,
+                *check_source,
+                source_limits,
                 description.as_deref(),
                 sensitivity_label.as_deref(),
             )

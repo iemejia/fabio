@@ -1,0 +1,34 @@
+{
+  "topic":"bi-source-preflight",
+  "title":"Bounded source preflight before semantic-model creation",
+  "summary":"Inspect explicit OneLake/Delta source metadata independently or gate native create and schema-aware generate with --check-source. Shared total time/page/file/body-byte budgets, conservative protocol/schema findings, checkpoint/gap unknowns, no row scans and no automatic mode changes.",
+  "entry_points":[
+    "fabio --wrap-untrusted --readonly semantic-model check-source --one-lake-table $URL --strict",
+    "fabio --wrap-untrusted semantic-model create --workspace $WS --name Model --one-lake-table $URL --check-source",
+    "fabio --wrap-untrusted semantic-model generate --workspace $WS --name Model --lakehouse $LH --storage-mode onelake --check-source"
+  ],
+  "integration":[
+    "Native create and both generator storage modes share the SAME source observation engine and creation gate. --check-source is opt-in: existing calls do not gain additional source reads or permissions. Native create requires explicit --one-lake-table URLs; authored/empty create cannot use this flag because arbitrary definition expressions are not guessed. The generator derives the exact selected source paths from its existing SQL schema plan and preserves the chosen storage mode.",
+    "All requested findings must be ready before creation POST. Unknown, unsupported, partial or collision evidence produces status:not_created plus sourceCheck and a nonzero exit; no model, refresh, rebind, grant or alternative mode is attempted. Global --force is not a source-check bypass. Successful checked creation retains sourceCheck with the existing model ID.",
+    "Standalone check-source is read-only and accepts repeatable --one-lake-table URLs, not --workspace/--id; UUID scope is in each URL. --creation-mode native (default) assesses native layout caveats; generated is for an explicitly planned generator path, not a way to make native creation bypass findings. --strict fails unless all observations are ready.",
+    "Standalone and native-create --dry-run validate scope and preview bounds OFFLINE without running source probes. Generator --dry-run retains its pre-existing SQL schema discovery, but skips additional OneLake probes, creation and framing. --source-timeout covers the additional preflight phase, not generator SQL discovery or creation LRO time. Source limit flags on creation require --check-source."
+  ],
+  "evidence":[
+    "Only explicit source items and their non-recursive _delta_log directories are read. Item metadata reads are deduplicated. Lakehouse/warehouse layout profiles are recognized; other Fabric Delta sources may be supported by Direct Lake but remain unknown to this initial preflight. Source metadata visibility and current-caller storage metadata access do not establish grants or credentials for other identities.",
+    "Directory listings must be complete within bounds before selecting JSON commits. Scan a contiguous newest-first commit suffix only until both metadata and protocol are observed. Missing commits, partial/URI-only/cyclic continuation, newer checkpoints, checkpoint-only metadata, malformed actions and unsupported checkpoint replay stay unknown. Returned continuation URLs are never followed; opaque tokens remain on the same validated directory route.",
+    "Protocol checks distinguish reader requirements from writer requirements per delta-io/delta PROTOCOL.md. Profiles recognize reader-v1, legacy column-mapping reader-v2, and reader-v3 declarations limited to columnMapping/deletionVectors, with matching writer requirements. Writer-v7 alone does not mean reader-v3. Column mapping requires consistent IDs, physical names and max-column-ID metadata; vector descriptors are checked structurally, never followed/read as files or evaluated as row masks. Other reader features, unknown writer features, future versions and malformed declarations remain unknown; no downgrade or source mutation is attempted.",
+    "Primitive schema evidence is checked conservatively. Complex and binary columns need review because Direct Lake does not support them; no column is silently dropped or converted. Unrecognized types (including decimal precision/mapping not yet certified), inconsistent column mapping/vector declarations and malformed fields remain unknown. Vector-file availability and row-mask correctness are not checked. Logical/physical names, vector paths/values, partition values, statistics values, arbitrary properties and raw log bodies are not emitted.",
+    "Schema-less lakehouses have a known native dbo-assumption compatibility risk, so native mode requires review rather than pretending compatibility. Generated mode is a separate explicit choice and does not inherit that native-layout assumption. Potential inferred table-name collisions between distinct sources require review; exact duplicate source URLs fail input validation."
+  ],
+  "bounds":[
+    "Defaults are a shared 30-second deadline, 3 non-recursive directory pages (25 entries each), 5 JSON commit files and 1 MiB of OneLake metadata bodies across ALL selected sources. Hard maximums are 300 seconds, 100 pages, 100 files and 8 MiB. --all/--limit do not replace these bounds or silently reduce the selected source set.",
+    "--source-timeout, --source-page-limit, --source-log-limit and --source-byte-limit are explicit bounded controls. A failed body read conservatively charges the remaining byte budget and reports byteUsageExact:false instead of issuing more unaccounted reads. A capped/truncated response is never parsed as complete evidence.",
+    "No Parquet files or table rows are read, no Spark work is started, and no refresh is submitted by preflight. Delta commit metadata may contain statistics/partition information internally, but those values are neither evaluated nor emitted."
+  ],
+  "limitations":[
+    "Ready means only the requested bounded observations were recognized, NOT a certification that creation, framing or DAX will succeed. It is not an atomic snapshot and does not prove current row counts, nonempty data, freshness, native type inference/precision, target permissions/capacity/region alignment, SQL security, storage/fallback behavior, or access for other identities.",
+    "After creation, use semantic-model readiness with explicit model tables and opt-in data counts, verified refresh receipt identity and report binding as needed. Source checks never replace post-create readiness or an explicitly reviewed authoring/storage choice."
+  ],
+  "references":["https://learn.microsoft.com/en-us/fabric/fundamentals/direct-lake-overview","https://learn.microsoft.com/en-us/fabric/fundamentals/direct-lake-understand-storage","https://github.com/delta-io/delta/blob/master/PROTOCOL.md"],
+  "see_also":["fabio context best-practices bi-creation","fabio context examples semantic-model check-source","fabio context workflow source-checked-creation"]
+}

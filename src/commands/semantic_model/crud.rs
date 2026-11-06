@@ -4,7 +4,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::Value;
 
 use crate::cli::Cli;
-use crate::client::{FabricClient, validate_uuid};
+use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
@@ -237,40 +237,7 @@ fn gather_recursive(
 }
 
 fn validate_one_lake_table_url(value: &str) -> Result<()> {
-    let parsed = reqwest::Url::parse(value).map_err(|e| {
-        FabioError::with_hint(
-            ErrorCode::InvalidInput,
-            format!("Invalid OneLake table URL '{value}': {e}"),
-            "Use https://onelake.dfs.fabric.microsoft.com/{workspaceId}/{itemId}/Tables/{tableName} or .../Tables/{schemaName}/{tableName}.",
-        )
-    })?;
-    if parsed.scheme() != "https"
-        || parsed.host_str() != Some("onelake.dfs.fabric.microsoft.com")
-        || parsed.port().is_some()
-        || parsed.query().is_some()
-        || parsed.fragment().is_some()
-    {
-        return Err(FabioError::with_hint(
-            ErrorCode::InvalidInput,
-            "OneLake table URLs must use the canonical OneLake DFS HTTPS endpoint without a port, query, or fragment",
-            "Use https://onelake.dfs.fabric.microsoft.com/{workspaceId}/{itemId}/Tables/{tableName} or .../Tables/{schemaName}/{tableName}.",
-        )
-        .into());
-    }
-    let segments: Vec<&str> = parsed.path_segments().into_iter().flatten().collect();
-    if !matches!(segments.len(), 4 | 5)
-        || segments[2] != "Tables"
-        || segments.iter().any(|segment| segment.is_empty())
-    {
-        return Err(FabioError::with_hint(
-            ErrorCode::InvalidInput,
-            "OneLake table URL must identify a default-schema or custom-schema table",
-            "Expected /{workspaceId}/{itemId}/Tables/{tableName} or /{workspaceId}/{itemId}/Tables/{schemaName}/{tableName}.",
-        )
-        .into());
-    }
-    validate_uuid(segments[0], "OneLake table workspace ID")?;
-    validate_uuid(segments[1], "OneLake table item ID")?;
+    super::source::Table::parse(value)?;
     Ok(())
 }
 
@@ -316,7 +283,7 @@ fn validate_creation_mode(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub(super) async fn create(
     cli: &Cli,
     client: &FabricClient,
@@ -326,10 +293,22 @@ pub(super) async fn create(
     file: Option<&str>,
     definition: Option<&str>,
     one_lake_tables: &[String],
+    check_source: bool,
+    source_limits: &super::source::Limits,
     connection: Option<&str>,
     sensitivity_label: Option<&str>,
     allow_purge_data: bool,
 ) -> Result<()> {
+    source_limits.validate_creation(check_source)?;
+    if check_source
+        && (one_lake_tables.is_empty()
+            || file.is_some()
+            || definition.is_some()
+            || connection.is_some()
+            || allow_purge_data)
+    {
+        return Err(FabioError::new(ErrorCode::InvalidInput,"--check-source on create requires native --one-lake-table inputs, not authored/empty creation").into());
+    }
     validate_creation_mode(
         file,
         definition,
@@ -337,6 +316,12 @@ pub(super) async fn create(
         connection,
         allow_purge_data,
     )?;
+    let sources = if check_source {
+        crate::commands::diagnostics::uuid_target(workspace, "--workspace")?;
+        Some(super::source::selected(one_lake_tables)?)
+    } else {
+        None
+    };
 
     let parts = if let Some(folder) = definition {
         // Gather a FULL model definition folder (definition.pbism + definition/
@@ -385,6 +370,10 @@ pub(super) async fn create(
     if allow_purge_data {
         preview["warning"] = Value::from(output::ALLOW_PURGE_DATA_WARNING);
     }
+    if let Some(sources) = &sources {
+        preview["sourceCheck"] =
+            super::source::preview(sources, source_limits, super::source::Mode::Native);
+    }
     // create is destructive ONLY when allowPurgeData permits a data purge, so force
     // the destructive signal conditionally rather than marking create destructive.
     if output::dry_run_guard_maybe_destructive(
@@ -396,6 +385,21 @@ pub(super) async fn create(
         return Ok(());
     }
 
+    let source_report = if let Some(sources) = &sources {
+        Some(
+            super::source::required(
+                cli,
+                client,
+                sources,
+                source_limits,
+                super::source::Mode::Native,
+            )
+            .await?,
+        )
+    } else {
+        None
+    };
+
     let mut data = client
         .post(
             &format!("/workspaces/{workspace}/semanticModels"),
@@ -405,6 +409,9 @@ pub(super) async fn create(
         .await
         .map_err(|e| enrich_create_error(enrich_forbidden(e, "semantic-model create", "Member")))?;
     output::attach_purge_warning(&mut data, allow_purge_data);
+    if let Some(report) = source_report {
+        data["sourceCheck"] = serde_json::to_value(report)?;
+    }
     output::render_object(cli, &data, "id");
     Ok(())
 }

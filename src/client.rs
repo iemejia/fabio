@@ -15,6 +15,9 @@ use azure_core::credentials::TokenCredential;
 use crate::errors::{ErrorCode, ErrorDetail, ErrorParameter, FabioError, RelatedResource};
 use crate::verbose;
 
+mod onelake_metadata;
+pub use onelake_metadata::MetadataPage;
+
 // ── Bundled CA Roots ─────────────────────────────────────────────────────────
 //
 // On minimal Linux systems (stripped containers, `FROM scratch` images, systems
@@ -784,39 +787,9 @@ impl FabricClient {
     ) -> Result<Vec<u8>> {
         validate_uuid(workspace, "workspace")?;
         validate_uuid(item, "item")?;
-        let token = self.require_storage_auth().await?;
         let encoded_path = encode_onelake_path(path);
         let url = self.onelake_dfs_url(workspace, &format!("{item}/{encoded_path}"));
-
-        verbose::trace_request("GET", &url, None);
-        let start = std::time::Instant::now();
-
-        let resp = self
-            .http
-            .get(&url)
-            .header(AUTHORIZATION, &token)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
-
-        if resp.status() == StatusCode::UNAUTHORIZED {
-            self.invalidate_storage_token().await;
-            let token = self.require_storage_auth().await?;
-            let resp = self
-                .http
-                .get(&url)
-                .header(AUTHORIZATION, &token)
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            if !resp.status().is_success() {
-                return Err(error_from_failed_response(resp).await.into());
-            }
-            return Ok(resp.bytes().await?.to_vec());
-        }
-
+        let resp = self.onelake_get_response(&url).await?;
         if !resp.status().is_success() {
             return Err(error_from_failed_response(resp).await.into());
         }
@@ -1002,30 +975,7 @@ impl FabricClient {
             ),
         );
 
-        verbose::trace_request("GET", &url, None);
-        let start = std::time::Instant::now();
-
-        let mut resp = self
-            .http
-            .get(&url)
-            .header(AUTHORIZATION, &self.require_storage_auth().await?)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
-
-        if resp.status() == StatusCode::UNAUTHORIZED {
-            self.invalidate_storage_token().await;
-            resp = self
-                .http
-                .get(&url)
-                .header(AUTHORIZATION, &self.require_storage_auth().await?)
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-        }
-
+        let resp = self.onelake_get_response(&url).await?;
         let mut body = handle_response(resp).await?;
         let paths = match body.get_mut("paths").map(Value::take) {
             Some(Value::Array(arr)) => arr,

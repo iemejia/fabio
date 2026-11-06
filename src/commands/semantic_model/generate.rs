@@ -91,7 +91,7 @@ struct ResolvedSource {
     source: Value,
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub(super) async fn generate(
     cli: &Cli,
     client: &FabricClient,
@@ -103,9 +103,24 @@ pub(super) async fn generate(
     schema: &str,
     storage_mode: StorageMode,
     no_refresh: bool,
+    check_source: bool,
+    source_limits: &super::source::Limits,
     description: Option<&str>,
     sensitivity_label: Option<&str>,
 ) -> Result<()> {
+    source_limits.validate_creation(check_source)?;
+    if check_source {
+        crate::commands::diagnostics::uuid_target(workspace, "--workspace")?;
+        if let Some(id) = lakehouse {
+            crate::commands::diagnostics::uuid_target(id, "--lakehouse")?;
+        }
+        if let Some(id) = warehouse {
+            crate::commands::diagnostics::uuid_target(id, "--warehouse")?;
+        }
+    }
+    if check_source && client.is_readonly() && !cli.dry_run {
+        return Err(FabioError::with_hint(ErrorCode::ReadonlyMode,"Generated-model creation is blocked in readonly mode.","Run semantic-model check-source for read-only inspection; generator --dry-run retains its existing SQL schema discovery without creating a model.").into());
+    }
     // Resolve the schema source (exactly one of --lakehouse / --warehouse).
     // `database` is the SQL catalog used to READ the schema over TDS (the display
     // name works); `catalog` is the SQL analytics endpoint item id that the
@@ -157,6 +172,29 @@ pub(super) async fn generate(
     );
     let summary = summarize(&gen_tables, &dropped, schema);
     let storage_label = storage_mode_label(storage_mode);
+    let sources = if check_source {
+        if gen_tables.len() > 100 {
+            return Err(FabioError::with_hint(ErrorCode::InvalidInput,"Checked generation supports at most 100 selected source tables.","Use --tables to select an explicit bounded subset. No tables are dropped from the requested model automatically.").into());
+        }
+        let urls: Vec<_> = gen_tables
+            .iter()
+            .map(|table| {
+                let table = urlencoding::encode(&table.name);
+                let path = if src.schema_enabled {
+                    format!("{}/{}", urlencoding::encode(schema), table)
+                } else {
+                    table.into_owned()
+                };
+                format!(
+                    "https://onelake.dfs.fabric.microsoft.com/{workspace}/{}/Tables/{path}",
+                    src.item_id
+                )
+            })
+            .collect();
+        Some(super::source::selected(&urls)?)
+    } else {
+        None
+    };
 
     if output::dry_run_guard(
         cli,
@@ -167,10 +205,26 @@ pub(super) async fn generate(
             "source": src.source,
             "storageMode": storage_label,
             "summary": summary,
+            "sourceCheck":sources.as_ref().map(|sources|super::source::preview(sources,source_limits,super::source::Mode::Generated)),
         }),
     ) {
         return Ok(());
     }
+
+    let source_report = if let Some(sources) = &sources {
+        Some(
+            super::source::required(
+                cli,
+                client,
+                sources,
+                source_limits,
+                super::source::Mode::Generated,
+            )
+            .await?,
+        )
+    } else {
+        None
+    };
 
     let (id, framing, note) = create_and_frame(
         client,
@@ -196,6 +250,7 @@ pub(super) async fn generate(
             "framing":framing,
             "summary": summary,
             "note": note,
+            "sourceCheck":source_report,
         }),
         "status",
     );

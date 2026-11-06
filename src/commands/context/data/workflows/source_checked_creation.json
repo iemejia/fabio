@@ -1,0 +1,12 @@
+{
+  "name":"Source-Checked Semantic Model Creation",
+  "description":"Inspect explicit source metadata and gate native semantic-model creation with the same bounded checks. No silent mode switching, table conversion, grants, or framing submissions.",
+  "variables":{"WS":"Target model workspace UUID.","NAME":"Chosen new model name.","URL":"Canonical HTTPS OneLake table URL, including source workspace/item UUIDs and the actual table path.","LH":"Explicit source lakehouse UUID when deliberately choosing generation."},
+  "steps":[
+    {"step_number":1,"command":"fabio --wrap-untrusted --readonly semantic-model check-source --one-lake-table \"$URL\" --source-timeout 30 --strict","description":"Read-only source observations. Review status, bounds and notChecked; unknown is not compatibility."},
+    {"step_number":2,"command":"fabio --wrap-untrusted semantic-model create --workspace $WS --name \"$NAME\" --one-lake-table \"$URL\" --check-source --dry-run","description":"Offline native creation preview. Input validation runs, but source checks are not performed or certified by dry-run."},
+    {"step_number":3,"command":"fabio --wrap-untrusted semantic-model create --workspace $WS --name \"$NAME\" --one-lake-table \"$URL\" --check-source","description":"Recheck immediately before the creation POST. Every finding must be ready; otherwise print not_created/sourceCheck and stop. Capture the returned model ID. Source readiness does not establish model/framing/query readiness."}
+  ],
+  "explicit_generated_alternative":{"command":"fabio --wrap-untrusted semantic-model generate --workspace $WS --name \"$NAME\" --lakehouse $LH --storage-mode onelake --check-source","description":"A separately chosen schema-aware generator path, NOT an automatic retry of native creation. Both generator storage modes can use the shared gate; preserve the requested storage mode. SQL discovery precedes the bounded OneLake phase and still runs under generator dry-run."},
+  "see_also":["fabio context best-practices bi-source-preflight","fabio context workflow bi-readiness"]
+}

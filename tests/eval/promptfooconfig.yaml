@@ -44,6 +44,65 @@ defaultTest:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
 tests:
+  - description: "BI sources: standalone checks use explicit URL scope without creating a model"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"
+      user_query: "Only inspect this explicit OneLake table URL URL before native model creation. Show the standalone read-only check, fail if evidence is not ready, and do not create or frame anything."
+    assert:
+      - type: icontains
+        value: "semantic-model check-source"
+      - type: icontains
+        value: "--one-lake-table"
+      - type: icontains
+        value: "--strict"
+      - type: not-icontains
+        value: "--workspace"
+      - type: llm-rubric
+        value: "Uses the supported standalone URL-scoped source check with readonly safeguards, not model creation/refresh or an invented --id. Does not claim metadata proves loaded/fresh/queryable data."
+
+  - description: "BI sources: native creation uses the integrated pre-POST gate"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"
+      user_query: "Create a native model named Model in WS from explicit OneLake URL URL, but require source checks in the creation workflow itself. Keep native mode, and stop if evidence is partial or unsupported."
+    assert:
+      - type: icontains
+        value: "semantic-model create"
+      - type: icontains
+        value: "--one-lake-table"
+      - type: icontains
+        value: "--check-source"
+      - type: llm-rubric
+        value: "Uses the integrated --check-source native creation gate, not only a standalone check followed by unchecked creation. May preview offline with dry-run. Does not silently choose generate, authored definitions, connections or another storage mode. Non-ready findings stop before creation."
+
+  - description: "BI sources: generated storage choice is preserved and dry-run SQL discovery is explicit"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"
+      user_query: "Generate an explicitly chosen OneLake-bound model Model over lakehouse LH in WS with source checking integrated. Does generator dry-run become fully offline, and does source-timeout cover all SQL discovery and creation?"
+    assert:
+      - type: icontains
+        value: "semantic-model generate"
+      - type: icontains
+        value: "--check-source"
+      - type: icontains
+        value: "--storage-mode onelake"
+      - type: llm-rubric
+        value: "Preserves explicitly chosen generated OneLake mode and adds source checking. Explains generator dry-run retains existing SQL schema discovery but skips added OneLake checks/creation/framing; source-timeout covers the additional preflight phase, not all SQL discovery or creation LRO time. Does not disable the gate or switch binding mode."
+
+  - description: "BI sources: unknown checkpoint evidence cannot be forced into checked creation"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"
+      user_query: "Checked creation stopped with unknown source evidence: listing was partial and metadata may exist only in checkpoints. Can --all or --force certify it, or should the agent drop --check-source, start Spark or silently switch to generate?"
+    assert:
+      - type: llm-rubric
+        value: "Rejects treating --all/--force as a source-gate bypass or certification. Does not automatically drop checks, start Spark, change source metadata or switch modes. Partial/checkpoint-only evidence remains unknown. May suggest reviewing explicit bounded read limits or a separately approved workflow, without claiming guaranteed compatibility."
+
+  - description: "BI sources: protocol and source ready are not model or data readiness"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"
+      user_query: "Source preflight says ready. Does that prove nonempty fresh data, viewer access and model query readiness? Also, is Delta writer version 7 alone enough to declare the source incompatible and downgrade it?"
+    assert:
+      - type: llm-rubric
+        value: "Says source ready is bounded metadata evidence, not nonempty/fresh data, viewer grants or model query readiness. Recommends separate post-create readiness as appropriate. Distinguishes reader requirements/features from writer version: writer-v7 alone is not incompatibility or authority to downgrade. Unknown features stay unknown; no automatic source mutation."
   - description: "BI receipts: verified identity routes to bounded read-only readiness"
     vars:
       skill_content: "file://../../.agents/skills/fabio-bi/SKILL.md"

@@ -11389,9 +11389,52 @@
     }
   },
   "semantic-model": {
-    "auth_scope": "fabric",
+    "auth_scope": "mixed",
     "description": "Manage semantic models (Power BI datasets)",
     "subcommands": {
+      "check-source": {
+        "description": "Inspect bounded OneLake/Delta source metadata without creating a model or scanning table rows",
+        "flags": {
+          "--one-lake-table": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Explicit canonical `OneLake` table URL (repeatable, at most 100)"
+          },
+          "--creation-mode": {
+            "type": "enum",
+            "values": [
+              "native",
+              "generated"
+            ],
+            "description": "Interpret layout findings for native creation or explicit generated definitions"
+          },
+          "--source-timeout": {
+            "type": "integer",
+            "description": "Total seconds for preflight reads, not generator SQL discovery or creation (default 30)"
+          },
+          "--source-page-limit": {
+            "type": "integer",
+            "description": "Total non-recursive `OneLake` directory pages across all sources (default 3)"
+          },
+          "--source-log-limit": {
+            "type": "integer",
+            "description": "Total Delta JSON commit files across all sources (default 5)"
+          },
+          "--source-byte-limit": {
+            "type": "integer",
+            "description": "Total `OneLake` metadata body-byte budget; no Parquet/row scans (default 1048576)"
+          },
+          "--strict": {
+            "type": "bool",
+            "description": "Print report and exit non-zero unless all requested observations are ready"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
       "list": {
         "description": "List semantic models in a workspace",
         "flags": {
@@ -11527,6 +11570,26 @@
             },
             "description": "`OneLake` table URL for API-native Direct Lake creation (repeatable, maximum 100)"
           },
+          "--check-source": {
+            "type": "bool",
+            "description": "Require bounded source checks before native `OneLake` creation; never switches mode"
+          },
+          "--source-timeout": {
+            "type": "integer",
+            "description": "Total seconds for preflight reads, not generator SQL discovery or creation (default 30)"
+          },
+          "--source-page-limit": {
+            "type": "integer",
+            "description": "Total non-recursive `OneLake` directory pages across all sources (default 3)"
+          },
+          "--source-log-limit": {
+            "type": "integer",
+            "description": "Total Delta JSON commit files across all sources (default 5)"
+          },
+          "--source-byte-limit": {
+            "type": "integer",
+            "description": "Total `OneLake` metadata body-byte budget; no Parquet/row scans (default 1048576)"
+          },
           "--connection": {
             "type": "string",
             "description": "SQL endpoint or lakehouse ID for live connection (generates definition.pbism)"
@@ -11593,6 +11656,26 @@
           "--no-refresh": {
             "type": "bool",
             "description": "Skip the framing refresh (you must run `semantic-model refresh` before querying)"
+          },
+          "--check-source": {
+            "type": "bool",
+            "description": "Require bounded source checks before creating the generated model; preserves storage mode"
+          },
+          "--source-timeout": {
+            "type": "integer",
+            "description": "Total seconds for preflight reads, not generator SQL discovery or creation (default 30)"
+          },
+          "--source-page-limit": {
+            "type": "integer",
+            "description": "Total non-recursive `OneLake` directory pages across all sources (default 3)"
+          },
+          "--source-log-limit": {
+            "type": "integer",
+            "description": "Total Delta JSON commit files across all sources (default 5)"
+          },
+          "--source-byte-limit": {
+            "type": "integer",
+            "description": "Total `OneLake` metadata body-byte budget; no Parquet/row scans (default 1048576)"
           },
           "--description": {
             "type": "string",
