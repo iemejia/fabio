@@ -23,13 +23,16 @@
     "Publish copies draft/* to published/* and adds publish_info.json",
     "Query with --stage sandbox (draft) or production (published)",
     "Datasource types: lakehouse_tables, data_warehouse, kusto, semantic_model, graph",
-    "Full definition required for datasource persistence (not single-part updates)"
+    "Full definition required for datasource persistence (not single-part updates)",
+    "Datasource topics are Preview Markdown files. List/download support staging and published state; upload/format/delete operate on staging. Upload replaces a same-named topic and supports If-Match ETags."
   ],
   "related_commands": [
     "fabio data-agent add-datasource --workspace <WS> --id <ID> --artifact-id <AID> --artifact-workspace <AWS>",
     "fabio data-agent query --workspace <WS> --id <ID> --question <Q> [--stage sandbox]",
     "fabio data-agent publish --workspace <WS> --id <ID>",
     "fabio data-agent add-fewshot --workspace <WS> --id <ID> --datasource <DS> --question <Q> --answer <SQL>",
-    "fabio data-agent select-tables --workspace <WS> --id <ID> --datasource <DS> --tables <T1,T2>"
+    "fabio data-agent select-tables --workspace <WS> --id <ID> --datasource <DS> --tables <T1,T2>",
+    "fabio data-agent list-datasource-topics --workspace <WS> --id <ID> --datasource <DS> --stage staging",
+    "fabio data-agent upload-datasource-topic --workspace <WS> --id <ID> --datasource <DS> --file-name policies.md --file policies.md"
   ]
 }

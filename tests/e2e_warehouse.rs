@@ -71,6 +71,111 @@ fn warehouse_sql_pools_get_and_patch_use_stable_route_without_beta() {
 }
 
 #[test]
+fn test_create_with_definition_dry_run() {
+    let definition =
+        r#"{"parts":[{"path":"definition.dacpac","payload":"UEs=","payloadType":"InlineBase64"}]}"#;
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "create",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--name",
+            "Warehouse from definition",
+            "--definition",
+            definition,
+            "--definition-format",
+            "dacpac",
+        ])
+        .assert()
+        .success();
+    let data = parse_json(&output)["data"].clone();
+    assert_eq!(data["details"]["definition"]["format"], "dacpac");
+    assert_eq!(
+        data["details"]["definition"]["parts"][0]["path"],
+        "definition.dacpac"
+    );
+}
+
+#[test]
+fn test_update_definition_dry_run() {
+    let definition =
+        r#"{"parts":[{"path":"sqldw.sqlproj","payload":"PD94","payloadType":"InlineBase64"}]}"#;
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "update-definition",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--definition",
+            definition,
+            "--definition-format",
+            "sqlproj",
+            "--update-metadata",
+        ])
+        .assert()
+        .success();
+    let data = parse_json(&output)["data"].clone();
+    assert_eq!(data["would_execute"], "warehouse update-definition");
+    assert_eq!(data["destructive"], true);
+    assert_eq!(data["details"]["definition"]["format"], "sqlproj");
+    assert_eq!(data["details"]["updateMetadata"], true);
+}
+
+#[test]
+fn test_get_definition_uses_requested_format() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let workspace = "aaaaaaaa-1111-2222-3333-444444444444";
+    let warehouse = "bbbbbbbb-1111-2222-3333-444444444444";
+    let server = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/workspaces/{workspace}/warehouses/{warehouse}/getDefinition"
+            )))
+            .and(wiremock::matchers::query_param("format", "dacpac"))
+            .and(body_json(serde_json::json!({})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "definition": {
+                    "format": "dacpac",
+                    "parts": [{
+                        "path": "definition.dacpac",
+                        "payload": "UEs=",
+                        "payloadType": "InlineBase64"
+                    }]
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        server
+    });
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
+        .args([
+            "warehouse",
+            "get-definition",
+            "--workspace",
+            workspace,
+            "--id",
+            warehouse,
+            "--format",
+            "dacpac",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&output)["data"]["definition"]["format"],
+        "dacpac"
+    );
+}
+
+#[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn warehouse_list_returns_json() {

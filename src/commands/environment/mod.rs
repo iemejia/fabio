@@ -168,8 +168,19 @@ pub enum EnvironmentCommand {
         #[arg(long)]
         id: String,
     },
-    /// Get the published Spark settings (compute/pool/driver/executor)
+    /// Download the driver stdout log for the latest completed publish
     #[command(display_order = 12)]
+    GetPublishLog {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Get the published Spark settings (compute/pool/driver/executor)
+    #[command(display_order = 13)]
     GetSparkSettings {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
@@ -528,6 +539,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EnvironmentComm
         EnvironmentCommand::CancelPublish { workspace, id } => {
             cancel_publish(cli, client, workspace, id).await
         }
+        EnvironmentCommand::GetPublishLog { workspace, id } => {
+            get_publish_log(cli, client, workspace, id).await
+        }
         EnvironmentCommand::GetSparkSettings { workspace, id } => {
             get_spark_settings(cli, client, workspace, id).await
         }
@@ -807,6 +821,27 @@ async fn cancel_publish(cli: &Cli, client: &FabricClient, workspace: &str, id: &
         "status": "publish_cancelled"
     });
     output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+async fn get_publish_log(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let mut data = client
+        .get_text_with_metadata(&format!(
+            "/workspaces/{workspace}/environments/{id}/staging/publish/log"
+        ))
+        .await
+        .map_err(|error| enrich_forbidden(error, "environment get-publish-log", "Contributor"))?;
+    if let Some(object) = data.as_object_mut()
+        && let Some(content) = object.remove("content")
+    {
+        object.insert("publishLog".to_string(), content);
+    }
+    output::render_object(cli, &data, "publishLog");
     Ok(())
 }
 

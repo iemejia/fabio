@@ -13,6 +13,49 @@ const MOCK_ACTIVATION: &str = "cccccccc-1111-2222-3333-444444444444";
 
 #[test]
 #[serial]
+fn test_get_publish_log_returns_text_and_headers() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let (server_uri, _server) =
+        runtime.block_on(async {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+            .and(path(format!(
+                "/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/staging/publish/log"
+            )))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("Content-Disposition", "attachment; filename=\"publish.log\"")
+                    .insert_header("x-ms-log-truncated", "true")
+                    .set_body_string("Starting Spark application...\n"),
+            )
+            .mount(&server)
+            .await;
+            (server.uri(), server)
+        });
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server_uri)
+        .args([
+            "environment",
+            "get-publish-log",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+        ])
+        .assert()
+        .success();
+    let data = parse_json(&output)["data"].clone();
+    assert_eq!(data["publishLog"], "Starting Spark application...\n");
+    assert_eq!(data["truncated"], true);
+    assert_eq!(
+        data["contentDisposition"],
+        "attachment; filename=\"publish.log\""
+    );
+}
+
+#[test]
+#[serial]
 fn environment_staging_spark_compute_explicitly_requests_beta() {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()

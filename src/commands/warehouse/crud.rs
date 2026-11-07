@@ -80,6 +80,7 @@ pub(super) async fn show(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn create(
     cli: &Cli,
     client: &FabricClient,
@@ -88,6 +89,9 @@ pub(super) async fn create(
     description: Option<&str>,
     sensitivity_label: Option<&str>,
     collation: Option<&str>,
+    definition: Option<&str>,
+    definition_dir: Option<&str>,
+    definition_format: Option<super::WarehouseDefinitionFormat>,
 ) -> Result<()> {
     let mut body = serde_json::json!({
         "displayName": name,
@@ -104,6 +108,11 @@ pub(super) async fn create(
         // Warehouse collation is set at create time via creationPayload.collationType.
         body["creationPayload"] = serde_json::json!({ "collationType": c });
     }
+    if let Some(definition) =
+        super::definitions::load(definition, definition_dir, definition_format)?
+    {
+        body["definition"] = definition;
+    }
 
     if output::dry_run_guard(
         cli,
@@ -113,7 +122,8 @@ pub(super) async fn create(
             "displayName": name,
             "description": description,
             "sensitivityLabel": sensitivity_label,
-            "collation": collation
+            "collation": collation,
+            "definition": body.get("definition")
         }),
     ) {
         return Ok(());

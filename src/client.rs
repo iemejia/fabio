@@ -1409,6 +1409,42 @@ impl FabricClient {
         Ok(resp.text().await.unwrap_or_default())
     }
 
+    /// GET request returning raw text plus relevant response headers.
+    pub async fn get_text_with_metadata(&self, path: &str) -> Result<Value> {
+        let resp = self.get_raw_response(path).await?;
+        if !resp.status().is_success() {
+            return Err(error_from_failed_response(resp).await.into());
+        }
+        let headers = resp.headers();
+        let etag = headers
+            .get("ETag")
+            .and_then(|value| value.to_str().ok())
+            .map(String::from);
+        let content_disposition = headers
+            .get("Content-Disposition")
+            .and_then(|value| value.to_str().ok())
+            .map(String::from);
+        let content_type = headers
+            .get("Content-Type")
+            .and_then(|value| value.to_str().ok())
+            .map(String::from);
+        let truncated = headers
+            .get("x-ms-log-truncated")
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value.eq_ignore_ascii_case("true"));
+        let content = resp
+            .text()
+            .await
+            .map_err(|error| FabioError::new(ErrorCode::NetworkError, error.to_string()))?;
+        Ok(serde_json::json!({
+            "content": content,
+            "etag": etag,
+            "contentDisposition": content_disposition,
+            "contentType": content_type,
+            "truncated": truncated
+        }))
+    }
+
     /// GET a paginated list from Fabric REST API.
     ///
     /// When `paginate` is true, follows `continuationToken`/`continuationUri` until all pages are
@@ -1521,6 +1557,11 @@ impl FabricClient {
     /// POST request for a semantically read-only API such as query execution.
     pub async fn post_readonly(&self, path: &str, body: &Value) -> Result<Value> {
         self.post_impl(path, Some(body), false).await
+    }
+
+    /// Semantically read-only POST with Fabric LRO polling.
+    pub async fn post_readonly_lro(&self, path: &str, body: &Value) -> Result<Value> {
+        self.post_impl(path, Some(body), true).await
     }
 
     async fn post_impl(&self, path: &str, body: Option<&Value>, poll: bool) -> Result<Value> {
@@ -1736,16 +1777,40 @@ impl FabricClient {
         accept: &str,
     ) -> Result<Vec<u8>> {
         self.guard_readonly("POST", path)?;
+        self.post_fabric_bytes_with_accept_inner(path, Some(body), accept)
+            .await
+            .map(|(bytes, _)| bytes)
+    }
+
+    /// Read-only bodyless POST returning UTF-8 text and the response `ETag`, with LRO support.
+    pub async fn post_fabric_text_readonly_empty_with_metadata(
+        &self,
+        path: &str,
+        accept: &str,
+    ) -> Result<Value> {
+        let (bytes, etag) = self
+            .post_fabric_bytes_with_accept_inner(path, None, accept)
+            .await?;
+        let content = String::from_utf8(bytes).map_err(|error| {
+            FabioError::new(
+                ErrorCode::ApiError,
+                format!("Response content is not valid UTF-8: {error}"),
+            )
+        })?;
+        Ok(serde_json::json!({"content": content, "etag": etag}))
+    }
+
+    async fn post_fabric_bytes_with_accept_inner(
+        &self,
+        path: &str,
+        body: Option<&Value>,
+        accept: &str,
+    ) -> Result<(Vec<u8>, Option<String>)> {
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
         let resp = self
-            .http
-            .post(&url)
-            .header(AUTHORIZATION, &token)
-            .header("Accept", accept)
-            .json(body)
-            .send()
+            .post_fabric_bytes_request(&url, &token, body, accept)
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
 
@@ -1753,12 +1818,7 @@ impl FabricClient {
             self.invalidate_fabric_token().await;
             let token = self.require_auth().await?;
             let resp = self
-                .http
-                .post(&url)
-                .header(AUTHORIZATION, &token)
-                .header("Accept", accept)
-                .json(body)
-                .send()
+                .post_fabric_bytes_request(&url, &token, body, accept)
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
             return self.handle_bytes_lro_response(resp, &token, accept).await;
@@ -1767,71 +1827,158 @@ impl FabricClient {
         self.handle_bytes_lro_response(resp, &token, accept).await
     }
 
+    async fn post_fabric_bytes_request(
+        &self,
+        url: &str,
+        token: &str,
+        body: Option<&Value>,
+        accept: &str,
+    ) -> reqwest::Result<Response> {
+        let request = self
+            .http
+            .post(url)
+            .header(AUTHORIZATION, token)
+            .header("Accept", accept);
+        match body {
+            Some(body) => request.json(body),
+            None => request.header(CONTENT_LENGTH, "0"),
+        }
+        .send()
+        .await
+    }
+
     /// Handle a response that may be 200 (immediate bytes) or 202 (LRO → poll → bytes).
     async fn handle_bytes_lro_response(
         &self,
         resp: reqwest::Response,
         token: &str,
         accept: &str,
-    ) -> Result<Vec<u8>> {
-        // 202: LRO — poll until the operation completes, then download the result
+    ) -> Result<(Vec<u8>, Option<String>)> {
         if resp.status() == StatusCode::ACCEPTED {
             let location = resp
                 .headers()
                 .get("Location")
-                .and_then(|v| v.to_str().ok())
+                .and_then(|value| value.to_str().ok())
+                .map(String::from);
+            let operation_id = resp
+                .headers()
+                .get("x-ms-operation-id")
+                .and_then(|value| value.to_str().ok())
                 .map(String::from);
             let retry_after = resp
                 .headers()
                 .get("Retry-After")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|s| s.parse::<u64>().ok())
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<u64>().ok())
                 .unwrap_or(2);
+            let poll_url = location
+                .or_else(|| operation_id.map(|id| self.fabric_url(&format!("/operations/{id}"))))
+                .ok_or_else(|| {
+                    FabioError::new(
+                        ErrorCode::ApiError,
+                        "LRO response did not include Location or x-ms-operation-id",
+                    )
+                })?;
+            validate_trusted_url(&poll_url, "LRO poll URL")?;
 
-            if let Some(poll_url) = location {
-                // Poll the LRO until completion
-                let start = std::time::Instant::now();
-                loop {
-                    if start.elapsed() > self.lro_max_wait {
-                        return Err(FabioError::new(
-                            ErrorCode::Timeout,
-                            format!(
-                                "LRO polling timed out after {}s",
-                                self.lro_max_wait.as_secs()
-                            ),
-                        )
-                        .into());
-                    }
-                    tokio::time::sleep(std::time::Duration::from_secs(retry_after.min(60))).await;
+            let start = std::time::Instant::now();
+            loop {
+                if start.elapsed() > self.lro_max_wait {
+                    return Err(FabioError::new(
+                        ErrorCode::Timeout,
+                        format!(
+                            "LRO polling timed out after {}s",
+                            self.lro_max_wait.as_secs()
+                        ),
+                    )
+                    .into());
+                }
+                tokio::time::sleep(Duration::from_secs(retry_after.min(60))).await;
 
-                    let poll_resp = self
-                        .http
-                        .get(&poll_url)
-                        .header(AUTHORIZATION, token)
-                        .header("Accept", accept)
-                        .send()
-                        .await
-                        .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-                    if poll_resp.status() == StatusCode::OK {
-                        return Ok(poll_resp.bytes().await?.to_vec());
-                    }
-                    if poll_resp.status() == StatusCode::ACCEPTED {
-                        continue; // Still in progress
-                    }
-                    // Error
+                let poll_resp = self
+                    .http
+                    .get(&poll_url)
+                    .header(AUTHORIZATION, token)
+                    .header("Accept", accept)
+                    .send()
+                    .await
+                    .map_err(|error| FabioError::new(ErrorCode::NetworkError, error.to_string()))?;
+                if poll_resp.status() == StatusCode::ACCEPTED {
+                    continue;
+                }
+                if !poll_resp.status().is_success() {
                     return Err(error_from_failed_response(poll_resp).await.into());
                 }
+
+                let result_location = poll_resp
+                    .headers()
+                    .get("Location")
+                    .and_then(|value| value.to_str().ok())
+                    .map(String::from);
+                let etag = poll_resp
+                    .headers()
+                    .get("ETag")
+                    .and_then(|value| value.to_str().ok())
+                    .map(String::from);
+                let bytes = poll_resp.bytes().await?.to_vec();
+                let Ok(status_body) = serde_json::from_slice::<Value>(&bytes) else {
+                    return Ok((bytes, etag));
+                };
+                match status_body.get("status").and_then(Value::as_str) {
+                    Some("Succeeded" | "succeeded") => {
+                        let result_url = result_location.ok_or_else(|| {
+                            FabioError::new(
+                                ErrorCode::ApiError,
+                                "Succeeded LRO response did not include a result Location",
+                            )
+                        })?;
+                        validate_trusted_url(&result_url, "LRO result URL")?;
+                        return self.get_fabric_bytes_url(&result_url, token, accept).await;
+                    }
+                    Some("Failed" | "failed") => {
+                        return Err(failed_lro_error(&status_body).into());
+                    }
+                    Some(_) => {}
+                    None => return Ok((bytes, etag)),
+                }
             }
-            // No Location header — treat as immediate empty
-            return Ok(Vec::new());
         }
 
         if !resp.status().is_success() {
             return Err(error_from_failed_response(resp).await.into());
         }
 
-        Ok(resp.bytes().await?.to_vec())
+        let etag = resp
+            .headers()
+            .get("ETag")
+            .and_then(|value| value.to_str().ok())
+            .map(String::from);
+        Ok((resp.bytes().await?.to_vec(), etag))
+    }
+
+    async fn get_fabric_bytes_url(
+        &self,
+        url: &str,
+        token: &str,
+        accept: &str,
+    ) -> Result<(Vec<u8>, Option<String>)> {
+        let response = self
+            .http
+            .get(url)
+            .header(AUTHORIZATION, token)
+            .header("Accept", accept)
+            .send()
+            .await
+            .map_err(|error| FabioError::new(ErrorCode::NetworkError, error.to_string()))?;
+        if !response.status().is_success() {
+            return Err(error_from_failed_response(response).await.into());
+        }
+        let etag = response
+            .headers()
+            .get("ETag")
+            .and_then(|value| value.to_str().ok())
+            .map(String::from);
+        Ok((response.bytes().await?.to_vec(), etag))
     }
 
     /// POST request with configurable LRO wait and timeout (retries once on 401).
@@ -2062,6 +2209,56 @@ impl FabricClient {
         handle_response(resp).await
     }
 
+    /// PUT request with a raw body, custom content type, and optional `If-Match`.
+    /// Merges the response `ETag` into the returned JSON object.
+    pub async fn put_raw_with_if_match(
+        &self,
+        path: &str,
+        content: &str,
+        content_type: &str,
+        if_match: Option<&str>,
+    ) -> Result<Value> {
+        self.guard_readonly("PUT", path)?;
+        let token = self.require_auth().await?;
+        let url = self.fabric_url(path);
+
+        let resp = self
+            .put_raw_with_if_match_request(&url, &token, content, content_type, if_match)
+            .await?;
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .put_raw_with_if_match_request(&url, &token, content, content_type, if_match)
+                .await?;
+            return Self::merge_etag(resp).await;
+        }
+        Self::merge_etag(resp).await
+    }
+
+    async fn put_raw_with_if_match_request(
+        &self,
+        url: &str,
+        token: &str,
+        content: &str,
+        content_type: &str,
+        if_match: Option<&str>,
+    ) -> Result<Response> {
+        let mut request = self
+            .http
+            .put(url)
+            .header(AUTHORIZATION, token)
+            .header("Content-Type", content_type)
+            .body(content.to_owned());
+        if let Some(etag) = if_match {
+            request = request.header("If-Match", etag);
+        }
+        request
+            .send()
+            .await
+            .map_err(|error| FabioError::new(ErrorCode::NetworkError, error.to_string()).into())
+    }
+
     /// DELETE request to Fabric REST API (retries once on 401).
     pub async fn delete(&self, path: &str) -> Result<Value> {
         self.guard_readonly("DELETE", path)?;
@@ -2095,6 +2292,42 @@ impl FabricClient {
         }
 
         handle_response(resp).await
+    }
+
+    /// DELETE request with an optional `If-Match` header.
+    pub async fn delete_with_if_match(&self, path: &str, if_match: Option<&str>) -> Result<Value> {
+        self.guard_readonly("DELETE", path)?;
+        let token = self.require_auth().await?;
+        let url = self.fabric_url(path);
+
+        let resp = self
+            .delete_with_if_match_request(&url, &token, if_match)
+            .await?;
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let resp = self
+                .delete_with_if_match_request(&url, &token, if_match)
+                .await?;
+            return handle_response(resp).await;
+        }
+        handle_response(resp).await
+    }
+
+    async fn delete_with_if_match_request(
+        &self,
+        url: &str,
+        token: &str,
+        if_match: Option<&str>,
+    ) -> Result<Response> {
+        let mut request = self.http.delete(url).header(AUTHORIZATION, token);
+        if let Some(etag) = if_match {
+            request = request.header("If-Match", etag);
+        }
+        request
+            .send()
+            .await
+            .map_err(|error| FabioError::new(ErrorCode::NetworkError, error.to_string()).into())
     }
 
     /// POST request to Power BI REST API (different base URL, same Fabric auth scope).

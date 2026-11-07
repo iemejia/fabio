@@ -113,6 +113,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/environment_diagnostics.json"),
     ),
     (
+        "environment/get-publish-log",
+        include_str!("data/examples/environment_publish_log.json"),
+    ),
+    (
         "connection/diagnostics",
         include_str!("data/examples/connection_diagnostics.json"),
     ),
@@ -318,6 +322,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/warehouse_get_sql_pools_config.json"),
     ),
     (
+        "warehouse/get-definition",
+        include_str!("data/examples/warehouse_get_definition.json"),
+    ),
+    (
         "semantic-model/query",
         include_str!("data/examples/semantic_model_query.json"),
     ),
@@ -423,6 +431,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
         "data-agent/list-datasources",
         include_str!("data/examples/data_agent_list_datasources.json"),
+    ),
+    (
+        "data-agent/download-datasource-topic",
+        include_str!("data/examples/data_agent_download_datasource_topic.json"),
     ),
     (
         "data-agent/update-config",

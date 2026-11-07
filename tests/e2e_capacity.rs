@@ -283,6 +283,165 @@ fn capacity_update_overage_configuration_rejects_enabled_zero() {
 }
 
 #[test]
+fn test_create_actor_auto_detection_rule_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "capacity",
+            "create-actor-auto-detection-rule",
+            "--id",
+            "96f3f0ff-4fe2-4712-b61b-05a456ba9357",
+            "--threshold",
+            "25",
+            "--block-duration",
+            "Hours",
+            "--hours",
+            "24",
+        ])
+        .assert()
+        .success();
+    let data = parse_json(&output)["data"].clone();
+    assert_eq!(
+        data["details"]["request"]["actorsSubjectToRule"]["type"],
+        "AllWorkspaces"
+    );
+    assert_eq!(data["details"]["request"]["blockDuration"]["type"], "Hours");
+    assert_eq!(data["details"]["request"]["blockDuration"]["hours"], 24);
+}
+
+#[test]
+fn test_delete_actor_auto_detection_rule_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "capacity",
+            "delete-actor-auto-detection-rule",
+            "--id",
+            "96f3f0ff-4fe2-4712-b61b-05a456ba9357",
+            "--rule-id",
+            "70cd1f22-e555-4fcf-813f-3877fef409fb",
+        ])
+        .assert()
+        .success();
+    let data = parse_json(&output)["data"].clone();
+    assert_eq!(data["destructive"], true);
+    assert_eq!(
+        data["would_execute"],
+        "capacity delete-actor-auto-detection-rule"
+    );
+}
+
+#[test]
+fn test_update_actor_auto_detection_rule_rejects_hours_without_duration() {
+    fabio()
+        .args([
+            "--dry-run",
+            "capacity",
+            "update-actor-auto-detection-rule",
+            "--id",
+            "96f3f0ff-4fe2-4712-b61b-05a456ba9357",
+            "--rule-id",
+            "70cd1f22-e555-4fcf-813f-3877fef409fb",
+            "--hours",
+            "24",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn actor_auto_detection_rule_read_and_update_endpoints() {
+    const CAPACITY: &str = "96f3f0ff-4fe2-4712-b61b-05a456ba9357";
+    const RULE: &str = "70cd1f22-e555-4fcf-813f-3877fef409fb";
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let server = runtime.block_on(async {
+        let server = MockServer::start().await;
+        let collection = format!("/capacities/{CAPACITY}/surgeProtection/actorAutoDetectionRules");
+        let item = format!("{collection}/{RULE}");
+        let rule = serde_json::json!({
+            "id": RULE,
+            "actorsSubjectToRule": {"type": "AllWorkspaces"},
+            "capacityUnitsConsumptionThresholdPercentage": 25,
+            "blockDuration": {"type": "Hours", "hours": 24}
+        });
+        Mock::given(method("GET"))
+            .and(path(&collection))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"value": [rule.clone()]})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(&item))
+            .respond_with(ResponseTemplate::new(200).set_body_json(rule.clone()))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let updated = serde_json::json!({
+            "id": RULE,
+            "actorsSubjectToRule": {"type": "AllWorkspaces"},
+            "capacityUnitsConsumptionThresholdPercentage": 50,
+            "blockDuration": {"type": "Indefinite"}
+        });
+        Mock::given(method("PATCH"))
+            .and(path(&item))
+            .and(body_json(serde_json::json!({
+                "capacityUnitsConsumptionThresholdPercentage": 50,
+                "blockDuration": {"type": "Indefinite"}
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(updated))
+            .expect(1)
+            .mount(&server)
+            .await;
+        server
+    });
+
+    let listed = mock_fabio(&server)
+        .args([
+            "capacity",
+            "list-actor-auto-detection-rules",
+            "--id",
+            CAPACITY,
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&listed)["count"], 1);
+    let shown = mock_fabio(&server)
+        .args([
+            "capacity",
+            "show-actor-auto-detection-rule",
+            "--id",
+            CAPACITY,
+            "--rule-id",
+            RULE,
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&shown)["data"]["id"], RULE);
+    let updated = mock_fabio(&server)
+        .args([
+            "capacity",
+            "update-actor-auto-detection-rule",
+            "--id",
+            CAPACITY,
+            "--rule-id",
+            RULE,
+            "--threshold",
+            "50",
+            "--block-duration",
+            "Indefinite",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&updated)["data"]["blockDuration"]["type"],
+        "Indefinite"
+    );
+}
+
+#[test]
 fn test_create_blocked_actor_dry_run() {
     let output = fabio()
         .args([

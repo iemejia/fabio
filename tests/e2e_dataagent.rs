@@ -6,6 +6,288 @@ use base64::Engine;
 use common::{TestConfig, extract_count, extract_data, fabio, parse_json, unique_name};
 use predicates::prelude::*;
 use serial_test::serial;
+use wiremock::matchers::{body_string, header, method, path, query_param};
+use wiremock::{Mock, MockServer, ResponseTemplate};
+
+const TEST_WORKSPACE: &str = "aaaaaaaa-1111-2222-3333-444444444444";
+const TEST_AGENT: &str = "bbbbbbbb-1111-2222-3333-444444444444";
+const TEST_DATASOURCE: &str = "cccccccc-1111-2222-3333-444444444444";
+
+#[test]
+fn test_upload_datasource_topic_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "data-agent",
+            "upload-datasource-topic",
+            "--workspace",
+            TEST_WORKSPACE,
+            "--id",
+            TEST_AGENT,
+            "--datasource",
+            TEST_DATASOURCE,
+            "--file-name",
+            "company-policies.md",
+            "--content",
+            "# Company Policies",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    assert_eq!(
+        json["data"]["would_execute"],
+        "data-agent upload-datasource-topic"
+    );
+    assert_eq!(json["data"]["destructive"], true);
+    assert_eq!(json["data"]["details"]["fileName"], "company-policies.md");
+}
+
+#[test]
+fn test_delete_datasource_topic_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "data-agent",
+            "delete-datasource-topic",
+            "--workspace",
+            TEST_WORKSPACE,
+            "--id",
+            TEST_AGENT,
+            "--datasource",
+            TEST_DATASOURCE,
+            "--file-name",
+            "company-policies.md",
+            "--if-match",
+            "\"etag-value\"",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    assert_eq!(
+        json["data"]["would_execute"],
+        "data-agent delete-datasource-topic"
+    );
+    assert_eq!(json["data"]["destructive"], true);
+}
+
+#[test]
+fn test_datasource_topic_rejects_non_markdown_name() {
+    fabio()
+        .args([
+            "data-agent",
+            "download-datasource-topic",
+            "--workspace",
+            TEST_WORKSPACE,
+            "--id",
+            TEST_AGENT,
+            "--datasource",
+            TEST_DATASOURCE,
+            "--file-name",
+            "topic.txt",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("INVALID_INPUT"));
+}
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn test_datasource_topic_read_endpoints() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let server = runtime.block_on(async {
+        let server = MockServer::start().await;
+        let staging_datasources =
+            format!("/workspaces/{TEST_WORKSPACE}/dataAgents/{TEST_AGENT}/staging/datasources");
+        let published_datasources =
+            format!("/workspaces/{TEST_WORKSPACE}/dataAgents/{TEST_AGENT}/datasources");
+        Mock::given(method("GET"))
+            .and(path(&staging_datasources))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [{"id": TEST_DATASOURCE, "displayName": "SalesLakehouse"}]
+            })))
+            .expect(4)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(&published_datasources))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [{"id": TEST_DATASOURCE, "displayName": "SalesLakehouse"}]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let staging_topics = format!("{staging_datasources}/{TEST_DATASOURCE}/topics");
+        Mock::given(method("GET"))
+            .and(path(&staging_topics))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [{"fileName": "company-policies.md"}]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "{published_datasources}/{TEST_DATASOURCE}/topics/content"
+            )))
+            .and(query_param("fileName", "company-policies.md"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("ETag", "\"published-etag\"")
+                    .set_body_string("# Published policies"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!("{staging_topics}/format")))
+            .and(query_param("fileName", "company-policies.md"))
+            .and(header("Content-Length", "0"))
+            .respond_with(
+                ResponseTemplate::new(202)
+                    .insert_header(
+                        "Location",
+                        format!("{}/operations/format-topic", server.uri()),
+                    )
+                    .insert_header("Retry-After", "0"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/operations/format-topic"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header(
+                        "Location",
+                        format!("{}/operations/format-topic/result", server.uri()),
+                    )
+                    .set_body_json(serde_json::json!({"status": "Succeeded"})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/operations/format-topic/result"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("ETag", "\"staging-etag\"")
+                    .set_body_string("---\nname: Company policies\n---\n"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("PUT"))
+            .and(path(&staging_topics))
+            .and(query_param("fileName", "company-policies.md"))
+            .and(header("Content-Type", "text/markdown"))
+            .and(header("If-Match", "\"staging-etag\""))
+            .and(body_string("# Updated policies"))
+            .respond_with(ResponseTemplate::new(200).insert_header("ETag", "\"updated-etag\""))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path(&staging_topics))
+            .and(query_param("fileName", "company-policies.md"))
+            .and(header("If-Match", "\"updated-etag\""))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+        server
+    });
+
+    let run = |args: &[&str]| {
+        fabio()
+            .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+            .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
+            .args(args)
+            .assert()
+            .success()
+    };
+    let listed = run(&[
+        "data-agent",
+        "list-datasource-topics",
+        "--workspace",
+        TEST_WORKSPACE,
+        "--id",
+        TEST_AGENT,
+        "--datasource",
+        "SalesLakehouse",
+    ]);
+    assert_eq!(
+        parse_json(&listed)["data"][0]["fileName"],
+        "company-policies.md"
+    );
+
+    let downloaded = run(&[
+        "data-agent",
+        "download-datasource-topic",
+        "--workspace",
+        TEST_WORKSPACE,
+        "--id",
+        TEST_AGENT,
+        "--datasource",
+        "SalesLakehouse",
+        "--stage",
+        "published",
+        "--file-name",
+        "company-policies.md",
+    ]);
+    let data = parse_json(&downloaded)["data"].clone();
+    assert_eq!(data["content"], "# Published policies");
+    assert_eq!(data["etag"], "\"published-etag\"");
+
+    let formatted = run(&[
+        "data-agent",
+        "format-datasource-topic",
+        "--workspace",
+        TEST_WORKSPACE,
+        "--id",
+        TEST_AGENT,
+        "--datasource",
+        "SalesLakehouse",
+        "--file-name",
+        "company-policies.md",
+    ]);
+    let data = parse_json(&formatted)["data"].clone();
+    assert_eq!(data["fileName"], "company-policies.md");
+    assert_eq!(data["etag"], "\"staging-etag\"");
+
+    let uploaded = run(&[
+        "data-agent",
+        "upload-datasource-topic",
+        "--workspace",
+        TEST_WORKSPACE,
+        "--id",
+        TEST_AGENT,
+        "--datasource",
+        "SalesLakehouse",
+        "--file-name",
+        "company-policies.md",
+        "--content",
+        "# Updated policies",
+        "--if-match",
+        "\"staging-etag\"",
+    ]);
+    assert_eq!(parse_json(&uploaded)["data"]["etag"], "\"updated-etag\"");
+
+    let deleted = run(&[
+        "data-agent",
+        "delete-datasource-topic",
+        "--workspace",
+        TEST_WORKSPACE,
+        "--id",
+        TEST_AGENT,
+        "--datasource",
+        "SalesLakehouse",
+        "--file-name",
+        "company-policies.md",
+        "--if-match",
+        "\"updated-etag\"",
+    ]);
+    assert_eq!(parse_json(&deleted)["data"]["status"], "deleted");
+}
 
 #[test]
 #[ignore = "requires live Fabric tenant"]

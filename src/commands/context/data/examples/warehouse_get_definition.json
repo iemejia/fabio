@@ -1,0 +1,28 @@
+{
+  "command": "fabio warehouse get-definition --workspace $WS --id $WAREHOUSE --format sqlproj",
+  "description": "Returns the Warehouse public definition as SQL project parts.",
+  "response": {
+    "data": {
+      "definition": {
+        "format": "sqlproj",
+        "parts": [
+          {
+            "path": "sqldw.sqlproj",
+            "payload": "PD94bWwgdmVyc2lvbj0iMS4wIj8+",
+            "payloadType": "InlineBase64"
+          },
+          {
+            "path": "dbo/Tables/Orders.sql",
+            "payload": "Q1JFQVRFIFRBQkxFIFtkYm9dLltPcmRlcnNdICguLi4pOw==",
+            "payloadType": "InlineBase64"
+          }
+        ]
+      }
+    }
+  },
+  "notes": "The API defaults to sqlproj when --format is omitted. Add --decode to decode InlineBase64 payloads in the rendered definition. Sensitivity labels are not included.",
+  "query_examples": [
+    {"query": "data.definition.format", "description": "Extract the returned definition format"},
+    {"query": "data.definition.parts[].path", "description": "List definition part paths"}
+  ]
+}
