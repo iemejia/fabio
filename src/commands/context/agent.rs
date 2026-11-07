@@ -1569,6 +1569,9 @@ fn generate_flags(
                                 .and_then(|f| f.get(&flag_name))
                                 .and_then(|fv| fv.get("type"))
                                 .and_then(serde_json::Value::as_str)
+                                .filter(|kind| {
+                                    matches!(*kind, "string" | "integer" | "number" | "u64")
+                                })
                         })
                         .unwrap_or("string");
                     flag_obj.insert("type".to_owned(), serde_json::json!(type_str));
@@ -1897,6 +1900,28 @@ mod tests {
             .and_then(serde_json::Value::as_object)
             .expect("flag should exist");
         assert_eq!(sample.get("type"), Some(&serde_json::json!("number")));
+    }
+
+    #[test]
+    fn generate_flags_drops_stale_enum_type_without_possible_values() {
+        use clap::{Arg, Command};
+
+        let cmd = Command::new("test").arg(Arg::new("stage").long("stage"));
+        let existing = serde_json::json!({
+            "flags": {
+                "--stage": {
+                    "type": "enum",
+                    "values": ["staging", "published"]
+                }
+            }
+        });
+        let flags = generate_flags(&cmd, Some(&existing));
+        let stage = flags
+            .get("--stage")
+            .and_then(serde_json::Value::as_object)
+            .expect("flag should exist");
+        assert_eq!(stage.get("type"), Some(&serde_json::json!("string")));
+        assert_eq!(stage.get("values"), None);
     }
 
     #[test]

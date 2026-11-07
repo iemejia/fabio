@@ -7,6 +7,7 @@ mod evaluate;
 mod fewshots;
 mod mcp;
 mod query;
+mod topics;
 mod validate;
 
 use anyhow::Result;
@@ -382,6 +383,96 @@ pub enum DataAgentCommand {
         /// New description for the data source
         #[arg(long)]
         description: Option<String>,
+    },
+    /// List topic files for a data source
+    ListDatasourceTopics {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+        /// Data source name or ID
+        #[arg(long)]
+        datasource: String,
+        /// Stage to read: staging (draft) or published (live)
+        #[arg(long, default_value = "staging", value_parser = ["staging", "published"])]
+        stage: String,
+    },
+    /// Download a data source topic as Markdown
+    DownloadDatasourceTopic {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+        /// Data source name or ID
+        #[arg(long)]
+        datasource: String,
+        /// Stage to read: staging (draft) or published (live)
+        #[arg(long, default_value = "staging", value_parser = ["staging", "published"])]
+        stage: String,
+        /// Topic file name; must end in .md
+        #[arg(long)]
+        file_name: String,
+    },
+    /// Create or replace a staging data source topic
+    UploadDatasourceTopic {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+        /// Data source name or ID
+        #[arg(long)]
+        datasource: String,
+        /// Topic file name; must end in .md
+        #[arg(long)]
+        file_name: String,
+        /// UTF-8 Markdown file
+        #[arg(long, group = "topic_input")]
+        file: Option<String>,
+        /// Inline Markdown content
+        #[arg(long, group = "topic_input")]
+        content: Option<String>,
+        /// Only replace the topic when its current `ETag` matches
+        #[arg(long)]
+        if_match: Option<String>,
+    },
+    /// Format a staging data source topic without modifying it
+    FormatDatasourceTopic {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+        /// Data source name or ID
+        #[arg(long)]
+        datasource: String,
+        /// Topic file name; must end in .md
+        #[arg(long)]
+        file_name: String,
+    },
+    /// Delete a staging data source topic
+    DeleteDatasourceTopic {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Data agent ID
+        #[arg(long)]
+        id: String,
+        /// Data source name or ID
+        #[arg(long)]
+        datasource: String,
+        /// Topic file name; must end in .md
+        #[arg(long)]
+        file_name: String,
+        /// Only delete the topic when its current `ETag` matches
+        #[arg(long)]
+        if_match: Option<String>,
     },
 
     // ── Few-shot Management ──────────────────────────────────────────────
@@ -921,6 +1012,69 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
         )
         .await
         .map_err(|e| enrich_forbidden(e, "data-agent update-datasource", "Contributor")),
+        DataAgentCommand::ListDatasourceTopics {
+            workspace,
+            id,
+            datasource,
+            stage,
+        } => topics::list(cli, client, workspace, id, datasource, stage)
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent list-datasource-topics", "Viewer")),
+        DataAgentCommand::DownloadDatasourceTopic {
+            workspace,
+            id,
+            datasource,
+            stage,
+            file_name,
+        } => topics::download(cli, client, workspace, id, datasource, stage, file_name)
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent download-datasource-topic", "Viewer")),
+        DataAgentCommand::UploadDatasourceTopic {
+            workspace,
+            id,
+            datasource,
+            file_name,
+            file,
+            content,
+            if_match,
+        } => topics::upload(
+            cli,
+            client,
+            workspace,
+            id,
+            datasource,
+            file_name,
+            file.as_deref(),
+            content.as_deref(),
+            if_match.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "data-agent upload-datasource-topic", "Contributor")),
+        DataAgentCommand::FormatDatasourceTopic {
+            workspace,
+            id,
+            datasource,
+            file_name,
+        } => topics::format(cli, client, workspace, id, datasource, file_name)
+            .await
+            .map_err(|e| enrich_forbidden(e, "data-agent format-datasource-topic", "Viewer")),
+        DataAgentCommand::DeleteDatasourceTopic {
+            workspace,
+            id,
+            datasource,
+            file_name,
+            if_match,
+        } => topics::delete(
+            cli,
+            client,
+            workspace,
+            id,
+            datasource,
+            file_name,
+            if_match.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "data-agent delete-datasource-topic", "Contributor")),
         DataAgentCommand::ListFewshots {
             workspace,
             id,
@@ -1095,10 +1249,20 @@ pub(super) async fn resolve_datasource_id(
     agent_id: &str,
     datasource: &str,
 ) -> Result<String> {
-    // Always list datasources and match by name, datasource ID, or artifact ID
+    resolve_datasource_id_at_stage(client, workspace, agent_id, datasource, "staging").await
+}
+
+pub(super) async fn resolve_datasource_id_at_stage(
+    client: &FabricClient,
+    workspace: &str,
+    agent_id: &str,
+    datasource: &str,
+    stage: &str,
+) -> Result<String> {
+    let prefix = stage_prefix(stage);
     let resp = client
         .get_list(
-            &format!("/workspaces/{workspace}/dataAgents/{agent_id}/staging/datasources"),
+            &format!("/workspaces/{workspace}/dataAgents/{agent_id}{prefix}/datasources"),
             "value",
             true,
             None,

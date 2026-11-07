@@ -8,6 +8,7 @@ use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
 mod actors;
+mod auto_detection_rules;
 
 const ARM_API_VERSION: &str = "2023-11-01";
 
@@ -51,6 +52,14 @@ pub enum BlockedActorExpirationPolicy {
     NeverExpire,
     #[value(name = "ExpireAfterDate")]
     ExpireAfterDate,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum AutoDetectionBlockDuration {
+    #[value(name = "Indefinite")]
+    Indefinite,
+    #[value(name = "Hours")]
+    Hours,
 }
 
 #[derive(Debug, Subcommand)]
@@ -307,6 +316,63 @@ pub enum CapacityCommand {
         #[arg(long)]
         actor_id: String,
     },
+    /// Create an all-workspaces actor auto-detection rule
+    CreateActorAutoDetectionRule {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+        /// Per-actor capacity-unit consumption threshold over a rolling 24-hour window (1-100)
+        #[arg(long, value_parser = clap::value_parser!(u8).range(1..=100))]
+        threshold: u8,
+        /// Automatic block duration: Hours or Indefinite
+        #[arg(long, value_enum)]
+        block_duration: AutoDetectionBlockDuration,
+        /// Number of block hours; required with --block-duration Hours
+        #[arg(long)]
+        hours: Option<u32>,
+    },
+    /// List actor auto-detection rules on a capacity
+    ListActorAutoDetectionRules {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Show an actor auto-detection rule
+    ShowActorAutoDetectionRule {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+        /// Actor auto-detection rule ID
+        #[arg(long)]
+        rule_id: String,
+    },
+    /// Update an actor auto-detection rule threshold and/or block duration
+    UpdateActorAutoDetectionRule {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+        /// Actor auto-detection rule ID
+        #[arg(long)]
+        rule_id: String,
+        /// Per-actor capacity-unit consumption threshold over a rolling 24-hour window (1-100)
+        #[arg(long, value_parser = clap::value_parser!(u8).range(1..=100))]
+        threshold: Option<u8>,
+        /// Replacement block duration: Hours or Indefinite
+        #[arg(long, value_enum)]
+        block_duration: Option<AutoDetectionBlockDuration>,
+        /// Number of block hours; required with --block-duration Hours
+        #[arg(long)]
+        hours: Option<u32>,
+    },
+    /// Delete an actor auto-detection rule
+    DeleteActorAutoDetectionRule {
+        /// Capacity ID
+        #[arg(long)]
+        id: String,
+        /// Actor auto-detection rule ID
+        #[arg(long)]
+        rule_id: String,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -454,6 +520,41 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &CapacityCommand
         }
         CapacityCommand::DeleteMissionCriticalActor { id, actor_id } => {
             actors::delete_mission_critical(cli, client, id, actor_id).await
+        }
+        CapacityCommand::CreateActorAutoDetectionRule {
+            id,
+            threshold,
+            block_duration,
+            hours,
+        } => {
+            auto_detection_rules::create(cli, client, id, *threshold, *block_duration, *hours).await
+        }
+        CapacityCommand::ListActorAutoDetectionRules { id } => {
+            auto_detection_rules::list(cli, client, id).await
+        }
+        CapacityCommand::ShowActorAutoDetectionRule { id, rule_id } => {
+            auto_detection_rules::show(cli, client, id, rule_id).await
+        }
+        CapacityCommand::UpdateActorAutoDetectionRule {
+            id,
+            rule_id,
+            threshold,
+            block_duration,
+            hours,
+        } => {
+            auto_detection_rules::update(
+                cli,
+                client,
+                id,
+                rule_id,
+                *threshold,
+                *block_duration,
+                *hours,
+            )
+            .await
+        }
+        CapacityCommand::DeleteActorAutoDetectionRule { id, rule_id } => {
+            auto_detection_rules::delete(cli, client, id, rule_id).await
         }
     }
 }

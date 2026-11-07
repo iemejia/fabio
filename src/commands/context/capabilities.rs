@@ -317,8 +317,8 @@ mod tests {
         assert_eq!(strat("Eventhouse"), Some("content"));
         assert_eq!(strat("DataAgent"), Some("content"));
         assert_eq!(strat("ApacheAirflowJob"), Some("content"));
+        assert_eq!(strat("Warehouse"), Some("content"));
         // Platform-only: data stores deployed as shells.
         assert_eq!(strat("Lakehouse"), Some("platform_only"));
-        assert_eq!(strat("Warehouse"), Some("platform_only"));
     }
 }

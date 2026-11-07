@@ -3627,3 +3627,91 @@ tests:
       - type: icontains
         value: "--sql"
         metric: snapshot-query-sql
+
+  # ============================================================
+  # NOVEMBER 2026 FABRIC REST PARITY
+  # ============================================================
+
+  - description: "Data Agent: manage staging and published datasource topics"
+    vars:
+      user_query: "Show me the Fabio commands to list and download published Markdown topics for the Sales datasource, then format, upload with an ETag, and dry-run delete a staging topic"
+    assert:
+      - type: javascript
+        value: |
+          [
+            'data-agent list-datasource-topics',
+            'data-agent download-datasource-topic',
+            'data-agent format-datasource-topic',
+            'data-agent upload-datasource-topic',
+            'data-agent delete-datasource-topic'
+          ].every(command => output.includes(command))
+        metric: data-agent-topic-lifecycle
+      - type: javascript
+        value: |
+          output.includes('--stage published') && output.includes('--if-match') && output.includes('--dry-run')
+        metric: data-agent-topic-concurrency-safety
+
+  - description: "Capacity: manage actor auto-detection rules"
+    vars:
+      user_query: "Show the Fabio lifecycle for an all-workspaces capacity actor auto-detection rule: create it at 40 percent for 24 hours, list and show it, change it to indefinite, then preview deletion"
+    assert:
+      - type: javascript
+        value: |
+          [
+            'capacity create-actor-auto-detection-rule',
+            'capacity list-actor-auto-detection-rules',
+            'capacity show-actor-auto-detection-rule',
+            'capacity update-actor-auto-detection-rule',
+            'capacity delete-actor-auto-detection-rule'
+          ].every(command => output.includes(command))
+        metric: capacity-auto-detection-rule-lifecycle
+      - type: javascript
+        value: |
+          output.includes('--block-duration Hours') && output.includes('--hours 24') &&
+          output.includes('--block-duration Indefinite') && output.includes('--dry-run')
+        metric: capacity-auto-detection-rule-variants
+
+  - description: "Environment: download latest publish driver log"
+    vars:
+      user_query: "Download the driver stdout log for the latest completed publish of Fabric environment env-1 in workspace ws-1"
+    assert:
+      - type: icontains
+        value: "environment get-publish-log"
+        metric: environment-publish-log-command
+      - type: icontains
+        value: "--workspace"
+        metric: environment-publish-log-workspace
+      - type: icontains
+        value: "--id"
+        metric: environment-publish-log-id
+
+  - description: "Warehouse: create, get, and replace public definitions"
+    vars:
+      user_query: "Show how to create a warehouse from a SQL project definition folder, get its definition as a DACPAC, and safely preview replacing it from warehouse-definition.json"
+    assert:
+      - type: javascript
+        value: |
+          output.includes('warehouse create') &&
+          output.includes('warehouse get-definition') &&
+          output.includes('warehouse update-definition')
+        metric: warehouse-definition-lifecycle
+      - type: javascript
+        value: |
+          output.includes('--definition-dir') && output.includes('--definition-format sqlproj') &&
+          output.includes('--format dacpac') && output.includes('--definition') &&
+          output.includes('--dry-run')
+        metric: warehouse-definition-flags
+
+  - description: "Eventstream: add a Custom Stream Connector source"
+    vars:
+      user_query: "Add a CustomStreamConnector source named connector-source to eventstream es-1 with a data connection ID and a runtime api.key placeholder"
+    assert:
+      - type: icontains
+        value: "eventstream add-source"
+        metric: custom-stream-connector-command
+      - type: contains
+        value: "CustomStreamConnector"
+        metric: custom-stream-connector-type
+      - type: llm-rubric
+        value: "The response uses eventstream add-source with --source-type CustomStreamConnector and --properties containing dataConnectionId plus configurations entries shaped as {key,value}; a placeholder such as ${key} is preserved for Fabric runtime resolution."
+        metric: custom-stream-connector-shape

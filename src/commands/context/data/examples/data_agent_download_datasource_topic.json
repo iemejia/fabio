@@ -1,0 +1,18 @@
+{
+  "command": "fabio data-agent download-datasource-topic --workspace $WS --id $AGENT --datasource $SOURCE --file-name company-policies.md",
+  "description": "Downloads a staging or published datasource topic with its concurrency metadata.",
+  "response": {
+    "data": {
+      "content": "# Company Policies",
+      "etag": "\"topic-etag\"",
+      "contentDisposition": null,
+      "contentType": "text/markdown",
+      "truncated": false
+    }
+  },
+  "notes": "Use the returned ETag with upload-datasource-topic or delete-datasource-topic --if-match. Topic names must end in .md.",
+  "query_examples": [
+    {"query": "data.content", "description": "Extract the Markdown content"},
+    {"query": "data.etag", "description": "Extract the optimistic-concurrency ETag"}
+  ]
+}

@@ -52,6 +52,8 @@
 - `src/commands/notebook.rs`: create/get-definition (with --strip-output)/run (with --wait/--timeout/--parameters/--compute-type/--execution-data)/status/stop/delete
 - `src/commands/warehouse/mod.rs`: Warehouse command enum, dispatch, shared helpers (get_connection_string, execute_insights_query)
 - `src/commands/warehouse/crud.rs`: list/show/create/update/delete
+- `src/commands/warehouse/definitions.rs`: dacpac/sqlproj create/get/update public-definition loading, validation, and folder assembly
+- `src/commands/context/data/examples/warehouse_get_definition.json`: nested Warehouse public-definition response example and query projections
 - `src/commands/warehouse/query.rs`: query (TDS execution) + plan (SHOWPLAN_XML capture)
 - `src/commands/warehouse/admin.rs`: connection-string/get-sql-pools-config/update-sql-pools-config/get-audit-settings/update-audit-settings/set-audit-actions
 - `src/commands/warehouse/restore_points.rs`: list/create/show/update/delete restore points + restore-to-point
@@ -63,7 +65,7 @@
  - `src/commands/sql_mcp.rs`: `query --via-mcp` execution backend — routes T-SQL through the remote DW MCP server's `execute_query` tool via `mcp_client` (Fabric token, no database.windows.net token / TCP 1433); CSV→list-envelope parser + tool-name resolver (unit-tested)
  - `src/commands/sql_database/`: list/show/create/update/delete/query/plan/connection-string/import (TDS + type inference) + definitions/mirroring/cmk/audit + insights (queries-running/history/kill) + statistics (list/show/create/update/delete)
 - `src/commands/tds_utils.rs`: Shared TDS utilities (resolve_sql_input, parse_connection_string, execute_and_render_sql, capture_query_plan, column_value_to_json)
-- `src/commands/dataagent.rs`: list/show/create/update/delete/query/get-definition/update-definition/publish + get-config/update-config, add/remove/list/show-datasource, select-tables, list-elements/describe-element, add/remove/list-fewshots/upload-fewshots
+- `src/commands/dataagent/`: data-agent CRUD/query/config/definition plus datasource, topic, element, and few-shot management; `topics.rs` implements staging/published Markdown topic operations with ETags
 - `src/commands/git/mod.rs`: GitCommand/ConnectionCommand/CredentialsCommand enums + execute() dispatch + shared `enrich_git_connect_error` + unit tests (directory module)
 - `src/commands/git/sync.rs`: status/commit/pull/show-tracked
 - `src/commands/git/connect.rs`: connect/disconnect/init/checkout + connection & credentials subcommands
@@ -318,6 +320,7 @@
 - `src/commands/deployment_plan.rs`: DeploymentPlan item CRUD and definition APIs
 - `src/commands/admin/connections.rs`: tenant-admin connection and ownership APIs
 - `src/commands/capacity/actors.rs`: capacity blocked/mission-critical surge-protection actors
+- `src/commands/capacity/auto_detection_rules.rs`: capacity actor auto-detection rule CRUD and block-duration validation
 - `tests/e2e_deployment_plan.rs`: deployment-plan scope/dry-run, filtered pagination, CRUD, and definition/LRO request coverage
 - `tests/e2e_deployment_governance.rs`: opt-in PR #188 live lifecycles with test-owned resource cleanup and confidential failure reporting; also deterministic fixture/runner regressions
 - `tests/common/live.rs`: governance-only live-test support with injectable cleanup runners, fake-clock polling tests, and confidential subprocess/envelope validation (not imported by every integration test binary)

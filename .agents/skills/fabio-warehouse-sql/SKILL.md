@@ -43,6 +43,7 @@ Manage warehouses and run SQL queries
 | `fabio warehouse delete-restore-point` | yes | Delete a restore point |
 | `fabio warehouse describe-table` | no | Describe the columns of a table (from `INFORMATION_SCHEMA.COLUMNS`) |
 | `fabio warehouse get-audit-settings` | no | Get SQL audit settings for a warehouse |
+| `fabio warehouse get-definition` | no | Get the warehouse public definition |
 | `fabio warehouse get-retention` | no | Report the configured data-retention (time-travel) period, in days |
 | `fabio warehouse get-sql-pools-config` | no | Get SQL pools configuration for a workspace (requires workspace Admin) |
 | `fabio warehouse list` | no | List warehouses in a workspace |
@@ -69,6 +70,7 @@ Manage warehouses and run SQL queries
 | `fabio warehouse statistics-update` | yes | Update (refresh) an existing statistic |
 | `fabio warehouse update` | yes | Update warehouse properties (name and/or description) |
 | `fabio warehouse update-audit-settings` | yes | Update SQL audit settings for a warehouse |
+| `fabio warehouse update-definition` | yes | Replace the warehouse public definition |
 | `fabio warehouse update-restore-point` | yes | Update a restore point |
 | `fabio warehouse update-sql-pools-config` | yes | Update SQL pools configuration for a workspace (requires workspace Admin) |
 
@@ -179,6 +181,7 @@ Manage warehouse snapshots
 - SQL Audit predicate filtering is available on ALL THREE T-SQL surfaces: 'warehouse', 'sql-endpoint', and 'sql-database' update-audit-settings all accept '--predicate-expression' (the expression only, WITHOUT a WHERE keyword, max 3000 characters; empty clears it) as top-level predicateExpression. Omitting it on a later update preserves the existing predicate. Pair it with '--state Enabled', '--retention-days', and '--audit-actions'. Writing audit settings needs Contributor+ AND an elevated audit scope — a correctly-formed request may still return FORBIDDEN/InsufficientScopes on a low-privilege token.
 - IDENTITY_INSERT is supported (GA): to insert explicit values into an IDENTITY column (e.g. to preserve keys when reloading/migrating a Fabric Warehouse table), wrap the load in SET IDENTITY_INSERT dbo.<table> ON; INSERT ... (<explicit id cols>) VALUES ...; SET IDENTITY_INSERT dbo.<table> OFF; via 'warehouse query'. Only ONE table can have IDENTITY_INSERT ON at a time in a session, the column list MUST be explicit in the INSERT, and you must have ALTER on the table. Without it, inserting an explicit value into an IDENTITY column fails. Applies to Fabric Warehouse T-SQL (arbitrary T-SQL runs through 'warehouse query', so no fabio flag is needed).
 - Workspace SQL pools configuration is GA: get-sql-pools-config/update-sql-pools-config require workspace Admin and use /warehouses/sqlPoolsConfiguration with no beta query parameter. customSQLPools classifiers accept Application Name, Application Name Regex, and Statement Type.
+- Warehouse public definitions support dacpac and sqlproj. Create cannot combine a definition with creationPayload/--collation. get-definition defaults to sqlproj; update-definition replaces the full definition, and --update-metadata applies an included .platform part without changing the sensitivity label.
 
 ## Troubleshooting
 | Symptom | Fix |
@@ -195,6 +198,7 @@ Manage warehouse snapshots
 - DDL/DML via query (DROP/DELETE/TRUNCATE) is executed for real — use 'plan' to inspect without executing, and confirm destructive statements.
 - 'set-retention' DECREASING the retention window is irreversible (permanently drops time-travel history older than the new window) — it is destructive and dry-run guarded; confirm with the user.
 - 'sql-endpoint refresh-metadata --recreate-tables' drops and recreates the selected SQL metadata tables; inspect the dry-run body and confirm the scope first.
+- warehouse update-definition replaces the full public definition without backup; preview it and confirm every part before execution.
 
 ## Shared references
 Cross-cutting operational guidance (the "common" layer) — consult the relevant topic before non-trivial work:
