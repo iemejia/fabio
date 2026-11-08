@@ -1,0 +1,16 @@
+{
+  "command": "fabio --wrap-untrusted --readonly dataflow plan-upgrade --workspace $WORKSPACE_ID --id $GEN1_ID",
+  "description": "A selected service-ready Gen1 assessment still produces a review-only, approval-blocked plan, not migration readiness.",
+  "response": {"data": {
+    "scope": {"workspaceId": "aaaaaaaa-1111-2222-3333-444444444444", "selectedDataflowIds": ["bbbbbbbb-1111-2222-3333-444444444444"], "selectedCount": 1, "assessmentScope": "all_gen1_in_one_workspace", "pageSize": 30, "pageLimit": 3, "assessmentRowLimit": 90, "timeoutSeconds": 30, "maxLogicalReads": 3, "mutates": false},
+    "assessmentScan": {"complete": true, "pages": 1, "rowsInspected": 1, "reason": null, "error": null},
+    "status": "ready", "partial": false, "mutates": false, "destructive": true,
+    "checks": [{"checkId": "gen1_upgrade_assessment", "status": "ready", "message": "Service assessment is not consumer, data, permission or approval evidence.", "evidence": {"dataflowId": "bbbbbbbb-1111-2222-3333-444444444444", "reportedAssessmentStatus": "ReadyToMigrate", "reason": "service_reports_ready", "assessmentReasons": [], "scanComplete": true}, "nextSteps": []}],
+    "reviewPlan": {"applied": false, "readyToApply": false, "requiresApproval": true, "destructive": true, "mode": "gen1_to_gen2_in_place", "selectedCount": 1, "allSelectedAssessmentsReady": true,
+      "guardedPreview": {"kind": "remediation", "message": "Preview only; preserve both guards and review every blocker.", "command": "fabio --wrap-untrusted --readonly dataflow upgrade-gen1 --workspace aaaaaaaa-1111-2222-3333-444444444444 --id bbbbbbbb-1111-2222-3333-444444444444 --dry-run", "hintType": "semantic_correction", "verifyAfter": "fabio --wrap-untrusted --readonly dataflow show --workspace aaaaaaaa-1111-2222-3333-444444444444 --id bbbbbbbb-1111-2222-3333-444444444444", "requiresApproval": true, "destructive": true},
+      "blockers": ["explicit_approval_not_recorded", "all_consumers_and_storage_security_not_verified", "historical_data_backup_or_reload_not_verified", "post_upgrade_refresh_and_consumer_validation_not_planned", "guarded_execution_and_correlated_receipt_workflow_not_implemented_by_planner"]},
+    "notChecked": ["all consumers and legacy connectors", "backup/reloadability and cached history", "storage/security modes, ownership, grants and permission to upgrade", "upgrade acceptance/completion and refreshed Gen2 data"]
+  }},
+  "notes": "status ready summarizes only selected assessment metadata. No execution, approval, historic-data preservation, consumer compatibility, refresh or storage-mode switch is established. Incomplete/missing/malformed evidence stays unknown and suppresses previews. Names/free-text API messages and unselected IDs are not emitted.",
+  "query_examples": [{"query": "checks[].{id:evidence.dataflowId,status:status,reasons:evidence.assessmentReasons}", "description": "Inspect selected assessment reasons without raw names/endpoints."}, {"query": "reviewPlan.{applied:applied,ready:readyToApply,blockers:blockers}", "description": "Review why the plan cannot be applied."}]
+}

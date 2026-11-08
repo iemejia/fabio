@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+mod gen1;
+
 use anyhow::Result;
 use clap::Subcommand;
 use serde_json::Value;
@@ -187,6 +189,30 @@ pub enum DataflowCommand {
         #[arg(long, value_parser = clap::value_parser!(u8).range(1..=30))]
         page_size: Option<u8>,
     },
+    /// Plan an explicitly selected Gen1 batch from bounded workspace assessment reads; never execute upgrades
+    PlanUpgrade {
+        /// Workspace assessed by the service (all its Gen1 dataflows, not only selected IDs)
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Explicit Gen1 dataflow ID (repeatable, distinct non-zero UUIDs, maximum 50)
+        #[arg(long = "id", required = true)]
+        ids: Vec<String>,
+        /// Server assessment page size
+        #[arg(long, default_value = "30", value_parser = clap::value_parser!(u8).range(1..=30))]
+        page_size: u8,
+        /// Maximum assessment pages, never overridden by --all
+        #[arg(long, default_value = "3", value_parser = clap::value_parser!(u8).range(1..=20))]
+        page_limit: u8,
+        /// Maximum workspace assessment rows inspected, including unselected rows
+        #[arg(long, default_value = "90", value_parser = clap::value_parser!(u16).range(1..=600))]
+        assessment_limit: u16,
+        /// Total seconds for assessment reads, authentication and retries
+        #[arg(long, default_value = "30", value_parser = clap::value_parser!(u64).range(1..=300))]
+        timeout: u64,
+        /// Print the plan and fail unless every selected assessment is ready; never certifies apply readiness
+        #[arg(long)]
+        strict: bool,
+    },
     /// Upgrade 1-50 Gen1 dataflows to Gen2 in place (Preview)
     #[command(name = "upgrade-gen1", display_order = 11)]
     UpgradeGen1 {
@@ -299,6 +325,28 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataflowCommand
         } => list_upgrade_readiness(cli, client, workspace, *page_size).await,
         DataflowCommand::UpgradeGen1 { workspace, ids } => {
             upgrade_gen1(cli, client, workspace, ids).await
+        }
+        DataflowCommand::PlanUpgrade {
+            workspace,
+            ids,
+            page_size,
+            page_limit,
+            assessment_limit,
+            timeout,
+            strict,
+        } => {
+            gen1::plan(
+                cli,
+                client,
+                workspace,
+                ids,
+                *page_size,
+                *page_limit,
+                *assessment_limit,
+                *timeout,
+                *strict,
+            )
+            .await
         }
         DataflowCommand::ExecuteQuery {
             workspace,

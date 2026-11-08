@@ -1,0 +1,12 @@
+{
+  "name": "Gen1 Upgrade Review",
+  "description": "GET-only bounded assessment and review of an explicitly selected Gen1 batch; no irreversible upgrade, consumer rewrite, refresh or permission changes.",
+  "variables": {"WORKSPACE_ID": "Workspace containing the selected Gen1 items; the service assesses all Gen1 in this workspace.", "GEN1_ID": "Explicit Gen1 dataflow UUID, never inferred from a name or an unrelated item."},
+  "steps": [
+    {"step_number": 1, "command": "fabio --wrap-untrusted --readonly dataflow plan-upgrade --workspace $WORKSPACE_ID --id $GEN1_ID --dry-run", "description": "Validate explicit scope and preview read limits offline, without network or mutation."},
+    {"step_number": 2, "command": "fabio --wrap-untrusted --readonly dataflow plan-upgrade --workspace $WORKSPACE_ID --id $GEN1_ID --page-size 30 --page-limit 3 --assessment-limit 90 --timeout 30", "description": "Read bounded workspace assessments, emitting only selected evidence. Inspect unknown/partial scope, every reason and ALL reviewPlan blockers, not only status."},
+    {"step_number": 3, "command": "fabio --wrap-untrusted --readonly context best-practices gen1-upgrade-planning", "description": "Review consumer/connector, cached-history reload/backup, BYOL/incremental-refresh, naming, schedules, permissions and post-upgrade validation risks. The planner does not inventory or repair consumers."}
+  ],
+  "guarded_preview": {"command": "fabio --wrap-untrusted --readonly dataflow upgrade-gen1 --workspace $WORKSPACE_ID --id $GEN1_ID --dry-run", "description": "Separate PREVIEW only, not execute. Keep both guards. Complete assessment is not approval or a receipt-safe submission workflow; the future execution phase must preserve uncertain/accepted work without blind resubmission."},
+  "stop_condition": "No upgrade executes in this workflow. Explicit human approval and a guarded execution/correlated receipt phase are still required; do not silently switch to Save As, rewrite consumers, take over, grant access or refresh."
+}

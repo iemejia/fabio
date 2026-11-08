@@ -1,0 +1,32 @@
+{
+  "topic": "gen1-upgrade-planning",
+  "title": "Bounded Gen1 assessment and review before irreversible migration",
+  "summary": "dataflow plan-upgrade reads bounded workspace Gen1 assessments for explicitly selected IDs, preserves unknown/partial evidence, and reports approval-blocked in-place upgrade previews. Service readiness is not consumer compatibility, historic-data preservation, permissions, approval, submission or refreshed Gen2 readiness. No upgrade or repair runs.",
+  "scope": [
+    "Use dataflow plan-upgrade --workspace <WORKSPACE_ID> --id <GEN1_ID> (repeatable, 1-50 distinct non-zero UUIDs). Run reads with --readonly. The API evaluates ALL Gen1 dataflows in that workspace, with no ID filtering or sorting; explicit IDs select local output only. No tenant inventory or cross-workspace scan occurs.",
+    "Defaults: --page-size 30 (1-30), --page-limit 3 (1-20), --assessment-limit 90 workspace rows (1-600), and a total --timeout 30 seconds (1-300) including authentication/retries/in-flight reads. Limits include unselected assessment rows. --all/--force do not expand scope or bypass limits. Returned URLs are not followed; opaque tokens stay on the fixed workspace assessment route.",
+    "--dry-run is an offline validated read-scope preview. Aggregate plans cannot resume one continuation cursor; use list-upgrade-readiness for raw page resumption. The planner does not fetch definitions, test credentials, create/import dataflows, refresh, take over, grant roles, change storage modes or submit upgrades."
+  ],
+  "evidence": [
+    "ReadyToMigrate is only the service's assessment of the dataflow itself, NOT its consumers. The assessment does not detect every limitation, external Desktop/Excel consumer, legacy PowerBI.Dataflows connector or actual DirectQuery dependency. Do not silently switch consumers to Import/Direct Lake or change source/security semantics.",
+    "NeedsAttention can be migratable under the API contract, but requires explicit review of ALL before/after/consumer/storage actions. The conservative planner offers no batch mutation preview while attention is unresolved; ExceedsGen2QueryLimit requires reducing enabled queries before upgrade. UpgradeUnavailable is blocked. Unknown status/reason, missing/malformed/error-bearing/wrong-scope rows, duplicate identities, invalid severity aggregation and incomplete pagination remain unknown, never eligibility.",
+    "Unknown is not a severity aggregation result. Missing selected IDs in a complete Gen1 assessment can be Gen2/excluded/unavailable; they are not proved deleted. Partial scans do not certify even a selected row that reports ReadyToMigrate. Free-text messages, names, credentials, endpoints, continuation tokens and unselected resource IDs are not emitted.",
+    "--strict prints the report and fails unless every selected assessment is ready. Even a successful strict report has reviewPlan.readyToApply:false and applied:false; strict is not an approval gate or execution authorization."
+  ],
+  "review_plan": [
+    "The plan ALWAYS requires approval, is destructive:true for the PROPOSED irreversible in-place change, and is readyToApply:false/applied:false. Only complete all-ready assessment evidence yields a guarded preview; it keeps BOTH --readonly and --dry-run. Verification commands inspect selected item metadata only, not migration success, refreshed data or consumer parity.",
+    "Readiness does not discharge blockers: explicit approval, all consumers and storage/security, historical-data backup/reload, post-upgrade refresh/consumer validation, and a guarded execution/correlated receipt workflow remain unverified. The planner itself implements no execute/follow path. Existing low-level upgrade-gen1 transport is not a receipt-safe orchestration engine; never remove preview guards or blindly invoke/retry it from a plan.",
+    "A future execution phase must submit an explicitly approved scope once, preserve acknowledgements and exact operation identity, distinguish per-row partial success from unknown submission/completion, and never resubmit accepted or ambiguously accepted work. Generic server-error retries are not safe for irreversible upgrade submission. Cancellation is unsupported."
+  ],
+  "migration_risks": [
+    "The upgrade replaces Gen1 in place and cannot be reverted, despite preserving identifiers. Cached historic data is not carried over; if the source cannot reload history, review backup first. Save As creates a DIFFERENT item/copy and is a separate user-selected migration mode, not an automatic fallback.",
+    "The upgraded Gen2 has no data until its first separately approved refresh completes. Downstream dataflows may need open/save/rebinding and modern PowerPlatform.Dataflows connector credentials. A preserved item ID, imported data currently displayed by consumers, or completed upgrade does not establish fresh data or working consumers.",
+    "BYOL destinations, incremental refresh and linked-entity cascading-refresh behavior are not preserved automatically. Review both sides of linked relationships. Naming may be sanitized/prefixed. Workspace Viewer consumption and Power BI REST automation differ for Gen2; never grant access or rewrite clients automatically.",
+    "Published wizard guidance says a failed upgrade cannot be retried for 24 hours and OAP enablement can be blocked during the retained Gen1's 30-day soft-delete window. Do not assume an API isRetriable flag overrides these constraints or unknown acceptance. Review refresh duration and capacity consumption, never start workloads merely to manufacture evidence."
+  ],
+  "references": [
+    "https://learn.microsoft.com/en-us/fabric/data-factory/migrate-to-dataflow-gen2-using-upgrade-wizard",
+    "https://github.com/microsoft/fabric-rest-api-specs/blob/main/dataflow/swagger.json",
+    "https://github.com/microsoft/fabric-rest-api-specs/blob/main/dataflow/definitions.json"
+  ]
+}

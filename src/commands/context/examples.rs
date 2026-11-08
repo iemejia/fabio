@@ -97,6 +97,10 @@ pub(super) const fn example_entries() -> &'static [(&'static str, &'static str)]
 
 const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
+        "dataflow/plan-upgrade",
+        include_str!("data/examples/dataflow_plan_upgrade.json"),
+    ),
+    (
         "admin/connection-hygiene",
         include_str!("data/examples/admin_connection_hygiene.json"),
     ),

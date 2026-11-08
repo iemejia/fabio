@@ -72,9 +72,12 @@ pub fn error_evidence(error: &anyhow::Error) -> Value {
 }
 
 pub fn summary<'a>(checks: impl IntoIterator<Item = &'a Check>) -> Status {
-    checks
+    summary_statuses(checks.into_iter().map(|check| check.status))
+}
+
+pub fn summary_statuses(statuses: impl IntoIterator<Item = Status>) -> Status {
+    statuses
         .into_iter()
-        .map(|check| check.status)
         .max_by_key(|status| match status {
             Status::Ready => 0,
             Status::Unknown => 1,
@@ -178,6 +181,23 @@ impl PageCursor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn status_summary_has_one_shared_severity_order() {
+        assert_eq!(summary_statuses([]), Status::Unknown);
+        assert_eq!(
+            summary_statuses([Status::Ready, Status::Unknown]),
+            Status::Unknown
+        );
+        assert_eq!(
+            summary_statuses([Status::Unknown, Status::NeedsAction]),
+            Status::NeedsAction
+        );
+        assert_eq!(
+            summary_statuses([Status::NeedsAction, Status::Blocked]),
+            Status::Blocked
+        );
+    }
 
     #[tokio::test]
     async fn expired_budget_does_not_poll_a_readonly_probe() {

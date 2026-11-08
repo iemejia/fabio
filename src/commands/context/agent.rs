@@ -1657,7 +1657,7 @@ fn infer_mutates(cmd_name: &str) -> bool {
         "iceberg-",
         "table-schema",
     ];
-    if cmd_name == "connection-hygiene" {
+    if matches!(cmd_name, "connection-hygiene" | "plan-upgrade") {
         return false;
     }
 
@@ -1745,6 +1745,9 @@ mod tests {
         assert!(!super::infer_mutates("connection-hygiene"));
         assert_eq!(super::infer_returns("connection-hygiene"), "object");
         assert!(!super::infer_destructive("connection-hygiene"));
+        assert!(!super::infer_mutates("plan-upgrade"));
+        assert_eq!(super::infer_returns("plan-upgrade"), "object");
+        assert!(!super::infer_destructive("plan-upgrade"));
     }
     use super::*;
 

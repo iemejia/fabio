@@ -11,6 +11,7 @@
     {"phase": 6, "name": "Cutover", "action": "Deploy via CI/CD, schedule jobs, decommission source."}
   ],
   "delegates_to": [
+    {"request_type": "Review Gen1-to-Gen2 in-place dataflow migration", "command_groups": ["dataflow"], "workflows": ["gen1-upgrade-review"], "best_practices": ["gen1-upgrade-planning"], "notes": "Bounded workspace assessment and selected-ID output only. Service readiness is not consumer/history/permission/approval readiness. No upgrade, storage-mode switch or automatic Save As fallback."},
     {"request_type": "Migrate from Azure Synapse Spark", "workflows": ["synapse-migration"], "best_practices": ["migration-api-shims"], "notes": "mssparkutils -> notebookutils; Linked Services -> Connections."},
     {"request_type": "Migrate from Databricks", "workflows": ["databricks-migration"], "best_practices": ["migration-api-shims"], "notes": "dbutils -> notebookutils; Unity Catalog -> Lakehouse; DBFS -> OneLake."},
     {"request_type": "Migrate from HDInsight", "workflows": ["hdinsight-migration"], "best_practices": ["migration-api-shims"], "notes": "Remove HiveContext; WASB -> OneLake; Oozie -> Data Pipelines."},

@@ -87,6 +87,7 @@ variables; never commit them or publish raw tenant output.
 | `FABIO_TEST_SPARK_LIVY_ID` | Existing monitoring session UUID with readable application/log metadata; not an interactive Livy state name. |
 | `FABIO_TEST_CONNECTION_PRINCIPAL_ID` | Explicitly approved **other** principal to receive temporary ownership of a newly created anonymous Web connection. Never an arbitrary discovered tenant user. |
 | `FABIO_TEST_CONNECTION_PRINCIPAL_TYPE` | `User` or `ServicePrincipal` for that recipient. |
+| `FABIO_TEST_GEN1_DATAFLOW_ID` | Explicitly approved existing Gen1 dataflow for GET-only planning and offline previews. Its workspace-wide Gen1 assessment is read within bounds; no upgrade or refresh runs. |
 
 The admin-connection tests require tenant-level Fabric Administrator access;
 workspace or capacity administration alone is not sufficient. The pipeline test
@@ -139,6 +140,9 @@ cargo test --test e2e_deployment_governance live_admin_connection_ -- --ignored 
 
 # GET-only bounded admin hygiene; compares owned metadata/roles before and after
 cargo test --test e2e_deployment_governance live_admin_connection_hygiene_is_readonly_and_scope_bounded -- --ignored --test-threads=1
+
+# GET-only Gen1 assessment/metadata; original definition must remain unchanged
+cargo test --test e2e_deployment_governance live_gen1_upgrade_plan_preserves_the_original_dataflow -- --ignored --test-threads=1
 
 # KQL dashboard creation/read/delete after the response-header spec change
 cargo test --test e2e_deployment_governance live_kql_dashboard_ -- --ignored
@@ -222,6 +226,12 @@ cargo test --test e2e_deployment_governance -- --ignored --test-threads=1
   overwrite an existing workspace's Git binding.
 - Gen1 upgrade request-size validation remains offline: do not upgrade a real
   dataflow irreversibly just to exercise a request-size bound.
+- The Gen1 planning test uses an explicitly supplied existing fixture for
+  bounded workspace assessment reads, original-definition comparison and
+  guarded offline previews. It never upgrades, refreshes, takes over or rewrites
+  the fixture. Test fixture creation via Power BI model.json import requires
+  separate user approval and test-owned cleanup; it is not an automatic step of
+  the planner or of the existing-fixture live test.
 - Non-empty plan fixtures use only isolated Wait/Fail data-pipeline jobs. The
   source items receive logical IDs before plans reference them, using the existing
   item metadata API only on items freshly created by that test. Job history proves

@@ -154,3 +154,18 @@ fn published_admin_connection_review_recipes_parse_with_the_current_cli() {
         );
     });
 }
+
+#[test]
+fn published_gen1_upgrade_review_recipes_are_guarded_and_parse_with_the_cli() {
+    with_cli(|cli| {
+        let workflow: Value =
+            serde_json::from_str(include_str!("data/workflows/gen1_upgrade_review.json")).unwrap();
+        let example: Value =
+            serde_json::from_str(include_str!("data/examples/dataflow_plan_upgrade.json")).unwrap();
+        assert_eq!(validate_document(&cli, &workflow, "gen1-upgrade-review"), 4);
+        assert_eq!(
+            validate_document(&cli, &example, "dataflow/plan-upgrade"),
+            3
+        );
+    });
+}

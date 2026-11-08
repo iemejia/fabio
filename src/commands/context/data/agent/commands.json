@@ -10793,6 +10793,46 @@
           "fabio dataflow list-upgrade-readiness --workspace $WS --all"
         ]
       },
+      "plan-upgrade": {
+        "description": "Plan an explicitly selected Gen1 batch from bounded workspace assessment reads; never execute upgrades",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace assessed by the service (all its Gen1 dataflows, not only selected IDs)"
+          },
+          "--id": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Explicit Gen1 dataflow ID (repeatable, distinct non-zero UUIDs, maximum 50)"
+          },
+          "--page-size": {
+            "type": "integer",
+            "description": "Server assessment page size"
+          },
+          "--page-limit": {
+            "type": "integer",
+            "description": "Maximum assessment pages, never overridden by --all"
+          },
+          "--assessment-limit": {
+            "type": "integer",
+            "description": "Maximum workspace assessment rows inspected, including unselected rows"
+          },
+          "--timeout": {
+            "type": "integer",
+            "description": "Total seconds for assessment reads, authentication and retries"
+          },
+          "--strict": {
+            "type": "bool",
+            "description": "Print the plan and fail unless every selected assessment is ready; never certifies apply readiness"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
       "upgrade-gen1": {
         "description": "Upgrade 1-50 Gen1 dataflows to Gen2 in place (Preview)",
         "flags": {

@@ -1563,6 +1563,82 @@ fn live_admin_connection_hygiene_is_readonly_and_scope_bounded() {
 }
 
 #[test]
+#[ignore = "requires an explicitly approved Gen1 fixture; only assessment/metadata reads and offline previews, no upgrade"]
+fn live_gen1_upgrade_plan_preserves_the_original_dataflow() {
+    let workspace =
+        std::env::var("FABIO_TEST_SOURCE_WORKSPACE").expect("approved workspace fixture required");
+    let id = std::env::var("FABIO_TEST_GEN1_DATAFLOW_ID").expect("approved Gen1 fixture required");
+    assert!(
+        uuid::Uuid::parse_str(&workspace).is_ok_and(|id| !id.is_nil())
+            && uuid::Uuid::parse_str(&id).is_ok_and(|id| !id.is_nil()),
+        "approved fixture IDs must be non-zero UUIDs; tenant details withheld"
+    );
+    let definition_path = format!("/groups/{workspace}/dataflows/{id}");
+    let definition_args = [
+        "--readonly",
+        "rest",
+        "call",
+        "--method",
+        "get",
+        "--api",
+        "powerbi",
+        "--path",
+        &definition_path,
+    ];
+    let before = run(&definition_args);
+    let report = run(&[
+        "--readonly",
+        "dataflow",
+        "plan-upgrade",
+        "--workspace",
+        &workspace,
+        "--id",
+        &id,
+        "--page-size",
+        "30",
+        "--page-limit",
+        "3",
+        "--assessment-limit",
+        "90",
+        "--timeout",
+        "60",
+    ]);
+    assert_reference(&report["data"]["scope"]["workspaceId"], &workspace);
+    assert_reference(&report["data"]["checks"][0]["evidence"]["dataflowId"], &id);
+    assert_eq!(report["data"]["scope"]["selectedCount"], 1);
+    assert_eq!(report["data"]["mutates"], false);
+    assert_eq!(report["data"]["assessmentScan"]["complete"], true);
+    assert!(
+        report["data"]["checks"][0]["evidence"]["reportedAssessmentStatus"]
+            .as_str()
+            .is_some_and(|status| matches!(
+                status,
+                "ReadyToMigrate" | "NeedsAttention" | "UpgradeUnavailable"
+            )),
+        "selected Gen1 fixture assessment unavailable; tenant details withheld"
+    );
+    assert_eq!(report["data"]["reviewPlan"]["applied"], false);
+    assert_eq!(report["data"]["reviewPlan"]["readyToApply"], false);
+    let preview = run(&[
+        "--readonly",
+        "dataflow",
+        "upgrade-gen1",
+        "--workspace",
+        &workspace,
+        "--id",
+        &id,
+        "--dry-run",
+    ]);
+    assert_eq!(preview["data"]["would_execute"], "dataflow upgrade-gen1");
+    assert_eq!(preview["data"]["destructive"], true);
+    let after = run(&definition_args);
+    assert!(
+        before["data"] == after["data"],
+        "Gen1 definition changed during planning; tenant details withheld"
+    );
+}
+
+#[test]
 #[ignore = "requires live tenant and source workspace; creates a Delta/semantic-model fixture but never runs a credential test"]
 fn live_connection_diagnostics_item_references_are_scoped() {
     let workspace = required_env("FABIO_TEST_SOURCE_WORKSPACE");

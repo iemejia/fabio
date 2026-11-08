@@ -339,6 +339,9 @@
 - `src/commands/context/data/examples/workspace_diagnostics.json`: diagnostic response/next-step/query contract example
 - `docs/src/content/docs/guides/workspace-diagnostics.md`: user-facing diagnostic scope, status, permissions, bounds, and automation guide
 - `src/commands/remediation.rs`: pure shared inspection/review/remediation builders, guarded preview/missing-input contracts, metadata-preserving error enrichment, and CLI-parser unit tests
+- `src/commands/dataflow/gen1.rs`: bounded workspace Gen1 assessment, conservative selected-ID evidence parsing and review-only plan/previews; no upgrade execution
+- `tests/e2e_gen1_planning.rs`: explicit/offline scope, guarded batch preview, reason/severity, missing/partial/duplicate/error/scope, pagination, redaction and deadline regressions
+- `src/commands/context/data/best_practices/gen1_upgrade_planning.json`, `src/commands/context/data/workflows/gen1_upgrade_review.json`, `src/commands/context/data/examples/dataflow_plan_upgrade.json`, `docs/src/content/docs/guides/gen1-upgrade-planning.md`: canonical Gen1 review knowledge, guarded recipe, structured response and user guide
 - `src/commands/diagnostics.rs`: shared check/status/provenance contracts, total read budget, UUID normalization and strict token-only cursor used by workspace, connection and environment diagnostics
 - `src/commands/environment/diagnostics.rs`: bounded environment/defaults, publish/staging, activation history/resource and explicit Spark application/log-metadata observation report
 - `src/commands/environment/pool_activations.rs`: typed state filter, one-shot detail reads, sanitized terminal-aware activation follow and resource-count normalization

@@ -598,6 +598,11 @@ review signals, not unused-connection proof or a winner selection. Guarded
 retirement/continuity previews retain approval and dependency blockers; the
 command never applies them. See [admin connection review](https://ismaelmejia.com/fabio/guides/admin-connection-hygiene/).
 
+For legacy Gen1 dataflows, `dataflow plan-upgrade` adds bounded workspace
+assessment and selected-ID review plans without executing upgrades. Service
+readiness is not consumer compatibility, historic-data preservation or approval;
+guarded previews remain blocked. See [Gen1 upgrade planning](https://ismaelmejia.com/fabio/guides/gen1-upgrade-planning/).
+
 Use `fabio context describe <group> <command>` for examples of any specific command. Use `fabio context workflow <name>` for multi-step recipes. Available workflows:
 
 - `lakehouse-etl` -- Lakehouse + notebook + load-table + schedule
