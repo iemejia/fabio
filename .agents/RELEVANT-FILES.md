@@ -317,6 +317,10 @@
 - `tests/e2e_scorecard.rs`: E2E tests for the scorecard group (hermetic dry-run/validation + gated live lifecycle)
 - `src/commands/deployment_plan.rs`: DeploymentPlan item CRUD and definition APIs
 - `src/commands/admin/connections.rs`: tenant-admin connection and ownership APIs
+- `src/commands/admin/connection_hygiene.rs`: bounded admin recency/role/target evidence and review-only action plans with shared diagnostic budget/cursor and remediation builders
+- `tests/e2e_admin_connection_hygiene.rs`: hermetic explicit/inventory scope, unknown/partial ownership and recency, guarded previews, pagination, redaction, readonly and deadline regressions
+- `src/commands/context/data/best_practices/admin_connection_hygiene.json`, `data/workflows/admin_connection_review.json`, `data/examples/admin_connection_hygiene.json` (under `src/commands/context/`): canonical admin review guidance, guarded recipe and structured output example
+- `docs/src/content/docs/guides/admin-connection-hygiene.md`: human guide to bounded admin evidence and approval-blocked plans
 - `src/commands/capacity/actors.rs`: capacity blocked/mission-critical surge-protection actors
 - `tests/e2e_deployment_plan.rs`: deployment-plan scope/dry-run, filtered pagination, CRUD, and definition/LRO request coverage
 - `tests/e2e_deployment_governance.rs`: opt-in PR #188 live lifecycles with test-owned resource cleanup and confidential failure reporting; also deterministic fixture/runner regressions

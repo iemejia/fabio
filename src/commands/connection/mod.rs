@@ -4,7 +4,7 @@
 
 mod crud;
 mod diagnostics;
-mod hygiene;
+pub mod hygiene;
 mod roles;
 
 use anyhow::Result;

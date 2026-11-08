@@ -12,6 +12,7 @@ license: MIT
 > **Prefer runtime introspection.** This index is a snapshot; the installed binary is always authoritative. Use `fabio context agent --group <group>` and `fabio context describe <group> <command>` for exact flags and output shapes.
 
 ## When to use
+- Bounded admin connection review: explicit IDs or opt-in inventory, historical recency, complete ownership evidence and target similarity, with guarded previews but no cleanup executor.
 - Connection/identity triage: connection diagnostics inspects one explicit connection or only one item's references, never stored credentials or tenant inventories.
 - Read-only workspace/capacity triage: workspace diagnostics checks assignment/state; opt in to capacity-admin surge and actor evidence with --include-surge-protection.
 - Workspace lifecycle and governance: create/assign-capacity, recover or permanently delete soft-deleted items, role assignments, folders, domains, networking/firewall/encryption policies, git outbound policy, OneLake settings.
@@ -109,6 +110,7 @@ Fabric tenant administration (settings, tags, workloads, users)
 | `fabio admin bulk-remove-sharing-links` | yes | Bulk-remove sharing links |
 | `fabio admin bulk-set-labels` | yes | Bulk-set sensitivity labels on items |
 | `fabio admin bulk-unassign-domain-roles` | yes | Bulk-unassign roles from a domain |
+| `fabio admin connection-hygiene` | no | Review bounded admin connection recency, ownership and target similarity without applying cleanup |
 | `fabio admin create-domain` | yes | Create a domain |
 | `fabio admin create-tags` | yes | Bulk-create tags |
 | `fabio admin create-workload-assignment` | yes | Create a workload assignment |
@@ -291,6 +293,7 @@ Manage governance policy sets and policy rules
 
 ## Must / Prefer / Avoid
 ### MUST
+- Run admin connection-hygiene metadata reads with --readonly as defense in depth, even though the command itself is GET-only. Use repeatable --id flags (for example --id CONN_A --id CONN_B) OR explicit --inventory, not both. Respect --connection-limit, --page-limit, --role-limit and the total --timeout even with --all/--force. Discover exact bounds via context describe admin connection-hygiene if needed; local offline introspection needs no tenant guard. Never substitute an unbounded list or an automatic admin fallback.
 - Use --workspace only when the subcommand accepts a workspace resource or reference. Tenant-scoped list/show operations in capacity, connection, gateway, domain, deployment-pipeline, and admin normally omit it. Exceptions: admin activate-policy-set requires the policy-set workspace; capacity create-blocked-actor and create-mission-critical-actor require the target workspace as the actor reference, not as the API scope; connection diagnostics accepts workspace identity context or requires --workspace with --item.
 - Have a Fabric admin role before using admin commands (they FORBIDDEN otherwise).
 
@@ -305,6 +308,9 @@ Manage governance policy sets and policy rules
 - Bulk tenant-setting changes without confirming the scope with the user.
 
 ## Key gotchas
+- admin connection-hygiene --id <CONNECTION_ID> (repeatable) OR --inventory uses only bounded admin metadata/roles. No --workspace is accepted and no regular-connection fallback or permission elevation occurs. Explicit IDs must fit --connection-limit (default 10, maximum 20); --page-limit applies per list, --role-limit per connection, --timeout to ALL reads. --dry-run validates and previews scope offline. --all/--force do not bypass bounds or apply actions.
+- Admin hygiene treats missing/malformed/old/future/conflicting recency and partial/unknown role data as unknown, not unused/deleted/healthy. PendingOwner is not effective ownership and suppresses mutation previews. Single individual ownership is continuity risk, not principal departure or failed credentials. Similar targets are not equivalent authentication/permissions; no winner/keepId is selected.
+- Admin hygiene reviewPlan is always readyToApply:false/applied:false with requiresApproval and blockers. Retirement previews require full dependency/owner/approval review. Admin add-connection-role-assignment supports User/ServicePrincipal, NOT Group; the continuity example uses --principal-type ServicePrincipal with an explicitly missing durableOwnerServicePrincipalId, not an automatically chosen identity or credential mode. Review handoff. All previews keep BOTH --readonly and --dry-run. No deletion, grant, transfer, rebinding, credential test/write or principal lookup occurs. See admin-connection-hygiene.
 - Workspace/capacity configuration readiness does not establish Spark pool/session readiness. Route explicit environment/session triage to environment diagnostics; it never starts Spark work or changes pools. See spark-diagnostics and the data-engineering skill.
 - Connection diagnostic limits are explicit and never overridden by --all. Partial/forbidden/malformed reference evidence stays unknown, not no-connections or readiness. --timeout covers the whole diagnostic read budget. Read exact bounds with context describe connection diagnostics.
 - connection diagnostics --id <CONNECTION_ID> optionally accepts --workspace for identity context, not binding proof. --workspace <WS> --item <ITEM> inspects only item-referenced IDs. PendingOwner is not usable ownership; missing roles, implicit Automatic/SSO IDs, partial scans and unavailable metadata stay unknown. credentialHealth/source authorization remain not_checked even when configuration is ready. See connection-diagnostics.
@@ -323,12 +329,14 @@ Manage governance policy sets and policy rules
 ## Troubleshooting
 | Symptom | Fix |
 |---|---|
+| Admin connection reads return AUTH_REQUIRED despite an authenticated Fabric-audience token or directory-role activation | An authorized delegated admin read context also needs Tenant.Read.All or Tenant.ReadWrite.All (or supported service-principal authorization). Workspace/capacity roles and audience alone are insufficient. Ask for an already-authorized context; do not request consent, grant roles or switch identities automatically. Hygiene reports unknown selection and never applies actions. |
 | admin commands return FORBIDDEN | You need the Fabric administrator role; these are tenant-scoped operations. |
 | Operations fail with CAPACITY_INACTIVE | Diagnose scoped availability first. A resumable F-series capacity needs subscription/resourceGroup/capacityName for an ARM capacity resume preview, not --id. Review missing inputs, permissions and approval; see remediation-hints. |
 | label list shows UUIDs instead of names | Name resolution needs M365 E5 + InformationProtection.Read via Microsoft Graph. |
 | capacity suspend/resume fails | These use the ARM scope (management.azure.com); ensure your identity has rights on the capacity resource. |
 
 ## Safety
+- Admin connection hygiene is review-only. NEVER choose a winner/keepId, rebind, delete or grant owners from recency/target similarity, even when the user asks for automatic cleanup without dependency/security review. All plans are applied:false/readyToApply:false; unknown/partial/pending evidence cannot authorize mutation. Keep both --readonly and --dry-run on any separate preview.
 - Diagnostic blockers do not authorize executing remediation. Hints can offer guarded previews, but workspace diagnostics never resumes capacity, deletes blocks, grants access, or changes policy. Review requiresApproval/destructive/verifyAfter, keep both preview guards, and read notChecked for readiness gaps.
 - capacity suspend interrupts ALL running workloads (notebooks, pipelines, Spark jobs) on that capacity — warn about in-flight jobs.
 - Disabling capacity surge protection clears its persisted thresholds; preview update-surge-protection with --dry-run.
@@ -343,6 +351,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 
 | Reference | Covers |
 |---|---|
+| `fabio context best-practices admin-connection-hygiene` | Admin connection-hygiene inspects explicit IDs or an opt-in bounded tenant inventory, historical recency, complete owner-role projections and target metadata similarity. Missing/partial evidence stays unknown; cleanup/grant previews require review and approval, never execute or certify unused connections. |
 | `fabio context best-practices spark-diagnostics` | GET-only environment diagnostics connects publishing, published/staging compute, bounded pool activation history, resource breakdown, and an explicitly selected monitoring session/application. Telemetry is application-scoped and not attempt-pinned; raw logs, causal claims, automatic restarts/publishing, and invented IDs are excluded. Typed state filters and bounded activation follow distinguish lifecycle completion from success. |
 | `fabio context best-practices connection-diagnostics` | GET-only connection diagnostics separates visible metadata, caller effective role, credential configuration, and workspace identity identifiers from untested credential health/source authorization. Inspect one explicit connection or only the references of one selected item; respect bounded scans, Automatic/SSO bindings, PendingOwner, unknown evidence, and strict configuration-only status. |
 | `fabio context best-practices remediation-hints` | Use existing error hint/hintType/verifyAfter and diagnostic nextSteps to distinguish inspection, review, and approved remediation. Concrete commands are guarded previews, missing inputs stay explicit, metadata is preserved, and hints never execute actions or trigger hidden probes. |

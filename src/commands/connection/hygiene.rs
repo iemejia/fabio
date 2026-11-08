@@ -20,7 +20,7 @@ use crate::output;
 
 /// Parse an RFC 3339 timestamp (e.g. `2026-06-01T00:00:00Z`) into a UTC instant.
 /// Returns `None` for a missing/null field or an unparseable value.
-fn parse_ts(v: Option<&Value>) -> Option<DateTime<Utc>> {
+pub fn parse_ts(v: Option<&Value>) -> Option<DateTime<Utc>> {
     let s = v?.as_str()?;
     DateTime::parse_from_rfc3339(s)
         .ok()
@@ -28,7 +28,7 @@ fn parse_ts(v: Option<&Value>) -> Option<DateTime<Utc>> {
 }
 
 /// Parse a `YYYY-MM-DD` date (midnight UTC). Teaching error on a bad format.
-fn parse_date(s: &str) -> Result<DateTime<Utc>> {
+pub fn parse_date(s: &str) -> Result<DateTime<Utc>> {
     NaiveDate::parse_from_str(s, "%Y-%m-%d")
         .map(|d| {
             d.and_hms_opt(0, 0, 0)
@@ -71,6 +71,19 @@ fn stale_reason(
     unused_threshold: DateTime<Utc>,
 ) -> Option<&'static str> {
     let recency = conn.get("connectionRecency")?;
+    // Malformed timestamps are not evidence of never having been bound/used.
+    for field in [
+        "createdDateTime",
+        "lastBoundDateTime",
+        "lastCredentialUsedDateTime",
+    ] {
+        if recency
+            .get(field)
+            .is_some_and(|value| !value.is_null() && parse_ts(Some(value)).is_none())
+        {
+            return None;
+        }
+    }
     let created = parse_ts(recency.get("createdDateTime"))?;
     if created < created_after {
         return None;
@@ -388,6 +401,15 @@ mod tests {
     fn stale_missing_recency_not_assessed() {
         let c = json!({ "id": "c1", "displayName": "C1" });
         assert_eq!(stale_reason(&c, cutoff(), threshold()), None);
+    }
+
+    #[test]
+    fn malformed_recency_does_not_become_a_never_bound_or_never_used_candidate() {
+        let mut conn = conn_with_recency("2026-06-01T00:00:00Z", Some("private-invalid"), None);
+        assert_eq!(stale_reason(&conn, cutoff(), threshold()), None);
+        conn["connectionRecency"]["lastBoundDateTime"] = json!("2026-06-02T00:00:00Z");
+        conn["connectionRecency"]["lastCredentialUsedDateTime"] = json!(123);
+        assert_eq!(stale_reason(&conn, cutoff(), threshold()), None);
     }
 
     fn dup_conn(id: &str, path: &str, used: Option<&str>, cred: &str) -> Value {

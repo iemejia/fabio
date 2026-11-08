@@ -1,3 +1,4 @@
+mod connection_hygiene;
 mod connections;
 mod domains;
 mod items;
@@ -237,6 +238,40 @@ pub enum AdminCommand {
     /// List connections in the tenant (admin preview)
     #[command(display_order = 38)]
     ListConnections,
+    /// Review bounded admin connection recency, ownership and target similarity without applying cleanup
+    ConnectionHygiene {
+        /// Explicit connection ID (repeatable); never combined with --inventory
+        #[arg(
+            long,
+            required_unless_present = "inventory",
+            conflicts_with = "inventory"
+        )]
+        id: Vec<String>,
+        /// Explicitly opt into a bounded tenant-admin inventory sample
+        #[arg(long, required_unless_present = "id", conflicts_with = "id")]
+        inventory: bool,
+        /// Maximum connections inspected; explicit selection must fit (never overridden by --all)
+        #[arg(long,default_value="10",value_parser=clap::value_parser!(u8).range(1..=20))]
+        connection_limit: u8,
+        /// Maximum pages per inventory or per-connection role list
+        #[arg(long,default_value="3",value_parser=clap::value_parser!(u8).range(1..=20))]
+        page_limit: u8,
+        /// Maximum role rows per connection; partial role scans remain unknown
+        #[arg(long,default_value="20",value_parser=clap::value_parser!(u16).range(1..=100))]
+        role_limit: u16,
+        /// Total seconds for all reads, authentication and retries
+        #[arg(long,default_value="30",value_parser=clap::value_parser!(u64).range(1..=300))]
+        timeout: u64,
+        /// Historical credential-use age for review, not a deletion trigger
+        #[arg(long,default_value="90",value_parser=clap::value_parser!(u32).range(1..=36500))]
+        unused_days: u32,
+        /// Reliable recency cutoff (YYYY-MM-DD), no earlier than 2026-05-01
+        #[arg(long, default_value = "2026-05-01")]
+        created_after: String,
+        /// Print the report and fail for review findings or unknown evidence
+        #[arg(long)]
+        strict: bool,
+    },
     /// Show a connection in the tenant (admin preview)
     #[command(display_order = 39)]
     ShowConnection {
@@ -715,6 +750,32 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &AdminCommand) -
         }
         // Connections
         AdminCommand::ListConnections => connections::list(cli, client).await,
+        AdminCommand::ConnectionHygiene {
+            id,
+            inventory,
+            connection_limit,
+            page_limit,
+            role_limit,
+            timeout,
+            unused_days,
+            created_after,
+            strict,
+        } => {
+            connection_hygiene::execute(
+                cli,
+                client,
+                id,
+                *inventory,
+                *connection_limit,
+                *page_limit,
+                *role_limit,
+                *timeout,
+                *unused_days,
+                created_after,
+                *strict,
+            )
+            .await
+        }
         AdminCommand::ShowConnection { id } => connections::show(cli, client, id).await,
         AdminCommand::DeleteConnection { id } => connections::delete(cli, client, id).await,
         AdminCommand::ListConnectionRoleAssignments { id } => {

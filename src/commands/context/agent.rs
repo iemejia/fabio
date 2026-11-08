@@ -1657,6 +1657,9 @@ fn infer_mutates(cmd_name: &str) -> bool {
         "iceberg-",
         "table-schema",
     ];
+    if cmd_name == "connection-hygiene" {
+        return false;
+    }
 
     for prefix in READ_ONLY_PREFIXES {
         if cmd_name.starts_with(prefix) || cmd_name == *prefix {
@@ -1739,6 +1742,9 @@ mod tests {
         assert!(!super::infer_mutates("readiness"));
         assert_eq!(super::infer_returns("readiness"), "object");
         assert!(!super::infer_destructive("readiness"));
+        assert!(!super::infer_mutates("connection-hygiene"));
+        assert_eq!(super::infer_returns("connection-hygiene"), "object");
+        assert!(!super::infer_destructive("connection-hygiene"));
     }
     use super::*;
 

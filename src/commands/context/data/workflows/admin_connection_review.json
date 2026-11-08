@@ -1,0 +1,14 @@
+{
+  "name":"Admin Connection Review",
+  "description":"Bounded admin metadata and ownership review before considering separate connection retirement or continuity changes. No automatic action or proof of unused dependencies.",
+  "prerequisites":["Explicit Fabric-admin or supported service-principal authorization; no automatic privilege elevation.","Explicit connection ID. Do not infer tenant inventory scope from an inaccessible ordinary connection.","Full dependency/owner/approval review is separate from metadata recency and target similarity."],
+  "variables":{"CONNECTION_ID":"Explicit connection UUID.","DURABLE_OWNER_SP_ID":"A separately selected and approved supported owner service-principal UUID, never guessed. Admin grants do not support Group."},
+  "steps":[
+    {"step_number":1,"command":"fabio --wrap-untrusted --readonly admin connection-hygiene --id $CONNECTION_ID --dry-run","description":"Validate scope and preview bounded reads offline; no metadata request, cleanup or grant occurs."},
+    {"step_number":2,"command":"fabio --wrap-untrusted --readonly admin connection-hygiene --id $CONNECTION_ID --connection-limit 1 --page-limit 3 --role-limit 20 --timeout 30","description":"Inspect checks, partial, notChecked and reviewPlan blockers. Every action remains readyToApply:false/applied:false. Recency is not dependency or credential evidence."},
+    {"step_number":3,"command":"fabio --wrap-untrusted --readonly admin show-connection --id $CONNECTION_ID","description":"Recheck the same metadata scope while reviewing dependencies and intended ownership. Do not test credentials, transfer ownership or delete automatically."}
+  ],
+  "guarded_retirement_preview":{"command":"fabio --wrap-untrusted --readonly admin delete-connection --id $CONNECTION_ID --dry-run","description":"A separate destructive PREVIEW only, after dependency/owner review. Keep guards; human approval is required before applying anything. The hygiene report never authorizes this action automatically."},
+  "guarded_continuity_preview":{"command":"fabio --wrap-untrusted --readonly admin add-connection-role-assignment --id $CONNECTION_ID --principal-id $DURABLE_OWNER_SP_ID --principal-type ServicePrincipal --dry-run","description":"Example only after explicitly selecting a supported durable owner and reviewing shareability/handoff; no service principal is looked up or selected automatically. Admin grants support User/ServicePrincipal, not Group. Preview only; Owner may initially be PendingOwner, and no credential write is authorized."},
+  "see_also":["fabio context best-practices admin-connection-hygiene","fabio context best-practices connection-diagnostics"]
+}

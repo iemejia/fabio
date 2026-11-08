@@ -1,4 +1,4 @@
-//! Check authored BI snippets against clap, not a second hand-written flag list.
+//! Check authored snippets against clap, not a second hand-written flag list.
 //! Shell-style quoting is parsed as data on every platform: nothing is expanded,
 //! executed, authenticated, or read from a model/report file.
 
@@ -37,8 +37,10 @@ fn validate_document(cli: &clap::Command, value: &Value, location: &str) -> usiz
             .iter()
             .map(|(key, value)| {
                 let location = format!("{location}.{key}");
-                if matches!(key.as_str(), "command" | "example")
-                    && let Some(text) = value.as_str()
+                if matches!(
+                    key.as_str(),
+                    "command" | "commandTemplate" | "verifyAfter" | "example"
+                ) && let Some(text) = value.as_str()
                 {
                     validate_command(cli, text)
                         .unwrap_or_else(|error| panic!("{location}: {error}"))
@@ -130,5 +132,25 @@ fn recipe_contract_rejects_the_original_repeated_file_bug_and_invalid_modes() {
         }
         let chain = r#"fabio --wrap-untrusted semantic-model create --workspace $WS --name "Quoted model" && fabio --wrap-untrusted semantic-model query --workspace $WS --id $SM --dax 'EVALUATE ROW("rowCount", 2)'"#;
         assert_eq!(validate_command(&cli, chain).unwrap(), 2);
+    });
+}
+
+#[test]
+fn published_admin_connection_review_recipes_parse_with_the_current_cli() {
+    with_cli(|cli| {
+        let workflow: Value =
+            serde_json::from_str(include_str!("data/workflows/admin_connection_review.json"))
+                .unwrap();
+        let example: Value =
+            serde_json::from_str(include_str!("data/examples/admin_connection_hygiene.json"))
+                .unwrap();
+        assert_eq!(
+            validate_document(&cli, &workflow, "admin-connection-review"),
+            5
+        );
+        assert_eq!(
+            validate_document(&cli, &example, "admin/connection-hygiene"),
+            5
+        );
     });
 }

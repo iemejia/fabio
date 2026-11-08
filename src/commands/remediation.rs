@@ -105,6 +105,34 @@ pub fn diagnose(workspace: Uuid) -> String {
     format!("fabio --wrap-untrusted --readonly workspace diagnostics --id {workspace}")
 }
 
+pub fn connection_retirement(connection: Uuid) -> RecoveryHint {
+    RecoveryHint {
+        kind: Kind::Remediation,
+        message: "Historical recency warrants review only, not proof that a connection is unused. Confirm ALL dependencies, owner consent and blast radius before considering retirement. This command is preview-only.".into(),
+        command: Some(format!("fabio --wrap-untrusted --readonly admin delete-connection --id {connection} --dry-run")),
+        hint_type: HintType::SemanticCorrection,
+        verify_after: Some(format!("fabio --wrap-untrusted --readonly admin show-connection --id {connection}")),
+        requires_approval: true,
+        destructive: Some(crate::agent::is_destructive_operation("admin delete-connection")),
+        command_template: None,
+        missing_inputs: Vec::new(),
+    }
+}
+
+pub fn connection_owner_continuity(connection: Uuid) -> RecoveryHint {
+    RecoveryHint {
+        kind: Kind::Remediation,
+        message: "Review an explicitly selected supported owner. Admin grants support User/ServicePrincipal, not Group; this service-principal example leaves its identity unset. Owner may remain PendingOwner until credential handoff; no ownership or credentials are certified.".into(),
+        command: None,
+        hint_type: HintType::SemanticCorrection,
+        verify_after: Some(format!("fabio --wrap-untrusted --readonly admin list-connection-role-assignments --id {connection}")),
+        requires_approval: true,
+        destructive: Some(crate::agent::is_destructive_operation("admin add-connection-role-assignment")),
+        command_template: Some(format!("fabio --wrap-untrusted --readonly admin add-connection-role-assignment --id {connection} --principal-id \"$DURABLE_OWNER_SP_ID\" --principal-type ServicePrincipal --dry-run")),
+        missing_inputs: vec!["durableOwnerServicePrincipalId"],
+    }
+}
+
 pub fn remove_block(workspace: Uuid, capacity: Uuid, actor: Uuid) -> RecoveryHint {
     RecoveryHint {
         kind: Kind::Remediation,
@@ -284,6 +312,8 @@ mod tests {
                 ),
                 assign_capacity(WS.parse().unwrap()),
                 inactive_capacity(CAP.parse().unwrap(), Some("F2")),
+                connection_retirement(WS.parse().unwrap()),
+                connection_owner_continuity(WS.parse().unwrap()),
             ];
             for hint in hints {
                 assert_eq!(hint.kind, Kind::Remediation);
@@ -314,6 +344,14 @@ mod tests {
 
     #[test]
     fn missing_inputs_and_unknown_capacity_types_do_not_create_runnable_commands() {
+        let owner = connection_owner_continuity(WS.parse().unwrap());
+        assert!(owner.command.is_none());
+        assert_eq!(owner.missing_inputs, vec!["durableOwnerServicePrincipalId"]);
+        assert_eq!(owner.destructive, Some(false));
+        assert_eq!(
+            connection_retirement(WS.parse().unwrap()).destructive,
+            Some(true)
+        );
         let assignment = assign_capacity(WS.parse().unwrap());
         assert!(assignment.command.is_none());
         assert_eq!(assignment.missing_inputs, vec!["targetCapacityId"]);

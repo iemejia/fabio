@@ -14,6 +14,7 @@
     "policy-set"
   ],
   "when_to_use": [
+    "Bounded admin connection review: explicit IDs or opt-in inventory, historical recency, complete ownership evidence and target similarity, with guarded previews but no cleanup executor.",
     "Connection/identity triage: connection diagnostics inspects one explicit connection or only one item's references, never stored credentials or tenant inventories.",
     "Read-only workspace/capacity triage: workspace diagnostics checks assignment/state; opt in to capacity-admin surge and actor evidence with --include-surge-protection.",
     "Workspace lifecycle and governance: create/assign-capacity, recover or permanently delete soft-deleted items, role assignments, folders, domains, networking/firewall/encryption policies, git outbound policy, OneLake settings.",
@@ -28,6 +29,9 @@
     "Workspace-scoped item CRUD -> use the specific workload skill."
   ],
   "key_gotchas": [
+    "admin connection-hygiene --id <CONNECTION_ID> (repeatable) OR --inventory uses only bounded admin metadata/roles. No --workspace is accepted and no regular-connection fallback or permission elevation occurs. Explicit IDs must fit --connection-limit (default 10, maximum 20); --page-limit applies per list, --role-limit per connection, --timeout to ALL reads. --dry-run validates and previews scope offline. --all/--force do not bypass bounds or apply actions.",
+    "Admin hygiene treats missing/malformed/old/future/conflicting recency and partial/unknown role data as unknown, not unused/deleted/healthy. PendingOwner is not effective ownership and suppresses mutation previews. Single individual ownership is continuity risk, not principal departure or failed credentials. Similar targets are not equivalent authentication/permissions; no winner/keepId is selected.",
+    "Admin hygiene reviewPlan is always readyToApply:false/applied:false with requiresApproval and blockers. Retirement previews require full dependency/owner/approval review. Admin add-connection-role-assignment supports User/ServicePrincipal, NOT Group; the continuity example uses --principal-type ServicePrincipal with an explicitly missing durableOwnerServicePrincipalId, not an automatically chosen identity or credential mode. Review handoff. All previews keep BOTH --readonly and --dry-run. No deletion, grant, transfer, rebinding, credential test/write or principal lookup occurs. See admin-connection-hygiene.",
     "Workspace/capacity configuration readiness does not establish Spark pool/session readiness. Route explicit environment/session triage to environment diagnostics; it never starts Spark work or changes pools. See spark-diagnostics and the data-engineering skill.",
     "Connection diagnostic limits are explicit and never overridden by --all. Partial/forbidden/malformed reference evidence stays unknown, not no-connections or readiness. --timeout covers the whole diagnostic read budget. Read exact bounds with context describe connection diagnostics.",
     "connection diagnostics --id <CONNECTION_ID> optionally accepts --workspace for identity context, not binding proof. --workspace <WS> --item <ITEM> inspects only item-referenced IDs. PendingOwner is not usable ownership; missing roles, implicit Automatic/SSO IDs, partial scans and unavailable metadata stay unknown. credentialHealth/source authorization remain not_checked even when configuration is ready. See connection-diagnostics.",
@@ -44,6 +48,7 @@
     ,"OneLake access-time tracking is workspace-scoped and requires Admin: 'workspace modify-access-time-tracking --status Enabled|Disabled'. Reads and writes update LastAccessTime when enabled; metadata-only operations do not."
   ],
   "safety": [
+    "Admin connection hygiene is review-only. NEVER choose a winner/keepId, rebind, delete or grant owners from recency/target similarity, even when the user asks for automatic cleanup without dependency/security review. All plans are applied:false/readyToApply:false; unknown/partial/pending evidence cannot authorize mutation. Keep both --readonly and --dry-run on any separate preview.",
     "Diagnostic blockers do not authorize executing remediation. Hints can offer guarded previews, but workspace diagnostics never resumes capacity, deletes blocks, grants access, or changes policy. Review requiresApproval/destructive/verifyAfter, keep both preview guards, and read notChecked for readiness gaps.",
     "capacity suspend interrupts ALL running workloads (notebooks, pipelines, Spark jobs) on that capacity — warn about in-flight jobs.",
     "Disabling capacity surge protection clears its persisted thresholds; preview update-surge-protection with --dry-run.",
@@ -54,6 +59,7 @@
     "workspace delete-recoverable-item permanently removes a soft-deleted item; always inspect list-recoverable-items and use --dry-run first."
   ],
   "must": [
+    "Run admin connection-hygiene metadata reads with --readonly as defense in depth, even though the command itself is GET-only. Use repeatable --id flags (for example --id CONN_A --id CONN_B) OR explicit --inventory, not both. Respect --connection-limit, --page-limit, --role-limit and the total --timeout even with --all/--force. Discover exact bounds via context describe admin connection-hygiene if needed; local offline introspection needs no tenant guard. Never substitute an unbounded list or an automatic admin fallback.",
     "Use --workspace only when the subcommand accepts a workspace resource or reference. Tenant-scoped list/show operations in capacity, connection, gateway, domain, deployment-pipeline, and admin normally omit it. Exceptions: admin activate-policy-set requires the policy-set workspace; capacity create-blocked-actor and create-mission-critical-actor require the target workspace as the actor reference, not as the API scope; connection diagnostics accepts workspace identity context or requires --workspace with --item.",
     "Have a Fabric admin role before using admin commands (they FORBIDDEN otherwise)."
   ],
@@ -68,6 +74,10 @@
     "Bulk tenant-setting changes without confirming the scope with the user."
   ],
   "troubleshooting": [
+    {
+      "symptom": "Admin connection reads return AUTH_REQUIRED despite an authenticated Fabric-audience token or directory-role activation",
+      "fix": "An authorized delegated admin read context also needs Tenant.Read.All or Tenant.ReadWrite.All (or supported service-principal authorization). Workspace/capacity roles and audience alone are insufficient. Ask for an already-authorized context; do not request consent, grant roles or switch identities automatically. Hygiene reports unknown selection and never applies actions."
+    },
     {
       "symptom": "admin commands return FORBIDDEN",
       "fix": "You need the Fabric administrator role; these are tenant-scoped operations."
@@ -86,6 +96,7 @@
     }
   ],
   "shared_references": [
+    "admin-connection-hygiene",
     "spark-diagnostics",
     "connection-diagnostics",
     "remediation-hints",

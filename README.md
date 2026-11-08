@@ -592,6 +592,12 @@ check-source`. Both use the same bounded metadata engine; non-ready source
 findings stop before creation, without switching modes or scanning table rows.
 See [source preflight](https://ismaelmejia.com/fabio/guides/bi-source-preflight/).
 
+`admin connection-hygiene` adds bounded admin metadata/ownership review over
+explicit IDs or an opt-in inventory sample. Recency and similar targets are
+review signals, not unused-connection proof or a winner selection. Guarded
+retirement/continuity previews retain approval and dependency blockers; the
+command never applies them. See [admin connection review](https://ismaelmejia.com/fabio/guides/admin-connection-hygiene/).
+
 Use `fabio context describe <group> <command>` for examples of any specific command. Use `fabio context workflow <name>` for multi-step recipes. Available workflows:
 
 - `lakehouse-etl` -- Lakehouse + notebook + load-table + schedule

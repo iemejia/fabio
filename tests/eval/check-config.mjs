@@ -70,4 +70,22 @@ check('Spark diagnostics: session-only triage never invents or publishes an envi
   'fabio environment diagnostics --workspace WS --item-type notebook --item-id NB --livy-id LIVY', true);
 check('Spark diagnostics: session-only triage never invents or publishes an environment',
   'fabio environment diagnostics --workspace WS --item-type Notebook --item-id NB --livy-id LIVY', false);
+check('Admin hygiene: explicit IDs are bounded admin reads, not a workspace scan',
+  'fabio --readonly admin connection-hygiene --id CONN_A --id CONN_B --connection-limit 2 --page-limit 1 --role-limit 10 --timeout 30', true);
+check('Admin hygiene: explicit IDs are bounded admin reads, not a workspace scan',
+  'fabio context describe admin connection-hygiene', true);
+check('Admin hygiene: explicit IDs are bounded admin reads, not a workspace scan',
+  'fabio admin connection-hygiene --inventory', false);
+check('Admin hygiene: explicit IDs are bounded admin reads, not a workspace scan',
+  'fabio --readonly admin connection-hygiene --id "$CONN_A" --id "${CONN_B}" --connection-limit 2 --page-limit 1 --role-limit 10 --timeout 30', true);
+const explicitScope = config.tests.find(test => test.description === 'Admin hygiene: explicit IDs are bounded admin reads, not a workspace scan');
+const workspaceScopeAssertion = explicitScope.assert.find(assertion => assertion.type === 'javascript');
+assert.equal(evaluate(workspaceScopeAssertion.value,
+  'fabio --readonly admin connection-hygiene --id CONN_A\nNo --workspace flag is accepted.'), true);
+assert.equal(evaluate(workspaceScopeAssertion.value,
+  'fabio --readonly admin connection-hygiene \\\n  --id CONN_A --workspace WS'), false);
+assert.equal(evaluate(workspaceScopeAssertion.value,
+  'fabio admin connection-hygiene --id CONN_A'), false);
+assert.equal(evaluate(workspaceScopeAssertion.value,
+  'fabio context describe admin connection-hygiene'), true);
 console.log(`Validated ${count} JavaScript assertions across ${config.tests.length} cases and the shared Foundry provider.`);

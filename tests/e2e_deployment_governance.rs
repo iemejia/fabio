@@ -1480,6 +1480,89 @@ fn live_connection_diagnostics_is_configuration_only() {
 }
 
 #[test]
+#[ignore = "requires live Fabric admin access; creates only an owned anonymous connection, never grants/transfers/tests credentials"]
+fn live_admin_connection_hygiene_is_readonly_and_scope_bounded() {
+    let (id, mut resource) = create_connection();
+    let before = run(&["--readonly", "admin", "show-connection", "--id", &id]);
+    let role_args = [
+        "--readonly",
+        "admin",
+        "list-connection-role-assignments",
+        "--id",
+        &id,
+        "--all",
+    ];
+    let roles_before = run(&role_args);
+    let report = run(&[
+        "--readonly",
+        "admin",
+        "connection-hygiene",
+        "--id",
+        &id,
+        "--timeout",
+        "60",
+    ]);
+    assert_reference(&report["data"]["connections"][0]["connectionId"], &id);
+    assert_eq!(report["data"]["mutates"], false);
+    assert_eq!(report["data"]["reviewPlan"]["applied"], false);
+    assert_eq!(report["data"]["reviewPlan"]["readyToApply"], false);
+    assert_eq!(
+        report["data"]["connections"][0]["credentialHealth"],
+        "not_checked"
+    );
+    let checks = report["data"]["connections"][0]["checks"]
+        .as_array()
+        .expect("connection checks");
+    let ownership = checks
+        .iter()
+        .find(|check| check["checkId"] == "connection_ownership")
+        .expect("ownership check");
+    assert_eq!(ownership["evidence"]["complete"], true);
+    assert_eq!(ownership["evidence"]["reportedOwnerPrincipalCount"], 1);
+    for action in report["data"]["reviewPlan"]["actions"]
+        .as_array()
+        .expect("review actions")
+    {
+        assert_eq!(action["requiresApproval"], true);
+        assert_eq!(action["readyToApply"], false);
+    }
+    let after = run(&["--readonly", "admin", "show-connection", "--id", &id]);
+    let roles_after = run(&role_args);
+    assert!(
+        before["data"] == after["data"],
+        "connection metadata changed during hygiene inspection; tenant details withheld"
+    );
+    assert!(
+        roles_before["data"] == roles_after["data"],
+        "ownership changed during hygiene inspection; tenant details withheld"
+    );
+    let inventory = run(&[
+        "--readonly",
+        "admin",
+        "connection-hygiene",
+        "--inventory",
+        "--connection-limit",
+        "1",
+        "--page-limit",
+        "1",
+        "--timeout",
+        "30",
+    ]);
+    assert!(
+        inventory["data"]["connections"]
+            .as_array()
+            .is_some_and(|rows| rows.len() <= 1)
+    );
+    assert!(
+        inventory["data"]["checks"][0]["evidence"]["error"].is_null(),
+        "bounded admin inventory was unavailable; tenant details withheld"
+    );
+    assert_eq!(inventory["data"]["reviewPlan"]["applied"], false);
+    resource.delete();
+    assert_not_found(&["connection", "show", "--id", &id]);
+}
+
+#[test]
 #[ignore = "requires live tenant and source workspace; creates a Delta/semantic-model fixture but never runs a credential test"]
 fn live_connection_diagnostics_item_references_are_scoped() {
     let workspace = required_env("FABIO_TEST_SOURCE_WORKSPACE");

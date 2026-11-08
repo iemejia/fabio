@@ -92,6 +92,11 @@ The admin-connection tests require tenant-level Fabric Administrator access;
 workspace or capacity administration alone is not sufficient. The pipeline test
 also requires permission to create deployment pipelines.
 
+Delegated admin-connection reads additionally need `Tenant.Read.All` or
+`Tenant.ReadWrite.All`. Audience/role activation alone does not certify API
+authorization. Do not acquire consent, change roles/settings or switch identities
+as test setup; use an explicitly approved authorized context.
+
 ## Run selected live tests
 
 ```bash
@@ -131,6 +136,9 @@ cargo test --test e2e_deployment_governance live_bi_readiness_verifies_queries_r
 cargo test --test e2e_deployment_governance live_connection_effective_role -- --ignored
 cargo test --test e2e_deployment_governance live_connection_diagnostics_ -- --ignored --test-threads=1
 cargo test --test e2e_deployment_governance live_admin_connection_ -- --ignored --test-threads=1
+
+# GET-only bounded admin hygiene; compares owned metadata/roles before and after
+cargo test --test e2e_deployment_governance live_admin_connection_hygiene_is_readonly_and_scope_bounded -- --ignored --test-threads=1
 
 # KQL dashboard creation/read/delete after the response-header spec change
 cargo test --test e2e_deployment_governance live_kql_dashboard_ -- --ignored
@@ -186,6 +194,14 @@ cargo test --test e2e_deployment_governance -- --ignored --test-threads=1
   was fixture setup, separate from diagnostics; positive activation-detail/follow
   coverage still needs an existing pool-activation fixture, never a policy change
   hidden in test setup.
+- Admin hygiene has hermetic scope/recency/ownership/similarity, redaction,
+  guarded-preview, pagination and total-deadline coverage. The owned live fixture
+  was created and cleaned up, but the first admin snapshot returned
+  `AUTH_REQUIRED`; positive hygiene and unchanged admin metadata/role coverage
+  remain incomplete until the approved authorized context is available. Live
+  unavailable-evidence probes report unknown without applying actions; they are
+  NOT happy-path passes. No consent, grants, credential tests/writes, transfer or
+  automatic ordinary-connection fallback occurs.
 - The BI recipe test reads the runtime-published workflow instead of duplicating
   its command strings. It captures existing refresh IDs, submits framing once,
   waits for a new terminal refresh with a finite deadline, verifies the fixture's

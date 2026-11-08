@@ -97,6 +97,10 @@ pub(super) const fn example_entries() -> &'static [(&'static str, &'static str)]
 
 const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
+        "admin/connection-hygiene",
+        include_str!("data/examples/admin_connection_hygiene.json"),
+    ),
+    (
         "semantic-model/check-source",
         include_str!("data/examples/semantic_model_check_source.json"),
     ),
