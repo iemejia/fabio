@@ -409,9 +409,10 @@ pub(super) async fn submit(
         FabioError::with_typed_hint(
             ErrorCode::InvalidInput,
             "No upgrade submitted: the local receipt ledger could not be persisted.",
-            "Fix local receipt storage before any irreversible submission. No POST was attempted.",
+            "Inspect jobs list/get and preserve damaged local evidence privately before repairing receipt storage. Do not delete the lock file or replay an earlier accepted/unknown operation. No POST was attempted.",
             HintType::SemanticCorrection,
         )
+        .set_retriable(Some(false))
     })?;
     let mut warnings = Vec::new();
     let mut correlation = "unavailable";

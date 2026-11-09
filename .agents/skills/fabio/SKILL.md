@@ -779,16 +779,22 @@ fabio admin activate-policy-set --workspace $WS --policy-set-id $POLICY_SET
 
 **Cross-cutting: job ledger, catalog search, feedback:**
 ```bash
-# Async job ledger (Principle 8) — every --wait/run records a local job you can revisit
+# Async job ledger (Principle 8) — inspect jobs tracked locally by supported run handlers
 fabio jobs list                                                             # local ledger of async jobs fabio has run
 fabio jobs get --id $JOB_ID                                                 # status/result of a tracked job
-fabio jobs prune                                                            # clear finished entries
+fabio --readonly --dry-run jobs prune                                       # preview finished receipt removal
 # Tenant-wide item discovery (OneLake catalog)
 fabio catalog search --search "sales" --top 25                              # POST /catalog/search (tenant-level, no --workspace); or --content '{"searchString":"...","top":25}'
 # Two-way I/O (Principle 10) — send structured feedback about CLI friction
 fabio feedback send "describe the issue or friction"                        # MESSAGE is a positional arg
 fabio feedback list
 ```
+
+Receipt storage errors are not permission to replay remote work. A damaged ledger
+fails closed; preserve it privately, never delete `jobs.lock` to break contention,
+and inspect `fabio context best-practices receipt-storage`. Default pruning keeps
+unknown/future states and local timeouts; `--include-running` irreversibly removes
+all local receipts without cancelling remote jobs and needs explicit approval.
 
 ## Stable Exit Codes
 

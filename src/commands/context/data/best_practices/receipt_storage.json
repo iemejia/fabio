@@ -1,0 +1,18 @@
+{
+  "topic": "receipt-storage",
+  "title": "Durable local job receipts and conservative recovery",
+  "summary": "The local JSONL job ledger uses a stable sidecar lock, bounded waits and synced atomic snapshots. Corrupt or unreadable records fail closed, never become empty history. Preserve evidence and never replay accepted/unknown work to recreate a missing receipt.",
+  "storage": [
+    "jobs.jsonl keeps its existing format. Shared readers and exclusive transactional writers use jobs.lock; never delete or replace this sidecar to break contention. Lock waits are bounded to five seconds. Stop older binaries that lock the data file before using this version; mixed-version locking is not coordinated.",
+    "Updates stage a complete private same-directory snapshot, flush and sync it, atomically replace the data file, then sync the published file. Unix also syncs the containing directory and creation of the normal .fabio directory. Windows has atomic replacement and file flushes, not portable directory fsync. Filesystem/hardware power-loss guarantees vary, especially on network storage.",
+    "An abrupt exit before publication leaves the old complete snapshot; afterward the new snapshot is complete. Post-publication sync failure can mean a write already committed. Orphan .jobs-*.tmp files are not automatically promoted or removed.",
+    "Legacy JSONL, CRLF, blank lines and a valid last record without a newline remain supported. Unknown extension fields survive rewrites. Malformed or unreadable records, empty or duplicate IDs and invalid UTF-8 block the entire read and all writes; errors never echo raw receipt contents."
+  ],
+  "safety": [
+    "A missing receipt is not evidence that remote work was never submitted. Some run handlers record jobs best-effort; jobs list is neither a complete tenant inventory nor proof of remote completion.",
+    "Preserve the damaged ledger, staged files and original submission stdout privately. Stop all Fabio processes before restoring a verified private backup. There is no automatic repair/import path; do not strip rows, guess identity, or replay accepted/unknown work to recreate evidence.",
+    "Preview jobs prune with both --readonly and --dry-run. The preview carries candidate IDs/counts and is a snapshot, not an execution reservation. Actual pruning under --readonly fails. Default pruning removes only recognized terminal states and keeps unknown/future states and local timeouts.",
+    "--include-running irreversibly deletes all local receipts, including accepted/uncertain operations. It requires explicit human approval and does not cancel remote jobs. The summary is destructive and warns on this mode."
+  ],
+  "see_also": ["fabio context best-practices gen1-upgrade-execution", "fabio context best-practices lro"]
+}

@@ -1,17 +1,14 @@
-use std::fs::{self, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
-
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use clap::Subcommand;
-use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::errors::{ErrorCode, FabioError};
 use crate::output;
+
+mod ledger;
 
 #[derive(Debug, Subcommand)]
 #[command(
@@ -30,9 +27,9 @@ pub enum JobsCommand {
         #[arg(long)]
         id: String,
     },
-    /// Remove completed/failed jobs from the ledger
+    /// Prune recognized terminal receipts; retain unknown/future states and local timeouts
     Prune {
-        /// Remove all jobs including currently running ones
+        /// Irreversibly delete all local receipts, including accepted/unknown work; does not cancel jobs
         #[arg(long)]
         include_running: bool,
     },
@@ -70,6 +67,9 @@ pub struct JobEntry {
     pub fabric_endpoint: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub correlation_evidence: Option<Value>,
+    // Preserve fields written by a newer binary when updating a legacy snapshot.
+    #[serde(flatten)]
+    extra: serde_json::Map<String, Value>,
 }
 
 impl JobEntry {
@@ -93,6 +93,7 @@ impl JobEntry {
             response_body_status: None,
             fabric_endpoint: None,
             correlation_evidence: None,
+            extra: serde_json::Map::new(),
         }
     }
 }
@@ -100,44 +101,23 @@ impl JobEntry {
 pub struct JobLedger;
 
 impl JobLedger {
-    fn ledger_path() -> PathBuf {
-        let home = home::home_dir().unwrap_or_else(|| PathBuf::from("."));
-        home.join(".fabio").join("jobs.jsonl")
+    fn store() -> Result<ledger::Ledger> {
+        let home = home::home_dir().ok_or_else(|| {
+            FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "Cannot locate the home directory for the local receipt ledger.",
+                "Restore the home-directory configuration. Never submit again to replace a missing receipt.",
+            )
+        })?;
+        Ok(ledger::Ledger::new(home.join(".fabio").join("jobs.jsonl")))
     }
 
     pub fn append(entry: &JobEntry) -> Result<()> {
-        let path = Self::ledger_path();
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
-            }
-        }
-        // Open with restricted permissions atomically to avoid TOCTOU
-        #[cfg(unix)]
-        let mut file = {
-            use std::os::unix::fs::OpenOptionsExt;
-            OpenOptions::new()
-                .create(true)
-                .append(true)
-                .mode(0o600)
-                .open(&path)?
-        };
-        #[cfg(not(unix))]
-        let mut file = OpenOptions::new().create(true).append(true).open(&path)?;
-
-        // Advisory lock to prevent concurrent append corruption
-        file.lock_exclusive()?;
-        let line = serde_json::to_string(entry)?;
-        writeln!(file, "{line}")?;
-        // Lock released on drop
-        Ok(())
+        Self::store()?.append(entry)
     }
 
     pub fn update(id: &str, status: &str, error: Option<&str>) -> Result<()> {
-        Self::edit(|entries| {
+        Self::store()?.edit(|entries| {
             for entry in entries.iter_mut().filter(|entry| entry.id == id) {
                 entry.status = status.to_string();
                 entry.completed_at = Some(Utc::now().to_rfc3339());
@@ -156,17 +136,23 @@ impl JobLedger {
                     entry.error = Some(error.to_string());
                 }
             }
+            Ok(())
         })
     }
 
     /// Replace a receipt snapshot without falsely completing an accepted/running job.
     pub fn replace(entry: &JobEntry) -> Result<()> {
-        Self::edit(|entries| {
+        Self::store()?.edit(|entries| {
             if let Some(existing) = entries.iter_mut().find(|existing| existing.id == entry.id) {
+                let extra = std::mem::take(&mut existing.extra);
                 existing.clone_from(entry);
+                for (key, value) in extra {
+                    existing.extra.entry(key).or_insert(value);
+                }
             } else {
                 entries.push(entry.clone());
             }
+            Ok(())
         })
     }
 
@@ -174,76 +160,8 @@ impl JobLedger {
         Ok(Self::read_all()?.into_iter().find(|entry| entry.id == id))
     }
 
-    fn edit(edit: impl FnOnce(&mut Vec<JobEntry>)) -> Result<()> {
-        let path = Self::ledger_path();
-        // Acquire exclusive lock for the read-modify-write operation
-        #[cfg(unix)]
-        let lock_file = {
-            use std::os::unix::fs::OpenOptionsExt;
-            OpenOptions::new()
-                .create(true)
-                .append(true)
-                .mode(0o600)
-                .open(&path)?
-        };
-        #[cfg(not(unix))]
-        let lock_file = OpenOptions::new().create(true).append(true).open(&path)?;
-        lock_file.lock_exclusive()?;
-
-        let mut entries = Self::read_all()?;
-        edit(&mut entries);
-        Self::write_all(&entries)?;
-
-        // Lock released on drop
-        drop(lock_file);
-        Ok(())
-    }
-
     fn read_all() -> Result<Vec<JobEntry>> {
-        let path = Self::ledger_path();
-        if !path.exists() {
-            return Ok(Vec::new());
-        }
-        let file = fs::File::open(&path)?;
-        let reader = BufReader::new(file);
-        let entries: Vec<JobEntry> = reader
-            .lines()
-            .map_while(Result::ok)
-            .filter(|line| !line.trim().is_empty())
-            .filter_map(|line| serde_json::from_str(&line).ok())
-            .collect();
-        Ok(entries)
-    }
-
-    fn write_all(entries: &[JobEntry]) -> Result<()> {
-        let path = Self::ledger_path();
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
-            }
-        }
-        // Create with restricted permissions atomically to avoid TOCTOU
-        #[cfg(unix)]
-        let mut file = {
-            use std::os::unix::fs::OpenOptionsExt;
-            fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .mode(0o600)
-                .open(&path)?
-        };
-        #[cfg(not(unix))]
-        let mut file = fs::File::create(&path)?;
-
-        for entry in entries {
-            let line = serde_json::to_string(entry)?;
-            writeln!(file, "{line}")?;
-        }
-        Ok(())
+        Self::store()?.read_all()
     }
 }
 
@@ -293,45 +211,87 @@ fn get(cli: &Cli, id: &str) -> Result<()> {
 }
 
 fn prune(cli: &Cli, include_running: bool) -> Result<()> {
-    if output::dry_run_guard(
-        cli,
-        "jobs prune",
-        &serde_json::json!({ "include_running": include_running }),
-    ) {
+    if cli.readonly && !cli.dry_run {
+        return Err(FabioError::new(
+            ErrorCode::ReadonlyMode,
+            "Pruning local receipts is blocked by --readonly; use --dry-run to preview.",
+        )
+        .into());
+    }
+    let store = JobLedger::store()?;
+    if cli.dry_run {
+        let entries = store.read_all()?;
+        let ids: Vec<_> = entries
+            .iter()
+            .filter(|entry| prune_candidate(entry, include_running))
+            .map(|entry| &entry.id)
+            .collect();
+        output::dry_run_guard(
+            cli,
+            "jobs prune",
+            &serde_json::json!({
+                "include_running":include_running,"ids":ids,"count":ids.len(),
+                "remaining":entries.len()-ids.len()
+            }),
+        );
         return Ok(());
     }
-
-    let entries = JobLedger::read_all()?;
-    let before_count = entries.len();
-    let remaining: Vec<JobEntry> = if include_running {
-        Vec::new()
-    } else {
-        entries
-            .into_iter()
-            .filter(|e| {
-                matches!(
-                    e.status.as_str(),
-                    "running" | "preparing" | "accepted" | "unknown"
-                )
-            })
-            .collect()
-    };
-    let pruned = before_count - remaining.len();
-    JobLedger::write_all(&remaining)?;
+    let (pruned, remaining) = store.edit(|entries| {
+        let before_count = entries.len();
+        entries.retain(|entry| !prune_candidate(entry, include_running));
+        Ok((before_count - entries.len(), entries.len()))
+    })?;
 
     let obj = serde_json::json!({
         "pruned": pruned,
-        "remaining": remaining.len(),
-        "status": "pruned"
+        "remaining": remaining,
+        "status": "pruned",
+        "destructive": true,
+        "warnings": if include_running { vec!["--include-running deletes ALL local receipts irreversibly, including accepted or uncertain operations. It does not cancel remote work."] } else { Vec::new() }
     });
     output::render_object(cli, &obj, "status");
     Ok(())
+}
+
+fn prune_candidate(entry: &JobEntry, include_running: bool) -> bool {
+    // Unknown/future states and local timeouts are not proof that remote work
+    // finished. Only recognized terminal receipts are eligible by default.
+    include_running
+        || matches!(
+            entry.status.as_str(),
+            "completed" | "succeeded" | "failed" | "cancelled" | "partial_success"
+        )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn pruning_requires_a_recognized_terminal_state_unless_all_receipts_are_selected() {
+        for (status, eligible) in [
+            ("completed", true),
+            ("succeeded", true),
+            ("failed", true),
+            ("cancelled", true),
+            ("partial_success", true),
+            ("running", false),
+            ("preparing", false),
+            ("accepted", false),
+            ("unknown", false),
+            ("timeout", false),
+            ("future-state", false),
+            ("Succeeded", false),
+            ("", false),
+        ] {
+            let mut entry = JobEntry::new("mock-id", "mock-job", "mock-workspace", "mock-item");
+            entry.status = status.to_string();
+            assert_eq!(prune_candidate(&entry, false), eligible, "{status}");
+            assert!(prune_candidate(&entry, true), "{status}");
+        }
+    }
+
     #[test]
     fn legacy_job_records_do_not_invent_batch_targets_or_operation_identity() {
         let value = json!({"id":"old","kind":"notebook","status":"running","workspace":"mock","item_id":"mock","started_at":"2026-01-01T00:00:00Z"});

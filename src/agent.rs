@@ -49,6 +49,7 @@ const DANGEROUS_FLAGS: &[&str] = &[
     "--force-all",
     "--hard",
     "--hard-delete",
+    "--include-running",
     "--overwrite",
 ];
 

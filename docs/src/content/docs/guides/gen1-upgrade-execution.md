@@ -79,6 +79,10 @@ and **do not resubmit**. Earlier verified results stay cached if later reads fai
 Follow updates local bookkeeping only. Preparing, accepted and unknown receipts
 are not dropped by ordinary `jobs prune`.
 
+The [local receipt store](../local-job-receipts/) uses a stable sidecar lock and
+synced, atomically replaced snapshots. Corruption blocks observation and updates;
+do not delete damaged evidence or replay accepted work to obtain another receipt.
+
 Bounded private header diagnostics also permit GET-only recovery of an original
 operation header that an older validator rejected solely for Location origin.
 That is not a trace-ID/latest-history guess or another submission; the stored

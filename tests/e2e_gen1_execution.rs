@@ -190,6 +190,79 @@ async fn discovery_examples_match_workflow_and_preview_without_network_or_receip
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn damaged_receipt_storage_blocks_submission_and_follow_without_repair_or_post() {
+    let server = MockServer::start().await;
+    let home = tempfile::TempDir::new().unwrap();
+    let directory = home.path().join(".fabio");
+    std::fs::create_dir(&directory).unwrap();
+    let original = b"{\"private-secret\":";
+    std::fs::write(directory.join("jobs.jsonl"), original).unwrap();
+    ready(&server, &[A]).await;
+    let output = submit(&server, &home).arg("--quiet").assert().failure();
+    assert_eq!(output.get_output().stdout.len(), 0);
+    let error: Value = serde_json::from_slice(&output.get_output().stderr).unwrap();
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("No upgrade submitted")
+    );
+    let output = base(&server, &home)
+        .args([
+            "--readonly",
+            "dataflow",
+            "follow-upgrade",
+            "--receipt-id",
+            OP,
+        ])
+        .assert()
+        .failure();
+    let error: Value = serde_json::from_slice(&output.get_output().stderr).unwrap();
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("ledger validation failed")
+    );
+    assert!(!String::from_utf8_lossy(&output.get_output().stderr).contains("private-secret"));
+    assert_eq!(
+        std::fs::read(directory.join("jobs.jsonl")).unwrap(),
+        original
+    );
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+    mutation_count(&server, 0).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn storage_failure_after_acceptance_retains_stdout_receipt_and_never_resubmits() {
+    let server = MockServer::start().await;
+    let home = tempfile::TempDir::new().unwrap();
+    ready(&server, &[A]).await;
+    let ledger = home.path().join(".fabio").join("jobs.jsonl");
+    let damaged_path = ledger.clone();
+    Mock::given(method("POST"))
+        .and(path(format!("/workspaces/{WS}/dataflows/gen1Upgrade")))
+        .respond_with(move |_: &wiremock::Request| {
+            // External disk corruption between the pre-POST durable receipt and
+            // the accepted response: the client must warn, never repair/replay.
+            std::fs::write(&damaged_path, b"damaged-local-receipt").unwrap();
+            ResponseTemplate::new(202).insert_header("x-ms-operation-id", OP)
+        })
+        .expect(1)
+        .mount(&server)
+        .await;
+    let output = submit(&server, &home).assert().success();
+    let data = &parse_json(&output)["data"];
+    assert_eq!(data["submission"]["state"], "accepted");
+    assert_eq!(data["submission"]["operationId"], OP);
+    assert!(data["receiptId"].as_str().is_some());
+    assert_eq!(data["warnings"].as_array().unwrap().len(), 1);
+    assert_eq!(data["retryAllowed"], false);
+    assert_eq!(std::fs::read(&ledger).unwrap(), b"damaged-local-receipt");
+    mutation_count(&server, 1).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn incomplete_or_nonready_gate_never_posts_despite_approval_all_or_force() {
     let server = MockServer::start().await;
     let home = tempfile::TempDir::new().unwrap();
@@ -368,7 +441,7 @@ async fn retained_header_recovery_observes_existing_receipt_without_posting() {
     let directory = home.path().join(".fabio");
     std::fs::create_dir_all(&directory).unwrap();
     let entry = json!({"id":id,"kind":"gen1-upgrade","status":"accepted","workspace":WS,"item_id":A,
-        "target_ids":[A],"started_at":"2026-11-09T00:00:00Z","submission_state":"accepted","http_status":202,
+        "target_ids":[A],"started_at":"2026-11-09T00:00:00Z","submission_state":"accepted","http_status":202,"futureEvidence":{"retained":true},
         "fabric_endpoint":server.uri(),"correlation_evidence":{"reason":"invalid_location","operationHeaderPresent":true,
         "operationHeaderLength":36,"locationSameOrigin":false,"unverifiedOperationCandidate":OP}});
     std::fs::write(directory.join("jobs.jsonl"), format!("{entry}\n")).unwrap();
@@ -384,6 +457,14 @@ async fn retained_header_recovery_observes_existing_receipt_without_posting() {
         .assert()
         .success();
     assert_eq!(parse_json(&output)["data"]["completionStatus"], "succeeded");
+    let stored = base(&server, &home)
+        .args(["--readonly", "jobs", "get", "--id", id])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&stored)["data"]["futureEvidence"],
+        json!({"retained":true})
+    );
     mutation_count(&server, 0).await;
 }
 

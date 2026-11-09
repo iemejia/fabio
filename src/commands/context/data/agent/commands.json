@@ -28156,11 +28156,11 @@
         "returns": "object"
       },
       "prune": {
-        "description": "Remove completed/failed jobs from the ledger",
+        "description": "Prune recognized terminal receipts; retain unknown/future states and local timeouts",
         "flags": {
           "--include-running": {
             "type": "bool",
-            "description": "Remove all jobs including currently running ones"
+            "description": "Irreversibly delete all local receipts, including accepted/unknown work; does not cancel jobs"
           }
         },
         "mutates": true,

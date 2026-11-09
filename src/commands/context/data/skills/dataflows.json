@@ -50,7 +50,7 @@
     "Deleting or overwriting a dataflow definition replaces its transformation logic — confirm with the user.",
     "Gen1-to-Gen2 upgrade changes the item in place. Preview with --dry-run and review readiness results before executing."
   ],
-  "shared_references": ["gen1-upgrade-execution", "gen1-upgrade-planning", "throttling", "pagination", "lro"],
+  "shared_references": ["gen1-upgrade-execution", "gen1-upgrade-planning", "receipt-storage", "throttling", "pagination", "lro"],
   "see_also": [
     "fabio context persona data-engineer",
     "fabio context disambiguate dataflow",

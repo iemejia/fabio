@@ -608,6 +608,11 @@ rechecks readiness and submits exactly once, retaining a local scoped receipt.
 `follow-upgrade` observes that receipt without resubmitting or refreshing data.
 See [Gen1 execution receipts](https://ismaelmejia.com/fabio/guides/gen1-upgrade-execution/).
 
+Local job receipts use locked, synced, atomically replaced JSONL snapshots.
+Damaged records block reads and updates instead of silently losing history;
+`jobs prune --dry-run` previews exact local receipt IDs, and normal pruning keeps
+uncertain states. See [local receipt storage](https://ismaelmejia.com/fabio/guides/local-job-receipts/).
+
 Use `fabio context describe <group> <command>` for examples of any specific command. Use `fabio context workflow <name>` for multi-step recipes. Available workflows:
 
 - `lakehouse-etl` -- Lakehouse + notebook + load-table + schedule

@@ -80,8 +80,8 @@ urlencoding = "2"
 # XML parsing (OWL/RDF ontology import)
 quick-xml = "0.42"
 
-# File locking for job ledger (security: prevent race conditions)
-fs2 = "0.4"
+# Same-directory atomic receipt snapshots (locking uses std::fs::File).
+tempfile = "3.27.0"
 sha2 = "0.11.0"
 regex = "1"
 uuid = { version = "1", features = ["v4", "v5"] }
@@ -105,7 +105,6 @@ zip = { version = "9", default-features = false, features = ["deflate"] }
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
-tempfile = "3"
 wiremock = "0.6"
 serial_test = "4"
 jsonschema = "0.60.2"

@@ -183,7 +183,10 @@
 - `src/commands/datamart.rs`: list (read-only)
 - `src/commands/paginated_report.rs`: list/show/create/update/delete/get-definition/update-definition
 - `src/commands/profile.rs`: save/use/list/show/delete (named profiles with defaults)
-- `src/commands/jobs.rs`: list/get/prune (local async job ledger)
+- `src/commands/jobs.rs`: local job/receipt API, list/get, readonly-aware transactional prune with conservative terminal-state filtering
+- `src/commands/jobs/ledger.rs`: stable sidecar read/write locking, bounded contention, strict JSONL validation and synced atomic receipt snapshots
+- `src/commands/jobs/ledger/tests.rs`: local-only malformed/I/O/compatibility, failure-boundary, abrupt-process-exit, multi-process and permissions regressions
+- `docs/src/content/docs/guides/local-job-receipts.md`, `src/commands/context/data/best_practices/receipt_storage.json`: local receipt durability, recovery boundaries and agent safety guidance
 - `src/commands/feedback.rs`: send/list (two-way I/O for CLI friction reporting)
 - `src/commands/context/agent.rs`: Machine-readable command schema for AI agents (hierarchical access, MCP/OpenAI format emission, drift detection, auto-generation)
 - `src/commands/context/schemas.rs`: Item definition schemas (22 types)
@@ -284,7 +287,7 @@
 - `tests/e2e_sql_endpoint.rs`: SQL Endpoint tests
 - `src/commands/context/data/examples/sql_endpoint_refresh_metadata.json`: selective SQL endpoint refresh output example, including per-table failure details
 - `tests/e2e_profile.rs`: Profile save/use/list/show/delete tests
-- `tests/e2e_jobs.rs`: Jobs ledger tests
+- `tests/e2e_jobs.rs`: isolated-home receipt CLI validation, corruption/no-rewrite errors, exact prune previews, readonly, terminal-state preservation, concurrent processes and bounded contention
 - `tests/e2e_feedback.rs`: Feedback send/list tests
 - `tests/e2e_context_agent.rs`: Agent context schema tests
 - `tests/e2e_rest.rs`: REST passthrough tests (dry-run, body resolution, live calls)

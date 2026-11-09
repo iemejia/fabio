@@ -18,6 +18,16 @@ tested independently because valid 50-UUID batches cannot reach it. Thin HTTP
 wrappers remain covered by the per-group mocked CLI tests instead of duplicating
 their implementation in unit mocks.
 
+Local receipt durability is tested without tenant access: `cargo test --bin fabio
+commands::jobs::` checks strict parsing, legacy/extension-field compatibility,
+read/write failures and stable locking. Test-only subprocesses exit abruptly on
+each side of atomic publication and run concurrent append/update transactions.
+`cargo test --test e2e_jobs --test e2e_gen1_execution` covers isolated-home CLI
+reads/pruning, corruption preservation, bounded contention and mocked Gen1
+submission/acknowledgement behavior. No tests prune the developer's ledger or
+replay a live upgrade; these tests do not simulate hardware power loss or replace
+Windows runtime CI.
+
 Selected published BI workflow/schema/output examples also have a clap-contract
 gate (`commands::context::recipe_tests`). It uses the test-only `shlex` parser to
 handle quoting and `&&` chains, then parses each invocation with the actual CLI.
