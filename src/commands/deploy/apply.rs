@@ -1914,8 +1914,9 @@ async fn deploy_change(
                     }
                     Err(e) => {
                         let err_str = e.to_string();
-                        if err_str.contains("ItemDisplayNameNotAvailableYet")
-                            || err_str.contains("displayName is not available")
+                        if crate::errors::can_retry_submission_rejection(&e)
+                            && (err_str.contains("ItemDisplayNameNotAvailableYet")
+                                || err_str.contains("displayName is not available"))
                         {
                             // Name not yet freed — wait and retry
                             if attempt < 9 {
@@ -3698,6 +3699,7 @@ mod tests {
             more_details: None,
             related_resource: None,
             parameters: None,
+            submission: None,
         };
         let anyhow_err: anyhow::Error = err.into();
         let code = extract_error_code(&anyhow_err);

@@ -183,6 +183,10 @@
 - `src/commands/datamart.rs`: list (read-only)
 - `src/commands/paginated_report.rs`: list/show/create/update/delete/get-definition/update-definition
 - `src/commands/profile.rs`: save/use/list/show/delete (named profiles with defaults)
+- `src/client/submission.rs`: explicit POST semantics, shared JSON attempts/auth rejection refresh, bounded acknowledgement/uncertainty evidence and metadata-preserving no-replay errors
+- `tests/e2e_post_retry.rs`: mock request-count regressions for mutation gateway errors, accepted body/observation failure, rejection retries, safe reads, scope evidence, disconnects and named rejection loops
+- `.agents/POST-RETRY-AUDIT.md`: source-based POST helper inventory, command-level loop findings, policy rationale and explicitly deferred transport boundaries
+- `docs/src/content/docs/guides/submission-retries.md`, `src/commands/context/data/best_practices/submission_retries.json`: user/agent retry classification and transport-evidence contract
 - `src/commands/jobs.rs`: local job/receipt API, list/get, readonly-aware transactional prune with conservative terminal-state filtering
 - `src/commands/jobs/ledger.rs`: stable sidecar read/write locking, bounded contention, strict JSONL validation and synced atomic receipt snapshots
 - `src/commands/jobs/ledger/tests.rs`: local-only malformed/I/O/compatibility, failure-boundary, abrupt-process-exit, multi-process and permissions regressions

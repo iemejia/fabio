@@ -306,7 +306,9 @@ fn git_connection_show_legacy_command_works() {
     );
 }
 
-fn mock_git_checkout_api(fail_reconnect: bool) -> (tokio::runtime::Runtime, String, MockServer) {
+fn mock_git_checkout_api(
+    reconnect_failure: Option<u16>,
+) -> (tokio::runtime::Runtime, String, MockServer) {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -369,15 +371,11 @@ fn mock_git_checkout_api(fail_reconnect: bool) -> (tokio::runtime::Runtime, Stri
         Mock::given(method("POST"))
             .and(path(connect_path.clone()))
             .and(body_json(reconnect_body))
-            .respond_with(ResponseTemplate::new(if fail_reconnect {
-                500
-            } else {
-                200
-            }))
+            .respond_with(ResponseTemplate::new(reconnect_failure.unwrap_or(200)))
             .expect(1)
             .mount(&server)
             .await;
-        if fail_reconnect {
+        if reconnect_failure.is_some_and(|status| status < 500) {
             Mock::given(method("POST"))
                 .and(path(connect_path))
                 .and(body_json(rollback_body))
@@ -385,7 +383,7 @@ fn mock_git_checkout_api(fail_reconnect: bool) -> (tokio::runtime::Runtime, Stri
                 .expect(1)
                 .mount(&server)
                 .await;
-        } else {
+        } else if reconnect_failure.is_none() {
             Mock::given(method("POST"))
                 .and(path(initialize_path))
                 .respond_with(ResponseTemplate::new(200))
@@ -401,7 +399,7 @@ fn mock_git_checkout_api(fail_reconnect: bool) -> (tokio::runtime::Runtime, Stri
 #[test]
 #[serial]
 fn git_checkout_preserves_connection_settings() {
-    let (runtime, server_uri, server) = mock_git_checkout_api(false);
+    let (runtime, server_uri, server) = mock_git_checkout_api(None);
     let output = fabio()
         .env("FABIO_ACCESS_TOKEN", "fake-test-token")
         .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
@@ -424,7 +422,9 @@ fn git_checkout_preserves_connection_settings() {
 #[test]
 #[serial]
 fn git_checkout_reconnect_failure_restores_connection_settings() {
-    let (runtime, server_uri, server) = mock_git_checkout_api(true);
+    // A definitive 400 rejection may restore the previous connection. A 5xx
+    // response cannot prove rejection and has a separate no-rollback regression.
+    let (runtime, server_uri, server) = mock_git_checkout_api(Some(400));
     let output = fabio()
         .env("FABIO_ACCESS_TOKEN", "fake-test-token")
         .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
@@ -441,6 +441,42 @@ fn git_checkout_reconnect_failure_restores_connection_settings() {
         .failure();
 
     assert_ne!(output.get_output().stderr, Vec::<u8>::new());
+    runtime.block_on(server.verify());
+}
+
+#[test]
+#[serial]
+fn git_checkout_ambiguous_reconnect_does_not_retry_restore_or_initialize() {
+    let (runtime, server_uri, server) = mock_git_checkout_api(Some(503));
+    let home = tempfile::TempDir::new().unwrap();
+    let output = fabio()
+        .env("HOME", home.path())
+        .env("USERPROFILE", home.path())
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "--quiet",
+            "--force",
+            "git",
+            "checkout",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--branch",
+            "feature",
+        ])
+        .assert()
+        .failure();
+    let error: serde_json::Value = serde_json::from_slice(&output.get_output().stderr).unwrap();
+    assert_eq!(error["error"]["submission"]["state"], "unknown");
+    assert_eq!(error["error"]["retriable"], false);
+    let requests = runtime.block_on(server.received_requests()).unwrap();
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.method.as_str() == "POST")
+            .count(),
+        2
+    );
     runtime.block_on(server.verify());
 }
 

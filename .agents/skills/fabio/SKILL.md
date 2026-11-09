@@ -186,12 +186,21 @@ Error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITE
 - `AUTH_REQUIRED` (exit 3): Run `az login`, then `fabio auth login`
 - `FORBIDDEN` (exit 4): Need Member or Admin role on workspace. Delete requires Member+.
 - `CAPACITY_INACTIVE` (exit 7): Inspect scoped workspace/capacity evidence first. A resumable F-series capacity needs Azure subscription, resource group, and capacity name for `capacity resume` — NOT `--id`. Review the guarded preview and obtain approval; see `fabio context best-practices remediation-hints`.
-- `RATE_LIMITED` (exit 7): Retry automatically handled; reduce concurrency if persistent
-- `TIMEOUT` (exit 8): Increase with `--timeout <seconds>` (e.g., `--timeout 1800` for 30min)
+- `RATE_LIMITED` (exit 7): Known rejection retries are bounded; reduce concurrency if persistent. An error carrying submission evidence is NOT permission to retry.
+- `TIMEOUT` (exit 8): Observe existing work first. Do not repeat a mutation just to increase its timeout.
 
 **Post-correction verification (preventing semantic drift):**
 
 When you follow an error `hint` to correct a failed command, check the `hintType` field in the error JSON to determine whether to auto-retry or verify:
+
+**First check `retriable` and `submission`.** If `retriable:false` or submission
+evidence reports accepted/acknowledged/unknown work, never automatically replay the
+mutation, even if a server's `isRetriable` or a generic hint suggests retrying.
+`submission.serverRetriable` preserves the API hint as evidence, not permission.
+The optional `submission` object can retain HTTP status, requested workspace/target
+UUIDs and a unique operation-header UUID. It is not a verified scoped receipt or
+proof of completion; do not pass an operation ID as a local receipt ID. See
+`fabio context best-practices submission-retries`.
 
 | `hintType` | Action after retry |
 |---|---|
@@ -202,7 +211,7 @@ When you follow an error `hint` to correct a failed command, check the `hintType
 | `safety_bypass` | **STOP**: do NOT retry without explicit user approval (the `agentNotice` field reinforces this) |
 
 If `hintType` is absent (older fabio version), use these heuristics:
-- Hint only fixes auth/login/token, or error is `RATE_LIMITED`/`NETWORK_ERROR` -> safe to retry
+- Retry only safe reads or clearly rejected requests. `NETWORK_ERROR`, 5xx or timeout on a non-idempotent submission can mean work already started; absence of evidence in an older version does not prove rejection.
 - Hint corrects casing (e.g., "must be one of: Overwrite, Append") -> safe (syntax)
 - Hint suggests a different flag value, mode, scope, or adds a new flag -> **verify with user**
 - Hint suggests `--force`/`--overwrite`/`--delete-*`/`--hard-delete` -> **ask user first**

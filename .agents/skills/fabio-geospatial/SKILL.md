@@ -69,7 +69,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 
 | Reference | Covers |
 |---|---|
-| `fabio context best-practices throttling` | fabio transparently handles 429 (Too Many Requests) and gateway errors. Agents do NOT need to implement retry logic. |
+| `fabio context best-practices throttling` | Fabio bounds known rejection retries and retries safe GET/explicit read-only POST gateway failures. Mutating Fabric POSTs never replay ambiguous 5xx/network failures; accepted/unknown submission evidence and retriable:false forbid automatic resubmission. |
 | `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |
 | `fabio context best-practices lro` | Many Fabric operations are async (return 202). fabio polls them automatically. Use --wait for job operations. |
 | `fabio context best-practices workspace-oap` | Outbound Access Protection is a workspace 'default deny' model for outbound connections from workspace items. It now (preview) governs Operations Agent actions and Fabric Maps data sources (Lakehouse, KQL, Ontology, and external WMS/WMTS/WFS geospatial services). Configure allow-lists with fabio workspace set-outbound-* rules + connection create; audit tenant-wide with admin list-network-policies. |

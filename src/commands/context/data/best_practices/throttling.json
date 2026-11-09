@@ -1,17 +1,17 @@
 {
   "topic": "throttling",
   "title": "How fabio handles API throttling",
-  "summary": "fabio transparently handles 429 (Too Many Requests) and gateway errors. Agents do NOT need to implement retry logic.",
+  "summary": "Fabio bounds known rejection retries and retries safe GET/explicit read-only POST gateway failures. Mutating Fabric POSTs never replay ambiguous 5xx/network failures; accepted/unknown submission evidence and retriable:false forbid automatic resubmission.",
   "fabio_behavior": {
     "platform_quota": "Core workspace/item APIs now document a 500 calls/min unified Platform API quota. Read list/get operations generally also have a 500 calls/min API limit, while create/update/delete operations commonly retain a 200 calls/min API limit.",
     "lro_quota": "Get Operation State and Get Operation Result each document a 500 calls/min unified Long-Running Operations quota and API-specific limit.",
-    "rate_limit_429": "fabio retries automatically using the Retry-After header value (capped at 60s). Parallel operations (upload, sync, copy) use bounded concurrency with rate-limit retry.",
-    "gateway_errors_502_503_504": "Automatic retry with linear backoff (1s, 2s, 3s) for up to 3 attempts.",
+    "rate_limit_429": "The generic Fabric JSON POST helper retries up to three known 429/430 rejections without acknowledgement markers. Retry-After is capped at 300 seconds; absent/invalid values use bounded 10/20/30-second fallback. Other transports differ; Gen1's strict one-submission sender does not retry even a rejection. LRO polling uses a separate 60-second delay cap.",
+    "gateway_errors_502_503_504": "Safe Fabric GETs and explicitly classified read-only Fabric POSTs retain up to three gateway retries with 1/2/3-second linear backoff. Generic mutating Fabric POSTs do not retry these responses; network errors, 408 and 5xx preserve unknown-outcome evidence instead of granting replay.",
     "capacity_throttle_430": "Spark operations on small capacity may return 430 (TooManyRequestsForCapacity). fabio reports this as RATE_LIMITED error."
   },
   "what_agents_should_do": [
-    "Nothing — fabio handles all retries transparently",
-    "If you get RATE_LIMITED error, the operation already exhausted retries. Wait and try again later.",
+    "Do not implement blind outer retry loops. Fabio applies the selected transport policy; no universal retry promise applies to every command.",
+    "Inspect retriable:false and error.submission before acting on a generic retry hint. An API isRetriable flag is retained as submission.serverRetriable when local mutation safety overrides it; it never grants automatic resubmission of accepted/unknown work.",
     "Use --verbose to see HTTP response codes and retry behavior on stderr",
     "For bulk operations, fabio uses bounded parallelism (default 8 concurrent) with automatic backoff",
     "Treat the documented quotas as shared budgets: prefer list/bulk APIs and avoid tight manual polling loops; mutation endpoints can retain a 200 calls/min API limit even when the unified quota is 500."
@@ -21,7 +21,8 @@
     "--concurrency N": "Control parallelism for bulk/parallel operations (lower = less throttling)"
   },
   "error_codes": {
-    "RATE_LIMITED": "API returned 429 after all retries exhausted. Wait before retrying.",
+    "RATE_LIMITED": "The request may have exhausted retries, or the selected sender may refuse replay. Contradictory acknowledgement markers require read-only investigation, not resubmission.",
     "TIMEOUT": "LRO polling exceeded --lro-timeout (default 120s). Operation may still be running."
-  }
+  },
+  "see_also": ["fabio context best-practices submission-retries", "fabio context best-practices receipt-storage"]
 }

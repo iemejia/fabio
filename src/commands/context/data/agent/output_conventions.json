@@ -15,7 +15,7 @@
     },
     "error": {
       "format": "{\"error\": {\"code\": \"...\", \"message\": \"...\"}}",
-      "description": "Error response (on stderr, non-zero exit code)"
+      "description": "Error response (on stderr, non-zero exit code). Optional submission evidence can preserve ambiguous/acknowledged mutation state, HTTP status, requested route UUIDs and a unique operation-header UUID. retriable:false forbids automatic replay even when submission.serverRetriable is true; this is not a verified receipt or proof of completion."
     }
   },
   "extracting_ids": {

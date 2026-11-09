@@ -105,6 +105,7 @@ pub(super) async fn connect(
             more_details: None,
             related_resource: None,
             parameters: None,
+            submission: None,
         }
         .into());
     }
@@ -290,6 +291,11 @@ pub(super) async fn checkout(
         .await;
 
     if let Err(e) = connect_result {
+        // A failed reply may hide a successful switch. Do not reconnect to the
+        // old branch (another mutation) until rejection is actually known.
+        if !crate::errors::can_retry_submission_rejection(&e) {
+            return Err(e);
+        }
         // Reconnect to original branch failed — try to restore previous connection
         let mut rollback_body = serde_json::json!({
             "gitProviderDetails": provider_details,
@@ -349,7 +355,10 @@ pub(super) async fn checkout(
             }
             Err(e) => {
                 let msg = e.to_string();
-                if msg.contains("Git provider failed") && attempt < 2 {
+                if crate::errors::can_retry_submission_rejection(&e)
+                    && msg.contains("Git provider failed")
+                    && attempt < 2
+                {
                     last_err = Some(e);
                     continue;
                 }

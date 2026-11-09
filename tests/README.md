@@ -28,6 +28,13 @@ submission/acknowledgement behavior. No tests prune the developer's ledger or
 replay a live upgrade; these tests do not simulate hardware power loss or replace
 Windows runtime CI.
 
+`cargo test --test e2e_post_retry` uses mock/local endpoints to prove that generic
+mutations do not replay ambiguous gateway failures, while safe GETs and explicitly
+read-only POSTs retain intended retries. It covers success-header preservation,
+contradictory rejection/ACK markers, transport disconnects, readonly/dry-run and a
+command-level named-rejection loop. `client::submission::tests` also checks metadata
+preservation/redaction and a local response timeout. No live operation is replayed.
+
 Selected published BI workflow/schema/output examples also have a clap-contract
 gate (`commands::context::recipe_tests`). It uses the test-only `shlex` parser to
 handle quoting and `&&` chains, then parses each invocation with the actual CLI.

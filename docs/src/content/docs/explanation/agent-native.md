@@ -17,6 +17,10 @@ Lists use `{"data":[...],"count":N}` and objects use `{"data":{...}}`. Errors us
 
 An error can enumerate valid values, suggest corrected syntax, or provide a read-only verification command. Hint types distinguish safe retries from changes that alter semantics.
 
+For submissions, `retriable:false` and accepted/unknown `error.submission` evidence
+override generic retry advice. Observation failure is not permission to repeat a
+mutation; see [submission retry safety](../../guides/submission-retries/).
+
 ## Explicit safety
 
 Mutations support dry-run previews. Destructive plans identify themselves in structured output. Safety-bypass flags are called out so an agent cannot silently turn a guarded operation into an irreversible one.

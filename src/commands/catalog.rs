@@ -163,7 +163,7 @@ async fn search(
     let mut all_items: Vec<Value> = Vec::new();
     let mut last_token: Option<String>;
     loop {
-        let data = client.post("/catalog/search", &body, false).await?;
+        let data = client.post_readonly("/catalog/search", &body).await?;
         let Some(arr) = data.get("value").and_then(Value::as_array) else {
             output::render_object(cli, &data, "value");
             return Ok(());

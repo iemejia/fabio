@@ -5,7 +5,7 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use anyhow::Result;
-use reqwest::header::{AUTHORIZATION, CONTENT_LENGTH, HeaderMap};
+use reqwest::header::{AUTHORIZATION, HeaderMap};
 use reqwest::{Client, Response, StatusCode};
 use serde_json::Value;
 use tokio::time::sleep;
@@ -16,7 +16,9 @@ use crate::errors::{ErrorCode, ErrorDetail, ErrorParameter, FabioError, RelatedR
 use crate::verbose;
 
 mod onelake_metadata;
+mod submission;
 pub use onelake_metadata::MetadataPage;
+use submission::PostSemantics;
 
 // ── Bundled CA Roots ─────────────────────────────────────────────────────────
 //
@@ -1525,10 +1527,11 @@ impl FabricClient {
 
     /// POST request to Fabric REST API, optionally polling for LRO completion.
     /// Retries once on 401 with a fresh token.
-    /// Retries up to 3 times on 429/430 (rate limited) with exponential backoff.
+    /// Retries bounded known auth/throttle rejections, never ambiguous gateway errors.
     pub async fn post(&self, path: &str, body: &Value, poll: bool) -> Result<Value> {
         self.guard_readonly("POST", path)?;
-        self.post_impl(path, Some(body), poll).await
+        self.post_impl(path, Some(body), poll, PostSemantics::Mutation)
+            .await
     }
 
     /// Exactly ONE guarded Fabric POST, including on 401/429/5xx. The deadline
@@ -1580,67 +1583,56 @@ impl FabricClient {
     /// POST request to Fabric REST API without a request body.
     pub async fn post_empty(&self, path: &str, poll: bool) -> Result<Value> {
         self.guard_readonly("POST", path)?;
-        self.post_impl(path, None, poll).await
+        self.post_impl(path, None, poll, PostSemantics::Mutation)
+            .await
     }
 
     /// POST request for a semantically read-only API such as query execution.
     pub async fn post_readonly(&self, path: &str, body: &Value) -> Result<Value> {
-        self.post_impl(path, Some(body), false).await
+        self.post_impl(path, Some(body), false, PostSemantics::ReadOnly)
+            .await
     }
 
-    async fn post_impl(&self, path: &str, body: Option<&Value>, poll: bool) -> Result<Value> {
+    /// Explicit read-only retrieval with LRO support (e.g. getDefinition).
+    pub async fn post_readonly_with_lro(&self, path: &str, body: &Value) -> Result<Value> {
+        self.post_impl(path, Some(body), true, PostSemantics::ReadOnly)
+            .await
+    }
+
+    async fn post_impl(
+        &self,
+        path: &str,
+        body: Option<&Value>,
+        poll: bool,
+        semantics: PostSemantics,
+    ) -> Result<Value> {
         const MAX_RATE_LIMIT_RETRIES: u32 = 3;
         const MAX_TRANSIENT_RETRIES: u32 = 3;
         let url = self.fabric_url(path);
         let mut attempt: u32 = 0;
         let mut transient_attempt: u32 = 0;
 
-        // Trace the body once (avoid re-tracing on retries)
-        let body_str = if verbose::is_enabled() {
-            body.map(|value| serde_json::to_string(value).unwrap_or_default())
-        } else {
-            None
-        };
-
         loop {
-            let token = self.require_auth().await?;
+            let resp = self
+                .send_json_post(&url, path, body, semantics, "fabric")
+                .await?;
 
-            verbose::trace_request("POST", &url, body_str.as_deref());
-            let start = std::time::Instant::now();
-
-            let request = self.http.post(&url).header(AUTHORIZATION, &token);
-            let request = match body {
-                Some(value) => request.json(value),
-                None => request.header(CONTENT_LENGTH, "0"),
-            };
-            let resp = request
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-            verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
-
-            if resp.status() == StatusCode::UNAUTHORIZED {
+            if resp.status() == StatusCode::UNAUTHORIZED
+                && submission::can_retry_rejection(semantics, resp.headers())
+            {
                 self.invalidate_fabric_token().await;
-                let token = self.require_auth().await?;
-                let request = self.http.post(&url).header(AUTHORIZATION, &token);
-                let request = match body {
-                    Some(value) => request.json(value),
-                    None => request.header(CONTENT_LENGTH, "0"),
-                };
-                let resp = request
-                    .send()
-                    .await
-                    .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-                if poll && resp.status() == StatusCode::ACCEPTED {
-                    return self.poll_lro(resp).await;
-                }
-                return handle_response(resp).await;
+                let resp = self
+                    .send_json_post(&url, path, body, semantics, "fabric")
+                    .await?;
+                return self.finish_json_post(resp, path, semantics, poll).await;
             }
 
             // Retry on rate-limit (429) or Spark capacity throttle (430)
             let status_code = resp.status().as_u16();
-            if (status_code == 429 || status_code == 430) && attempt < MAX_RATE_LIMIT_RETRIES {
+            if (status_code == 429 || status_code == 430)
+                && attempt < MAX_RATE_LIMIT_RETRIES
+                && submission::can_retry_rejection(semantics, resp.headers())
+            {
                 attempt += 1;
                 // Respect Retry-After header if present, otherwise use fixed backoff.
                 // Cap at 300s to prevent a malicious server from parking the CLI indefinitely.
@@ -1659,7 +1651,10 @@ impl FabricClient {
             }
 
             // Retry on transient server errors (502/503/504)
-            if matches!(status_code, 502..=504) && transient_attempt < MAX_TRANSIENT_RETRIES {
+            if semantics == PostSemantics::ReadOnly
+                && matches!(status_code, 502..=504)
+                && transient_attempt < MAX_TRANSIENT_RETRIES
+            {
                 transient_attempt += 1;
                 let backoff_secs = u64::from(transient_attempt); // 1s, 2s, 3s
                 eprintln!(
@@ -1669,12 +1664,30 @@ impl FabricClient {
                 continue;
             }
 
-            if poll && resp.status() == StatusCode::ACCEPTED {
-                return self.poll_lro(resp).await;
-            }
-
-            return handle_response(resp).await;
+            return self.finish_json_post(resp, path, semantics, poll).await;
         }
+    }
+
+    async fn finish_json_post(
+        &self,
+        resp: Response,
+        path: &str,
+        semantics: PostSemantics,
+        poll: bool,
+    ) -> Result<Value> {
+        let evidence = submission::evidence(
+            semantics,
+            "fabric",
+            path,
+            Some(resp.status()),
+            resp.headers(),
+        );
+        let result = if poll && resp.status() == StatusCode::ACCEPTED {
+            self.poll_lro(resp).await
+        } else {
+            handle_response(resp).await
+        };
+        submission::finish(result, evidence)
     }
 
     /// POST request with raw text body (text/plain content type).
@@ -1908,36 +1921,27 @@ impl FabricClient {
         timeout_secs: u64,
     ) -> Result<Value> {
         self.guard_readonly("POST", path)?;
-        let token = self.require_auth().await?;
         let url = self.fabric_url(path);
-
         let resp = self
-            .http
-            .post(&url)
-            .header(AUTHORIZATION, &token)
-            .json(body)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-        if resp.status() == StatusCode::UNAUTHORIZED {
-            self.invalidate_fabric_token().await;
-            let token = self.require_auth().await?;
-            let resp = self
-                .http
-                .post(&url)
-                .header(AUTHORIZATION, &token)
-                .json(body)
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            return self
-                .handle_post_with_timeout_response(resp, wait, timeout_secs)
-                .await;
-        }
-
-        self.handle_post_with_timeout_response(resp, wait, timeout_secs)
-            .await
+            .send_json_post_with_auth_refresh(
+                &url,
+                path,
+                Some(body),
+                PostSemantics::Mutation,
+                "fabric",
+            )
+            .await?;
+        let evidence = submission::evidence(
+            PostSemantics::Mutation,
+            "fabric",
+            path,
+            Some(resp.status()),
+            resp.headers(),
+        );
+        let result = self
+            .handle_post_with_timeout_response(resp, wait, timeout_secs)
+            .await;
+        submission::finish(result, evidence)
     }
 
     /// Handle the response from `post_with_timeout` (factored out for retry).
@@ -2231,7 +2235,8 @@ impl FabricClient {
 
     pub async fn post_powerbi(&self, path: &str, body: &Value) -> Result<Value> {
         self.guard_readonly("POST", path)?;
-        self.post_powerbi_impl(path, body).await
+        self.post_powerbi_impl(path, body, PostSemantics::Mutation)
+            .await
     }
 
     /// Guarded mutation transport preserving acknowledgement metadata. Never
@@ -2242,9 +2247,18 @@ impl FabricClient {
         body: &Value,
     ) -> Result<PowerBiAcknowledgement> {
         self.guard_readonly("POST", path)?;
-        let response = self.send_powerbi_post(path, body).await?;
+        let response = self
+            .send_powerbi_post(path, body, PostSemantics::Mutation)
+            .await?;
         let status = response.status();
         let headers = response.headers().clone();
+        let evidence = submission::evidence(
+            PostSemantics::Mutation,
+            "powerbi",
+            path,
+            Some(status),
+            &headers,
+        );
         match handle_response(response).await {
             Ok(body) => Ok(PowerBiAcknowledgement {
                 status,
@@ -2256,7 +2270,7 @@ impl FabricClient {
                 headers,
                 body: None,
             }),
-            Err(error) => Err(error),
+            Err(error) => submission::finish(Err(error), evidence),
         }
     }
 
@@ -2273,50 +2287,36 @@ impl FabricClient {
         self.post_powerbi_impl(
             &format!("/groups/{workspace}/datasets/{model}/executeQueries"),
             &serde_json::json!({"queries":[{"query":dax}],"serializerSettings":{"includeNulls":true}}),
+            PostSemantics::ReadOnly,
         ).await
     }
 
-    async fn post_powerbi_impl(&self, path: &str, body: &Value) -> Result<Value> {
-        handle_response(self.send_powerbi_post(path, body).await?).await
+    async fn post_powerbi_impl(
+        &self,
+        path: &str,
+        body: &Value,
+        semantics: PostSemantics,
+    ) -> Result<Value> {
+        let response = self.send_powerbi_post(path, body, semantics).await?;
+        let evidence = submission::evidence(
+            semantics,
+            "powerbi",
+            path,
+            Some(response.status()),
+            response.headers(),
+        );
+        submission::finish(handle_response(response).await, evidence)
     }
 
-    async fn send_powerbi_post(&self, path: &str, body: &Value) -> Result<Response> {
-        let token = self.require_auth().await?;
+    async fn send_powerbi_post(
+        &self,
+        path: &str,
+        body: &Value,
+        semantics: PostSemantics,
+    ) -> Result<Response> {
         let url = format!("{}{path}", *POWERBI_BASE_URL);
-
-        verbose::trace_request(
-            "POST",
-            &url,
-            Some(&serde_json::to_string(body).unwrap_or_default()),
-        );
-        let start = std::time::Instant::now();
-
-        let resp = self
-            .http
-            .post(&url)
-            .header(AUTHORIZATION, &token)
-            .json(body)
-            .send()
+        self.send_json_post_with_auth_refresh(&url, path, Some(body), semantics, "powerbi")
             .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-        verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
-
-        if resp.status() == StatusCode::UNAUTHORIZED {
-            self.invalidate_fabric_token().await;
-            let token = self.require_auth().await?;
-            let resp = self
-                .http
-                .post(&url)
-                .header(AUTHORIZATION, &token)
-                .json(body)
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            return Ok(resp);
-        }
-
-        Ok(resp)
     }
 
     /// Validated endpoint configuration, used only to compare acknowledgement
@@ -2947,42 +2947,29 @@ impl FabricClient {
         body: Option<&Value>,
     ) -> Result<String> {
         self.guard_readonly("POST", &format!("run-notebook:{item_id}"))?;
-        let token = self.require_auth().await?;
-        let url = self.fabric_url(&format!(
-            "/workspaces/{workspace}/items/{item_id}/jobs/instances?jobType=RunNotebook"
-        ));
+        let path =
+            format!("/workspaces/{workspace}/items/{item_id}/jobs/instances?jobType=RunNotebook");
+        let url = self.fabric_url(&path);
 
         let request_body = body.cloned().unwrap_or_else(|| serde_json::json!({}));
-
+        // Preserve the notebook sender's existing one-attempt behavior, even on 401.
         let resp = self
-            .http
-            .post(&url)
-            .header(AUTHORIZATION, &token)
-            .json(&request_body)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-        if resp.status() != StatusCode::ACCEPTED && resp.status() != StatusCode::OK {
-            return Err(error_from_failed_response(resp).await.into());
-        }
-
-        // Extract job instance ID from Location header
-        let location = resp
-            .headers()
-            .get("location")
-            .or_else(|| resp.headers().get("Location"))
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-
-        let job_id = location.rsplit('/').next().unwrap_or("").to_string();
-        if job_id.is_empty() {
-            return Err(
-                FabioError::api_error("No job instance ID returned from run request").into(),
-            );
-        }
-
-        Ok(job_id)
+            .send_json_post(
+                &url,
+                &path,
+                Some(&request_body),
+                PostSemantics::Mutation,
+                "fabric",
+            )
+            .await?;
+        let evidence = submission::evidence(
+            PostSemantics::Mutation,
+            "fabric",
+            &path,
+            Some(resp.status()),
+            resp.headers(),
+        );
+        submission::finish(Self::extract_job_id_from_response(resp).await, evidence)
     }
 
     /// Trigger an on-demand item job and return the job instance ID from
@@ -2995,41 +2982,15 @@ impl FabricClient {
         job_type: &str,
         execution_data: Option<&Value>,
     ) -> Result<String> {
-        self.guard_readonly("POST", &format!("trigger-job:{item_id}?jobType={job_type}"))?;
-        let token = self.require_auth().await?;
-        let url = self.fabric_url(&format!(
-            "/workspaces/{workspace}/items/{item_id}/jobs/instances?jobType={job_type}"
-        ));
+        let path =
+            format!("/workspaces/{workspace}/items/{item_id}/jobs/instances?jobType={job_type}");
 
         let body = execution_data.map_or_else(
             || serde_json::json!({}),
             |ed| serde_json::json!({ "executionData": ed }),
         );
 
-        let resp = self
-            .http
-            .post(&url)
-            .header(AUTHORIZATION, &token)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-        if resp.status() == StatusCode::UNAUTHORIZED {
-            self.invalidate_fabric_token().await;
-            let token = self.require_auth().await?;
-            let resp = self
-                .http
-                .post(&url)
-                .header(AUTHORIZATION, &token)
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            return Self::extract_job_id_from_response(resp).await;
-        }
-
-        Self::extract_job_id_from_response(resp).await
+        self.trigger_item_job_at(&path, Some(&body)).await
     }
 
     /// Extract the job instance ID from a job trigger response's Location
@@ -3076,35 +3037,21 @@ impl FabricClient {
         body: Option<&Value>,
     ) -> Result<TriggeredJob> {
         self.guard_readonly("POST", path)?;
-        let token = self.require_auth().await?;
         let url = self.fabric_url(path);
-
-        let request = self.http.post(&url).header(AUTHORIZATION, &token);
-        let request = match body {
-            Some(value) => request.json(value),
-            None => request.header(CONTENT_LENGTH, "0"),
-        };
-        let resp = request
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-        if resp.status() == StatusCode::UNAUTHORIZED {
-            self.invalidate_fabric_token().await;
-            let token = self.require_auth().await?;
-            let request = self.http.post(&url).header(AUTHORIZATION, &token);
-            let request = match body {
-                Some(value) => request.json(value),
-                None => request.header(CONTENT_LENGTH, "0"),
-            };
-            let resp = request
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            return Self::extract_job_trigger_from_response(resp).await;
-        }
-
-        Self::extract_job_trigger_from_response(resp).await
+        let resp = self
+            .send_json_post_with_auth_refresh(&url, path, body, PostSemantics::Mutation, "fabric")
+            .await?;
+        let evidence = submission::evidence(
+            PostSemantics::Mutation,
+            "fabric",
+            path,
+            Some(resp.status()),
+            resp.headers(),
+        );
+        submission::finish(
+            Self::extract_job_trigger_from_response(resp).await,
+            evidence,
+        )
     }
 
     async fn extract_job_trigger_from_response(resp: Response) -> Result<TriggeredJob> {

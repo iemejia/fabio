@@ -117,6 +117,7 @@ fabio deploy apply --source ./export --workspace "Production (empty)" --env prod
 - **Context-aware** -- `fabio context tenant` builds a workspace relationship graph for agent memory; exports as OWL RDF/XML or JSON-LD for Fabric Ontology import
 - **Ontology round-trip** -- `fabio ontology import/export` converts between OWL (RDF/XML, JSON-LD) and Fabric format; compatible with [Ontology Playground](https://github.com/microsoft/Ontology-Playground)
 - **Throttling-aware** -- Bulk/batch APIs preferred; parallel execution with rate-limit retry
+- **Mutation-aware retries** -- Generic Fabric JSON submissions do not replay ambiguous gateway failures; selected JSON/job paths retain acknowledgement or uncertainty evidence with non-retriable guidance. Safe reads keep bounded retries. See [submission retry safety](https://ismaelmejia.com/fabio/guides/submission-retries/).
 
 ## Installation
 

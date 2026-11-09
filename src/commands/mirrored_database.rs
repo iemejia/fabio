@@ -350,7 +350,10 @@ async fn create(
                     break;
                 }
                 Err(e) => {
-                    if attempt < 5 && e.to_string().contains("MirroredDatabaseNotReady") {
+                    if attempt < 5
+                        && crate::errors::can_retry_submission_rejection(&e)
+                        && e.to_string().contains("MirroredDatabaseNotReady")
+                    {
                         tokio::time::sleep(std::time::Duration::from_secs(12)).await;
                         last_err = Some(e);
                     } else {

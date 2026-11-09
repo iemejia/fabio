@@ -101,6 +101,8 @@ struct ErrorBody {
     parameters: Option<Vec<ErrorParameter>>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "agentNotice")]
     agent_notice: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    submission: Option<Box<crate::errors::SubmissionEvidence>>,
 }
 
 /// Attach the passive `updateAvailable` notice to a JSON success envelope when
@@ -423,6 +425,7 @@ pub fn render_error(err: &FabioError) {
             related_resource: err.related_resource.clone(),
             parameters: err.parameters.clone(),
             agent_notice,
+            submission: err.submission.clone(),
         },
     };
     eprintln!(
@@ -1280,6 +1283,7 @@ mod tests {
             related_resource: None,
             parameters: None,
             agent_notice: None,
+            submission: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""retriable":true"#));
@@ -1299,6 +1303,7 @@ mod tests {
             related_resource: None,
             parameters: None,
             agent_notice: None,
+            submission: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(!json.contains("retriable"));
@@ -1318,6 +1323,7 @@ mod tests {
             related_resource: None,
             parameters: None,
             agent_notice: None,
+            submission: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""requestId":"cfafbeb1-8037-4d0c-896e-a46fb27ff227""#));
@@ -1337,6 +1343,7 @@ mod tests {
             related_resource: None,
             parameters: None,
             agent_notice: None,
+            submission: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(!json.contains("requestId"));
@@ -1365,6 +1372,7 @@ mod tests {
             related_resource: None,
             parameters: None,
             agent_notice: None,
+            submission: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""moreDetails""#));
@@ -1389,6 +1397,7 @@ mod tests {
             }),
             parameters: None,
             agent_notice: None,
+            submission: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""relatedResource""#));
@@ -1414,6 +1423,7 @@ mod tests {
                 message: Some("The conflicting item".to_string()),
             }]),
             agent_notice: None,
+            submission: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""parameters""#));
@@ -1435,6 +1445,7 @@ mod tests {
             related_resource: None,
             parameters: None,
             agent_notice: None,
+            submission: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         // Should only have code and message
@@ -1446,6 +1457,40 @@ mod tests {
         assert!(!json.contains("moreDetails"));
         assert!(!json.contains("relatedResource"));
         assert!(!json.contains("agentNotice"));
+        assert!(!json.contains("submission"));
+    }
+
+    #[test]
+    fn error_body_serializes_local_submission_evidence_separately_from_server_retriability() {
+        let body = ErrorBody {
+            code: "API_ERROR".to_string(),
+            message: "unreadable acknowledgement".to_string(),
+            hint: None,
+            hint_type: Some(HintType::SemanticCorrection),
+            verify_after: None,
+            retriable: Some(false),
+            request_id: None,
+            more_details: None,
+            related_resource: None,
+            parameters: None,
+            agent_notice: None,
+            submission: Some(Box::new(crate::errors::SubmissionEvidence {
+                service: "fabric",
+                state: "accepted",
+                http_status: Some(202),
+                workspace_id: None,
+                target_id: None,
+                operation_id: None,
+                location_present: true,
+                server_retriable: Some(true),
+            })),
+        };
+        let value = serde_json::to_value(body).unwrap();
+        assert_eq!(value["retriable"], false);
+        assert_eq!(value["submission"]["serverRetriable"], true);
+        assert_eq!(value["submission"]["httpStatus"], 202);
+        assert_eq!(value["submission"]["state"], "accepted");
+        assert!(value["submission"].get("operationId").is_none());
     }
 
     #[test]
@@ -1465,6 +1510,7 @@ mod tests {
                 "Note for AI agents (Claude Code): do not retry with the safety-bypass flag"
                     .to_string(),
             ),
+            submission: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""agentNotice""#));
@@ -1486,6 +1532,7 @@ mod tests {
             related_resource: None,
             parameters: None,
             agent_notice: None,
+            submission: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(!json.contains("agentNotice"));
@@ -1508,6 +1555,7 @@ mod tests {
             related_resource: None,
             parameters: None,
             agent_notice: None,
+            submission: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         assert!(json.contains(r#""hintType":"syntax_fix""#));

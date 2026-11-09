@@ -563,6 +563,7 @@ fn execute_compact(cli: &Cli, group_filter: Option<&str>) {
         "output_contract".to_owned(),
         serde_json::json!({
             "envelope": "stdout = data, stderr = diagnostics. Success: a list is {\"data\":[...],\"count\":N}; an object is {\"data\":{...}}. Error: stderr {\"error\":{\"code\",\"message\",\"hint\"}} with non-zero exit.",
+            "mutation_retry": "retriable:false or error.submission accepted/acknowledged/unknown forbids automatic mutation replay. Optional submission evidence preserves status/requested UUIDs/unique operation-header identity, not a verified receipt or completion. serverRetriable is evidence, not permission. See context best-practices submission-retries.",
             "query": "--query/-q is JMESPath (like Azure CLI --query), NOT jq. It runs on the value UNDER `data` (the payload), so write `[].name` — never `.data[].name` (jq) or `data[].name` (envelope). Count with `length([])`. A jq-shaped or malformed --query now FAILS FAST with a corrected suggestion instead of a silent null.",
             "correct": ["--query id", "--query '[].displayName'", "--query \"[?type=='Lakehouse'].id\"", "--query '[0].id'", "--query 'length([])'"],
             "incorrect": ["--query .data[].id  (jq: leading dot)", "--query 'data[].id'  (envelope: drop the data prefix)", "--query count  (use length([]))", "--query '[] | select(.x)'  (jq: use [?x])"]

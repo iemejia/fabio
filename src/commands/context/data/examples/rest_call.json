@@ -14,6 +14,16 @@
     }
   },
   "notes": "Use --body for inline JSON, --body @file.json for file, --body @- for stdin. Use --poll for LRO endpoints. Use --api powerbi to route to https://api.powerbi.com/v1.0/myorg. Use --query-params 'key=value' for URL parameters. Dry-run supported for mutating methods (POST/PUT/PATCH/DELETE).",
+  "mutation_error_response": {
+    "error": {
+      "code": "API_ERROR",
+      "message": "Gateway failure; submission outcome is unknown.",
+      "hint": "Preserve the original scope and inspect existing work. Do not automatically resubmit.",
+      "hintType": "semantic_correction",
+      "retriable": false,
+      "submission": {"service":"fabric","state":"unknown","httpStatus":503,"workspaceId":"<WORKSPACE_ID>","targetId":"<TARGET_ID>","locationPresent":false,"serverRetriable":true}
+    }
+  },
   "query_examples": [
     {"query": "value[*].displayName", "description": "Extract item names from list response."},
     {"query": "value | length(@)", "description": "Count items returned."},

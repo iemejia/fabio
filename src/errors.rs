@@ -131,6 +131,25 @@ pub enum HintType {
     SafetyBypass,
 }
 
+/// Bounded transport evidence, deliberately distinct from a verified scoped receipt.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmissionEvidence {
+    pub service: &'static str,
+    pub state: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub http_status: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operation_id: Option<String>,
+    pub location_present: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_retriable: Option<bool>,
+}
+
 /// Structured error type for the fabio CLI.
 #[derive(Debug, Error)]
 #[error("{code}: {message}")]
@@ -147,7 +166,8 @@ pub struct FabioError {
     /// to confirm the result matches the user's intent. Most valuable when
     /// `hint_type == SemanticCorrection`.
     pub verify_after: Option<String>,
-    /// Whether the API indicated this error is retriable (from `error.isRetriable` in response).
+    /// API retriability hint, subject to local mutation-safety overrides. When
+    /// overridden, submission evidence can retain the original server hint.
     pub retriable: Option<bool>,
     /// Server-assigned request ID for support correlation (from `error.requestId`).
     pub request_id: Option<String>,
@@ -157,6 +177,8 @@ pub struct FabioError {
     pub related_resource: Option<RelatedResource>,
     /// Additional machine-readable context (from `error.parameters`).
     pub parameters: Option<Vec<ErrorParameter>>,
+    /// Local submission evidence; never a server trace promoted to an operation ID.
+    pub submission: Option<Box<SubmissionEvidence>>,
 }
 
 impl FabioError {
@@ -172,6 +194,7 @@ impl FabioError {
             more_details: None,
             related_resource: None,
             parameters: None,
+            submission: None,
         }
     }
 
@@ -192,6 +215,7 @@ impl FabioError {
             more_details: None,
             related_resource: None,
             parameters: None,
+            submission: None,
         }
     }
 
@@ -215,6 +239,7 @@ impl FabioError {
             more_details: None,
             related_resource: None,
             parameters: None,
+            submission: None,
         }
     }
 
@@ -305,6 +330,7 @@ impl FabioError {
             more_details: self.more_details.clone(),
             related_resource: self.related_resource.clone(),
             parameters: self.parameters.clone(),
+            submission: self.submission.clone(),
         }
     }
 
@@ -325,6 +351,19 @@ impl FabioError {
             ..self.with_replaced_hint(hint, hint_type)
         }
     }
+}
+
+/// Necessary guard for command-level retry loops. A caller must ALSO recognize
+/// a specific documented rejection; this alone never grants permission to retry.
+pub fn can_retry_submission_rejection(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<FabioError>().is_some_and(|error| {
+        error.submission.is_none()
+            && error.retriable != Some(false)
+            && !matches!(
+                error.code,
+                ErrorCode::NetworkError | ErrorCode::Timeout | ErrorCode::Unknown
+            )
+    })
 }
 
 /// Convert HTTP status codes to appropriate error codes.
@@ -384,6 +423,7 @@ impl FabioError {
             more_details: None,
             related_resource: None,
             parameters: None,
+            submission: None,
         }
     }
 }

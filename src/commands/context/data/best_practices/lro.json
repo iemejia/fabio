@@ -18,7 +18,7 @@
   "what_agents_should_do": [
     "For create/update operations: fabio handles LRO automatically — just call the command",
     "For job operations: use --wait if you need the result, omit --wait for async fire-and-forget",
-    "If you get TIMEOUT: the operation may still be running. Use 'fabio operation get-state' to check",
+    "If you get TIMEOUT: the operation may still be running. Inspect the same known operation with GET-only tooling; never repeat a mutation just to increase its timeout. error.submission is evidence, not a verified scoped receipt; see submission-retries.",
     "After timeout without --cancel-on-timeout: operation continues server-side"
   ],
   "relevant_flags": {

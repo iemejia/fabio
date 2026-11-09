@@ -116,11 +116,14 @@ pub async fn get_definition(
     decode: bool,
 ) -> Result<()> {
     let op = format!("{group} get-definition");
+    // This explicitly read-only POST must not accept path/query injection that
+    // could turn a user-supplied ID into another action under --readonly.
+    crate::client::validate_uuid(workspace, "--workspace")?;
+    crate::client::validate_uuid(id, "--id")?;
     let data = client
-        .post(
+        .post_readonly_with_lro(
             &format!("/workspaces/{workspace}/{collection}/{id}/getDefinition"),
             &serde_json::json!({}),
-            true,
         )
         .await
         .map_err(|e| enrich_forbidden(e, &op, role))?;
