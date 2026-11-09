@@ -113,6 +113,83 @@ async fn approval_readonly_and_scope_guards_precede_all_network_requests() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn discovery_examples_match_workflow_and_preview_without_network_or_receipts() {
+    let server = MockServer::start().await;
+    let home = tempfile::TempDir::new().unwrap();
+    let workflow: Value = serde_json::from_str(include_str!(
+        "../src/commands/context/data/workflows/gen1_upgrade_execution.json"
+    ))
+    .unwrap();
+    let expected: Vec<_> = workflow["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|step| step["discovery_example"] == true)
+        .map(|step| step["command"].as_str().unwrap())
+        .collect();
+    assert_eq!(expected.len(), 2);
+
+    let describe = base(&server, &home)
+        .args([
+            "--readonly",
+            "context",
+            "describe",
+            "dataflow",
+            "upgrade-gen1",
+        ])
+        .assert()
+        .success();
+    let group = base(&server, &home)
+        .args(["--readonly", "context", "agent", "--group", "dataflow"])
+        .assert()
+        .success();
+    for metadata in [
+        &parse_json(&describe)["data"],
+        &parse_json(&group)["data"]["group_details"]["subcommands"]["upgrade-gen1"],
+    ] {
+        assert_eq!(metadata["examples"], json!(expected));
+        assert_eq!(metadata["mutates"], true);
+        assert_eq!(metadata["destructive"], true);
+        assert_eq!(metadata["async"], true);
+        assert_eq!(metadata["returns"], "object");
+    }
+
+    let preview = expected[0]
+        .replace("$WORKSPACE_ID", WS)
+        .replace("$GEN1_ID", A);
+    let args = shlex::split(&preview).unwrap();
+    assert!(args.iter().any(|arg| arg == "--readonly"));
+    assert!(args.iter().any(|arg| arg == "--dry-run"));
+    let output = base(&server, &home).args(&args[1..]).assert().success();
+    let data = &parse_json(&output)["data"];
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "dataflow upgrade-gen1");
+    assert_eq!(data["destructive"], true);
+    assert_eq!(data["details"]["workspace"], WS);
+    assert_eq!(data["details"]["dataflows"], json!([{"id": A}]));
+    assert_eq!(data["details"]["approvalProvided"], false);
+
+    // Never submit the execution example: without its explicit approval flag,
+    // the same invocation must still fail before readiness or receipt creation.
+    let execution = expected[1]
+        .replace("$WORKSPACE_ID", WS)
+        .replace("$GEN1_ID", A);
+    let mut args = shlex::split(&execution).unwrap();
+    assert!(args.iter().any(|arg| arg == "--allow-in-place-upgrade"));
+    assert!(
+        !args
+            .iter()
+            .any(|arg| arg == "--readonly" || arg == "--dry-run")
+    );
+    args.retain(|arg| arg != "--allow-in-place-upgrade");
+    let blocked = base(&server, &home).args(&args[1..]).assert().failure();
+    let error: Value = serde_json::from_slice(&blocked.get_output().stderr).unwrap();
+    assert_eq!(error["error"]["code"], "INVALID_INPUT");
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
+    assert!(!home.path().join(".fabio").join("jobs.jsonl").exists());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn incomplete_or_nonready_gate_never_posts_despite_approval_all_or_force() {
     let server = MockServer::start().await;
     let home = tempfile::TempDir::new().unwrap();

@@ -10875,8 +10875,8 @@
         "async": true,
         "destructive": true,
         "examples": [
-          "fabio dataflow upgrade-gen1 --workspace $WS --id $DF1 --id $DF2 --dry-run",
-          "fabio dataflow upgrade-gen1 --workspace $WS --id $DF1"
+          "fabio --wrap-untrusted --readonly dataflow upgrade-gen1 --workspace $WORKSPACE_ID --id $GEN1_ID --dry-run",
+          "fabio --wrap-untrusted dataflow upgrade-gen1 --workspace $WORKSPACE_ID --id $GEN1_ID --allow-in-place-upgrade --timeout 120"
         ]
       },
       "follow-upgrade": {

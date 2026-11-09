@@ -23,12 +23,31 @@ fn validate_command(cli: &clap::Command, text: &str) -> Result<usize, String> {
         {
             return Err("Only plain invocations and && chains are checked".to_string());
         }
-        cli.clone()
+        let matches = cli
+            .clone()
             .try_get_matches_from(args)
             .map_err(|error| error.to_string())?;
+        validate_safety(&matches)?;
         count += 1;
     }
     Ok(count)
+}
+
+fn validate_safety(matches: &clap::ArgMatches) -> Result<(), String> {
+    if let Some(("dataflow", group)) = matches.subcommand()
+        && let Some(("upgrade-gen1", command)) = group.subcommand()
+    {
+        if matches.get_flag("dry_run") {
+            if !matches.get_flag("readonly") {
+                return Err(
+                    "Gen1 preview examples must retain both --readonly and --dry-run".to_string(),
+                );
+            }
+        } else if !command.get_flag("allow_in_place_upgrade") || matches.get_flag("readonly") {
+            return Err("Gen1 execution examples require --allow-in-place-upgrade and cannot execute under --readonly".to_string());
+        }
+    }
+    Ok(())
 }
 
 fn validate_document(cli: &clap::Command, value: &Value, location: &str) -> usize {
@@ -194,6 +213,58 @@ fn published_gen1_execution_and_observation_use_supported_scoped_syntax() {
                 validate_document(&cli, &serde_json::from_str(content).unwrap(), name),
                 count
             );
+        }
+    });
+}
+
+#[test]
+fn gen1_example_safety_checks_reject_parseable_but_nonexecutable_invocations() {
+    with_cli(|cli| {
+        for invalid in [
+            "fabio dataflow upgrade-gen1 --workspace $WS --id $DF1",
+            "fabio --readonly dataflow upgrade-gen1 --workspace $WS --id $DF1",
+            "fabio dataflow upgrade-gen1 --workspace $WS --id $DF1 --dry-run",
+            "fabio --readonly dataflow upgrade-gen1 --workspace $WS --id $DF1 --allow-in-place-upgrade",
+            "fabio dataflow upgrade-gen1 --workspace $WS --id=--allow-in-place-upgrade",
+            "fabio --readonly --dry-run dataflow upgrade-gen1 --workspace $WS --id $DF1 && fabio dataflow upgrade-gen1 --workspace $WS --id $DF1",
+        ] {
+            // These are syntax-valid: the regression is in runtime guard semantics.
+            for args in shlex::split(invalid).unwrap().split(|arg| arg == "&&") {
+                cli.clone().try_get_matches_from(args).unwrap();
+            }
+            assert!(validate_command(&cli, invalid).is_err(), "{invalid}");
+        }
+        for valid in [
+            "fabio --readonly --dry-run dataflow upgrade-gen1 --workspace $WS --id $DF1",
+            "fabio dataflow upgrade-gen1 --workspace $WS --id $DF1 --readonly --dry-run",
+            "fabio dataflow upgrade-gen1 --workspace $WS --id $DF1 --allow-in-place-upgrade",
+            "fabio --readonly dataflow plan-upgrade --workspace $WS --id $DF1",
+            "fabio --readonly context describe dataflow upgrade-gen1",
+        ] {
+            assert_eq!(validate_command(&cli, valid).unwrap(), 1);
+        }
+    });
+}
+
+#[test]
+fn published_gen1_discovery_examples_parse_and_satisfy_runtime_guards() {
+    with_cli(|cli| {
+        let schema: Value = serde_json::from_str(include_str!("data/agent/commands.json")).unwrap();
+        let examples = schema["dataflow"]["subcommands"]["upgrade-gen1"]["examples"]
+            .as_array()
+            .unwrap();
+        assert_eq!(
+            examples.len(),
+            2,
+            "Publish a guarded preview and explicitly approved execution example"
+        );
+        for (index, example) in examples.iter().enumerate() {
+            validate_command(&cli, example.as_str().unwrap()).unwrap_or_else(|error| {
+                panic!(
+                    "dataflow upgrade-gen1 examples[{index}]: {error}. \
+                     Regenerate commands.json from the authored workflow."
+                );
+            });
         }
     });
 }

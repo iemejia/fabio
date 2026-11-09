@@ -1322,7 +1322,7 @@ fn extract_clap_surface() -> std::collections::BTreeMap<String, Vec<String>> {
 
 /// Generate a complete `commands.json` from clap metadata, merging with existing
 /// annotations (mutates, returns, async, destructive, `auth_scope`) from the
-/// current `commands.json`.
+/// current `commands.json`. Canonical authored examples override preserved ones.
 #[cfg(test)]
 fn generate_schema_from_clap() -> serde_json::Value {
     use clap::CommandFactory;
@@ -1493,10 +1493,39 @@ fn generate_subcommands(
             sc_obj.insert("returns".to_owned(), serde_json::json!("object"));
         }
 
+        if let Some(examples) = authored_discovery_examples(group.get_name(), &sc_name) {
+            sc_obj.insert("examples".to_owned(), examples);
+        }
+
         subcommands.insert(sc_name, serde_json::Value::Object(sc_obj));
     }
 
     subcommands
+}
+
+/// Marked workflow steps own these examples; regenerated discovery must not
+/// preserve older invocations after the command's runtime guard contract changes.
+#[cfg(test)]
+fn authored_discovery_examples(group: &str, command: &str) -> Option<serde_json::Value> {
+    let content = match (group, command) {
+        ("dataflow", "upgrade-gen1") => include_str!("data/workflows/gen1_upgrade_execution.json"),
+        _ => return None,
+    };
+    let workflow: serde_json::Value =
+        serde_json::from_str(content).expect("valid discovery workflow");
+    let examples: Vec<_> = workflow["steps"]
+        .as_array()
+        .expect("workflow steps")
+        .iter()
+        .filter(|step| step["discovery_example"] == true)
+        .map(|step| step["command"].as_str().expect("discovery example command"))
+        .collect();
+    assert_ne!(
+        examples.len(),
+        0,
+        "Canonical discovery workflow has no marked examples"
+    );
+    Some(serde_json::json!(examples))
 }
 
 /// Generate flag entries for a single subcommand from clap arg metadata.
@@ -1927,6 +1956,35 @@ mod tests {
             properties.get("x").and_then(|prop| prop.get("type")),
             Some(&serde_json::json!("number"))
         );
+    }
+
+    #[test]
+    fn authored_gen1_examples_replace_stale_annotations_without_losing_semantics() {
+        let group = clap::Command::new("dataflow")
+            .subcommand(clap::Command::new("upgrade-gen1"))
+            .subcommand(clap::Command::new("list"));
+        let existing = serde_json::json!({"subcommands":{
+            "upgrade-gen1":{"mutates":true,"destructive":true,"async":true,"returns":"object",
+                "examples":["fabio dataflow upgrade-gen1 --workspace $WS --id $DF1", "fabio dataflow upgrade-gen1 --workspace $WS --id $DF1 --dry-run"]},
+            "list":{"mutates":false,"returns":"list","examples":["fabio dataflow list --workspace $WS"]}
+        }});
+        let generated = generate_subcommands(&group, Some(&existing));
+        let upgrade = &generated["upgrade-gen1"];
+        assert_eq!(
+            upgrade["examples"],
+            authored_discovery_examples("dataflow", "upgrade-gen1").unwrap()
+        );
+        for field in ["mutates", "destructive", "async", "returns"] {
+            assert_eq!(
+                upgrade[field],
+                existing["subcommands"]["upgrade-gen1"][field]
+            );
+        }
+        assert_eq!(
+            generated["list"]["examples"],
+            existing["subcommands"]["list"]["examples"]
+        );
+        assert!(authored_discovery_examples("dataflow", "list").is_none());
     }
 
     /// Regenerate `commands.json` from clap metadata.

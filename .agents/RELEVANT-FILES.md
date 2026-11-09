@@ -329,7 +329,7 @@
 - `src/commands/deploy/identities.rs`: plan-bearing per-item namespace bootstrap for fresh creations and read-only conflict checks for existing targets
 - `tests/e2e_deployment_plan_integration.rs`: offline CLI validation, export/rename metadata identity, per-item create/update wire behavior, and no-mutation mismatch guard regressions
 - `tests/README.md`: deployment/governance live-test prerequisites, scoped run commands, safety, and coverage boundaries
-- `src/commands/context/recipe_tests.rs`: hermetic clap-contract tests for selected published BI workflow, schema, and output examples (test-only shell-word parsing, no execution)
+- `src/commands/context/recipe_tests.rs`: hermetic clap-contract tests for selected published workflows, schemas, output and discovery examples; Gen1 runtime safety-flag checks supplement syntax parsing (no execution)
 - `src/commands/context/data/best_practices/bi_creation.json`: canonical BI creation-mode decisions, readiness, source compatibility, and safe-recovery guidance
 - `tests/e2e_bi_guidance.rs`: runtime discovery, definition-free native recipe wire contracts, and offline report-creation example regressions
 - `docs/src/content/docs/guides/bi-creation.md`: user-facing guide to native/generated/authored models, query readiness, report shells, and PBIR authoring
@@ -341,7 +341,7 @@
 - `src/commands/remediation.rs`: pure shared inspection/review/remediation builders, guarded preview/missing-input contracts, metadata-preserving error enrichment, and CLI-parser unit tests
 - `src/commands/dataflow/gen1.rs`: bounded workspace Gen1 assessment, conservative selected-ID evidence parsing and review-only plan/previews; no upgrade execution
 - `src/commands/dataflow/execution.rs`: approval/readiness guards, single-attempt receipts, operation-header validation, exact per-item result parsing, scoped GET-only follow and safe local caching
-- `tests/e2e_gen1_execution.rs`: isolated-ledger approval/readonly/scope guards, one-POST errors, accepted unreadable/body-deadline preservation, partial-success and exact-scope observation regressions
+- `tests/e2e_gen1_execution.rs`: isolated-ledger approval/readonly/scope guards, workflow-backed discovery examples and offline previews, one-POST errors, accepted unreadable/body-deadline preservation, partial-success and exact-scope observation regressions
 - `src/commands/context/data/best_practices/gen1_upgrade_execution.json`, `src/commands/context/data/workflows/gen1_upgrade_execution.json`, `src/commands/context/data/examples/dataflow_follow_upgrade.json`, `docs/src/content/docs/guides/gen1-upgrade-execution.md`: execution/receipt safety knowledge, recipe, output shape and user guide
 - `tests/e2e_gen1_planning.rs`: explicit/offline scope, guarded batch preview, reason/severity, missing/partial/duplicate/error/scope, pagination, redaction and deadline regressions
 - `src/commands/context/data/best_practices/gen1_upgrade_planning.json`, `src/commands/context/data/workflows/gen1_upgrade_review.json`, `src/commands/context/data/examples/dataflow_plan_upgrade.json`, `docs/src/content/docs/guides/gen1-upgrade-planning.md`: canonical Gen1 review knowledge, guarded recipe, structured response and user guide

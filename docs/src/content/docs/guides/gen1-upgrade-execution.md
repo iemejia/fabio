@@ -27,6 +27,11 @@ fresh, complete, all-ready assessment of the selected IDs. Missing, attention,
 unknown or partial results block **before POST**. `--all`/`--force` cannot bypass
 the gate. Repeat `--id` for 1–50 distinct non-zero UUIDs, all in one workspace.
 
+Examples in `fabio context agent` and `fabio context describe dataflow upgrade-gen1`
+reuse the execution workflow's guarded preview and explicitly authorized submission
+steps. Checks validate both CLI syntax and safety flags; a published example is
+still not approval to execute it.
+
 The service assesses all workspace Gen1 items. Assessment defaults are 3 pages
 and 90 rows, including unselected rows, at page size 30. You can explicitly set
 `--assessment-page-limit` (maximum 20) and `--assessment-row-limit` (maximum 600).
