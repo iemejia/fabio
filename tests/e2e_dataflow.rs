@@ -169,6 +169,32 @@ async fn dataflow_upgrade_maximum_batch_respects_request_size_limit() {
         .map(|id| uuid::Uuid::from_u128(id).to_string())
         .collect();
     let body = serde_json::json!({"dataflows": ids[..50].iter().map(|id| serde_json::json!({"id": id})).collect::<Vec<_>>()});
+    let home = tempfile::TempDir::new().unwrap();
+    for (part, token) in [(0, None), (1, Some("more"))] {
+        let start = part * 30;
+        let end = (start + 30).min(50);
+        let mut mock = Mock::given(method("GET")).and(path(format!(
+            "/workspaces/{workspace}/dataflows/gen1UpgradeReadinessResults"
+        )));
+        mock = match token {
+            Some(token) => mock.and(wiremock::matchers::query_param("continuationToken", token)),
+            None => mock.and(wiremock::matchers::query_param_is_missing(
+                "continuationToken",
+            )),
+        };
+        let rows = ids[start..end]
+            .iter()
+            .map(|id| serde_json::json!({"id":id,"displayName":"mock","status":"ReadyToMigrate"}))
+            .collect::<Vec<_>>();
+        mock.respond_with(ResponseTemplate::new(200).set_body_json(if part == 0 {
+            serde_json::json!({"value":rows,"continuationToken":"more"})
+        } else {
+            serde_json::json!({"value":rows})
+        }))
+        .expect(1)
+        .mount(&server)
+        .await;
+    }
     // The count/UUID guards bound every valid request below the byte ceiling.
     assert!(serde_json::to_vec(&body).unwrap().len() <= 13_312);
     Mock::given(method("POST"))
@@ -177,14 +203,23 @@ async fn dataflow_upgrade_maximum_batch_respects_request_size_limit() {
         )))
         .and(body_json(body))
         .respond_with(
-            ResponseTemplate::new(200).set_body_json(serde_json::json!({"status": "Succeeded"})),
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"summary":{"totalCount":50,"succeededCount":50,"failedCount":0},"migrations":ids[..50].iter().map(|id|serde_json::json!({"dataflowId":id,"workspaceId":workspace,"dataflowName":"mock","workspaceName":"mock","targetDataflowName":"mock","assessmentStatus":"ReadyToMigrate","migrationStatus":"Succeeded"})).collect::<Vec<_>>() })),
         )
         .expect(1)
         .mount(&server)
         .await;
     for (count, dry_run) in [(50, false), (51, false), (51, true)] {
         let mut command = common::mock_fabio(&server);
-        command.args(["dataflow", "upgrade-gen1", "--workspace", workspace]);
+        command
+            .env("HOME", home.path())
+            .env("USERPROFILE", home.path());
+        command.args([
+            "dataflow",
+            "upgrade-gen1",
+            "--workspace",
+            workspace,
+            "--allow-in-place-upgrade",
+        ]);
         for id in &ids[..count] {
             command.args(["--id", id]);
         }
@@ -193,7 +228,7 @@ async fn dataflow_upgrade_maximum_batch_respects_request_size_limit() {
         }
         if count == 50 {
             let output = command.assert().success();
-            assert_eq!(parse_json(&output)["data"]["status"], "Succeeded");
+            assert_eq!(parse_json(&output)["data"]["completionStatus"], "succeeded");
         } else {
             let output = command.assert().failure();
             let error: serde_json::Value =
@@ -201,7 +236,7 @@ async fn dataflow_upgrade_maximum_batch_respects_request_size_limit() {
             assert_eq!(error["error"]["code"], "INVALID_INPUT");
         }
     }
-    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+    assert_eq!(server.received_requests().await.unwrap().len(), 3);
 }
 
 #[test]
@@ -223,12 +258,15 @@ fn dataflow_upgrade_gen1_rejects_invalid_id() {
 #[test]
 #[serial]
 fn dataflow_upgrade_gen1_renders_immediate_response() {
+    let home = tempfile::TempDir::new().unwrap();
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap();
     let (server_uri, _server) = rt.block_on(async {
         let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/workspaces/aaaaaaaa-1111-2222-3333-444444444444/dataflows/gen1UpgradeReadinessResults"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"value":[{"id":"6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b","displayName":"mock","status":"ReadyToMigrate"}]}))).mount(&server).await;
         Mock::given(method("POST"))
             .and(path(
                 "/workspaces/aaaaaaaa-1111-2222-3333-444444444444/dataflows/gen1Upgrade",
@@ -237,8 +275,8 @@ fn dataflow_upgrade_gen1_renders_immediate_response() {
                 "dataflows": [{"id": "6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b"}]
             })))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "status": "Succeeded",
-                "summary": {"upgraded": 1}
+                "summary": {"totalCount":1,"succeededCount":1,"failedCount":0},
+                "migrations":[{"dataflowId":"6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b","workspaceId":"aaaaaaaa-1111-2222-3333-444444444444","dataflowName":"mock","workspaceName":"mock","targetDataflowName":"mock","assessmentStatus":"ReadyToMigrate","migrationStatus":"Succeeded"}]
             })))
             .mount(&server)
             .await;
@@ -246,11 +284,14 @@ fn dataflow_upgrade_gen1_renders_immediate_response() {
     });
 
     let output = fabio()
+        .env("HOME", home.path())
+        .env("USERPROFILE", home.path())
         .env("FABIO_ACCESS_TOKEN", "fake-test-token")
         .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
         .args([
             "dataflow",
             "upgrade-gen1",
+            "--allow-in-place-upgrade",
             "--workspace",
             "aaaaaaaa-1111-2222-3333-444444444444",
             "--id",
@@ -260,46 +301,55 @@ fn dataflow_upgrade_gen1_renders_immediate_response() {
         .success();
     let json = parse_json(&output);
     let data = extract_data(&json);
-    assert_eq!(data["summary"]["upgraded"], 1);
+    assert_eq!(data["result"]["summary"]["succeededCount"], 1);
 }
 
 #[test]
 #[serial]
 fn dataflow_upgrade_gen1_polls_accepted_response() {
+    let home = tempfile::TempDir::new().unwrap();
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap();
     let (server_uri, _server) = rt.block_on(async {
         let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/workspaces/aaaaaaaa-1111-2222-3333-444444444444/dataflows/gen1UpgradeReadinessResults"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"value":[{"id":"6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b","displayName":"mock","status":"ReadyToMigrate"}]}))).mount(&server).await;
         Mock::given(method("POST"))
             .and(path(
                 "/workspaces/aaaaaaaa-1111-2222-3333-444444444444/dataflows/gen1Upgrade",
             ))
             .respond_with(
                 ResponseTemplate::new(202)
-                    .insert_header("x-ms-operation-id", "upgrade-operation")
+                    .insert_header("x-ms-operation-id", "dddddddd-1111-2222-3333-444444444444")
                     .insert_header("retry-after", "0"),
             )
             .mount(&server)
             .await;
         Mock::given(method("GET"))
-            .and(path("/operations/upgrade-operation"))
+            .and(path("/operations/dddddddd-1111-2222-3333-444444444444"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "status": "Succeeded",
                 "summary": {"upgraded": 1}
             })))
             .mount(&server)
             .await;
+        Mock::given(method("GET")).and(path("/operations/dddddddd-1111-2222-3333-444444444444/result"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"summary":{"totalCount":1,"succeededCount":1,"failedCount":0},"migrations":[{"dataflowId":"6b1f3d2e-8a4c-4b6e-9f1a-2c3d4e5f6a7b","workspaceId":"aaaaaaaa-1111-2222-3333-444444444444","dataflowName":"mock","workspaceName":"mock","targetDataflowName":"mock","assessmentStatus":"ReadyToMigrate","migrationStatus":"Succeeded"}]}))).mount(&server).await;
         (server.uri(), server)
     });
 
     let output = fabio()
+        .env("HOME", home.path())
+        .env("USERPROFILE", home.path())
         .env("FABIO_ACCESS_TOKEN", "fake-test-token")
         .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
         .args([
             "dataflow",
             "upgrade-gen1",
+            "--allow-in-place-upgrade",
+            "--wait",
             "--workspace",
             "aaaaaaaa-1111-2222-3333-444444444444",
             "--id",
@@ -309,7 +359,7 @@ fn dataflow_upgrade_gen1_polls_accepted_response() {
         .success();
     let json = parse_json(&output);
     let data = extract_data(&json);
-    assert_eq!(data["status"], "Succeeded");
+    assert_eq!(data["completionStatus"], "succeeded");
 }
 
 #[test]

@@ -88,6 +88,7 @@ variables; never commit them or publish raw tenant output.
 | `FABIO_TEST_CONNECTION_PRINCIPAL_ID` | Explicitly approved **other** principal to receive temporary ownership of a newly created anonymous Web connection. Never an arbitrary discovered tenant user. |
 | `FABIO_TEST_CONNECTION_PRINCIPAL_TYPE` | `User` or `ServicePrincipal` for that recipient. |
 | `FABIO_TEST_GEN1_DATAFLOW_ID` | Explicitly approved existing Gen1 dataflow for GET-only planning and offline previews. Its workspace-wide Gen1 assessment is read within bounds; no upgrade or refresh runs. |
+| `FABIO_TEST_ALLOW_GEN1_UPGRADE` | Must be exactly `true` ONLY for explicit approval of one irreversible upgrade of a fresh disposable test-owned Gen1 fixture. Never set this for arbitrary existing items. |
 
 The admin-connection tests require tenant-level Fabric Administrator access;
 workspace or capacity administration alone is not sufficient. The pipeline test
@@ -143,6 +144,9 @@ cargo test --test e2e_deployment_governance live_admin_connection_hygiene_is_rea
 
 # GET-only Gen1 assessment/metadata; original definition must remain unchanged
 cargo test --test e2e_deployment_governance live_gen1_upgrade_plan_preserves_the_original_dataflow -- --ignored --test-threads=1
+
+# ONLY with separate explicit approval and a fresh disposable owned fixture
+cargo test --test e2e_deployment_governance live_gen1_upgrade_receipt_is_exact_scope_and_submit_once -- --ignored --test-threads=1
 
 # KQL dashboard creation/read/delete after the response-header spec change
 cargo test --test e2e_deployment_governance live_kql_dashboard_ -- --ignored
@@ -232,6 +236,13 @@ cargo test --test e2e_deployment_governance -- --ignored --test-threads=1
   the fixture. Test fixture creation via Power BI model.json import requires
   separate user approval and test-owned cleanup; it is not an automatic step of
   the planner or of the existing-fixture live test.
+- The Gen1 execution test requires an additional explicit irreversible-upgrade
+  approval variable and a fresh disposable fixture. It invokes upgrade ONCE,
+  observes the same local receipt, validates exact per-item scope and checks the
+  resulting Gen2 metadata without refreshing or changing consumers. Never retry
+  this test after uncertain submission just to get a successful run. Keep the
+  owned resource/receipt for investigation if acceptance or completion is
+  unknown; cleanup is separately scoped to test-created resources.
 - Non-empty plan fixtures use only isolated Wait/Fail data-pipeline jobs. The
   source items receive logical IDs before plans reference them, using the existing
   item metadata API only on items freshly created by that test. Job history proves

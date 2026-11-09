@@ -14,7 +14,7 @@ use crate::cli::Cli;
 use crate::client::FabricClient;
 use crate::commands::connection::hygiene::{parse_date, parse_ts};
 use crate::commands::diagnostics::{
-    Check, PageCursor, ReadBudget, Status, error_evidence, id, summary, uuid_target,
+    Check, PageCursor, ReadBudget, Status, error_evidence, has_error, id, summary, uuid_target,
 };
 use crate::commands::remediation::{self, RecoveryHint};
 use crate::errors::{ErrorCode, FabioError, HintType, enrich_admin};
@@ -30,12 +30,6 @@ struct Scan {
     error: Option<Value>,
     #[serde(skip)]
     rows: Vec<Value>,
-}
-
-fn has_error(body: &Value) -> bool {
-    ["error", "errorCode"]
-        .iter()
-        .any(|field| body.get(*field).is_some_and(|value| !value.is_null()))
 }
 
 async fn scan(

@@ -603,6 +603,11 @@ assessment and selected-ID review plans without executing upgrades. Service
 readiness is not consumer compatibility, historic-data preservation or approval;
 guarded previews remain blocked. See [Gen1 upgrade planning](https://ismaelmejia.com/fabio/guides/gen1-upgrade-planning/).
 
+After separate explicit approval, `upgrade-gen1 --allow-in-place-upgrade` now
+rechecks readiness and submits exactly once, retaining a local scoped receipt.
+`follow-upgrade` observes that receipt without resubmitting or refreshing data.
+See [Gen1 execution receipts](https://ismaelmejia.com/fabio/guides/gen1-upgrade-execution/).
+
 Use `fabio context describe <group> <command>` for examples of any specific command. Use `fabio context workflow <name>` for multi-step recipes. Available workflows:
 
 - `lakehouse-etl` -- Lakehouse + notebook + load-table + schedule

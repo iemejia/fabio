@@ -1639,6 +1639,83 @@ fn live_gen1_upgrade_plan_preserves_the_original_dataflow() {
 }
 
 #[test]
+#[ignore = "requires explicit approval for one irreversible upgrade of a fresh disposable Gen1 fixture; no refresh"]
+fn live_gen1_upgrade_receipt_is_exact_scope_and_submit_once() {
+    assert!(
+        std::env::var("FABIO_TEST_ALLOW_GEN1_UPGRADE").is_ok_and(|value| value == "true"),
+        "explicit isolated irreversible-upgrade approval is required"
+    );
+    let workspace =
+        std::env::var("FABIO_TEST_SOURCE_WORKSPACE").expect("owned workspace fixture required");
+    let id = std::env::var("FABIO_TEST_GEN1_DATAFLOW_ID").expect("owned Gen1 fixture required");
+    assert!(
+        uuid::Uuid::parse_str(&workspace).is_ok_and(|id| !id.is_nil())
+            && uuid::Uuid::parse_str(&id).is_ok_and(|id| !id.is_nil()),
+        "fixture scope must be non-zero UUIDs; details withheld"
+    );
+    let preview = run(&[
+        "--readonly",
+        "dataflow",
+        "upgrade-gen1",
+        "--workspace",
+        &workspace,
+        "--id",
+        &id,
+        "--dry-run",
+    ]);
+    assert_eq!(preview["data"]["destructive"], true);
+    // EXACTLY ONE execution invocation. Do not retry this call on failure.
+    let receipt = run(&[
+        "dataflow",
+        "upgrade-gen1",
+        "--workspace",
+        &workspace,
+        "--id",
+        &id,
+        "--allow-in-place-upgrade",
+        "--wait",
+        "--timeout",
+        "300",
+    ]);
+    assert_eq!(receipt["data"]["completionStatus"], "succeeded");
+    assert_reference(&receipt["data"]["workspaceId"], &workspace);
+    assert_reference(
+        &receipt["data"]["result"]["migrations"][0]["dataflowId"],
+        &id,
+    );
+    assert_eq!(receipt["data"]["result"]["summary"]["totalCount"], 1);
+    assert_eq!(receipt["data"]["retryAllowed"], false);
+    let local = field(&receipt["data"], "receiptId");
+    let follow = run(&[
+        "--readonly",
+        "dataflow",
+        "follow-upgrade",
+        "--receipt-id",
+        &local,
+        "--timeout",
+        "60",
+    ]);
+    assert_eq!(follow["data"]["completionStatus"], "succeeded");
+    assert_reference(
+        &follow["data"]["result"]["migrations"][0]["workspaceId"],
+        &workspace,
+    );
+    let item = run(&[
+        "--readonly",
+        "dataflow",
+        "show",
+        "--workspace",
+        &workspace,
+        "--id",
+        &id,
+    ]);
+    assert_reference(&item["data"]["id"], &id);
+    let ledger = run(&["--readonly", "jobs", "get", "--id", &local]);
+    assert_reference(&ledger["data"]["target_ids"][0], &id);
+    assert_eq!(ledger["data"]["kind"], "gen1-upgrade");
+}
+
+#[test]
 #[ignore = "requires live tenant and source workspace; creates a Delta/semantic-model fixture but never runs a credential test"]
 fn live_connection_diagnostics_item_references_are_scoped() {
     let workspace = required_env("FABIO_TEST_SOURCE_WORKSPACE");

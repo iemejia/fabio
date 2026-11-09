@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+mod execution;
 mod gen1;
 
 use anyhow::Result;
@@ -223,6 +224,33 @@ pub enum DataflowCommand {
         /// Gen1 dataflow ID to upgrade (repeat for each dataflow; maximum 50)
         #[arg(long = "id", required = true, action = clap::ArgAction::Append)]
         ids: Vec<String>,
+        /// Explicitly authorize irreversible in-place replacement AFTER review; does not bypass readiness
+        #[arg(long)]
+        allow_in_place_upgrade: bool,
+        /// Observe the same submitted operation to completion (never resubmits)
+        #[arg(long)]
+        wait: bool,
+        /// Total seconds for readiness, the single submission and optional completion reads
+        #[arg(long, default_value = "120", value_parser = clap::value_parser!(u64).range(1..=600))]
+        timeout: u64,
+        /// Maximum workspace assessment pages before submission
+        #[arg(long, default_value = "3", value_parser = clap::value_parser!(u8).range(1..=20))]
+        assessment_page_limit: u8,
+        /// Maximum workspace assessment rows, including unselected dataflows
+        #[arg(long, default_value = "90", value_parser = clap::value_parser!(u16).range(1..=600))]
+        assessment_row_limit: u16,
+    },
+    /// Observe an existing Gen1 upgrade receipt with GET-only exact-scope result checks; never submit or cancel
+    FollowUpgrade {
+        /// Local receipt ID returned by upgrade-gen1 (not a transport trace ID)
+        #[arg(long)]
+        receipt_id: String,
+        /// Continue bounded observation while this same operation is running
+        #[arg(long)]
+        wait: bool,
+        /// Total seconds for completion reads
+        #[arg(long, default_value = "120", value_parser = clap::value_parser!(u64).range(1..=600))]
+        timeout: u64,
     },
     /// Execute a query against a dataflow (returns Apache Arrow IPC)
     #[command(visible_alias = "query", display_order = 15)]
@@ -323,9 +351,33 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataflowCommand
             workspace,
             page_size,
         } => list_upgrade_readiness(cli, client, workspace, *page_size).await,
-        DataflowCommand::UpgradeGen1 { workspace, ids } => {
-            upgrade_gen1(cli, client, workspace, ids).await
+        DataflowCommand::UpgradeGen1 {
+            workspace,
+            ids,
+            allow_in_place_upgrade,
+            wait,
+            timeout,
+            assessment_page_limit,
+            assessment_row_limit,
+        } => {
+            execution::submit(
+                cli,
+                client,
+                workspace,
+                ids,
+                *allow_in_place_upgrade,
+                *wait,
+                *timeout,
+                *assessment_page_limit,
+                *assessment_row_limit,
+            )
+            .await
         }
+        DataflowCommand::FollowUpgrade {
+            receipt_id,
+            wait,
+            timeout,
+        } => execution::follow(cli, client, receipt_id, *wait, *timeout).await,
         DataflowCommand::PlanUpgrade {
             workspace,
             ids,
@@ -436,11 +488,25 @@ fn build_upgrade_gen1_body(ids: &[String]) -> Result<Value> {
         )
         .into());
     }
-    for id in ids {
-        validate_uuid(id, "--id")?;
+    let parsed: Vec<_> = ids
+        .iter()
+        .map(|id| crate::commands::diagnostics::uuid_target(id, "--id"))
+        .collect::<Result<_>>()?;
+    if parsed
+        .iter()
+        .copied()
+        .collect::<std::collections::HashSet<_>>()
+        .len()
+        != parsed.len()
+    {
+        return Err(FabioError::new(
+            ErrorCode::InvalidInput,
+            "Duplicate Gen1 upgrade IDs are not allowed",
+        )
+        .into());
     }
     let body = serde_json::json!({
-        "dataflows": ids.iter().map(|id| serde_json::json!({"id": id})).collect::<Vec<_>>()
+        "dataflows": parsed.iter().map(|id| serde_json::json!({"id": id.to_string()})).collect::<Vec<_>>()
     });
     validate_upgrade_gen1_request_size(serde_json::to_vec(&body)?.len())?;
     Ok(body)
@@ -457,38 +523,6 @@ fn validate_upgrade_gen1_request_size(size: usize) -> Result<()> {
         )
         .into());
     }
-    Ok(())
-}
-
-async fn upgrade_gen1(
-    cli: &Cli,
-    client: &FabricClient,
-    workspace: &str,
-    ids: &[String],
-) -> Result<()> {
-    validate_uuid(workspace, "--workspace")?;
-    let body = build_upgrade_gen1_body(ids)?;
-    if output::dry_run_guard(
-        cli,
-        "dataflow upgrade-gen1",
-        &serde_json::json!({
-            "workspace": workspace,
-            "dataflows": body["dataflows"],
-            "count": ids.len()
-        }),
-    ) {
-        return Ok(());
-    }
-
-    let data = client
-        .post(
-            &format!("/workspaces/{workspace}/dataflows/gen1Upgrade"),
-            &body,
-            true,
-        )
-        .await
-        .map_err(|e| enrich_forbidden(e, "dataflow upgrade-gen1", "Admin or item owner"))?;
-    output::render_object(cli, &data, "summary");
     Ok(())
 }
 

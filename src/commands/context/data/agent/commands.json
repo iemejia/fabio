@@ -10848,6 +10848,26 @@
             },
             "required": true,
             "description": "Gen1 dataflow ID to upgrade (repeat for each dataflow; maximum 50)"
+          },
+          "--allow-in-place-upgrade": {
+            "type": "bool",
+            "description": "Explicitly authorize irreversible in-place replacement AFTER review; does not bypass readiness"
+          },
+          "--wait": {
+            "type": "bool",
+            "description": "Observe the same submitted operation to completion (never resubmits)"
+          },
+          "--timeout": {
+            "type": "integer",
+            "description": "Total seconds for readiness, the single submission and optional completion reads"
+          },
+          "--assessment-page-limit": {
+            "type": "integer",
+            "description": "Maximum workspace assessment pages before submission"
+          },
+          "--assessment-row-limit": {
+            "type": "integer",
+            "description": "Maximum workspace assessment rows, including unselected dataflows"
           }
         },
         "mutates": true,
@@ -10858,6 +10878,26 @@
           "fabio dataflow upgrade-gen1 --workspace $WS --id $DF1 --id $DF2 --dry-run",
           "fabio dataflow upgrade-gen1 --workspace $WS --id $DF1"
         ]
+      },
+      "follow-upgrade": {
+        "description": "Observe an existing Gen1 upgrade receipt with GET-only exact-scope result checks; never submit or cancel",
+        "flags": {
+          "--receipt-id": {
+            "type": "string",
+            "required": true,
+            "description": "Local receipt ID returned by upgrade-gen1 (not a transport trace ID)"
+          },
+          "--wait": {
+            "type": "bool",
+            "description": "Continue bounded observation while this same operation is running"
+          },
+          "--timeout": {
+            "type": "integer",
+            "description": "Total seconds for completion reads"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
       },
       "execute-query": {
         "description": "Execute a query against a dataflow (returns Apache Arrow IPC)",

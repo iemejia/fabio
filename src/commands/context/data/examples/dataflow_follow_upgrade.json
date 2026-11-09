@@ -1,0 +1,13 @@
+{
+  "command": "fabio --wrap-untrusted --readonly dataflow follow-upgrade --receipt-id $RECEIPT_ID --wait --timeout 120",
+  "description": "GET-only observation of the same local scoped receipt. Result success is not refreshed/fresh Gen2 data.",
+  "response": {"data": {
+    "receiptId": "eeeeeeee-1111-2222-3333-444444444444", "workspaceId": "aaaaaaaa-1111-2222-3333-444444444444", "dataflowIds": ["bbbbbbbb-1111-2222-3333-444444444444"],
+    "submission": {"state": "accepted", "httpStatus": 202, "operationId": "dddddddd-1111-2222-3333-444444444444", "correlationStatus": "verified", "responseBodyStatus": "empty", "error": null},
+    "completionStatus": "succeeded", "result": {"summary": {"totalCount": 1, "succeededCount": 1, "failedCount": 0, "unknownCount": 0}, "migrations": [{"dataflowId": "bbbbbbbb-1111-2222-3333-444444444444", "workspaceId": "aaaaaaaa-1111-2222-3333-444444444444", "assessmentStatus": "ReadyToMigrate", "migrationStatus": "Succeeded", "migrationError": null, "requiredActionCodes": []}], "completionStatus": "succeeded"},
+    "observationReason": null, "source": "operation_read", "destructive": true, "retryAllowed": false, "cancellationSupported": false, "warnings": [],
+    "notChecked": ["Gen2 first refresh, loaded/fresh data, consumers and visuals", "source credentials, grants, storage/security modes and naming parity"]
+  }},
+  "notes": "No POST, refresh, cancellation, grant or consumer change runs. Exact workspace/IDs/counts are validated. Missing/unknown/conflicting results never become success; prior verified results remain local. Use the local receipt ID, not a trace UUID, latest history or an arbitrary URL.",
+  "query_examples": [{"query": "result.summary", "description": "Inspect verified per-item counts."}]
+}

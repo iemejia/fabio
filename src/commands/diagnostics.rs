@@ -71,6 +71,13 @@ pub fn error_evidence(error: &anyhow::Error) -> Value {
     )
 }
 
+/// Reject flat and wrapped error-bearing projections, including HTTP successes.
+pub fn has_error(body: &Value) -> bool {
+    ["error", "errorCode"]
+        .iter()
+        .any(|key| body.get(*key).is_some_and(|value| !value.is_null()))
+}
+
 pub fn summary<'a>(checks: impl IntoIterator<Item = &'a Check>) -> Status {
     summary_statuses(checks.into_iter().map(|check| check.status))
 }
@@ -114,6 +121,10 @@ impl ReadBudget {
 
     pub fn expired(&self) -> bool {
         Instant::now() >= self.0
+    }
+
+    pub fn remaining(&self) -> Duration {
+        self.0.saturating_duration_since(Instant::now())
     }
 
     /// Apply the SAME deadline to a semantically read-only query or probe.

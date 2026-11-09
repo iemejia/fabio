@@ -38,6 +38,7 @@ const AGENT_ENV_VARS: &[(&str, &str)] = &[
 /// when suggested in error hints.
 const DANGEROUS_FLAGS: &[&str] = &[
     "--allow-delete-types",
+    "--allow-in-place-upgrade",
     "--allow-override",
     "--allow-purge-data",
     "--allow-replace",

@@ -52,6 +52,24 @@ pub struct JobEntry {
     pub duration_secs: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub target_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submission_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http_status: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poll_interval_secs: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_body_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fabric_endpoint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correlation_evidence: Option<Value>,
 }
 
 impl JobEntry {
@@ -66,6 +84,15 @@ impl JobEntry {
             completed_at: None,
             duration_secs: None,
             error: None,
+            target_ids: Vec::new(),
+            operation_id: None,
+            submission_state: None,
+            http_status: None,
+            result: None,
+            poll_interval_secs: None,
+            response_body_status: None,
+            fabric_endpoint: None,
+            correlation_evidence: None,
         }
     }
 }
@@ -110,6 +137,44 @@ impl JobLedger {
     }
 
     pub fn update(id: &str, status: &str, error: Option<&str>) -> Result<()> {
+        Self::edit(|entries| {
+            for entry in entries.iter_mut().filter(|entry| entry.id == id) {
+                entry.status = status.to_string();
+                entry.completed_at = Some(Utc::now().to_rfc3339());
+                if let (Ok(start), Some(end)) = (
+                    DateTime::parse_from_rfc3339(&entry.started_at),
+                    &entry.completed_at,
+                ) && let Ok(end) = DateTime::parse_from_rfc3339(end)
+                {
+                    entry.duration_secs = Some(
+                        end.signed_duration_since(start)
+                            .num_seconds()
+                            .unsigned_abs(),
+                    );
+                }
+                if let Some(error) = error {
+                    entry.error = Some(error.to_string());
+                }
+            }
+        })
+    }
+
+    /// Replace a receipt snapshot without falsely completing an accepted/running job.
+    pub fn replace(entry: &JobEntry) -> Result<()> {
+        Self::edit(|entries| {
+            if let Some(existing) = entries.iter_mut().find(|existing| existing.id == entry.id) {
+                existing.clone_from(entry);
+            } else {
+                entries.push(entry.clone());
+            }
+        })
+    }
+
+    pub fn find(id: &str) -> Result<Option<JobEntry>> {
+        Ok(Self::read_all()?.into_iter().find(|entry| entry.id == id))
+    }
+
+    fn edit(edit: impl FnOnce(&mut Vec<JobEntry>)) -> Result<()> {
         let path = Self::ledger_path();
         // Acquire exclusive lock for the read-modify-write operation
         #[cfg(unix)]
@@ -125,31 +190,9 @@ impl JobLedger {
         let lock_file = OpenOptions::new().create(true).append(true).open(&path)?;
         lock_file.lock_exclusive()?;
 
-        let entries = Self::read_all()?;
-        let updated: Vec<JobEntry> = entries
-            .into_iter()
-            .map(|mut e| {
-                if e.id == id {
-                    e.status = status.to_string();
-                    e.completed_at = Some(Utc::now().to_rfc3339());
-                    if let (Ok(start), Some(end_str)) =
-                        (DateTime::parse_from_rfc3339(&e.started_at), &e.completed_at)
-                        && let Ok(end) = DateTime::parse_from_rfc3339(end_str)
-                    {
-                        e.duration_secs = Some(
-                            end.signed_duration_since(start)
-                                .num_seconds()
-                                .unsigned_abs(),
-                        );
-                    }
-                    if let Some(err) = error {
-                        e.error = Some(err.to_string());
-                    }
-                }
-                e
-            })
-            .collect();
-        Self::write_all(&updated)?;
+        let mut entries = Self::read_all()?;
+        edit(&mut entries);
+        Self::write_all(&entries)?;
 
         // Lock released on drop
         drop(lock_file);
@@ -265,7 +308,12 @@ fn prune(cli: &Cli, include_running: bool) -> Result<()> {
     } else {
         entries
             .into_iter()
-            .filter(|e| e.status == "running")
+            .filter(|e| {
+                matches!(
+                    e.status.as_str(),
+                    "running" | "preparing" | "accepted" | "unknown"
+                )
+            })
             .collect()
     };
     let pruned = before_count - remaining.len();
@@ -278,4 +326,19 @@ fn prune(cli: &Cli, include_running: bool) -> Result<()> {
     });
     output::render_object(cli, &obj, "status");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn legacy_job_records_do_not_invent_batch_targets_or_operation_identity() {
+        let value = json!({"id":"old","kind":"notebook","status":"running","workspace":"mock","item_id":"mock","started_at":"2026-01-01T00:00:00Z"});
+        let entry: JobEntry = serde_json::from_value(value).unwrap();
+        assert_eq!(entry.target_ids.len(), 0);
+        assert!(entry.operation_id.is_none());
+        assert!(entry.result.is_none());
+        assert!(entry.fabric_endpoint.is_none());
+    }
 }

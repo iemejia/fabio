@@ -51,6 +51,16 @@ const MAX_ERROR_BODY_LEN: usize = 500;
 /// a separate code path without this limit.
 const MAX_API_RESPONSE_SIZE: u64 = 50 * 1024 * 1024;
 
+fn submission_timeout() -> FabioError {
+    FabioError::with_typed_hint(
+        ErrorCode::Timeout,
+        "Fabric submission reached its deadline; acceptance may be unknown.",
+        "Preserve the receipt and inspect the existing operation. Do not automatically resubmit.",
+        crate::errors::HintType::SemanticCorrection,
+    )
+    .set_retriable(Some(false))
+}
+
 /// A successful Power BI acknowledgement, including headers needed to correlate
 /// asynchronous work. `body: None` means the SUCCESS body could not be decoded;
 /// it must not turn an acknowledged mutation into a retryable submission error.
@@ -58,6 +68,15 @@ pub struct PowerBiAcknowledgement {
     pub status: StatusCode,
     pub headers: HeaderMap,
     pub body: Option<Value>,
+}
+
+/// One Fabric submission response. Status/header evidence survives unreadable
+/// bodies; `error` never authorizes replaying the request.
+pub struct FabricSubmissionResponse {
+    pub status: StatusCode,
+    pub headers: HeaderMap,
+    pub body: Option<Value>,
+    pub error: Option<anyhow::Error>,
 }
 
 // ── Base URL defaults (overridable via environment variables) ─────────────
@@ -1510,6 +1529,52 @@ impl FabricClient {
     pub async fn post(&self, path: &str, body: &Value, poll: bool) -> Result<Value> {
         self.guard_readonly("POST", path)?;
         self.post_impl(path, Some(body), poll).await
+    }
+
+    /// Exactly ONE guarded Fabric POST, including on 401/429/5xx. The deadline
+    /// covers authentication, submission and body reading. Never auto-polls or
+    /// follows response URLs. A success-body timeout preserves acknowledgement.
+    pub async fn post_fabric_once(
+        &self,
+        path: &str,
+        body: &Value,
+        timeout: Duration,
+    ) -> Result<FabricSubmissionResponse> {
+        self.guard_readonly("POST", path)?;
+        let deadline = tokio::time::Instant::now() + timeout;
+        let token = tokio::time::timeout_at(deadline, self.require_auth())
+            .await
+            .map_err(|_| submission_timeout())??;
+        let url = self.fabric_url(path);
+        verbose::trace_request("POST", &url, Some(&body.to_string()));
+        let start = std::time::Instant::now();
+        let response = tokio::time::timeout_at(deadline,
+            self.http.post(&url).header(AUTHORIZATION, &token).json(body).timeout(timeout).send())
+            .await.map_err(|_| submission_timeout())?
+            .map_err(|_| FabioError::with_typed_hint(
+                ErrorCode::NetworkError, "Fabric submission outcome is unknown.",
+                "Do not resubmit: the server may already have accepted this irreversible operation.",
+                crate::errors::HintType::SemanticCorrection).set_retriable(Some(false)))?;
+        let status = response.status();
+        let headers = response.headers().clone();
+        verbose::trace_response(status.as_u16(), &url, start.elapsed().as_millis());
+        let parsed = tokio::time::timeout_at(deadline, handle_response(response)).await;
+        let (body, error) = match parsed {
+            Ok(Ok(body)) => (Some(body), None),
+            Ok(Err(error)) => (None, Some(error)),
+            Err(_) => (None, Some(submission_timeout().into())),
+        };
+        Ok(FabricSubmissionResponse {
+            status,
+            headers,
+            body,
+            error,
+        })
+    }
+
+    /// Validated configured origin; acknowledgement URLs are compared, not followed.
+    pub fn fabric_endpoint(&self) -> String {
+        self.fabric_url("")
     }
 
     /// POST request to Fabric REST API without a request body.

@@ -55,9 +55,10 @@ Even a successful strict report has `readyToApply: false` and `applied: false`.
 The proposed plan is `destructive: true`, but the planner itself never mutates.
 It always retains approval and review blockers. An all-ready complete scan can
 offer a **preview** using both `--readonly` and `--dry-run`; do not remove them.
-The planner provides no guarded execution/correlated receipt workflow. That is a
-separate increment, not permission to invoke or blindly retry the existing
-low-level upgrade command. Verification snippets inspect item metadata only.
+The planner never executes. [Separate execution and receipt tracking](../gen1-upgrade-execution/)
+requires explicit approval and fresh all-ready assessment; a plan is not
+permission to invoke or blindly retry it. Verification snippets inspect item
+metadata only, not upgrade completion or loaded data.
 
 Before any separately approved upgrade, review:
 

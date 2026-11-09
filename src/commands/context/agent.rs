@@ -1657,7 +1657,10 @@ fn infer_mutates(cmd_name: &str) -> bool {
         "iceberg-",
         "table-schema",
     ];
-    if matches!(cmd_name, "connection-hygiene" | "plan-upgrade") {
+    if matches!(
+        cmd_name,
+        "connection-hygiene" | "plan-upgrade" | "follow-upgrade"
+    ) {
         return false;
     }
 

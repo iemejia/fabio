@@ -169,3 +169,31 @@ fn published_gen1_upgrade_review_recipes_are_guarded_and_parse_with_the_cli() {
         );
     });
 }
+
+#[test]
+fn published_gen1_execution_and_observation_use_supported_scoped_syntax() {
+    with_cli(|cli| {
+        for (name, content, count) in [
+            (
+                "gen1-upgrade-execution",
+                include_str!("data/workflows/gen1_upgrade_execution.json"),
+                4,
+            ),
+            (
+                "dataflow/upgrade-gen1",
+                include_str!("data/examples/dataflow_upgrade_gen1.json"),
+                1,
+            ),
+            (
+                "dataflow/follow-upgrade",
+                include_str!("data/examples/dataflow_follow_upgrade.json"),
+                1,
+            ),
+        ] {
+            assert_eq!(
+                validate_document(&cli, &serde_json::from_str(content).unwrap(), name),
+                count
+            );
+        }
+    });
+}

@@ -14,7 +14,8 @@ use uuid::Uuid;
 use crate::cli::Cli;
 use crate::client::FabricClient;
 use crate::commands::diagnostics::{
-    Check, PageCursor, ReadBudget, Status, error_evidence, id, summary, uuid_target,
+    Check, PageCursor, ReadBudget, Status, error_evidence, has_error as error_body, id, summary,
+    uuid_target,
 };
 use crate::commands::remediation::{Kind, RecoveryHint};
 use crate::errors::{ErrorCode, FabioError, HintType, enrich_forbidden};
@@ -22,26 +23,20 @@ use crate::output;
 
 #[derive(Default, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct Scan {
-    complete: bool,
+pub(super) struct Scan {
+    pub(super) complete: bool,
     pages: u8,
     rows_inspected: usize,
     reason: Option<&'static str>,
     error: Option<Value>,
     #[serde(skip)]
-    selected: HashMap<Uuid, Value>,
+    pub(super) selected: HashMap<Uuid, Value>,
     #[serde(skip)]
     duplicates: HashSet<Uuid>,
 }
 
-fn error_body(body: &Value) -> bool {
-    ["error", "errorCode"]
-        .iter()
-        .any(|key| body.get(*key).is_some_and(|value| !value.is_null()))
-}
-
 #[allow(clippy::too_many_arguments)]
-async fn assess(
+pub(super) async fn assess(
     client: &FabricClient,
     budget: &ReadBudget,
     workspace: Uuid,
@@ -219,14 +214,14 @@ fn guidance(code: &str) -> Option<(&'static str, &'static str, &'static str)> {
     })
 }
 
-struct Evidence {
-    status: Status,
+pub(super) struct Evidence {
+    pub(super) status: Status,
     reported: Option<&'static str>,
     reason: &'static str,
     reasons: Vec<Reason>,
 }
 
-fn parse_assessment(row: &Value, workspace: Uuid) -> Evidence {
+pub(super) fn parse_assessment(row: &Value, workspace: Uuid) -> Evidence {
     let mut result = Evidence {
         status: Status::Unknown,
         reported: None,
@@ -396,7 +391,7 @@ pub(super) async fn plan(
             "observedAt":Utc::now().to_rfc3339(),"scope":scope,"assessmentScan":scan,"status":status,
             "partial":!scan.complete || checks.iter().any(|check|check.status==Status::Unknown),"mutates":false,"destructive":true,"checks":checks,
             "reviewPlan":{"applied":false,"readyToApply":false,"requiresApproval":true,"destructive":true,"mode":"gen1_to_gen2_in_place","selectedCount":targets.len(),"allSelectedAssessmentsReady":all_ready,"guardedPreview":all_ready.then(||preview(workspace,&targets)),
-            "blockers":["explicit_approval_not_recorded","all_consumers_and_storage_security_not_verified","historical_data_backup_or_reload_not_verified","post_upgrade_refresh_and_consumer_validation_not_planned","guarded_execution_and_correlated_receipt_workflow_not_implemented_by_planner"]},
+            "blockers":["explicit_approval_not_recorded","all_consumers_and_storage_security_not_verified","historical_data_backup_or_reload_not_verified","post_upgrade_refresh_and_consumer_validation_not_planned","execution_receipt_not_created"]},
             "notChecked":["all Fabric, external, Desktop and Excel consumers or legacy connectors","actual DirectQuery consumers or approved storage-mode changes","source reloadability, cached history and backup","ownership, grants, capacity/tenant enablement, costs and permissions to upgrade","names, schedules, Gen2 destinations and incremental refresh handoff","upgrade submission, acceptance, completion and post-upgrade data"],
             "limitations":"GET-only bounded planning. The API evaluates all workspace Gen1 dataflows without ID filtering; only selected evidence is emitted. Successful in-place upgrades cannot be reverted and do not preserve cached data. No apply, conversion, import, grants, takeover, credentials, mode changes, refresh or blind upgrade retry occurs."
         }),
