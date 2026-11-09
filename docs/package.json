@@ -14,7 +14,7 @@
   },
   "type": "module",
   "dependencies": {
-    "@astrojs/starlight": "0.42.8",
+    "@astrojs/starlight": "0.42.10",
     "astro": "7.4.4",
     "starlight-blog": "0.30.2"
   },
