@@ -1523,6 +1523,79 @@ fn dataagent_upload_fewshots_dry_run() {
 }
 
 #[test]
+fn test_upload_topic_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "data-agent",
+            "upload-topic",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--datasource",
+            "sales",
+            "--file-name",
+            "business-rules.md",
+            "--content",
+            "# Business rules",
+        ])
+        .assert()
+        .success();
+    let json: serde_json::Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "data-agent upload-topic");
+    assert_eq!(json["data"]["details"]["fileName"], "business-rules.md");
+}
+
+#[test]
+fn test_delete_topic_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "data-agent",
+            "delete-topic",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--datasource",
+            "sales",
+            "--file-name",
+            "business-rules.md",
+        ])
+        .assert()
+        .success();
+    let json: serde_json::Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "data-agent delete-topic");
+}
+
+#[test]
+fn test_download_feedback_attachments_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "data-agent",
+            "download-feedback-attachments",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--feedback-id",
+            "feedback:opaque",
+            "--output-file",
+            "feedback.zip",
+            "--allow-download-without-sensitivity-label",
+        ])
+        .assert()
+        .success();
+    let json: serde_json::Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+    assert_eq!(
+        json["data"]["would_execute"],
+        "data-agent download-feedback-attachments"
+    );
+}
+
+#[test]
 fn dataagent_query_stage_sandbox_is_rejected() {
     // Querying the draft/sandbox stage is not supported via the public API and
     // must fail fast with a clear INVALID_INPUT error — before any network call,

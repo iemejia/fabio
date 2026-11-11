@@ -3499,6 +3499,44 @@ tests:
         value: "The response uses 'fabio data-agent add-fewshot' with --question for the natural-language question and --sql (or --answer) for the SQL query that answers it. The example query is carried in a flag, not in the global --query."
         metric: data-agent-fewshot-routing
 
+  - description: "Data agent: upload a staging datasource topic"
+    vars:
+      user_query: "Upload the Markdown topic sales-guidance.md to datasource source-1 in my data agent draft, preserving the ETag abc123"
+    assert:
+      - type: icontains
+        value: "data-agent upload-topic"
+      - type: javascript
+        value: |
+          output.includes('--source-id') && output.includes('--file') && output.includes('--if-match')
+        metric: data-agent-topic-flags
+
+  - description: "Share: create a producer-side share"
+    vars:
+      user_query: "Create a Microsoft Fabric Share item called Partner Sales in workspace $WS"
+    assert:
+      - type: icontains
+        value: "share create"
+      - type: icontains
+        value: "--name"
+
+  - description: "Share subscription: accept an invitation"
+    vars:
+      user_query: "Create a share subscription called Partner Feed from invitation URL https://app.fabric.microsoft.com/share/placeholder"
+    assert:
+      - type: icontains
+        value: "share-subscription create"
+      - type: icontains
+        value: "--invitation-url"
+
+  - description: "Custom stream connector: create from definition"
+    vars:
+      user_query: "Create a custom stream connector named Orders Stream from connector-definition.json"
+    assert:
+      - type: icontains
+        value: "custom-stream-connector create"
+      - type: icontains
+        value: "--definition-file"
+
   - description: "Activator: create a rule that alerts on a KQL condition"
     vars:
       user_query: "In my Activator, create a rule named Too Hot that emails ops@contoso.com when the Value column in my KQL database exceeds 20"

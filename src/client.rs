@@ -1430,6 +1430,38 @@ impl FabricClient {
         Ok(resp.text().await.unwrap_or_default())
     }
 
+    /// GET request returning raw bytes for binary downloads.
+    pub async fn get_bytes(&self, path: &str) -> Result<Vec<u8>> {
+        let token = self.require_auth().await?;
+        let url = self.fabric_url(path);
+        let mut resp = self
+            .http
+            .get(&url)
+            .header(AUTHORIZATION, &token)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            resp = self
+                .http
+                .get(&url)
+                .header(AUTHORIZATION, &token)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+        }
+        if !resp.status().is_success() {
+            return Err(error_from_failed_response(resp).await.into());
+        }
+        Ok(resp
+            .bytes()
+            .await
+            .map_err(|e| FabioError::api_error(format!("Failed to read response body: {e}")))?
+            .to_vec())
+    }
+
     /// GET a paginated list from Fabric REST API.
     ///
     /// When `paginate` is true, follows `continuationToken`/`continuationUri` until all pages are
@@ -1587,6 +1619,12 @@ impl FabricClient {
             .await
     }
 
+    /// Semantically read-only POST request without a request body.
+    pub async fn post_readonly_empty(&self, path: &str) -> Result<Value> {
+        self.post_impl(path, None, false, PostSemantics::ReadOnly)
+            .await
+    }
+
     /// POST request for a semantically read-only API such as query execution.
     pub async fn post_readonly(&self, path: &str, body: &Value) -> Result<Value> {
         self.post_impl(path, Some(body), false, PostSemantics::ReadOnly)
@@ -1722,6 +1760,48 @@ impl FabricClient {
         }
 
         handle_response(resp).await
+    }
+
+    /// Read-only POST whose successful result is raw text, with Fabric LRO polling.
+    pub async fn post_readonly_text(&self, path: &str) -> Result<String> {
+        let token = self.require_auth().await?;
+        let url = self.fabric_url(path);
+        let mut resp = self
+            .http
+            .post(&url)
+            .header(AUTHORIZATION, &token)
+            .send()
+            .await
+            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            resp = self
+                .http
+                .post(&url)
+                .header(AUTHORIZATION, &token)
+                .send()
+                .await
+                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+        }
+        if resp.status() == StatusCode::ACCEPTED {
+            let value = self.poll_lro(resp).await?;
+            return value.as_str().map_or_else(
+                || {
+                    Err(
+                        FabioError::api_error("Formatting completed without a Markdown result")
+                            .into(),
+                    )
+                },
+                |text| Ok(text.to_owned()),
+            );
+        }
+        if !resp.status().is_success() {
+            return Err(error_from_failed_response(resp).await.into());
+        }
+        resp.text()
+            .await
+            .map_err(|e| FabioError::api_error(format!("Failed to read response body: {e}")).into())
     }
 
     /// POST binary data with `application/octet-stream` content type (retries once on 401).
@@ -2099,15 +2179,31 @@ impl FabricClient {
 
     /// PUT request with raw text body (e.g., for file uploads requiring text/plain).
     pub async fn put_raw(&self, path: &str, content: &str) -> Result<Value> {
+        self.put_raw_with_if_match(path, content, None).await
+    }
+
+    /// PUT request with a Markdown body and optional optimistic-concurrency `ETag`.
+    pub async fn put_raw_with_if_match(
+        &self,
+        path: &str,
+        content: &str,
+        if_match: Option<&str>,
+    ) -> Result<Value> {
         self.guard_readonly("PUT", path)?;
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
-        let resp = self
+        let request = self
             .http
             .put(&url)
             .header(AUTHORIZATION, &token)
-            .header("Content-Type", "text/plain")
+            .header("Content-Type", "text/markdown");
+        let request = if let Some(etag) = if_match {
+            request.header("If-Match", etag)
+        } else {
+            request
+        };
+        let resp = request
             .body(content.to_owned())
             .send()
             .await
@@ -2116,19 +2212,25 @@ impl FabricClient {
         if resp.status() == StatusCode::UNAUTHORIZED {
             self.invalidate_fabric_token().await;
             let token = self.require_auth().await?;
-            let resp = self
+            let request = self
                 .http
                 .put(&url)
                 .header(AUTHORIZATION, &token)
-                .header("Content-Type", "text/plain")
+                .header("Content-Type", "text/markdown");
+            let request = if let Some(etag) = if_match {
+                request.header("If-Match", etag)
+            } else {
+                request
+            };
+            let resp = request
                 .body(content.to_owned())
                 .send()
                 .await
                 .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            return handle_response(resp).await;
+            return Self::merge_etag(resp).await;
         }
 
-        handle_response(resp).await
+        Self::merge_etag(resp).await
     }
 
     /// DELETE request to Fabric REST API (retries once on 401).
@@ -3218,8 +3320,13 @@ impl FabricClient {
                                         FabioError::new(ErrorCode::NetworkError, e.to_string())
                                     })?;
                                 if final_resp.status().is_success() {
-                                    let final_body: Value =
-                                        final_resp.json().await.unwrap_or(Value::Null);
+                                    let final_bytes = final_resp.bytes().await.unwrap_or_default();
+                                    let final_body: Value = serde_json::from_slice(&final_bytes)
+                                        .unwrap_or_else(|_| {
+                                            Value::from(
+                                                String::from_utf8_lossy(&final_bytes).into_owned(),
+                                            )
+                                        });
                                     if !final_body.is_null() {
                                         return Ok(final_body);
                                     }

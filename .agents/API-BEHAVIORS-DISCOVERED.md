@@ -3476,3 +3476,70 @@ implemented or confirmed to require no code change.
   Data Factory jobs (timing/coverage can differ). Recovery hints therefore describe
   observed policy records, not a guaranteed workload failure cause or guaranteed
   repair. Both the record and probe workspace were cleaned up.
+
+## Custom Stream Connector, Share, and Share Subscription item APIs (November 2026 spec)
+
+- **Custom Stream Connector**: workspace item CRUD uses
+  `/workspaces/{workspaceId}/customStreamConnectors`; list supports `recursive`,
+  `rootFolderId`, and continuation pagination. Create can include `folderId`,
+  sensitivity-label settings, and an optional public definition. Definitions use
+  `CustomStreamConnectorDefinitionV1`, with `connector.json`, optional
+  `resources/*`, `CustomConnectorPackages/*`, and `.platform` parts.
+  `getDefinition` accepts `format`; `updateDefinition` accepts `updateMetadata`.
+- **Share**: producer-side CRUD uses `/workspaces/{workspaceId}/shares` with the same
+  folder-scoped pagination. Its optional definition (`share.json` plus optional
+  `.platform`) contains assets, recipients, and policies. Fabric generates
+  `properties.invitationUrl`, `shareStatus`, and monotonically increasing
+  `shareVersion`; runtime properties are not exported by `getDefinition`.
+  Replacing the definition replaces the configured assets, recipients, and policies;
+  `updateMetadata` applies `.platform` metadata.
+- **Share Subscription**: consumer-side CRUD uses
+  `/workspaces/{workspaceId}/shareSubscriptions`; create requires
+  `creationPayload.invitationUrl` and supports optional folder/sensitivity-label
+  settings. It has no definition endpoints. Status values are `Pending`, `Active`,
+  `Revoked`, and `Expired`; `producerTenantDetails` is returned by get but omitted
+  from list. The APIs require the Share Subscription, external-share acceptance, and
+  Share Item tenant switches.
+
+## November 2026 Fabric REST parity behaviors
+
+- **Copy Job execute schedules** use
+  `/copyJobs/{id}/jobs/execute/schedules`; configuration is a complete `Cron`,
+  `Daily`, `Weekly`, or `Monthly` object. Execute instances can now be fetched
+  individually.
+- **Data Agent datasource topics** are `.md` files. Published topics are
+  read-only; staging supports list/download/upload/delete/format. Upload sends
+  raw `text/markdown` and an optional quoted `If-Match`. Format can be an LRO,
+  returns formatted Markdown, and does not modify the original.
+- **Data Agent feedback** requires exactly one `beta=true`, user delegated auth,
+  and write permission. Results may contain PII. Continuation tokens are opaque,
+  user/title-bound, valid for 24 hours, and must be sent without a body or page
+  size. Attachment downloads return ZIP bytes, strip sensitivity labels, and
+  require `allowDownloadWithoutSensitivityLabel=true`.
+- **Environment publish logs** return UTF-8 driver stdout for the latest
+  completed Spark-backed publish, successful or failed. Logs over exactly
+  50,000,000 bytes are truncated and end with the service marker.
+- **Eventstream source responses** add `BusinessEvents` and
+  `CustomStreamConnector`. Business Events advanced-filter operators are 19
+  PascalCase discriminator values; preserve their casing.
+- **Actor auto-detection rules** live under capacity surge protection and
+  currently target `AllWorkspaces` only. Threshold is 1-100 percent over a
+  rolling 24-hour window; blocks are `Hours` (at least 1) or `Indefinite`.
+  Deleting a rule does not clear actors already blocked by it.
+- **OneLake file soft-delete** enablement requires 1-365 retention days.
+  Disabling drops the configured retention for future use and makes subsequent
+  deletes permanent, while already soft-deleted files keep their expiry.
+  Mirrored-item retention is unaffected. `fileSoftDelete` can be omitted from a
+  successful settings response when the feature/backend lookup is unavailable.
+- **Warehouse definitions** now support `dacpac` and `sqlproj` (`sqlproj`
+  default) for create/get/update. Create cannot combine `definition` with
+  `creationPayload`. Every definition part requires `path`, `payload`, and
+  `payloadType`.
+- **Mirrored Catalog discovery/status APIs are GA** and no longer take
+  `beta=true`.
+- **Domains are GA-only**: the old preview domain definitions/endpoints were
+  removed. Domain limits are documented per minute per principal.
+- **Platform principal references no longer expose `objectType`**; Fabio did not
+  model that removed response-only field.
+- New and updated APIs consistently document `429` with `Retry-After`; Fabio's
+  shared HTTP client already performs bounded rate-limit retry.

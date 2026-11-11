@@ -2,18 +2,18 @@ use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::commands::{
     admin, anomaly_detector, apache_airflow_job, app_backend, auth, azure_databricks_storage,
-    capacity, catalog, connection, context, copy_job, cosmos_db_database, dashboard,
-    data_build_tool_job, data_pipeline, dataagent, dataflow, datamart, deploy, deployment_pipeline,
-    deployment_plan, digital_twin_builder, digital_twin_builder_flow, domain, environment,
-    event_schema_set, eventhouse, eventstream, feedback, gateway, git, graph_model,
+    capacity, catalog, connection, context, copy_job, cosmos_db_database, custom_stream_connector,
+    dashboard, data_build_tool_job, data_pipeline, dataagent, dataflow, datamart, deploy,
+    deployment_pipeline, deployment_plan, digital_twin_builder, digital_twin_builder_flow, domain,
+    environment, event_schema_set, eventhouse, eventstream, feedback, gateway, git, graph_model,
     graph_query_set, graphql_api, item, job_scheduler, jobs, kql_dashboard, kql_database,
     kql_queryset, label, lakehouse, lro, managed_private_endpoint, map, mirrored_catalog,
     mirrored_database, mirrored_databricks_catalog, mirrored_google_lakehouse_catalog,
     mirrored_warehouse, ml_experiment, ml_model, monitoring, mounted_data_factory, notebook,
     onelake_security, ontology, operations_agent, org_app, org_app_audience, paginated_report,
-    plan, policy_set, profile, reflex, report, rest, rti, scorecard, semantic_model,
-    snowflake_database, spark, spark_job_definition, sql_database, sql_endpoint,
-    user_data_function, variable_library, warehouse, warehouse_snapshot, workspace,
+    plan, policy_set, profile, reflex, report, rest, rti, scorecard, semantic_model, share,
+    share_subscription, snowflake_database, spark, spark_job_definition, sql_database,
+    sql_endpoint, user_data_function, variable_library, warehouse, warehouse_snapshot, workspace,
 };
 
 /// Agent-native CLI for managing Microsoft Fabric artifacts and data.
@@ -479,6 +479,24 @@ pub enum Command {
     OperationsAgent {
         #[command(subcommand)]
         command: operations_agent::OperationsAgentCommand,
+    },
+    /// Manage Custom Stream Connectors
+    #[command(name = "custom-stream-connector", display_order = 38)]
+    CustomStreamConnector {
+        #[command(subcommand)]
+        command: custom_stream_connector::CustomStreamConnectorCommand,
+    },
+    /// Manage producer-side Fabric shares
+    #[command(display_order = 38)]
+    Share {
+        #[command(subcommand)]
+        command: share::ShareCommand,
+    },
+    /// Manage consumer-side Fabric Share Subscriptions
+    #[command(name = "share-subscription", display_order = 38)]
+    ShareSubscription {
+        #[command(subcommand)]
+        command: share_subscription::ShareSubscriptionCommand,
     },
     /// Manage Mounted Data Factories (ADF integration)
     #[command(display_order = 38)]

@@ -80,6 +80,7 @@ pub(super) async fn show(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn create(
     cli: &Cli,
     client: &FabricClient,
@@ -88,6 +89,9 @@ pub(super) async fn create(
     description: Option<&str>,
     sensitivity_label: Option<&str>,
     collation: Option<&str>,
+    definition_file: Option<&str>,
+    definition_content: Option<&str>,
+    definition_format: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({
         "displayName": name,
@@ -104,6 +108,18 @@ pub(super) async fn create(
         // Warehouse collation is set at create time via creationPayload.collationType.
         body["creationPayload"] = serde_json::json!({ "collationType": c });
     }
+    if definition_file.is_some() || definition_content.is_some() {
+        let (definition, _) =
+            super::definitions::from_input(definition_file, definition_content, definition_format)?;
+        body["definition"] = definition;
+    } else if definition_format.is_some() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "--definition-format requires --definition-file or --definition-content",
+            "Provide a definition input, or remove --definition-format.",
+        )
+        .into());
+    }
 
     if output::dry_run_guard(
         cli,
@@ -114,6 +130,8 @@ pub(super) async fn create(
             "description": description,
             "sensitivityLabel": sensitivity_label,
             "collation": collation
+            ,"definitionFormat": definition_format
+            ,"hasDefinition": definition_file.is_some() || definition_content.is_some()
         }),
     ) {
         return Ok(());

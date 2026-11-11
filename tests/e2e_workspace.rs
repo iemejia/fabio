@@ -1973,6 +1973,30 @@ fn workspace_modify_immutability_policy_dry_run() {
     );
 }
 
+#[test]
+fn test_modify_file_soft_delete_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "workspace",
+            "modify-file-soft-delete",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--status",
+            "Enabled",
+            "--retention-days",
+            "14",
+        ])
+        .assert()
+        .success();
+    let json: serde_json::Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+    assert_eq!(
+        json["data"]["would_execute"],
+        "workspace modify-file-soft-delete"
+    );
+    assert_eq!(json["data"]["details"]["retentionPeriodInDays"], 14);
+}
+
 // ===========================================================================
 // workspace modify-immutability-policy live
 // ===========================================================================

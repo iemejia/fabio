@@ -157,6 +157,15 @@ pub enum EnvironmentCommand {
         #[arg(long)]
         id: String,
     },
+    /// Get the latest completed environment publish driver log
+    GetPublishLog {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+    },
     /// Cancel a pending publish operation
     #[command(display_order = 11)]
     CancelPublish {
@@ -525,6 +534,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EnvironmentComm
             hard_delete,
         } => delete(cli, client, workspace, id, *hard_delete).await,
         EnvironmentCommand::Publish { workspace, id } => publish(cli, client, workspace, id).await,
+        EnvironmentCommand::GetPublishLog { workspace, id } => {
+            get_publish_log(cli, client, workspace, id).await
+        }
         EnvironmentCommand::CancelPublish { workspace, id } => {
             cancel_publish(cli, client, workspace, id).await
         }
@@ -782,6 +794,26 @@ async fn publish(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) ->
         "status": "publish_started"
     });
     output::render_object(cli, &obj, "status");
+    Ok(())
+}
+
+async fn get_publish_log(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let log = client
+        .get_text(&format!(
+            "/workspaces/{workspace}/environments/{id}/staging/publish/log"
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "environment get-publish-log", "Contributor"))?;
+    output::render_object(
+        cli,
+        &serde_json::json!({"id": id, "publishLog": log}),
+        "publishLog",
+    );
     Ok(())
 }
 

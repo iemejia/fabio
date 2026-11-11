@@ -35,6 +35,14 @@ pub enum AccessTimeTrackingStatus {
     Disabled,
 }
 
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum FileSoftDeleteStatus {
+    #[value(name = "Enabled")]
+    Enabled,
+    #[value(name = "Disabled")]
+    Disabled,
+}
+
 impl AccessTimeTrackingStatus {
     pub(super) const fn as_str(self) -> &'static str {
         match self {
@@ -412,6 +420,18 @@ pub enum WorkspaceCommand {
         file: Option<String>,
         #[arg(long)]
         content: Option<String>,
+    },
+    /// Modify `OneLake` file soft-delete settings
+    #[command(display_order = 59)]
+    ModifyFileSoftDelete {
+        #[arg(short = 'w', long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// File soft-delete status
+        #[arg(long, value_enum)]
+        status: FileSoftDeleteStatus,
+        /// Retention period in days (1-365); required when enabled
+        #[arg(long, value_parser = clap::value_parser!(u16).range(1..=365))]
+        retention_days: Option<u16>,
     },
     /// Enable or disable `OneLake` file access-time tracking
     #[command(display_order = 59)]
@@ -840,6 +860,14 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WorkspaceComman
                 content.as_deref(),
             )
             .await
+        }
+        WorkspaceCommand::ModifyFileSoftDelete {
+            workspace,
+            status,
+            retention_days,
+        } => {
+            settings::modify_file_soft_delete(cli, client, workspace, *status, *retention_days)
+                .await
         }
         WorkspaceCommand::ModifyAccessTimeTracking { workspace, status } => {
             settings::modify_access_time_tracking(cli, client, workspace, *status).await

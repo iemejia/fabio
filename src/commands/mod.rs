@@ -11,6 +11,7 @@ pub mod context;
 pub mod copy_job;
 pub mod cosmos_db_database;
 pub mod crud;
+pub mod custom_stream_connector;
 pub mod dashboard;
 pub mod data_build_tool_job;
 pub mod data_pipeline;
@@ -79,6 +80,8 @@ pub mod rest;
 pub mod rti;
 pub mod scorecard;
 pub mod semantic_model;
+pub mod share;
+pub mod share_subscription;
 pub mod shortcut_target;
 pub mod snowflake_database;
 pub mod spark;
@@ -198,6 +201,13 @@ pub async fn execute(cli: Cli) -> Result<()> {
         }
         Command::OperationsAgent { command } => {
             operations_agent::execute(&cli, &client, command).await
+        }
+        Command::CustomStreamConnector { command } => {
+            custom_stream_connector::execute(&cli, &client, command).await
+        }
+        Command::Share { command } => share::execute(&cli, &client, command).await,
+        Command::ShareSubscription { command } => {
+            share_subscription::execute(&cli, &client, command).await
         }
         Command::MountedDataFactory { command } => {
             mounted_data_factory::execute(&cli, &client, command).await
@@ -505,6 +515,9 @@ fn extract_command_path(cli: &Cli) -> String {
         Command::EventSchemaSet { .. } => "event-schema-set",
         Command::UserDataFunction { .. } => "user-data-function",
         Command::OperationsAgent { .. } => "operations-agent",
+        Command::CustomStreamConnector { .. } => "custom-stream-connector",
+        Command::Share { .. } => "share",
+        Command::ShareSubscription { .. } => "share-subscription",
         Command::MountedDataFactory { .. } => "mounted-data-factory",
         Command::PaginatedReport { .. } => "paginated-report",
         Command::Dashboard { .. } => "dashboard",

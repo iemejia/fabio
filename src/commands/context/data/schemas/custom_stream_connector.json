@@ -1,0 +1,42 @@
+{
+  "type": "CustomStreamConnector",
+  "description": "Preview Real-Time Intelligence item containing a custom Kafka Connect connector package and metadata.",
+  "create_command": "fabio custom-stream-connector create --workspace <WS> --name <NAME> --definition-file connector-definition.json",
+  "definition_format": "CustomStreamConnectorDefinitionV1",
+  "definition_parts": [
+    {
+      "path": "connector.json",
+      "description": "Connector description and default package version."
+    },
+    {
+      "path": "resources/connector.svg",
+      "description": "Optional connector icon."
+    },
+    {
+      "path": "CustomConnectorPackages/<version>/<archive>",
+      "description": "Connector JAR or ZIP package."
+    },
+    {
+      "path": ".platform",
+      "description": "Optional Fabric item metadata."
+    }
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}",
+    "definition": {
+      "format": "CustomStreamConnectorDefinitionV1",
+      "parts": [
+        {
+          "path": "connector.json",
+          "payload": "{{base64_connector_json}}",
+          "payloadType": "InlineBase64"
+        }
+      ]
+    }
+  },
+  "notes": [
+    "Creation supports an optional definition; creationPayload is not supported.",
+    "get-definition accepts --format CustomStreamConnectorDefinitionV1.",
+    "update-definition --update-metadata applies metadata from a supplied .platform part."
+  ]
+}

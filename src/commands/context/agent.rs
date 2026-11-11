@@ -1470,6 +1470,15 @@ fn generate_subcommands(
             sc_obj.insert("destructive".to_owned(), serde_json::json!(true));
         }
 
+        if group.get_name() == "data-agent"
+            && matches!(
+                sc_name.as_str(),
+                "download-topic" | "format-topic" | "download-feedback-attachments"
+            )
+        {
+            sc_obj.insert("mutates".to_owned(), serde_json::json!(false));
+        }
+
         // Local auth login/logout change persisted credential selection and both
         // return structured status objects; command-name inference cannot express this.
         if group.get_name() == "auth" && matches!(sc_name.as_str(), "login" | "logout") {
@@ -1507,26 +1516,117 @@ fn generate_subcommands(
 /// Marked workflow steps own these examples; regenerated discovery must not
 /// preserve older invocations after the command's runtime guard contract changes.
 #[cfg(test)]
+#[allow(clippy::too_many_lines)]
 fn authored_discovery_examples(group: &str, command: &str) -> Option<serde_json::Value> {
-    let content = match (group, command) {
-        ("dataflow", "upgrade-gen1") => include_str!("data/workflows/gen1_upgrade_execution.json"),
+    if (group, command) == ("dataflow", "upgrade-gen1") {
+        let workflow: serde_json::Value =
+            serde_json::from_str(include_str!("data/workflows/gen1_upgrade_execution.json"))
+                .expect("valid discovery workflow");
+        let examples: Vec<_> = workflow["steps"]
+            .as_array()
+            .expect("workflow steps")
+            .iter()
+            .filter(|step| step["discovery_example"] == true)
+            .map(|step| step["command"].as_str().expect("discovery example command"))
+            .collect();
+        assert_ne!(
+            examples.len(),
+            0,
+            "Canonical discovery workflow has no marked examples"
+        );
+        return Some(serde_json::json!(examples));
+    }
+
+    let example = match (group, command) {
+        ("custom-stream-connector" | "share" | "share-subscription", "list") => {
+            format!("fabio {group} list --workspace $WS")
+        }
+        ("custom-stream-connector" | "share" | "share-subscription", "show" | "delete") => {
+            format!("fabio {group} {command} --workspace $WS --id $ID")
+        }
+        ("custom-stream-connector" | "share", "create") => {
+            format!("fabio {group} create --workspace $WS --name \"Example\"")
+        }
+        ("custom-stream-connector" | "share" | "share-subscription", "update") => {
+            format!("fabio {group} update --workspace $WS --id $ID --name \"Updated\"")
+        }
+        ("custom-stream-connector" | "share", "get-definition") => {
+            format!("fabio {group} get-definition --workspace $WS --id $ID")
+        }
+        ("custom-stream-connector" | "share", "update-definition") => format!(
+            "fabio {group} update-definition --workspace $WS --id $ID --file definition.json"
+        ),
+        ("share-subscription", "create") => "fabio share-subscription create --workspace $WS \
+             --name \"Partner Feed\" --invitation-url $INVITATION_URL"
+            .to_owned(),
+        ("copy-job", "show-run") => {
+            "fabio copy-job show-run --workspace $WS --id $COPY_JOB --job-id $JOB".to_owned()
+        }
+        ("copy-job", "list-schedules") => {
+            "fabio copy-job list-schedules --workspace $WS --id $COPY_JOB".to_owned()
+        }
+        ("copy-job", "create-schedule" | "update-schedule") => format!(
+            "fabio copy-job {command} --workspace $WS --id $COPY_JOB \
+             --configuration @schedule.json"
+        ),
+        ("copy-job", "show-schedule" | "delete-schedule") => format!(
+            "fabio copy-job {command} --workspace $WS --id $COPY_JOB --schedule-id $SCHEDULE"
+        ),
+        ("data-agent", "list-topics") => "fabio data-agent list-topics --workspace $WS \
+             --id $AGENT --datasource $SOURCE --stage staging"
+            .to_owned(),
+        ("data-agent", "download-topic" | "delete-topic" | "format-topic") => format!(
+            "fabio data-agent {command} --workspace $WS --id $AGENT \
+             --datasource $SOURCE --file-name guidance.md"
+        ),
+        ("data-agent", "upload-topic") => "fabio data-agent upload-topic --workspace $WS \
+             --id $AGENT --datasource $SOURCE --file-name guidance.md --file ./guidance.md"
+            .to_owned(),
+        ("data-agent", "query-feedback") => {
+            "fabio data-agent query-feedback --workspace $WS --id $AGENT --page-size 100".to_owned()
+        }
+        ("data-agent", "show-feedback") => "fabio data-agent show-feedback --workspace $WS \
+             --id $AGENT --feedback-id $FEEDBACK"
+            .to_owned(),
+        ("data-agent", "download-feedback-attachments") => {
+            "fabio data-agent download-feedback-attachments --workspace $WS --id $AGENT \
+             --feedback-id $FEEDBACK --output-file ./attachments.zip \
+             --allow-download-without-sensitivity-label"
+                .to_owned()
+        }
+        ("capacity", "list-actor-auto-detection-rules") => {
+            "fabio capacity list-actor-auto-detection-rules --id $CAPACITY".to_owned()
+        }
+        ("capacity", "show-actor-auto-detection-rule" | "delete-actor-auto-detection-rule") => {
+            format!("fabio capacity {command} --id $CAPACITY --rule-id $RULE")
+        }
+        ("capacity", "create-actor-auto-detection-rule") => "fabio capacity \
+             create-actor-auto-detection-rule --id $CAPACITY --threshold-percentage 80 \
+             --block-duration Hours --hours 4"
+            .to_owned(),
+        ("capacity", "update-actor-auto-detection-rule") => "fabio capacity \
+             update-actor-auto-detection-rule --id $CAPACITY --rule-id $RULE \
+             --threshold-percentage 90"
+            .to_owned(),
+        ("workspace", "modify-file-soft-delete") => "fabio workspace modify-file-soft-delete \
+             --workspace $WS --status Enabled --retention-days 30"
+            .to_owned(),
+        ("environment", "get-publish-log") => {
+            "fabio environment get-publish-log --workspace $WS --id $ENVIRONMENT".to_owned()
+        }
+        ("warehouse", "create") => "fabio warehouse create --workspace $WS --name Sales \
+             --definition-file ./Sales.sqlproj --definition-format sqlproj"
+            .to_owned(),
+        ("warehouse", "get-definition") => {
+            "fabio warehouse get-definition --workspace $WS --id $WAREHOUSE --format sqlproj"
+                .to_owned()
+        }
+        ("warehouse", "update-definition") => "fabio warehouse update-definition \
+             --workspace $WS --id $WAREHOUSE --file ./Sales.sqlproj --format sqlproj"
+            .to_owned(),
         _ => return None,
     };
-    let workflow: serde_json::Value =
-        serde_json::from_str(content).expect("valid discovery workflow");
-    let examples: Vec<_> = workflow["steps"]
-        .as_array()
-        .expect("workflow steps")
-        .iter()
-        .filter(|step| step["discovery_example"] == true)
-        .map(|step| step["command"].as_str().expect("discovery example command"))
-        .collect();
-    assert_ne!(
-        examples.len(),
-        0,
-        "Canonical discovery workflow has no marked examples"
-    );
-    Some(serde_json::json!(examples))
+    Some(serde_json::json!([example]))
 }
 
 /// Generate flag entries for a single subcommand from clap arg metadata.
@@ -1686,10 +1786,11 @@ fn infer_mutates(cmd_name: &str) -> bool {
         "discover-",
         "iceberg-",
         "table-schema",
+        "download",
     ];
     if matches!(
         cmd_name,
-        "connection-hygiene" | "plan-upgrade" | "follow-upgrade"
+        "connection-hygiene" | "plan-upgrade" | "follow-upgrade" | "format-topic"
     ) {
         return false;
     }
@@ -1765,7 +1866,9 @@ fn infer_returns(cmd_name: &str) -> &'static str {
 #[cfg(test)]
 #[allow(dead_code)]
 fn infer_destructive(cmd_name: &str) -> bool {
-    cmd_name.starts_with("delete") || cmd_name.starts_with("remove") || cmd_name == "vacuum-table"
+    cmd_name.starts_with("delete")
+        || cmd_name.starts_with("remove")
+        || matches!(cmd_name, "vacuum-table" | "update-definition")
 }
 
 #[cfg(test)]
@@ -1781,6 +1884,9 @@ mod tests {
         assert!(!super::infer_mutates("plan-upgrade"));
         assert_eq!(super::infer_returns("plan-upgrade"), "object");
         assert!(!super::infer_destructive("plan-upgrade"));
+        assert!(!super::infer_mutates("download-topic"));
+        assert!(!super::infer_mutates("format-topic"));
+        assert!(super::infer_destructive("update-definition"));
     }
     use super::*;
 
@@ -1986,6 +2092,27 @@ mod tests {
             existing["subcommands"]["list"]["examples"]
         );
         assert!(authored_discovery_examples("dataflow", "list").is_none());
+    }
+
+    #[test]
+    fn spec_sync_commands_have_authored_examples() {
+        for (group, command) in [
+            ("custom-stream-connector", "create"),
+            ("share", "update-definition"),
+            ("share-subscription", "create"),
+            ("copy-job", "create-schedule"),
+            ("data-agent", "upload-topic"),
+            ("data-agent", "query-feedback"),
+            ("capacity", "create-actor-auto-detection-rule"),
+            ("workspace", "modify-file-soft-delete"),
+            ("environment", "get-publish-log"),
+            ("warehouse", "create"),
+        ] {
+            assert!(
+                authored_discovery_examples(group, command).is_some(),
+                "{group} {command}"
+            );
+        }
     }
 
     /// Regenerate `commands.json` from clap metadata.

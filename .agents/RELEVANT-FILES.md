@@ -132,6 +132,9 @@
 - `src/commands/spark_job_definition.rs`: list/show/create/update/delete/get-definition/update-definition/run
 - `src/commands/map.rs`: list/show/create/update/delete/get-definition/update-definition (geospatial Azure Maps)
 - `src/commands/plan.rs`: list/show/create/update/delete/get-definition/update-definition (connected-planning Plan item, PlanV1 / connectedPlanning/infobridge.json)
+- `src/commands/custom_stream_connector.rs`: Custom Stream Connector CRUD + definition APIs (`CustomStreamConnectorDefinitionV1`, `connector.json`, optional package/resource parts)
+- `src/commands/share.rs`: producer-side Share CRUD + definition APIs (`share.json`, recipients/assets/policies, invitation URL runtime properties)
+- `src/commands/share_subscription.rs`: consumer-side Share Subscription CRUD (required invitation URL creation payload; no definition API)
 - `src/commands/capacity.rs`: list/show, surge protection, and overage configuration (Fabric API) + suspend/resume/create/update/delete/list-skus/check-name (ARM API)
 - `src/commands/connection/`: directory module (split from `connection.rs` when it crossed the 1500-line limit) — `mod.rs` (enum + execute dispatch), `crud.rs` (list/show/create/update/delete/list-supported-types + body builders + recency-aware `list_table_columns`), `roles.rs` (role assignments + test-connection), `hygiene.rs` (find-stale/find-duplicates/find-single-owner governance commands built on connection-recency signals — all read-only pure logic + unit tests)
 - `src/commands/deployment_pipeline.rs`: list/show/create/update/delete/list-stages/list-stage-items/assign-workspace/unassign-workspace/deploy
@@ -228,6 +231,9 @@
 - `tests/e2e_git.rs`: Git command group tests
 - `tests/e2e_ontology.rs`: Ontology CRUD + definition tests
 - `tests/e2e_plan.rs`: Plan CRUD + definition tests (list, create/show/delete, update, get-definition incl. --format, dry-run create/delete/update-definition, folder-scoping flags)
+- `tests/e2e_custom_stream_connector.rs`: hermetic Custom Stream Connector create/delete/update-definition dry-run tests
+- `tests/e2e_share.rs`: hermetic Share create/delete/update-definition dry-run tests
+- `tests/e2e_share_subscription.rs`: hermetic Share Subscription create/delete dry-run tests
 - `tests/e2e_agent_native.rs`: Agent-native compliance tests (principles 1-10)
 - `tests/e2e_verbose.rs`: Verbose flag tests (16 tests: offline flag acceptance, HTTP/auth/LRO tracing, --quiet suppression, --dry-run interaction)
 - `tests/e2e_sync.rs`: Lakehouse sync tests (24 tests: basic copy, skip unchanged, delete, checksum, parallel, rename detection, dedup, include/exclude, size-only, no-overwrite, force, max-delete, existing, remove-source-files, local-to-remote sync)

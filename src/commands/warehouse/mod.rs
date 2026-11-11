@@ -10,6 +10,7 @@ use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 mod admin;
 mod authoring;
 mod crud;
+mod definitions;
 mod insights;
 mod mcp;
 pub mod query;
@@ -65,6 +66,18 @@ pub enum WarehouseCommand {
         /// `Latin1_General_100_CI_AS_KS_WS_SC_UTF8` (case-insensitive).
         #[arg(long)]
         collation: Option<String>,
+
+        /// Definition file (`.sqlproj` or `.dacpac`); mutually exclusive with --collation
+        #[arg(long, conflicts_with = "collation")]
+        definition_file: Option<String>,
+
+        /// Inline definition content; mutually exclusive with --definition-file and --collation
+        #[arg(long, conflicts_with_all = ["definition_file", "collation"])]
+        definition_content: Option<String>,
+
+        /// Definition format (`sqlproj` default, or `dacpac`)
+        #[arg(long, value_parser = ["sqlproj", "dacpac"])]
+        definition_format: Option<String>,
     },
     /// Update warehouse properties (name and/or description)
     #[command(display_order = 4)]
@@ -99,6 +112,36 @@ pub enum WarehouseCommand {
         /// Permanently delete (cannot be recovered)
         #[arg(long)]
         hard_delete: bool,
+    },
+    /// Get the warehouse public definition
+    GetDefinition {
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        #[arg(long)]
+        id: String,
+        /// Definition format (`sqlproj` default, or `dacpac`)
+        #[arg(long, value_parser = ["sqlproj", "dacpac"])]
+        format: Option<String>,
+        /// Decode inline Base64 definition parts
+        #[arg(long)]
+        decode: bool,
+    },
+    /// Replace the warehouse public definition
+    UpdateDefinition {
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        #[arg(long)]
+        id: String,
+        #[arg(long, conflicts_with = "content")]
+        file: Option<String>,
+        #[arg(long)]
+        content: Option<String>,
+        /// Definition format (`sqlproj` default, or `dacpac`)
+        #[arg(long, value_parser = ["sqlproj", "dacpac"])]
+        format: Option<String>,
+        /// Update warehouse metadata from the supplied definition
+        #[arg(long)]
+        update_metadata: bool,
     },
     /// Execute a SQL query against a warehouse or SQL endpoint
     #[command(display_order = 10)]
@@ -658,6 +701,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
             description,
             sensitivity_label,
             collation,
+            definition_file,
+            definition_content,
+            definition_format,
         } => {
             crud::create(
                 cli,
@@ -667,6 +713,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
                 description.as_deref(),
                 sensitivity_label.as_deref(),
                 collation.as_deref(),
+                definition_file.as_deref(),
+                definition_content.as_deref(),
+                definition_format.as_deref(),
             )
             .await
         }
@@ -691,6 +740,32 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &WarehouseComman
             id,
             hard_delete,
         } => crud::delete_warehouse(cli, client, workspace, id, *hard_delete).await,
+        WarehouseCommand::GetDefinition {
+            workspace,
+            id,
+            format,
+            decode,
+        } => definitions::get(cli, client, workspace, id, format.as_deref(), *decode).await,
+        WarehouseCommand::UpdateDefinition {
+            workspace,
+            id,
+            file,
+            content,
+            format,
+            update_metadata,
+        } => {
+            definitions::update(
+                cli,
+                client,
+                workspace,
+                id,
+                file.as_deref(),
+                content.as_deref(),
+                format.as_deref(),
+                *update_metadata,
+            )
+            .await
+        }
         WarehouseCommand::Query {
             workspace,
             id,

@@ -478,9 +478,7 @@ async fn refresh_metadata(
 
     let data = client
         .post(
-            &format!(
-                "/workspaces/{workspace}/mirroredCatalogs/{id}/refreshCatalogMetadata?beta=true"
-            ),
+            &format!("/workspaces/{workspace}/mirroredCatalogs/{id}/refreshCatalogMetadata"),
             &serde_json::json!({}),
             true,
         )
@@ -525,9 +523,8 @@ fn build_scopes_url(
     recursive: bool,
 ) -> String {
     use std::fmt::Write as _;
-    let mut url = format!(
-        "/workspaces/{workspace}/catalogmirroring/scopes?beta=true&connectionId={connection_id}"
-    );
+    let mut url =
+        format!("/workspaces/{workspace}/catalogmirroring/scopes?connectionId={connection_id}");
     if let Some(p) = parent {
         let _ = write!(url, "&parent={p}");
     }
@@ -555,9 +552,8 @@ async fn list_tables(
 /// param; `scope` is optional.
 fn build_tables_url(workspace: &str, connection_id: &str, scope: Option<&str>) -> String {
     use std::fmt::Write as _;
-    let mut url = format!(
-        "/workspaces/{workspace}/catalogmirroring/tables?beta=true&connectionId={connection_id}"
-    );
+    let mut url =
+        format!("/workspaces/{workspace}/catalogmirroring/tables?connectionId={connection_id}");
     if let Some(s) = scope {
         let _ = write!(url, "&scope={s}");
     }
@@ -572,7 +568,7 @@ async fn mirroring_status(
 ) -> Result<()> {
     let data = client
         .get(&format!(
-            "/workspaces/{workspace}/mirroredCatalogs/{id}/mirroringStatus?beta=true"
+            "/workspaces/{workspace}/mirroredCatalogs/{id}/mirroringStatus"
         ))
         .await?;
     output::render_object(cli, &data, "status");
@@ -587,7 +583,7 @@ async fn tables_mirroring_status(
 ) -> Result<()> {
     let data = client
         .get(&format!(
-            "/workspaces/{workspace}/mirroredCatalogs/{id}/tablesMirroringStatus?beta=true"
+            "/workspaces/{workspace}/mirroredCatalogs/{id}/tablesMirroringStatus"
         ))
         .await?;
     output::render_object(cli, &data, "data");
@@ -602,7 +598,7 @@ mod tests {
     fn scopes_url_includes_required_connection_id() {
         let url = build_scopes_url("ws1", "conn1", None, false);
         assert!(url.contains("catalogmirroring/scopes"));
-        assert!(url.contains("beta=true"));
+        assert!(!url.contains("beta=true"));
         assert!(url.contains("connectionId=conn1"));
         assert!(!url.contains("parent="));
         assert!(!url.contains("recursive="));

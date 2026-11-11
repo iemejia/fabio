@@ -63,7 +63,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 
 ### What fabio adds beyond both
 
-- **AI-native interactions** — create, configure, and query Data Agents (public staging management API: datasource CRUD, few-shot management, table selection, element descriptions, `--stage` for draft vs published, reset/publish lifecycle; multi-turn `query`, `evaluate` batch runs, and LLM-judged `validate-fewshots`/`evaluate --llm-*` with a bring-your-own judge model); execute KQL for real-time intelligence, NL-to-KQL translation
+- **AI-native interactions** — create, configure, and query Data Agents (public staging management API: datasource CRUD, Markdown topic lifecycle, few-shot management, table selection, element descriptions, `--stage` for draft vs published, reset/publish lifecycle; feedback search and attachment export; multi-turn `query`, `evaluate` batch runs, and LLM-judged `validate-fewshots`/`evaluate --llm-*` with a bring-your-own judge model); execute KQL for real-time intelligence, NL-to-KQL translation
 - **Layered agent knowledge** — 8 orchestrator personas, 12 architecture blueprints, 7 term disambiguations, and 15 generated intent-scoped sub-skills (see [Agent knowledge architecture](#agent-knowledge-architecture)) route agents to the right workload; every mechanical command index is generated from the CLI schema and CI-drift-checked
 - **Self-correcting error hints** — every error includes a `hint` field with the exact corrected command, valid enum values, or the logical next step so agents can retry without consulting docs
 - **Self-improving** — when new Fabric REST APIs are detected, fabio auto-implements support for new commands and item types
@@ -77,6 +77,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 - **Post-deploy automation** — Semantic Model refresh, Environment publish, SQL endpoint polling, Variable Library value set activation, job schedule creation
 - **Workspace clone** — replicate workspace items via Bulk Export/Import APIs (`--allow-pairing-by-name` for initial clones)
 - **Data orchestration** — `--post-run-item` triggers a pipeline or notebook after deployment to populate lakehouses
+- **Sharing and streaming artifacts** — full CRUD and public-definition lifecycle for Shares and Custom Stream Connectors, plus consumer-side Share Subscription management
 - **Dataflow modernization** — assess every Gen1 dataflow for upgrade readiness and migrate 1-50 items to Gen2 in place with per-row results
 - **Capacity governance** — inspect/configure surge protection and overage thresholds, and manage blocked or mission-critical workspace actors with structured dry-run previews and capacity-scoped permission guidance
 - **Connection ownership visibility** — connection lists expose the caller's effective role, including `PendingOwner`, in JSON and table output; tenant-admin connection errors point to the Fabric Administrator role

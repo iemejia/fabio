@@ -623,6 +623,56 @@ fn test_delete_mission_critical_actor_dry_run() {
 }
 
 #[test]
+fn test_create_actor_auto_detection_rule_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "capacity",
+            "create-actor-auto-detection-rule",
+            "--id",
+            "96f3f0ff-4fe2-4712-b61b-05a456ba9357",
+            "--threshold-percentage",
+            "25",
+            "--block-duration",
+            "Hours",
+            "--hours",
+            "24",
+        ])
+        .assert()
+        .success();
+    let data = parse_json(&output)["data"].clone();
+    assert_eq!(
+        data["details"]["actorsSubjectToRule"]["type"],
+        "AllWorkspaces"
+    );
+    assert_eq!(
+        data["details"]["capacityUnitsConsumptionThresholdPercentage"],
+        25
+    );
+}
+
+#[test]
+fn test_delete_actor_auto_detection_rule_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "capacity",
+            "delete-actor-auto-detection-rule",
+            "--id",
+            "96f3f0ff-4fe2-4712-b61b-05a456ba9357",
+            "--rule-id",
+            "33445566-7788-49aa-bbcc-ddeeff001122",
+        ])
+        .assert()
+        .success();
+    let data = parse_json(&output)["data"].clone();
+    assert_eq!(
+        data["would_execute"],
+        "capacity delete-actor-auto-detection-rule"
+    );
+}
+
+#[test]
 #[ignore = "requires capacity administrator permissions"]
 fn capacity_get_surge_protection_live() {
     let capacity_id =

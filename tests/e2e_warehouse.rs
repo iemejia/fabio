@@ -2097,6 +2097,50 @@ fn warehouse_update_audit_settings_predicate_dry_run() {
 }
 
 #[test]
+fn test_create_with_definition_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "create",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--name",
+            "definition-test",
+            "--definition-content",
+            "<Project />",
+            "--definition-format",
+            "sqlproj",
+        ])
+        .assert()
+        .success();
+    let json: serde_json::Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "warehouse create");
+    assert_eq!(json["data"]["details"]["definitionFormat"], "sqlproj");
+}
+
+#[test]
+fn test_update_definition_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "update-definition",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--content",
+            "<Project />",
+        ])
+        .assert()
+        .success();
+    let json: serde_json::Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "warehouse update-definition");
+    assert_eq!(json["data"]["details"]["format"], "sqlproj");
+}
+
+#[test]
 fn warehouse_queries_running_follow_flags_require_follow() {
     // Offline: the --follow-only flags are rejected before any network call.
     let assert = fabio()

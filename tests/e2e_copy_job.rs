@@ -415,6 +415,47 @@ fn copy_job_dry_run_reset_all() {
 }
 
 #[test]
+fn test_create_schedule_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "copy-job",
+            "create-schedule",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--config",
+            r#"{"type":"Cron","startDateTime":"2026-01-01T00:00:00","endDateTime":"2026-12-31T23:59:00","localTimeZoneId":"UTC","interval":10}"#,
+        ])
+        .assert()
+        .success();
+    let json: serde_json::Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "copy-job create-schedule");
+    assert_eq!(json["data"]["details"]["configuration"]["type"], "Cron");
+}
+
+#[test]
+fn test_delete_schedule_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "copy-job",
+            "delete-schedule",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--schedule-id",
+            "00000000-0000-0000-0000-000000000002",
+        ])
+        .assert()
+        .success();
+    let json: serde_json::Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "copy-job delete-schedule");
+}
+
+#[test]
 fn copy_job_reset_requires_all_or_entity_ids() {
     fabio()
         .args([
