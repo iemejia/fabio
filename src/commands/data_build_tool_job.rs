@@ -445,7 +445,7 @@ async fn run(
     timeout_secs: u64,
     cancel_on_timeout: bool,
 ) -> Result<()> {
-    if output::dry_run_guard(
+    if output::dry_run_guard_maybe_destructive(
         cli,
         "data-build-tool-job run",
         &serde_json::json!({
@@ -455,6 +455,7 @@ async fn run(
             "timeout": timeout_secs,
             "cancelOnTimeout": cancel_on_timeout
         }),
+        cancel_on_timeout,
     ) {
         return Ok(());
     }

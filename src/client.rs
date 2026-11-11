@@ -455,7 +455,7 @@ impl FabricClient {
                 ErrorCode::ReadonlyMode,
                 format!("Blocked {method} request — readonly mode is active"),
                 format!(
-                    "Remove --readonly flag or set FABIO_READONLY=0 to allow mutations. \
+                    "Remove --readonly flag or set FABIO_READONLY=false to allow mutations. \
                      Blocked URL: {url}"
                 ),
             )

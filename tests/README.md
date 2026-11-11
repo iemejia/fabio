@@ -35,6 +35,15 @@ contradictory rejection/ACK markers, transport disconnects, readonly/dry-run and
 command-level named-rejection loop. `client::submission::tests` also checks metadata
 preservation/redaction and a local response timeout. No live operation is replayed.
 
+Destructive discovery has an independent real-clap coverage gate in
+`commands::context::safety` (not only a scan of already-annotated entries).
+`cargo test --test e2e_safety_metadata` checks real guarded previews for definition
+families, conditional modes, nested Git operations and scoped deployment plans,
+with readonly rejection before SQL connections. Expanded guardrail audits run with
+`cargo test --test e2e_destructive_guardrails -- --include-ignored`; they isolate
+HOME/working directories, use dummy audience tokens and local API/proxy endpoints,
+and allow only explicit metadata reads. No tenant mutation is needed.
+
 Selected published BI workflow/schema/output examples also have a clap-contract
 gate (`commands::context::recipe_tests`). It uses the test-only `shlex` parser to
 handle quoting and `&&` chains, then parses each invocation with the actual CLI.

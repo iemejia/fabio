@@ -434,7 +434,7 @@ async fn run_on_demand(
     timeout_secs: u64,
     cancel_on_timeout: bool,
 ) -> Result<()> {
-    if output::dry_run_guard(
+    if output::dry_run_guard_maybe_destructive(
         cli,
         "job-scheduler run-on-demand",
         &serde_json::json!({
@@ -445,6 +445,7 @@ async fn run_on_demand(
             "timeout": timeout_secs,
             "cancelOnTimeout": cancel_on_timeout
         }),
+        cancel_on_timeout,
     ) {
         return Ok(());
     }

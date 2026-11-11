@@ -554,12 +554,21 @@ fn build_dry_run_object(operation: &str, details: &Value, force_destructive: boo
         "hint": "Remove --dry-run to execute this operation."
     });
     if force_destructive || agent::is_destructive_operation(operation) {
-        obj["destructive"] = Value::Bool(true);
-        if let Some(notice) = agent::destructive_notice() {
-            obj["agentNotice"] = Value::String(notice);
-        }
+        annotate_destructive_preview(&mut obj, true);
     }
     obj
+}
+
+/// Add the same confirmation signal to a custom dry-run shape. `destructive`
+/// describes the selected actions, not every capability a command supports.
+pub fn annotate_destructive_preview(preview: &mut Value, destructive: bool) {
+    preview["destructive"] = Value::Bool(destructive);
+    if let Some(object) = preview.as_object_mut() {
+        object.remove("agentNotice");
+    }
+    if destructive && let Some(notice) = agent::destructive_notice() {
+        preview["agentNotice"] = Value::from(notice);
+    }
 }
 
 /// Print one item in plain mode: the `plain_key` field if the item is an object
@@ -880,6 +889,19 @@ pub fn decode_definition_parts(mut data: Value) -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn custom_preview_annotation_preserves_shape_and_clears_stale_notices_for_safe_actions() {
+        let mut preview =
+            serde_json::json!({"status":"dry_run","summary":{"create":1},"agentNotice":"stale"});
+        super::annotate_destructive_preview(&mut preview, false);
+        assert_eq!(preview["destructive"], false);
+        assert!(preview.get("agentNotice").is_none());
+        assert_eq!(preview["summary"]["create"], 1);
+        super::annotate_destructive_preview(&mut preview, true);
+        assert_eq!(preview["destructive"], true);
+        assert_eq!(preview["status"], "dry_run");
+    }
+
     use crate::cli::Command;
 
     use super::*;

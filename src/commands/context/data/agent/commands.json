@@ -563,7 +563,8 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "destructive": true
       },
       "list-external-data-shares": {
         "description": "List external data shares",
@@ -624,7 +625,8 @@
         },
         "mutates": true,
         "returns": "object",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "list-domains": {
         "description": "List domains (admin view)",
@@ -918,6 +920,9 @@
         "examples": [
           "fabio admin activate-policy-set --workspace $WS --policy-set-id $POLICY_SET --dry-run",
           "fabio admin activate-policy-set --workspace $WS --policy-set-id $POLICY_SET --allow-replace --dry-run"
+        ],
+        "destructive_flags": [
+          "--allow-replace"
         ]
       },
       "deactivate-policy-set": {
@@ -3975,7 +3980,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "refresh-materialized-views": {
         "description": "Trigger a refresh of materialized lake views",
@@ -5586,6 +5592,7 @@
         "mutates": true,
         "returns": "void",
         "async": true,
+        "destructive": true,
         "examples": [
           "fabio notebook update-definition --workspace $WS --id $NB --source updated_etl.py"
         ]
@@ -5658,6 +5665,9 @@
           "fabio notebook run --workspace $WS --id $NB --wait",
           "fabio notebook run --workspace $WS --id $NB --wait --parameters '[{\"name\":\"start_date\",\"value\":\"2024-01-01\",\"type\":\"Text\"}]'",
           "fabio notebook run --workspace $WS --id $NB --wait --timeout 1800"
+        ],
+        "destructive_flags": [
+          "--cancel-on-timeout"
         ]
       },
       "status": {
@@ -5728,6 +5738,7 @@
         },
         "mutates": true,
         "returns": "void",
+        "destructive": true,
         "examples": [
           "fabio notebook stop --workspace $WS --id $NB"
         ]
@@ -6634,7 +6645,8 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "destructive": true
       },
       "get-retention": {
         "description": "Report the configured data-retention (time-travel) period, in days",
@@ -6868,7 +6880,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "start-mirroring": {
         "description": "Start mirroring for the SQL database",
@@ -7093,6 +7106,9 @@
         "examples": [
           "fabio sql-database import --workspace $WS --id $DB --file orders.csv --table orders --drop-if-exists",
           "fabio sql-database import --workspace $WS --id $DB --file events.json --table events --batch-size 500"
+        ],
+        "destructive_flags": [
+          "--drop-if-exists"
         ]
       },
       "queries-running": {
@@ -7277,7 +7293,8 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "destructive": true
       }
     }
   },
@@ -8611,7 +8628,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "publish": {
         "description": "Publish a data agent (promotes draft configuration to published state)",
@@ -8870,6 +8888,7 @@
         "mutates": true,
         "returns": "void",
         "async": true,
+        "destructive": true,
         "examples": [
           "fabio ontology update-definition --workspace $WS --id $ONT --dir ./ontology/"
         ]
@@ -9547,7 +9566,8 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "destructive": true
       },
       "get-spark-settings": {
         "description": "Get the published Spark settings (compute/pool/driver/executor)",
@@ -9629,7 +9649,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "list-libraries": {
         "description": "List published libraries of an environment",
@@ -10092,6 +10113,9 @@
         "async": true,
         "examples": [
           "fabio data-pipeline run --workspace $WS --id $DP"
+        ],
+        "destructive_flags": [
+          "--cancel-on-timeout"
         ]
       },
       "get-definition": {
@@ -10140,7 +10164,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "create-schedule": {
         "description": "Create a schedule for a data pipeline",
@@ -10507,7 +10532,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "run": {
         "description": "Run a copy job on demand",
@@ -10537,7 +10563,10 @@
         },
         "mutates": true,
         "returns": "object",
-        "async": true
+        "async": true,
+        "destructive_flags": [
+          "--cancel-on-timeout"
+        ]
       },
       "list-runs": {
         "description": "List execute job instances for a copy job",
@@ -10712,7 +10741,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "run": {
         "description": "Run a dataflow on demand",
@@ -10754,7 +10784,10 @@
         },
         "mutates": true,
         "returns": "object",
-        "async": true
+        "async": true,
+        "destructive_flags": [
+          "--cancel-on-timeout"
+        ]
       },
       "discover-parameters": {
         "description": "Discover parameters of a dataflow",
@@ -11113,6 +11146,7 @@
         "mutates": true,
         "returns": "void",
         "async": true,
+        "destructive": true,
         "examples": [
           "fabio report update-definition --workspace $WS --id $RPT --file definition.pbir --report-json report.json"
         ]
@@ -11740,6 +11774,9 @@
         "output_fields": [
           "id",
           "displayName"
+        ],
+        "destructive_flags": [
+          "--allow-purge-data"
         ]
       },
       "generate": {
@@ -14435,7 +14472,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "query": {
         "description": "Run a KQL (or `.`-management, or T-SQL) query against the eventhouse cluster",
@@ -14710,7 +14748,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "get-topology": {
         "description": "Get the topology of an eventstream",
@@ -15795,7 +15834,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "list-shortcuts": {
         "description": "List shortcuts in a KQL database",
@@ -16112,7 +16152,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "run": {
         "description": "Run a saved query tab from the queryset against its configured data source",
@@ -16326,7 +16367,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       }
     }
   },
@@ -16555,7 +16597,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "start": {
         "description": "Start mirroring",
@@ -16793,7 +16836,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "create-trigger": {
         "description": "Create a trigger with auto-generated Reflex definition (KQL source + email/Teams alert)",
@@ -18200,7 +18244,8 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "destructive": true
       },
       "delete-livy-session": {
         "description": "Delete (stop) an interactive Livy session",
@@ -18568,7 +18613,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "run": {
         "description": "Run a Spark job definition",
@@ -18600,6 +18646,9 @@
         "returns": "object",
         "examples": [
           "fabio spark-job-definition run --workspace $WS --id $SJD --wait"
+        ],
+        "destructive_flags": [
+          "--cancel-on-timeout"
         ]
       },
       "list-livy-sessions": {
@@ -18794,7 +18843,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "query": {
         "description": "Execute a GraphQL query against a GraphQL API",
@@ -18981,7 +19031,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "list-containers": {
         "description": "List containers in a Cosmos DB database (data-plane)",
@@ -19497,7 +19548,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       }
     }
   },
@@ -19659,7 +19711,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "show-lakehouse": {
         "description": "Resolve the associated data lakehouse (the `<name>dtdm` lakehouse where the twin's ontology/instance data lives) and its SQL analytics endpoint",
@@ -19863,7 +19916,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       }
     }
   },
@@ -20018,7 +20072,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       }
     }
   },
@@ -20173,7 +20228,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "start": {
         "description": "Start the operations agent so it evaluates its rules (sets shouldRun=true)",
@@ -20387,7 +20443,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       }
     }
   },
@@ -20542,7 +20599,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "invoke": {
         "description": "Invoke a published function via its public REST endpoint",
@@ -20724,7 +20782,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "list-value-sets": {
         "description": "List value sets defined in a variable library",
@@ -20918,7 +20977,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       }
     }
   },
@@ -21784,6 +21844,9 @@
         "examples": [
           "fabio policy-set activate --workspace $WS --id $POLICY_SET --capacity-id $CAPACITY_ID --dry-run",
           "fabio policy-set activate --workspace $WS --id $POLICY_SET --capacity-id $CAPACITY_ID --allow-replace --dry-run"
+        ],
+        "destructive_flags": [
+          "--allow-replace"
         ]
       },
       "deactivate": {
@@ -22122,7 +22185,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       }
     }
   },
@@ -22284,7 +22348,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "refresh-graph": {
         "description": "Trigger a graph refresh job",
@@ -22523,7 +22588,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "refresh-metadata": {
         "description": "Refresh catalog metadata",
@@ -22817,7 +22883,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "refresh-metadata": {
         "description": "Refresh catalog metadata",
@@ -23055,7 +23122,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "refresh-metadata": {
         "description": "Refresh catalog metadata",
@@ -23546,7 +23614,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "export": {
         "description": "Export (render) the paginated report to a file (PDF, PPTX, XLSX, DOCX, CSV, IMAGE, ...)",
@@ -23793,7 +23862,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       }
     }
   },
@@ -23955,7 +24025,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "start-environment": {
         "description": "Start the Airflow environment",
@@ -23992,7 +24063,8 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "destructive": true
       },
       "get-environment": {
         "description": "Get environment status",
@@ -24620,6 +24692,7 @@
         "mutates": true,
         "returns": "void",
         "async": true,
+        "destructive": true,
         "examples": [
           "fabio azure-databricks-storage update-definition --workspace $WS --id $ADS_ID --file definition.json"
         ]
@@ -24794,7 +24867,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       },
       "run": {
         "description": "Run a data build tool job on-demand [preview]",
@@ -24823,7 +24897,10 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "destructive_flags": [
+          "--cancel-on-timeout"
+        ]
       }
     }
   },
@@ -24978,7 +25055,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       }
     }
   },
@@ -25138,7 +25216,8 @@
         },
         "mutates": true,
         "returns": "void",
-        "async": true
+        "async": true,
+        "destructive": true
       }
     }
   },
@@ -25828,6 +25907,7 @@
         "mutates": true,
         "returns": "object",
         "async": true,
+        "destructive": true,
         "examples": [
           "fabio git checkout --workspace $WS --branch feature/new-model --strategy prefer-remote"
         ]
@@ -25876,7 +25956,21 @@
       "connection": {
         "description": "Legacy alias for `connection-show`",
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "subcommands": {
+          "show": {
+            "description": "Show Git connection details for the workspace",
+            "flags": {
+              "--workspace": {
+                "type": "string",
+                "required": true,
+                "description": "Workspace ID"
+              }
+            },
+            "mutates": false,
+            "returns": "object"
+          }
+        }
       },
       "connection-show": {
         "description": "Show Git connection details for the workspace",
@@ -25934,8 +26028,48 @@
       },
       "credentials": {
         "description": "Manage Git credentials",
-        "mutates": false,
-        "returns": "object"
+        "mutates": true,
+        "returns": "object",
+        "subcommands": {
+          "show": {
+            "description": "Show your Git credentials configuration",
+            "flags": {
+              "--workspace": {
+                "type": "string",
+                "required": true,
+                "description": "Workspace ID"
+              }
+            },
+            "mutates": false,
+            "returns": "object"
+          },
+          "update": {
+            "description": "Update your Git credentials configuration",
+            "flags": {
+              "--workspace": {
+                "type": "string",
+                "required": true,
+                "description": "Workspace ID"
+              },
+              "--source": {
+                "type": "enum",
+                "values": [
+                  "automatic",
+                  "configured-connection",
+                  "none"
+                ],
+                "required": true,
+                "description": "Credentials source"
+              },
+              "--connection-id": {
+                "type": "string",
+                "description": "Connection ID (required when source is configured-connection)"
+              }
+            },
+            "mutates": true,
+            "returns": "void"
+          }
+        }
       },
       "relation": {
         "description": "Manage workspace relations (base/branch links between workspaces, Preview)",
@@ -25945,7 +26079,65 @@
           "fabio git relation list --workspace $BRANCH_WS",
           "fabio git relation create --workspace $BRANCH_WS --related-workspace $BASE_WS --relation-type base",
           "fabio git relation delete --workspace $BRANCH_WS --relation-id $RELATION_ID"
-        ]
+        ],
+        "subcommands": {
+          "list": {
+            "description": "List workspace relations for a workspace (Preview)",
+            "flags": {
+              "--workspace": {
+                "type": "string",
+                "required": true,
+                "description": "Workspace ID"
+              }
+            },
+            "mutates": false,
+            "returns": "list"
+          },
+          "create": {
+            "description": "Create a workspace relation between two workspaces (Preview)",
+            "flags": {
+              "--workspace": {
+                "type": "string",
+                "required": true,
+                "description": "Workspace ID (the branch or base workspace, depending on relation type)"
+              },
+              "--related-workspace": {
+                "type": "string",
+                "required": true,
+                "description": "Related workspace ID"
+              },
+              "--relation-type": {
+                "type": "enum",
+                "values": [
+                  "base",
+                  "branch"
+                ],
+                "required": true,
+                "description": "Relation type to create (only `base` and `branch` are valid for creation)"
+              }
+            },
+            "mutates": true,
+            "returns": "object"
+          },
+          "delete": {
+            "description": "Delete a workspace relation (Preview)",
+            "flags": {
+              "--workspace": {
+                "type": "string",
+                "required": true,
+                "description": "Workspace ID (either the base or branch workspace in the relation)"
+              },
+              "--relation-id": {
+                "type": "string",
+                "required": true,
+                "description": "Workspace relation ID"
+              }
+            },
+            "mutates": true,
+            "returns": "void",
+            "destructive": true
+          }
+        }
       },
       "show-tracked": {
         "description": "Show tracked items and their Git sync status",
@@ -27315,6 +27507,7 @@
         },
         "mutates": true,
         "returns": "object",
+        "destructive": true,
         "examples": [
           "fabio deploy apply --source ./fabric-items/ --workspace \"Staging\"",
           "fabio deploy apply --source ./fabric-items/ --workspace \"Staging\" --dry-run",
@@ -27329,7 +27522,8 @@
           "duration_ms",
           "failures",
           "post_hooks"
-        ]
+        ],
+        "destructive_scope": "actions"
       },
       "export": {
         "description": "Export workspace item definitions to a local directory",
@@ -27360,7 +27554,7 @@
             "description": "Max parallel getDefinition requests"
           }
         },
-        "mutates": false,
+        "mutates": true,
         "returns": "object",
         "examples": [
           "fabio deploy export --workspace \"Production\" --dir ./fabric-items/ --overwrite"
@@ -27372,6 +27566,9 @@
           "total_items",
           "exported",
           "skipped"
+        ],
+        "destructive_flags": [
+          "--overwrite"
         ]
       },
       "init-params": {
@@ -27577,7 +27774,10 @@
         },
         "mutates": true,
         "returns": "object",
-        "async": true
+        "async": true,
+        "destructive_flags": [
+          "--cancel-on-timeout"
+        ]
       },
       "cancel-instance": {
         "description": "Cancel a running job instance",
@@ -27599,7 +27799,8 @@
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "destructive": true
       },
       "list-schedules": {
         "description": "List schedules for an item job type",

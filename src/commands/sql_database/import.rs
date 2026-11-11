@@ -428,6 +428,9 @@ pub(super) async fn import(
     drop_if_exists: bool,
     batch_size: usize,
 ) -> Result<()> {
+    crate::client::validate_uuid(workspace, "--workspace")?;
+    crate::client::validate_uuid(id, "--id")?;
+    validate_import_mode(no_create_table, drop_if_exists)?;
     // Determine table name
     let table_name = table.map_or_else(|| table_name_from_path(file), ToString::to_string);
     let safe_table = sanitize_table_name(&table_name);
@@ -471,6 +474,7 @@ pub(super) async fn import(
 
     // Show dry-run info
     let dry_body = serde_json::json!({
+        "workspace":workspace,"id":id,"target":safe_table,
         "table": table_name,
         "file": file,
         "format": ext,
@@ -479,9 +483,23 @@ pub(super) async fn import(
         "batch_count": sql_batches.len(),
         "create_table_ddl": create_ddl,
         "drop_if_exists": drop_if_exists,
+        "drop_table_ddl":drop_if_exists.then_some(&drop_ddl),
     });
-    if output::dry_run_guard(cli, "sql-database import", &dry_body) {
+    if output::dry_run_guard_maybe_destructive(
+        cli,
+        "sql-database import",
+        &dry_body,
+        drop_if_exists,
+    ) {
         return Ok(());
+    }
+
+    if cli.readonly {
+        return Err(FabioError::new(
+            ErrorCode::ReadonlyMode,
+            "SQL data import is blocked by --readonly; use --dry-run to preview.",
+        )
+        .into());
     }
 
     // Connect via TDS
@@ -572,9 +590,20 @@ pub(super) async fn import(
         "rows_inserted": inserted,
         "columns": columns.len(),
         "file": file,
+        "destructive":drop_if_exists,
+        "warnings":if drop_if_exists {vec!["--drop-if-exists was active: any existing table/data was replaced without a backup."]} else {Vec::new()},
         "message": format!("Successfully imported {inserted} rows into {safe_table}")
     });
     output::render_object(cli, &result, "message");
+    Ok(())
+}
+
+fn validate_import_mode(no_create_table: bool, drop_if_exists: bool) -> Result<()> {
+    if drop_if_exists && no_create_table {
+        return Err(FabioError::with_hint(ErrorCode::InvalidInput,
+            "--drop-if-exists cannot be combined with --no-create-table: dropping the table would leave no table for the import.",
+            "Review whether to replace the table or import into the existing table. No connection or drop was attempted.").into());
+    }
     Ok(())
 }
 
@@ -582,6 +611,21 @@ pub(super) async fn import(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn drop_without_recreation_is_rejected_before_connection_or_preview() {
+        for (no_create, drop_existing) in [(false, false), (false, true), (true, false)] {
+            assert!(super::validate_import_mode(no_create, drop_existing).is_ok());
+        }
+        let error = super::validate_import_mode(true, true).unwrap_err();
+        assert_eq!(
+            error
+                .downcast_ref::<crate::errors::FabioError>()
+                .unwrap()
+                .code,
+            crate::errors::ErrorCode::InvalidInput
+        );
+    }
+
     use super::*;
 
     #[test]

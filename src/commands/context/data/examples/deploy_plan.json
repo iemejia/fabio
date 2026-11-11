@@ -11,6 +11,7 @@
         {"name": "OldReport", "item_type": "Report", "action": "Delete", "reason": "not in source", "deployed_id": "a7b8c9d0-e1f2-3456-0123-567890abcdef"}
       ],
       "warnings": [],
+      "destructive": true,
       "errors": [],
       "summary": {"create": 1, "update": 1, "rename": 0, "delete": 1, "skip": 1},
       "source_git": {"commit": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0", "branch": "main", "dirty": false}

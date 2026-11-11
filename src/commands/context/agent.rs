@@ -864,11 +864,7 @@ fn build_mcp_tool(
     } else {
         annotations.insert("readOnlyHint".to_owned(), serde_json::json!(true));
     }
-    if cmd_val
-        .get("destructive")
-        .and_then(serde_json::Value::as_bool)
-        == Some(true)
-    {
+    if has_destructive_capability(cmd_val) {
         annotations.insert("destructiveHint".to_owned(), serde_json::json!(true));
     }
     if cmd_val.get("async").and_then(serde_json::Value::as_bool) == Some(true) {
@@ -895,6 +891,16 @@ fn build_mcp_tool(
         "annotations": annotations,
         "invocation": invocation,
     })
+}
+
+fn has_destructive_capability(command: &serde_json::Value) -> bool {
+    command["destructive"] == true
+        || command["destructive_flags"]
+            .as_array()
+            .is_some_and(|flags| !flags.is_empty())
+        || command["subcommands"]
+            .as_object()
+            .is_some_and(|children| children.values().any(has_destructive_capability))
 }
 
 /// Build a single `OpenAI` function-calling definition from a fabio subcommand.
@@ -1402,6 +1408,15 @@ fn generate_subcommands(
     group: &clap::Command,
     existing_group: Option<&serde_json::Value>,
 ) -> serde_json::Map<String, serde_json::Value> {
+    generate_subcommands_at(group, existing_group, group.get_name())
+}
+
+#[cfg(test)]
+fn generate_subcommands_at(
+    group: &clap::Command,
+    existing_group: Option<&serde_json::Value>,
+    parent_path: &str,
+) -> serde_json::Map<String, serde_json::Value> {
     let mut subcommands = serde_json::Map::new();
 
     for sc in group.get_subcommands() {
@@ -1466,10 +1481,6 @@ fn generate_subcommands(
                 serde_json::json!(infer_returns(&sc_name)),
             );
         }
-        if !sc_obj.contains_key("destructive") && infer_destructive(&sc_name) {
-            sc_obj.insert("destructive".to_owned(), serde_json::json!(true));
-        }
-
         // Local auth login/logout change persisted credential selection and both
         // return structured status objects; command-name inference cannot express this.
         if group.get_name() == "auth" && matches!(sc_name.as_str(), "login" | "logout") {
@@ -1498,10 +1509,46 @@ fn generate_subcommands(
             sc_obj.insert("examples".to_owned(), examples);
         }
 
+        // Safety judgment overrides missing AND stale false annotations. It is
+        // derived from the real command/flags, not the previously annotated set.
+        let path = format!("{parent_path} {sc_name}");
+        apply_safety_metadata(sc, &path, &mut sc_obj);
+        let nested = generate_subcommands_at(sc, existing_sc, &path);
+        if !nested.is_empty() {
+            if nested.values().any(|command| command["mutates"] == true) {
+                sc_obj.insert("mutates".to_owned(), serde_json::json!(true));
+            }
+            sc_obj.insert("subcommands".to_owned(), serde_json::Value::Object(nested));
+        }
+
         subcommands.insert(sc_name, serde_json::Value::Object(sc_obj));
     }
 
     subcommands
+}
+
+#[cfg(test)]
+fn apply_safety_metadata(
+    command: &clap::Command,
+    path: &str,
+    metadata: &mut serde_json::Map<String, serde_json::Value>,
+) {
+    let safety = super::safety::classify(path, command);
+    if safety.destructive {
+        metadata.insert("destructive".to_owned(), serde_json::json!(true));
+        metadata.insert("mutates".to_owned(), serde_json::json!(true));
+    } else if !safety.destructive_flags.is_empty()
+        && metadata.get("destructive") != Some(&serde_json::Value::Bool(true))
+    {
+        metadata.insert(
+            "destructive_flags".to_owned(),
+            serde_json::json!(safety.destructive_flags),
+        );
+        metadata.insert("mutates".to_owned(), serde_json::json!(true));
+    }
+    if safety.action_scoped {
+        metadata.insert("destructive_scope".to_owned(), serde_json::json!("actions"));
+    }
 }
 
 /// Marked workflow steps own these examples; regenerated discovery must not
@@ -1761,26 +1808,82 @@ fn infer_returns(cmd_name: &str) -> &'static str {
     "object"
 }
 
-/// Infer whether a command is destructive (deletes data permanently).
-#[cfg(test)]
-#[allow(dead_code)]
-fn infer_destructive(cmd_name: &str) -> bool {
-    cmd_name.starts_with("delete") || cmd_name.starts_with("remove") || cmd_name == "vacuum-table"
-}
-
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn safety_policy_overrides_stale_false_and_generates_nested_and_conditional_metadata() {
+        let group = clap::Command::new("future")
+            .subcommand(clap::Command::new("update-definition"))
+            .subcommand(
+                clap::Command::new("export").arg(
+                    clap::Arg::new("overwrite")
+                        .long("overwrite")
+                        .action(clap::ArgAction::SetTrue),
+                ),
+            )
+            .subcommand(
+                clap::Command::new("relation")
+                    .subcommand(clap::Command::new("delete"))
+                    .subcommand(clap::Command::new("list")),
+            );
+        let existing = serde_json::json!({"subcommands":{"update-definition":{"mutates":false,"destructive":false,"returns":"object","examples":["retained"]},"export":{"mutates":false,"destructive":false}}});
+        let generated = super::generate_subcommands(&group, Some(&existing));
+        assert_eq!(generated["update-definition"]["destructive"], true);
+        assert_eq!(generated["update-definition"]["mutates"], true);
+        assert_eq!(
+            generated["update-definition"]["examples"],
+            serde_json::json!(["retained"])
+        );
+        assert_eq!(generated["export"]["destructive"], false);
+        assert_eq!(generated["export"]["mutates"], true);
+        assert_eq!(
+            generated["export"]["destructive_flags"],
+            serde_json::json!(["--overwrite"])
+        );
+        assert_eq!(
+            generated["relation"]["subcommands"]["delete"]["destructive"],
+            true
+        );
+        assert_eq!(
+            generated["relation"]["subcommands"]["list"]["mutates"],
+            false
+        );
+        assert!(super::has_destructive_capability(&generated["export"]));
+        assert!(super::has_destructive_capability(&generated["relation"]));
+        assert!(!super::has_destructive_capability(
+            &generated["relation"]["subcommands"]["list"]
+        ));
+    }
+
     #[test]
     fn readiness_metadata_is_readonly_and_returns_an_object() {
         assert!(!super::infer_mutates("readiness"));
         assert_eq!(super::infer_returns("readiness"), "object");
-        assert!(!super::infer_destructive("readiness"));
+        assert!(
+            !super::super::safety::classify(
+                "semantic-model readiness",
+                &clap::Command::new("readiness")
+            )
+            .destructive
+        );
         assert!(!super::infer_mutates("connection-hygiene"));
         assert_eq!(super::infer_returns("connection-hygiene"), "object");
-        assert!(!super::infer_destructive("connection-hygiene"));
+        assert!(
+            !super::super::safety::classify(
+                "admin connection-hygiene",
+                &clap::Command::new("connection-hygiene")
+            )
+            .destructive
+        );
         assert!(!super::infer_mutates("plan-upgrade"));
         assert_eq!(super::infer_returns("plan-upgrade"), "object");
-        assert!(!super::infer_destructive("plan-upgrade"));
+        assert!(
+            !super::super::safety::classify(
+                "dataflow plan-upgrade",
+                &clap::Command::new("plan-upgrade")
+            )
+            .destructive
+        );
     }
     use super::*;
 

@@ -708,8 +708,8 @@ async fn execute_plan(
     let mut all_warnings = changeset.warnings.clone();
     all_warnings.extend(param_warnings);
 
-    // Flag as destructive when plan contains deletes or force-all overwrites
-    let destructive = summary.delete > 0 || force_all;
+    // Include definition replacement/rename-republication, not just deletes.
+    let destructive = changeset.has_destructive_actions() || force_all;
     if force_all {
         all_warnings.push(
             "--force-all is active: ALL matched items will be overwritten \
@@ -769,6 +769,13 @@ async fn execute_apply(
     strategy: &str,
     verify: bool,
 ) -> Result<()> {
+    if cli.readonly && !cli.dry_run {
+        return Err(FabioError::new(
+            ErrorCode::ReadonlyMode,
+            "Deployment apply is blocked by --readonly; use --dry-run to inspect the plan.",
+        )
+        .into());
+    }
     // Validate parameter flags
     if parameters.is_some() && env.is_none() {
         return Err(FabioError::with_hint(ErrorCode::InvalidInput, "--env is required when --parameters is specified", "Both --parameters and --env must be provided together. Example: --parameters params.json --env dev").into());
@@ -930,6 +937,8 @@ async fn execute_apply(
             "status": "no_changes",
             "message": "Workspace is already in sync with source.",
             "summary": changeset.summary(),
+            "dry_run":cli.dry_run,
+            "destructive":false,
         });
         // --verify: no changes means the workspace already matches the source
         // (the plan showed all Skip), so convergence is trivially satisfied.
@@ -952,7 +961,7 @@ async fn execute_apply(
     // Dry-run guard
     if cli.dry_run {
         let summary = changeset.summary();
-        let destructive = summary.delete > 0 || force_all;
+        let destructive = changeset.has_destructive_actions() || force_all;
         let mut warnings: Vec<String> = changeset.warnings.clone();
         if force_all {
             warnings.push(
@@ -961,7 +970,7 @@ async fn execute_apply(
                     .to_owned(),
             );
         }
-        let output_data = json!({
+        let mut output_data = json!({
             "status": "dry_run",
             "message": format!(
                 "Would create {}, update {}, delete {}, skip {}",
@@ -974,6 +983,7 @@ async fn execute_apply(
             "destructive": destructive,
             "warnings": warnings,
         });
+        output::annotate_destructive_preview(&mut output_data, destructive);
         output::render_object(cli, &output_data, "status");
         return Ok(());
     }
@@ -1108,6 +1118,7 @@ async fn execute_apply(
         "skipped": result.skipped.len(),
         "duration_ms": result.duration_ms,
         "failures": result.failed,
+        "destructive":changeset.has_destructive_actions() || force_all,
     });
 
     // Add contextual hints for common failure patterns
@@ -1184,6 +1195,10 @@ async fn execute_export(
     overwrite: bool,
     concurrency: usize,
 ) -> Result<()> {
+    if cli.readonly && overwrite && !cli.dry_run {
+        return Err(FabioError::new(ErrorCode::ReadonlyMode,
+            "Overwriting local export files is blocked by --readonly; choose a fresh directory or preview with --dry-run.").into());
+    }
     let workspace_id = resolve_workspace(client, workspace).await?;
 
     let result = export::export_workspace(
@@ -1207,6 +1222,14 @@ async fn execute_export(
     });
 
     let mut output_data = output_data;
+    if cli.dry_run {
+        output::annotate_destructive_preview(&mut output_data, overwrite);
+    }
+    if overwrite {
+        output_data["warnings"] = json!([
+            "--overwrite can irreversibly replace existing local definitions and metadata. No backup is created."
+        ]);
+    }
     if let Some(note) = export::build_export_tracking_note(&result.skipped) {
         let obj = output_data.as_object_mut().unwrap();
         obj.insert("tracking_note".to_owned(), note);

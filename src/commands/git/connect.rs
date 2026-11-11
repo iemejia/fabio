@@ -193,6 +193,26 @@ pub(super) async fn checkout(
     wait: bool,
     timeout: u64,
 ) -> Result<()> {
+    validate_checkout_scope(workspace, branch)?;
+    if crate::output::dry_run_guard(
+        cli,
+        "git checkout",
+        &serde_json::json!({
+            "workspace":workspace,"branch":branch,"strategy":strategy.unwrap_or("prefer-remote"),
+            "force":cli.force,"wait":wait,"timeout":timeout,"readinessNotChecked":true,
+            "actions":["inspect connection and workspace changes","disconnect","connect reviewed branch","initialize connection"],
+            "warnings":if cli.force {vec!["--force may discard uncommitted workspace changes. This is irreversible without a separate backup."]} else {Vec::new()}
+        }),
+    ) {
+        return Ok(());
+    }
+    if cli.readonly {
+        return Err(FabioError::new(
+            ErrorCode::ReadonlyMode,
+            "Git checkout is blocked by --readonly; use --dry-run to preview.",
+        )
+        .into());
+    }
     // Pre-flight: check for uncommitted workspace changes
     if !cli.force {
         let status_data = client
@@ -349,7 +369,8 @@ pub(super) async fn checkout(
             .await
         {
             Ok(_data) => {
-                let result = serde_json::json!({"status": "switched", "branch": branch});
+                let result = serde_json::json!({"status": "switched", "branch": branch,"destructive":true,
+                    "warnings":if cli.force {vec!["--force was active: uncommitted workspace changes may have been discarded."]} else {Vec::new()}});
                 output::render_object(cli, &result, "status");
                 return Ok(());
             }
@@ -371,6 +392,19 @@ pub(super) async fn checkout(
         "initializeConnection failed",
         "Retry the operation. If using Azure DevOps, ensure the user has Contributor access to the repo.",
     ).into()))
+}
+
+fn validate_checkout_scope(workspace: &str, branch: &str) -> Result<()> {
+    crate::client::validate_uuid(workspace, "--workspace")?;
+    if branch.trim().is_empty() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "The checkout branch must not be empty.",
+            "Pass the exact reviewed branch with --branch; no checkout was attempted.",
+        )
+        .into());
+    }
+    Ok(())
 }
 
 pub(super) async fn connection_show(
@@ -470,4 +504,17 @@ pub(super) async fn credentials_update(
 
     output::render_object(cli, &data, "status");
     Ok(())
+}
+
+#[cfg(test)]
+mod safety_tests {
+    #[test]
+    fn checkout_scope_rejects_missing_branch_or_injected_workspace_before_preview() {
+        const WS: &str = "aaaaaaaa-1111-2222-3333-444444444444";
+        for branch in ["", " ", "\r\n"] {
+            assert!(super::validate_checkout_scope(WS, branch).is_err());
+        }
+        assert!(super::validate_checkout_scope("../workspaces", "feature/review").is_err());
+        assert!(super::validate_checkout_scope(WS, "feature/review").is_ok());
+    }
 }

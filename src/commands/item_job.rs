@@ -46,10 +46,11 @@ pub async fn run_and_wait(
     cancel_on_timeout: bool,
     spec: &RunSpec<'_>,
 ) -> Result<()> {
-    if output::dry_run_guard(
+    if output::dry_run_guard_maybe_destructive(
         cli,
         spec.op,
-        &serde_json::json!({ "workspace": workspace, "id": id, "wait": wait, "timeout": timeout_secs }),
+        &serde_json::json!({ "workspace": workspace, "id": id, "wait": wait, "timeout": timeout_secs,"cancelOnTimeout":cancel_on_timeout }),
+        cancel_on_timeout,
     ) {
         return Ok(());
     }

@@ -778,7 +778,7 @@ async fn run(
     // Build execution data body
     let body = build_execution_body(job_path, execute_option, parameters)?;
 
-    if output::dry_run_guard(
+    if output::dry_run_guard_maybe_destructive(
         cli,
         "dataflow run",
         &serde_json::json!({
@@ -787,8 +787,10 @@ async fn run(
             "jobType": job_path,
             "wait": wait,
             "timeout": timeout_secs,
-            "body": body
+            "body": body,
+            "cancelOnTimeout":cancel_on_timeout
         }),
+        cancel_on_timeout,
     ) {
         return Ok(());
     }

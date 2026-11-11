@@ -118,6 +118,7 @@ fabio deploy apply --source ./export --workspace "Production (empty)" --env prod
 - **Ontology round-trip** -- `fabio ontology import/export` converts between OWL (RDF/XML, JSON-LD) and Fabric format; compatible with [Ontology Playground](https://github.com/microsoft/Ontology-Playground)
 - **Throttling-aware** -- Bulk/batch APIs preferred; parallel execution with rate-limit retry
 - **Mutation-aware retries** -- Generic Fabric JSON submissions do not replay ambiguous gateway failures; selected JSON/job paths retain acknowledgement or uncertainty evidence with non-retriable guidance. Safe reads keep bounded retries. See [submission retry safety](https://ismaelmejia.com/fabio/guides/submission-retries/).
+- **Destructive-discovery coverage** -- Safety metadata is generated from reviewed judgment and checked against the real CLI, including nested commands and flag-conditional modes. Preview notices distinguish selected destructive actions from create-only/no-op plans. See [destructive previews](https://ismaelmejia.com/fabio/guides/destructive-previews/).
 
 ## Installation
 

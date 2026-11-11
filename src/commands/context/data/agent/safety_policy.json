@@ -1,0 +1,18 @@
+{
+  "description": "Authored safety judgment. The generator and independent clap-surface tests consume this policy; runtime notices continue to consume generated commands.json, so stale metadata cannot be silently repaired at runtime.",
+  "destructive_verbs": ["delete", "remove", "vacuum", "prune", "purge", "drop", "truncate", "kill", "cancel", "clear", "reset", "stop", "checkout"],
+  "destructive_commands": {
+    "deploy apply": "Deployment can replace existing definitions and delete items. The concrete plan still reports whether its selected actions are destructive.",
+    "dataflow upgrade-gen1": "Execution always replaces the selected Gen1 items irreversibly. The approval flag gates execution; it does not make an otherwise harmless mode destructive."
+  },
+  "action_scoped_commands": ["deploy apply"],
+  "destructive_flags": ["--force-all", "--overwrite", "--hard-delete", "--drop-if-exists", "--delete-orphans", "--allow-replace", "--allow-delete-types", "--allow-purge-data", "--allow-in-place-upgrade", "--cancel-on-timeout", "--include-running"],
+  "non_destructive_commands": {
+    "workspace reset-shortcut-cache": "Clears an ephemeral shortcut cache, not the underlying data or definitions.",
+    "sql-database stop-mirroring": "Pauses replication; it does not delete the mirrored data or cancel an arbitrary running query.",
+    "mirrored-database stop": "Pauses mirroring and can be reversed with start; it does not delete the database.",
+    "reflex stop-rule": "Disables a rule; the rule definition is retained and can be started again.",
+    "operations-agent stop": "Sets shouldRun=false while retaining the agent definition.",
+    "deploy plan": "Read-only planning accepts deployment safety options to describe future actions; it never applies them."
+  }
+}

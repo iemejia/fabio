@@ -69,7 +69,7 @@ Deploy item definitions from a local directory to a workspace
 | Command | Mutates | Description |
 |---|---|---|
 | `fabio deploy apply` | yes | Execute deployment (create/update/delete items) |
-| `fabio deploy export` | no | Export workspace item definitions to a local directory |
+| `fabio deploy export` | yes | Export workspace item definitions to a local directory |
 | `fabio deploy init-params` | no | Generate a parameters.json scaffold by scanning or diffing exported definitions |
 | `fabio deploy plan` | no | Preview what would be deployed (create/update/delete/skip) |
 | `fabio deploy rebind` | yes | Rewrite environment-specific IDs in local definition files, in place (offline) |

@@ -1,0 +1,18 @@
+{
+  "topic":"destructive-discovery",
+  "title":"Destructive capabilities, conditional modes and selected preview risk",
+  "summary":"Safety annotations are generated and checked against the real CLI, including nested leaves. Distinguish destructive capability, risky optional flags and action-scoped preview results; destructive:true plus agentNotice requires explicit approval, never automatic execution.",
+  "contract":[
+    "destructive:true identifies a destructive capability and requires mutates:true. It includes definition replacement, deletion and running-work cancellation, not only delete-prefixed commands.",
+    "destructive_flags lists risky optional modes such as overwrite, purge, drop and cancellation on timeout. A mode-off preview need not be destructive; selecting the risky mode carries destructive:true plus an agent confirmation notice.",
+    "destructive_scope:actions is reserved for reviewed workflows whose custom preview computes the selected actions' risk. Deployment apply create-only/no-op previews remain false; definition updates, rename/republication, deletion and force-all overwrites are true. Do not treat arbitrary missing/false metadata as proof of safety.",
+    "Native nested subcommands contain leaf-level metadata. A nested Git relation deletion is destructive without making its list command destructive. Runtime recognition uses canonical full paths. MCP destructiveHint conservatively reports potential capability, not approval; nested tool invocation interfaces are not all redesigned by this change."
+  ],
+  "safety":[
+    "Always preview irreversible work, inspect exact selected scope/actions, and obtain explicit approval before removing --dry-run. Neither a metadata flag nor a preview is approval or proof of readiness. A detected AI agent receives agentNotice on destructive previews.",
+    "Git checkout preview is offline, scoped and readiness-not-checked; actual readonly checkout fails. SQL import/table-drop and statistics writes reject readonly before connecting. --drop-if-exists is dangerous and incompatible with --no-create-table. Local overwrite export is likewise blocked under readonly unless previewing.",
+    "Inputs remain validated before replacement previews. Ontology update-definition validates scope and local input requirements, then previews part paths/counts before POST. This is not a service-side schema/readiness check. No live upgrade, grant, cancellation or tenant mutation is needed to validate discovery.",
+    "Policy and tests cover explicit vocabulary, real risky flags and reviewed workflow judgment. They cannot infer every arbitrary future destructive action; new custom behavior needs a policy row and runtime tests."
+  ],
+  "see_also":["fabio context best-practices submission-retries","fabio context best-practices receipt-storage"]
+}

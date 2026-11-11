@@ -652,7 +652,7 @@ async fn get_definition(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 async fn run(
     cli: &Cli,
     client: &FabricClient,
@@ -668,7 +668,7 @@ async fn run(
     // Build request body from parameters/compute-type/execution-data
     let body = build_run_body(parameters, compute_type, execution_data)?;
 
-    if output::dry_run_guard(
+    if output::dry_run_guard_maybe_destructive(
         cli,
         "notebook run",
         &serde_json::json!({
@@ -676,8 +676,10 @@ async fn run(
             "id": id,
             "wait": wait,
             "timeout": timeout_secs,
-            "body": body
+            "body": body,
+            "cancelOnTimeout":cancel_on_timeout
         }),
+        cancel_on_timeout,
     ) {
         return Ok(());
     }

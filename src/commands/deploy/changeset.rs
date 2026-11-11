@@ -73,6 +73,17 @@ pub struct ChangesetSummary {
 }
 
 impl Changeset {
+    /// Definition replacement, rename/republication and deletion can destroy
+    /// existing content. Creation and unchanged items do not overwrite it.
+    pub fn has_destructive_actions(&self) -> bool {
+        self.changes.iter().any(|change| {
+            matches!(
+                change.action,
+                ChangeAction::Update | ChangeAction::Rename | ChangeAction::Delete
+            )
+        })
+    }
+
     pub const fn new() -> Self {
         Self {
             changes: Vec::new(),
@@ -132,6 +143,23 @@ pub struct DeployFailure {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn destructive_actions_include_definition_updates_and_renames_not_create_or_skip() {
+        for (action, expected) in [
+            (super::ChangeAction::Create, false),
+            (super::ChangeAction::Skip, false),
+            (super::ChangeAction::Update, true),
+            (super::ChangeAction::Rename, true),
+            (super::ChangeAction::Delete, true),
+        ] {
+            let mut changeset = super::Changeset::new();
+            changeset
+                .changes
+                .push(make_change(action, "Fixture", "Notebook"));
+            assert_eq!(changeset.has_destructive_actions(), expected);
+        }
+    }
+
     use super::*;
 
     fn make_change(action: ChangeAction, name: &str, item_type: &str) -> Change {

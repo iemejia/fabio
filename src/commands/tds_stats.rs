@@ -20,6 +20,17 @@ use crate::commands::tds_utils::{
 };
 use crate::output;
 
+fn guard_write(readonly: bool) -> Result<()> {
+    if readonly {
+        return Err(crate::errors::FabioError::new(
+            crate::errors::ErrorCode::ReadonlyMode,
+            "Statistics writes are blocked by --readonly; use --dry-run to preview.",
+        )
+        .into());
+    }
+    Ok(())
+}
+
 /// The `sys.stats` projection shared by `statistics list`.
 const STATS_LIST_QUERY: &str = "SELECT s.name AS statistic_name, \
      SCHEMA_NAME(t.schema_id) AS schema_name, \
@@ -98,6 +109,7 @@ where
         return Ok(());
     }
     let sql = format!("CREATE STATISTICS [{name}] ON {table} ([{column}])");
+    guard_write(cli.readonly)?;
     let (server, database) = resolve().await?;
     execute_and_render_sql(cli, client, &server, &database, &sql).await?;
     let obj = serde_json::json!({
@@ -130,6 +142,7 @@ where
         return Ok(());
     }
     let sql = build_update_statistics_sql(name);
+    guard_write(cli.readonly)?;
     let (server, database) = resolve().await?;
     execute_and_render_sql(cli, client, &server, &database, &sql).await?;
     let obj = serde_json::json!({ "name": name, "status": "updated" });
@@ -157,9 +170,26 @@ where
         return Ok(());
     }
     let sql = build_drop_statistics_sql(name);
+    guard_write(cli.readonly)?;
     let (server, database) = resolve().await?;
     execute_and_render_sql(cli, client, &server, &database, &sql).await?;
     let obj = serde_json::json!({ "name": name, "status": "deleted" });
     output::render_object(cli, &obj, "status");
     Ok(())
+}
+
+#[cfg(test)]
+mod safety_tests {
+    #[test]
+    fn readonly_write_guard_blocks_before_the_lazy_connection_resolver() {
+        let error = super::guard_write(true).unwrap_err();
+        assert_eq!(
+            error
+                .downcast_ref::<crate::errors::FabioError>()
+                .unwrap()
+                .code,
+            crate::errors::ErrorCode::ReadonlyMode
+        );
+        assert!(super::guard_write(false).is_ok());
+    }
 }

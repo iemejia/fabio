@@ -74,6 +74,8 @@ pub(super) async fn update_definition(
     dir_path: Option<&str>,
     update_metadata: bool,
 ) -> Result<()> {
+    crate::client::validate_uuid(workspace, "--workspace")?;
+    crate::client::validate_uuid(id, "--id")?;
     let def = if let Some(path) = definition_path {
         let content = read_file_or_stdin(path)?;
         serde_json::from_str::<Value>(&content)
@@ -94,6 +96,18 @@ pub(super) async fn update_definition(
     let body = serde_json::json!({"definition": def});
 
     ensure_platform_when_updating_metadata(&def, update_metadata)?;
+
+    if output::dry_run_guard(
+        cli,
+        "ontology update-definition",
+        &serde_json::json!({
+            "workspace":workspace,"id":id,"updateMetadata":update_metadata,
+            "partCount":def["parts"].as_array().map(Vec::len),
+            "partPaths":def["parts"].as_array().map(|parts|parts.iter().filter_map(|part|part["path"].as_str()).collect::<Vec<_>>())
+        }),
+    ) {
+        return Ok(());
+    }
 
     let path = if update_metadata {
         format!("/workspaces/{workspace}/ontologies/{id}/updateDefinition?updateMetadata=True")

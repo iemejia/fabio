@@ -9,6 +9,8 @@ mod examples;
 mod personas;
 #[cfg(test)]
 mod recipe_tests;
+#[cfg(test)]
+mod safety;
 mod schemas;
 #[cfg(test)]
 mod skillgen;

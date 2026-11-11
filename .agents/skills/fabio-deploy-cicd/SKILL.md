@@ -37,7 +37,7 @@ Deploy item definitions from a local directory to a workspace
 | Command | Mutates | Description |
 |---|---|---|
 | `fabio deploy apply` | yes | Execute deployment (create/update/delete items) |
-| `fabio deploy export` | no | Export workspace item definitions to a local directory |
+| `fabio deploy export` | yes | Export workspace item definitions to a local directory |
 | `fabio deploy init-params` | no | Generate a parameters.json scaffold by scanning or diffing exported definitions |
 | `fabio deploy plan` | no | Preview what would be deployed (create/update/delete/skip) |
 | `fabio deploy rebind` | yes | Rewrite environment-specific IDs in local definition files, in place (offline) |
@@ -56,7 +56,7 @@ Manage Git integration (connect, commit, pull, status)
 | `fabio git connection-settings-show` | no | Show Git connection settings |
 | `fabio git connection-settings-update` | yes | Update Git connection settings |
 | `fabio git connection-show` | no | Show Git connection details for the workspace |
-| `fabio git credentials` | no | Manage Git credentials |
+| `fabio git credentials` | yes | Manage Git credentials |
 | `fabio git disconnect` | yes | Disconnect a workspace from Git |
 | `fabio git init` | yes | Initialize a workspace Git connection (required after connect) |
 | `fabio git pull` | yes | Pull remote changes into the workspace (update from Git) |

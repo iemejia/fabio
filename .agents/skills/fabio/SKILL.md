@@ -677,7 +677,7 @@ fabio user-data-function invoke --url https://<app>.<region>.fabric.microsoft.co
 **Data Pipeline & Job Scheduling:**
 ```bash
 fabio dataflow list-upgrade-readiness --workspace $WS --all  # assess every Gen1 dataflow first
-fabio dataflow upgrade-gen1 --workspace $WS --id $DF1 --id $DF2 --dry-run # in-place; 1-50 IDs
+fabio --readonly dataflow upgrade-gen1 --workspace $WS --id $DF1 --id $DF2 --dry-run # in-place; 1-50 IDs
 fabio data-pipeline create --workspace $WS --name "Daily-ETL"
 fabio data-pipeline run --workspace $WS --id $DP --wait                    # trigger + wait
 fabio data-pipeline create-schedule --workspace $WS --id $DP --content '{"enabled":true,...}'
@@ -758,6 +758,7 @@ fabio deploy apply --source ./items --workspace $WS --strategy sequential   # on
 **SAFETY FOR DESTRUCTIVE OPERATIONS:**
 - **Always suggest `--dry-run`** before any delete or mutation to preview what will happen
 - **Honor the `"destructive": true` + `agentNotice` signal**: a `--dry-run` preview of a destructive command carries `"destructive": true` and (when fabio detects you're an AI agent) an `agentNotice` telling you to confirm the irreversible action with the user before re-running without `--dry-run`. Treat that notice as a hard stop: surface it to the user and get explicit approval before executing.
+- **Distinguish capability from selected risk**: native discovery can expose `destructive_flags` for optional modes (overwrite, purge, drop, timeout cancellation). `destructive_scope: "actions"` means a reviewed custom preview computes the selected plan's risk: create-only/no-op deploy previews can be non-destructive, but definition updates, rename/republication and deletion require confirmation. MCP `destructiveHint` reports potential capability, not approval. Nested native `subcommands` carry leaf-level metadata. See `fabio context best-practices destructive-discovery`.
 - **`--hard-delete`** permanently removes items, bypassing the recycle bin. There is NO recovery. Always warn the user.
 - **`--force-all`** overwrites ALL matched items in deploy regardless of content changes. This is irreversible. Suggest `fabio deploy plan` first.
 - **`--delete-orphans`** removes workspace items not in source. **Protected types** (Lakehouse, Warehouse, SQLDatabase, Eventhouse, KQLDatabase) are blocked by default because they hold data — require explicit `--allow-delete-types` to delete them.

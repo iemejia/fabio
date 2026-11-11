@@ -45,6 +45,7 @@ const DANGEROUS_FLAGS: &[&str] = &[
     "--allow-unresolved",
     "--cancel-on-timeout",
     "--delete-orphans",
+    "--drop-if-exists",
     "--force",
     "--force-all",
     "--hard",
@@ -110,24 +111,35 @@ static DESTRUCTIVE_OPERATIONS: std::sync::LazyLock<std::collections::HashSet<Str
             serde_json::from_str(include_str!("commands/context/data/agent/commands.json"))
                 .expect("commands.json is valid JSON");
         let mut set = std::collections::HashSet::new();
-        if let Some(groups) = schema.as_object() {
-            for (group, gdef) in groups {
-                let Some(subs) = gdef.get("subcommands").and_then(|s| s.as_object()) else {
-                    continue;
-                };
-                for (sub, sdef) in subs {
-                    if sdef
-                        .get("destructive")
-                        .and_then(serde_json::Value::as_bool)
-                        .unwrap_or(false)
-                    {
-                        set.insert(format!("{group} {sub}"));
-                    }
-                }
+        visit_command_nodes(&schema, "", &mut |path, command| {
+            if command["destructive"] == true {
+                set.insert(path.to_string());
             }
-        }
+        });
         set
     });
+
+/// Visit canonical command paths, including nested leaves. Runtime reads the
+/// generated metadata; it never consults generator policy to conceal drift.
+fn visit_command_nodes(
+    schema: &serde_json::Value,
+    prefix: &str,
+    visit: &mut impl FnMut(&str, &serde_json::Value),
+) {
+    if let Some(commands) = schema.as_object() {
+        for (name, metadata) in commands {
+            let path = if prefix.is_empty() {
+                name.clone()
+            } else {
+                format!("{prefix} {name}")
+            };
+            visit(&path, metadata);
+            if let Some(children) = metadata.get("subcommands") {
+                visit_command_nodes(children, &path, visit);
+            }
+        }
+    }
+}
 
 /// Whether an operation string (`"<group> <subcommand>"`, as passed to the
 /// `--dry-run` guard) is a destructive command per the agent command schema.
@@ -565,7 +577,7 @@ mod tests {
     #[test]
     fn all_escalation_flags_are_triaged() {
         // Flags that MATCH an escalation prefix but are NOT safety-bypasses:
-        // capability grants, MCP-server config, or explicit import/CSV modes.
+        // capability grants, MCP-server configuration, or additive matching modes.
         const BENIGN_ESCALATION_FLAGS: &[&str] = &[
             "--allow-cloud-connection-refresh", // gateway feature toggle
             "--allow-code-first-artifacts",     // connection capability grant (create-time)
@@ -576,7 +588,6 @@ mod tests {
             "--allow-tool",                     // mcp serve: expose a tool (config)
             "--allow-value-set",                // deploy validate: value-set allowlist (pr-ready)
             "--allow-write",                    // mcp serve: enable write mode (server config)
-            "--drop-if-exists",                 // sql-database import mode (explicit)
         ];
         const ESCALATION_PREFIXES: &[&str] = &[
             "--allow",
@@ -595,42 +606,35 @@ mod tests {
         let schema: serde_json::Value =
             serde_json::from_str(include_str!("commands/context/data/agent/commands.json"))
                 .expect("commands.json parses");
-        let groups = schema.as_object().expect("commands.json is an object");
-
         let mut untriaged = Vec::new();
-        for group in groups.values() {
-            let Some(subs) = group.get("subcommands").and_then(|s| s.as_object()) else {
-                continue;
+        visit_command_nodes(&schema, "", &mut |subname, sub| {
+            // `flags` may be legitimately absent, but if present it MUST be an object
+            // (the generated schema shape). A non-object here means the schema is stale
+            // or malformed — fail loudly rather than silently skipping the subcommand,
+            // which would let an untriaged escalation flag slip through this gate.
+            let flags = match sub.get("flags") {
+                None => return,
+                Some(f) => f.as_object().unwrap_or_else(|| {
+                    panic!("commands.json: '{subname}' has a non-object 'flags' field")
+                }),
             };
-            for (subname, sub) in subs {
-                // `flags` may be legitimately absent, but if present it MUST be an object
-                // (the generated schema shape). A non-object here means the schema is stale
-                // or malformed — fail loudly rather than silently skipping the subcommand,
-                // which would let an untriaged escalation flag slip through this gate.
-                let flags = match sub.get("flags") {
-                    None => continue,
-                    Some(f) => f.as_object().unwrap_or_else(|| {
-                        panic!("commands.json: '{subname}' has a non-object 'flags' field")
-                    }),
+            for name in flags.keys() {
+                let long = if name.starts_with("--") {
+                    name.clone()
+                } else {
+                    format!("--{name}")
                 };
-                for name in flags.keys() {
-                    let long = if name.starts_with("--") {
-                        name.clone()
-                    } else {
-                        format!("--{name}")
-                    };
-                    let is_escalation = ESCALATION_PREFIXES.iter().any(|p| long.starts_with(p));
-                    if !is_escalation {
-                        continue;
-                    }
-                    let triaged = DANGEROUS_FLAGS.contains(&long.as_str())
-                        || BENIGN_ESCALATION_FLAGS.contains(&long.as_str());
-                    if !triaged {
-                        untriaged.push(format!("{long} (on '{subname}')"));
-                    }
+                let is_escalation = ESCALATION_PREFIXES.iter().any(|p| long.starts_with(p));
+                if !is_escalation {
+                    continue;
+                }
+                let triaged = DANGEROUS_FLAGS.contains(&long.as_str())
+                    || BENIGN_ESCALATION_FLAGS.contains(&long.as_str());
+                if !triaged {
+                    untriaged.push(format!("{long} (on '{subname}')"));
                 }
             }
-        }
+        });
         assert!(
             untriaged.is_empty(),
             "Untriaged escalation-style flag(s) found. Each must be added to \
@@ -652,23 +656,12 @@ mod tests {
         let schema: serde_json::Value =
             serde_json::from_str(include_str!("commands/context/data/agent/commands.json"))
                 .expect("commands.json parses");
-        let groups = schema.as_object().expect("commands.json is an object");
-
         let mut destructive = Vec::new();
-        for (group, gdef) in groups {
-            let Some(subs) = gdef.get("subcommands").and_then(|s| s.as_object()) else {
-                continue;
-            };
-            for (sub, sdef) in subs {
-                if sdef
-                    .get("destructive")
-                    .and_then(serde_json::Value::as_bool)
-                    .unwrap_or(false)
-                {
-                    destructive.push(format!("{group} {sub}"));
-                }
+        visit_command_nodes(&schema, "", &mut |path, command| {
+            if command["destructive"] == true {
+                destructive.push(path.to_string());
             }
-        }
+        });
 
         assert!(
             !destructive.is_empty(),
@@ -691,5 +684,17 @@ mod tests {
         assert!(!is_destructive_operation("workspace list"));
         assert!(!is_destructive_operation("item show"));
         assert!(!is_destructive_operation("not a real command"));
+    }
+
+    #[test]
+    fn nested_metadata_walk_keeps_full_canonical_paths() {
+        let schema = serde_json::json!({"git":{"subcommands":{"relation":{"subcommands":{"delete":{"destructive":true},"list":{"mutates":false}}}}}});
+        let mut paths = Vec::new();
+        visit_command_nodes(&schema, "", &mut |path, metadata| {
+            if metadata["destructive"] == true {
+                paths.push(path.to_string());
+            }
+        });
+        assert_eq!(paths, ["git relation delete"]);
     }
 }
