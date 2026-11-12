@@ -86,6 +86,7 @@ fn copy_job_list_runs_preserves_pagination_and_supports_all_and_resume() {
 #[test]
 fn copy_job_run_retries_with_empty_body_and_returns_location_without_waiting() {
     use std::sync::atomic::{AtomicUsize, Ordering};
+    let home = tempfile::TempDir::new().unwrap();
 
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let server = runtime.block_on(async {
@@ -119,6 +120,8 @@ fn copy_job_run_retries_with_empty_body_and_returns_location_without_waiting() {
         server
     });
     let output = fabio()
+        .env("HOME", home.path())
+        .env("USERPROFILE", home.path())
         .env("FABIO_ACCESS_TOKEN", "fake-test-token")
         .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
         .args([
@@ -141,6 +144,7 @@ fn copy_job_run_retries_with_empty_body_and_returns_location_without_waiting() {
 fn copy_job_wait_respects_retry_after_before_first_poll() {
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
+    let home = tempfile::TempDir::new().unwrap();
 
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let triggered_at = Arc::new(Mutex::new(None));
@@ -186,6 +190,8 @@ fn copy_job_wait_respects_retry_after_before_first_poll() {
         server
     });
     let output = fabio()
+        .env("HOME", home.path())
+        .env("USERPROFILE", home.path())
         .env("FABIO_ACCESS_TOKEN", "fake-test-token")
         .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
         .args([
@@ -218,6 +224,7 @@ fn copy_job_wait_respects_retry_after_before_first_poll() {
 fn copy_job_timeout_never_polls_before_retry_after_and_preserves_cancellation() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     for cancel in [false, true] {
+        let home = tempfile::TempDir::new().unwrap();
         let server = runtime.block_on(async {
             let server = MockServer::start().await;
             Mock::given(method("POST"))
@@ -243,6 +250,8 @@ fn copy_job_timeout_never_polls_before_retry_after_and_preserves_cancellation() 
         });
         let mut command = fabio();
         command
+            .env("HOME", home.path())
+            .env("USERPROFILE", home.path())
             .env("FABIO_ACCESS_TOKEN", "fake-test-token")
             .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
             .args([
@@ -264,7 +273,8 @@ fn copy_job_timeout_never_polls_before_retry_after_and_preserves_cancellation() 
         let stderr = String::from_utf8_lossy(&output.get_output().stderr);
         let error: serde_json::Value = stderr
             .lines()
-            .find_map(|line| serde_json::from_str(line).ok())
+            .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+            .find(|value| value.get("error").is_some())
             .unwrap_or_else(|| panic!("expected a structured error: {stderr}"));
         assert_eq!(error["error"]["code"], "TIMEOUT");
     }

@@ -6,13 +6,11 @@
 //! byte-identical except for the op-name, the `trigger_item_job` job-type, the
 //! message label, and the role — captured here as [`RunSpec`].
 
-use serde_json::Value;
-
 use anyhow::Result;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
+use crate::errors::enrich_forbidden;
 use crate::output;
 
 /// Per-command parameters for [`run_and_wait`].
@@ -69,62 +67,9 @@ pub async fn run_and_wait(
     let (job_id, first_poll_delay) =
         trigger_result.map_err(|e| enrich_forbidden(e, spec.op, spec.role))?;
 
-    if !wait {
-        let obj = serde_json::json!({ "itemId": id, "jobInstanceId": job_id, "status": "started" });
-        output::render_object(cli, &obj, "status");
-        return Ok(());
-    }
-
-    let poll_interval = std::time::Duration::from_secs(5);
-    let mut next_poll_delay = first_poll_delay.unwrap_or(poll_interval);
-    let max_wait = std::time::Duration::from_secs(timeout_secs);
-    let start = std::time::Instant::now();
-
-    loop {
-        let remaining = max_wait.saturating_sub(start.elapsed());
-        tokio::time::sleep(next_poll_delay.min(remaining)).await;
-        next_poll_delay = poll_interval;
-
-        if start.elapsed() >= max_wait {
-            if cancel_on_timeout && !job_id.is_empty() {
-                let cancel_path =
-                    format!("/workspaces/{workspace}/items/{id}/jobs/instances/{job_id}/cancel");
-                let _ = client
-                    .post(&cancel_path, &serde_json::json!({}), false)
-                    .await;
-            }
-            return Err(FabioError::with_hint(
-                ErrorCode::Timeout,
-                format!(
-                    "{} timed out after {timeout_secs}s. Job ID: {job_id}",
-                    spec.label
-                ),
-                format!("Increase --timeout (current: {timeout_secs}s) or use --cancel-on-timeout"),
-            )
-            .into());
-        }
-
-        let status_path = format!("/workspaces/{workspace}/items/{id}/jobs/instances/{job_id}");
-        if let Ok(ref status_data) = client.get(&status_path).await {
-            let status = status_data
-                .get("status")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            match status {
-                "Completed" => {
-                    output::render_object(cli, status_data, "status");
-                    return Ok(());
-                }
-                "Failed" | "Cancelled" | "Deduped" => {
-                    output::render_object(cli, status_data, "status");
-                    return Err(FabioError::new(
-                        ErrorCode::ApiError,
-                        format!("{} {status}. Job ID: {job_id}", spec.label),
-                    )
-                    .into());
-                }
-                _ => {} // InProgress, NotStarted — keep polling
-            }
-        }
-    }
+    let tracked = crate::commands::jobs::tracking::TrackedJob::record(
+        client, &job_id, spec.op, workspace, id,
+    );
+    crate::commands::jobs::tracking::finish_with_delay(cli, client, tracked, wait, timeout_secs, cancel_on_timeout,
+        serde_json::json!({"itemId":id,"jobInstanceId":job_id,"status":"started","message":format!("{} started",spec.label)}), "status", first_poll_delay).await
 }

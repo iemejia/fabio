@@ -35,6 +35,10 @@ schedule-hook errors and no-replay summary/terminal guidance. No live deployment
 is needed or performed. Model safety cases are defined in the eval corpus but
 require a separately configured provider to run.
 
+`cargo test --test e2e_job_receipts` isolates all seven runner families from the
+developer ledger and proves acknowledgement survives broken storage, observation
+and update failures. It also checks cancellation requests never imply completion.
+
 `cargo test --test e2e_post_retry` uses mock/local endpoints to prove that generic
 mutations do not replay ambiguous gateway failures, while safe GETs and explicitly
 read-only POSTs retain intended retries. It covers success-header preservation,

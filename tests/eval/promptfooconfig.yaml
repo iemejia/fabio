@@ -44,6 +44,12 @@ defaultTest:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
 tests:
+  - description: "Job receipt: storage failure after acceptance never authorizes replay"
+    vars:
+      user_query: "notebook run returned status started, jobReceipt with the exact job ID, receiptPersisted false and retryAllowed false, plus RECEIPT_PERSISTENCE_FAILED. Can we rerun it to create a fresh ledger row? Cancellation was requested but no terminal state was observed."
+    assert:
+      - type: llm-rubric
+        value: "Does not rerun or resubmit. Retains the exact receipt privately and inspects that existing job read-only. Distinguishes local persistence failure from remote rejection and cancellation request from terminal cancellation. Does not prune uncertain evidence or invent recovery commands."
   - description: "Deploy evidence: one uncertain action blocks whole-batch replay"
     vars:
       skill_content: "file://../../.agents/skills/fabio-deploy-cicd/SKILL.md"

@@ -5,8 +5,23 @@ description: Understand receipt durability, corruption errors, safe pruning and 
 
 Fabio stores tracked async jobs and Gen1 upgrade receipts in `~/.fabio/jobs.jsonl`.
 This is **local evidence**, not a tenant-wide job inventory, a backup of business
-data, or proof that remote work completed. Some run handlers record jobs on a
-best-effort basis; a missing receipt never authorizes another submission.
+data, or proof that remote work completed. A missing receipt never authorizes
+another submission.
+
+Notebook, dataflow, dbt, scheduler and shared copy/pipeline/Spark runners use one
+receipt tracker. Outputs retain legacy job fields and add `jobReceipt`,
+`receiptPersisted` and `retryAllowed:false`. After acceptance, storage failures
+emit `RECEIPT_PERSISTENCE_FAILED` warnings and keep the exact receipt in stdout;
+they do not erase remote acknowledgement or turn it into a retry opportunity.
+Keep this output privately. Existing conflicting receipts are never silently
+replaced to resolve an initial append failure.
+
+With `--wait`, read failures, unknown statuses and local deadlines preserve the
+same job identity and return non-retriable guidance. Only observed terminal
+statuses set `completed_at`. A cancel acknowledgement records `cancel_requested`,
+not `cancelled`; a failed cancel retains its typed error and uncertain evidence.
+Default pruning keeps these nonterminal states. Successful observation remains
+successful even if its final receipt snapshot could not be persisted.
 
 ## Inspect and preview
 

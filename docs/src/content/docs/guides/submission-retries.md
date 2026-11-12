@@ -123,8 +123,9 @@ exactly-once or end-to-end idempotence guarantee. Raw text, binary, multipart, A
 OneLake, custom HTTP/SDK paths and bespoke read-only definition callers are not all
 migrated to the new evidence contract. Existing successful outputs remain unchanged.
 
-Other job handlers' best-effort persistence, supported recovery/import and
-post-upgrade readiness remain separate work. See [local receipt storage](../local-job-receipts/).
+Job runners now expose persistence failures and exact job receipts without replay;
+see [local receipt storage](../local-job-receipts/). Supported recovery/import and
+post-upgrade readiness are separate capabilities.
 
 Other batch/workflow summaries still stringify per-action errors instead of exposing
 the optional structured object. Absence of `submission` in such a summary—or in an

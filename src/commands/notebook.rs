@@ -1,14 +1,10 @@
-use std::time::Duration;
-
 use anyhow::Result;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Subcommand;
 use serde_json::Value;
-use tokio::time::sleep;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::commands::jobs::{JobEntry, JobLedger};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
@@ -693,91 +689,24 @@ async fn run(
         .await
         .map_err(|e| enrich_forbidden(e, "notebook run", "Contributor"))?;
 
-    // Record job in local ledger
-    let entry = JobEntry::new(&job_id, "notebook-run", workspace, id);
-    let _ = JobLedger::append(&entry);
-
-    if !wait {
-        let obj = serde_json::json!({
-            "itemId": id,
-            "jobId": job_id,
-            "status": "started"
-        });
-        output::render_object(cli, &obj, "jobId");
-        return Ok(());
-    }
-
-    // Poll until completion
-    let poll_interval = Duration::from_secs(5);
-    let max_wait = Duration::from_secs(timeout_secs);
-    let start = std::time::Instant::now();
-
-    loop {
-        if start.elapsed() > max_wait {
-            if cancel_on_timeout {
-                let cancel_path =
-                    format!("/workspaces/{workspace}/items/{id}/jobs/instances/{job_id}/cancel");
-                let _ = client
-                    .post(&cancel_path, &serde_json::json!({}), false)
-                    .await;
-            }
-            let _ = JobLedger::update(&job_id, "timeout", None);
-            return Err(FabioError::with_hint(
-                ErrorCode::Timeout,
-                format!(
-                    "Notebook run timed out after {timeout_secs}s. Job ID: {job_id}. Use 'notebook status' to check progress."
-                ),
-                format!("Increase --timeout (current: {timeout_secs}s) or use --cancel-on-timeout"),
-            )
-            .into());
-        }
-
-        sleep(poll_interval).await;
-
-        let data = client
-            .get(&format!(
-                "/workspaces/{workspace}/items/{id}/jobs/instances/{job_id}"
-            ))
-            .await?;
-
-        let status_str = data
-            .get("status")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Unknown");
-
-        match status_str {
-            "Completed" => {
-                let _ = JobLedger::update(&job_id, "completed", None);
-                let obj = serde_json::json!({
-                    "itemId": id,
-                    "jobId": job_id,
-                    "status": "Completed"
-                });
-                output::render_object(cli, &obj, "status");
-                return Ok(());
-            }
-            "Failed" => {
-                let message = data
-                    .get("failureReason")
-                    .and_then(|r| r.get("message"))
-                    .and_then(|m| m.as_str())
-                    .unwrap_or("Notebook run failed");
-                let _ = JobLedger::update(&job_id, "failed", Some(message));
-                return Err(FabioError::with_hint(ErrorCode::ApiError, message, "Check Spark logs in the Fabric portal for details. Common causes: out-of-memory, missing dependencies, or code errors.").into());
-            }
-            "Cancelled" => {
-                let _ = JobLedger::update(&job_id, "cancelled", None);
-                return Err(FabioError::with_hint(
-                    ErrorCode::ApiError,
-                    "Notebook run was cancelled",
-                    "Re-run with: fabio notebook run --workspace <WS> --id <ID> --wait",
-                )
-                .into());
-            }
-            // NotStarted, InProgress, Deduped - keep polling
-            _ => {}
-        }
-    }
+    let tracked = crate::commands::jobs::tracking::TrackedJob::record(
+        client,
+        &job_id,
+        "notebook-run",
+        workspace,
+        id,
+    );
+    crate::commands::jobs::tracking::finish(
+        cli,
+        client,
+        tracked,
+        wait,
+        timeout_secs,
+        cancel_on_timeout,
+        serde_json::json!({"itemId":id,"jobId":job_id,"status":"started"}),
+        "jobId",
+    )
+    .await
 }
 
 async fn status(

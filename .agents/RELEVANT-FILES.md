@@ -158,6 +158,8 @@
 - `src/commands/deploy/apply.rs`: execute_changeset, execute_post_hooks, Rename handling (PATCH + updateDefinition), build_resolution_map, resolve_logical_ids_in_payload
 - `src/commands/deploy/failure.rs`: additive recorded-hook errors, dominant batch no-replay policy, terminal teaching error and conservative bulk-member result validation
 - `tests/e2e_deploy_failures.rs`: local-only CLI tests for typed failure aggregation, uncertain request counts, bulk accounting/results, legacy compatibility, nonfatal hooks and guards
+- `src/commands/jobs/tracking.rs`: shared exact-job receipt persistence, warnings, bounded observation and nonterminal cancellation requests
+- `tests/e2e_job_receipts.rs`: isolated request-count tests for job runners with broken storage, observation/update failures and cancellation uncertainty
 - `src/commands/deploy/plan.rs`: build_changeset (two-pass with rename), validate_references, fetch_deployed_logical_id, compute_workspace_fingerprint
 - `src/commands/deploy/params.rs`: Parameter substitution: find_replace, key_value_replace, spark_pool, semantic_model_binding
 - `src/commands/deploy/init_params.rs`: scan_for_candidates, diff_for_parameters (GUID discovery, cross-environment diffing)

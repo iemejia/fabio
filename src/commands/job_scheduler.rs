@@ -1,13 +1,9 @@
-use std::time::Duration;
-
 use anyhow::Result;
 use clap::Subcommand;
 use serde_json::Value;
-use tokio::time::sleep;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::commands::jobs::{JobEntry, JobLedger};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
@@ -470,154 +466,24 @@ async fn run_on_demand(
         .await
         .map_err(|e| enrich_forbidden(e, "job-scheduler run-on-demand", "Contributor"))?;
 
-    // Record in local job ledger
-    let entry = JobEntry::new(&job_id, &format!("job-{job_type}"), workspace, item_id);
-    let _ = JobLedger::append(&entry);
-
-    if !wait {
-        let obj = serde_json::json!({
-            "itemId": item_id,
-            "jobId": job_id,
-            "jobType": job_type,
-            "status": "accepted"
-        });
-        output::render_object(cli, &obj, "jobId");
-        return Ok(());
-    }
-
-    poll_job_to_completion(
-        cli,
+    let tracked = crate::commands::jobs::tracking::TrackedJob::record(
         client,
+        &job_id,
+        &format!("job-{job_type}"),
         workspace,
         item_id,
-        job_type,
-        &job_id,
+    );
+    crate::commands::jobs::tracking::finish(
+        cli,
+        client,
+        tracked,
+        wait,
         timeout_secs,
         cancel_on_timeout,
+        serde_json::json!({"itemId":item_id,"jobId":job_id,"jobType":job_type,"status":"accepted"}),
+        "jobId",
     )
     .await
-}
-
-/// Poll a job instance until it reaches a terminal state (Completed/Failed/Cancelled).
-#[allow(clippy::too_many_arguments)]
-async fn poll_job_to_completion(
-    cli: &Cli,
-    client: &FabricClient,
-    workspace: &str,
-    item_id: &str,
-    job_type: &str,
-    job_id: &str,
-    timeout_secs: u64,
-    cancel_on_timeout: bool,
-) -> Result<()> {
-    let poll_interval = Duration::from_secs(5);
-    let max_wait = Duration::from_secs(timeout_secs);
-    let start = std::time::Instant::now();
-
-    loop {
-        if start.elapsed() > max_wait {
-            return handle_job_timeout(
-                client,
-                workspace,
-                item_id,
-                job_id,
-                timeout_secs,
-                cancel_on_timeout,
-            )
-            .await;
-        }
-
-        sleep(poll_interval).await;
-
-        let data = client
-            .get(&format!(
-                "/workspaces/{workspace}/items/{item_id}/jobs/instances/{job_id}"
-            ))
-            .await?;
-
-        let status_str = data
-            .get("status")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Unknown");
-
-        match status_str {
-            "Completed" => {
-                let _ = JobLedger::update(job_id, "completed", None);
-                let obj = serde_json::json!({
-                    "itemId": item_id,
-                    "jobId": job_id,
-                    "jobType": job_type,
-                    "status": "Completed"
-                });
-                output::render_object(cli, &obj, "status");
-                return Ok(());
-            }
-            "Failed" => {
-                let message = data
-                    .get("failureReason")
-                    .and_then(|r| r.get("message"))
-                    .and_then(|m| m.as_str())
-                    .unwrap_or("Job failed");
-                let _ = JobLedger::update(job_id, "failed", Some(message));
-                return Err(FabioError::with_hint(
-                    ErrorCode::ApiError,
-                    format!("Job failed: {message}"),
-                    format!("Job ID: {job_id}"),
-                )
-                .into());
-            }
-            "Cancelled" => {
-                let _ = JobLedger::update(job_id, "cancelled", None);
-                return Err(FabioError::new(
-                    ErrorCode::ApiError,
-                    format!("Job was cancelled. Job ID: {job_id}"),
-                )
-                .into());
-            }
-            // NotStarted, InProgress, Deduped — keep polling
-            _ => {}
-        }
-    }
-}
-
-/// Handle timeout: optionally cancel the job, then return a Timeout error.
-async fn handle_job_timeout(
-    client: &FabricClient,
-    workspace: &str,
-    item_id: &str,
-    job_id: &str,
-    timeout_secs: u64,
-    cancel_on_timeout: bool,
-) -> Result<()> {
-    if cancel_on_timeout {
-        eprintln!("Job timed out after {timeout_secs}s. Cancelling job {job_id}...");
-        let cancel_result = client
-            .post(
-                &format!("/workspaces/{workspace}/items/{item_id}/jobs/instances/{job_id}/cancel"),
-                &serde_json::json!({}),
-                false,
-            )
-            .await;
-        let _ = JobLedger::update(job_id, "cancelled", Some("timeout+cancel"));
-        if let Err(e) = cancel_result {
-            eprintln!("Warning: cancel request failed: {e}");
-        }
-        return Err(FabioError::with_hint(
-            ErrorCode::Timeout,
-            format!("Job timed out after {timeout_secs}s and was cancelled. Job ID: {job_id}"),
-            "Increase --timeout or remove --cancel-on-timeout to leave job running".to_string(),
-        )
-        .into());
-    }
-    let _ = JobLedger::update(job_id, "timeout", None);
-    Err(FabioError::with_hint(
-        ErrorCode::Timeout,
-        format!(
-            "Job timed out after {timeout_secs}s. Job ID: {job_id}. The job is still running."
-        ),
-        format!("Check status: fabio job-scheduler get-instance --workspace {workspace} --id {item_id} --job-instance-id {job_id}"),
-    )
-    .into())
 }
 
 async fn cancel_instance(

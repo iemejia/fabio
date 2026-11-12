@@ -3,21 +3,20 @@
   "description": "Runs a notebook and waits for completion. Polls job status every 5 seconds until terminal state (Completed/Failed/Cancelled) or timeout.",
   "response": {
     "data": {
-      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      "itemId": "38177352-dc1c-440b-a860-a83ec508e806",
-      "jobType": "RunNotebook",
-      "invokeType": "Manual",
+      "jobId": "$JOB_ID",
+      "itemId": "$NB_ID",
       "status": "Completed",
-      "startTimeUtc": "2026-06-18T10:00:05.000Z",
-      "endTimeUtc": "2026-06-18T10:02:45.000Z",
-      "failureReason": null
+      "retryAllowed": false,
+      "receiptPersisted": true,
+      "jobReceipt": {"id":"$JOB_ID","kind":"notebook-run","status":"completed","workspace":"$WS_ID","item_id":"$NB_ID","started_at":"2026-01-01T00:00:00Z","completed_at":"2026-01-01T00:01:00Z","submission_state":"accepted"},
+      "jobResult": {"id":"$JOB_ID","status":"Completed","failureReason":null}
     }
   },
-  "notes": "Without --wait, returns immediately with {\"status\":\"accepted\",\"jobId\":\"...\"}. Use --parameters for notebook parameters: --parameters '[{\"name\":\"p1\",\"value\":\"v1\",\"type\":\"Text\"}]'. First run on small capacity can take 2-5 min (Spark cold start). Use --cancel-on-timeout to auto-cancel if timeout is reached.",
+  "notes": "Without --wait, returns status started and jobId plus jobReceipt/receiptPersisted/retryAllowed:false. RECEIPT_PERSISTENCE_FAILED warns when local storage fails after acceptance; retain stdout privately and never resubmit to recreate a receipt. Observation failures retain exact scope. --cancel-on-timeout only requests cancellation: cancel_requested is not a terminal cancelled state. Use --parameters '[{\"name\":\"p1\",\"value\":\"v1\",\"type\":\"Text\"}]'. Spark cold start can take minutes.",
   "query_examples": [
     {"query": "status", "description": "Get final job status."},
-    {"query": "failureReason", "description": "Get failure reason (null if succeeded)."},
-    {"query": "id", "description": "Get the job instance ID for further queries."},
-    {"query": "endTimeUtc", "description": "Get completion timestamp."}
+    {"query": "jobResult.failureReason", "description": "Get the observed failure reason."},
+    {"query": "jobId", "description": "Get the exact job instance ID for read-only observation."},
+    {"query": "receiptPersisted", "description": "Check whether the latest local receipt write succeeded."}
   ]
 }

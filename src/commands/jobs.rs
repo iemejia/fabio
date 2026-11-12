@@ -1,5 +1,5 @@
 use anyhow::Result;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -9,6 +9,7 @@ use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
 mod ledger;
+pub mod tracking;
 
 #[derive(Debug, Subcommand)]
 #[command(
@@ -114,30 +115,6 @@ impl JobLedger {
 
     pub fn append(entry: &JobEntry) -> Result<()> {
         Self::store()?.append(entry)
-    }
-
-    pub fn update(id: &str, status: &str, error: Option<&str>) -> Result<()> {
-        Self::store()?.edit(|entries| {
-            for entry in entries.iter_mut().filter(|entry| entry.id == id) {
-                entry.status = status.to_string();
-                entry.completed_at = Some(Utc::now().to_rfc3339());
-                if let (Ok(start), Some(end)) = (
-                    DateTime::parse_from_rfc3339(&entry.started_at),
-                    &entry.completed_at,
-                ) && let Ok(end) = DateTime::parse_from_rfc3339(end)
-                {
-                    entry.duration_secs = Some(
-                        end.signed_duration_since(start)
-                            .num_seconds()
-                            .unsigned_abs(),
-                    );
-                }
-                if let Some(error) = error {
-                    entry.error = Some(error.to_string());
-                }
-            }
-            Ok(())
-        })
     }
 
     /// Replace a receipt snapshot without falsely completing an accepted/running job.

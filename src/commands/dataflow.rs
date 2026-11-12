@@ -1,16 +1,12 @@
-use std::time::Duration;
-
 mod execution;
 mod gen1;
 
 use anyhow::Result;
 use clap::Subcommand;
 use serde_json::Value;
-use tokio::time::sleep;
 
 use crate::cli::Cli;
 use crate::client::{FabricClient, validate_uuid};
-use crate::commands::jobs::{JobEntry, JobLedger};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
@@ -733,7 +729,7 @@ async fn discover_parameters(
 /// `QueriesMetadata must not be empty` case (the `queryMetadata.json` part must
 /// list every `shared` query from `mashup.pq`) and otherwise returning the
 /// job id for follow-up.
-fn dataflow_run_failure_hint(message: &str, job_id: &str) -> String {
+pub(super) fn dataflow_run_failure_hint(message: &str, job_id: &str) -> String {
     if message.contains("QueriesMetadata") {
         format!(
             "The dataflow's queryMetadata.json has an empty 'queriesMetadata'. Each `shared` query \
@@ -801,102 +797,24 @@ async fn run(
         .await
         .map_err(|e| enrich_forbidden(e, "dataflow run", "Member"))?;
 
-    // Record in local job ledger
-    let entry = JobEntry::new(&job_id, &format!("dataflow-{job_path}"), workspace, id);
-    let _ = JobLedger::append(&entry);
-
-    if !wait {
-        let obj = serde_json::json!({
-            "itemId": id,
-            "jobId": job_id,
-            "jobType": job_path,
-            "status": "accepted"
-        });
-        output::render_object(cli, &obj, "jobId");
-        return Ok(());
-    }
-
-    // Poll until completion
-    let poll_interval = Duration::from_secs(5);
-    let max_wait = Duration::from_secs(timeout_secs);
-    let start = std::time::Instant::now();
-
-    loop {
-        if start.elapsed() > max_wait {
-            if cancel_on_timeout {
-                let _ = client
-                    .post(
-                        &format!(
-                            "/workspaces/{workspace}/items/{id}/jobs/instances/{job_id}/cancel"
-                        ),
-                        &serde_json::json!({}),
-                        false,
-                    )
-                    .await;
-                let _ = JobLedger::update(&job_id, "cancelled", None);
-            } else {
-                let _ = JobLedger::update(&job_id, "timeout", None);
-            }
-            return Err(FabioError::with_hint(
-                ErrorCode::Timeout,
-                format!("Dataflow run timed out after {timeout_secs}s. Job ID: {job_id}"),
-                format!(
-                    "Check status: fabio job-scheduler get-instance --workspace {workspace} --id {id} --job-instance-id {job_id}"
-                ),
-            )
-            .into());
-        }
-
-        sleep(poll_interval).await;
-
-        let data = client
-            .get(&format!(
-                "/workspaces/{workspace}/items/{id}/jobs/instances/{job_id}"
-            ))
-            .await?;
-
-        let status_str = data
-            .get("status")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Unknown");
-
-        match status_str {
-            "Completed" => {
-                let _ = JobLedger::update(&job_id, "completed", None);
-                let obj = serde_json::json!({
-                    "itemId": id,
-                    "jobId": job_id,
-                    "jobType": job_path,
-                    "status": "Completed"
-                });
-                output::render_object(cli, &obj, "status");
-                return Ok(());
-            }
-            "Failed" => {
-                let message = data
-                    .get("failureReason")
-                    .and_then(|r| r.get("message"))
-                    .and_then(|m| m.as_str())
-                    .unwrap_or("Job failed");
-                let _ = JobLedger::update(&job_id, "failed", Some(message));
-                return Err(FabioError::with_hint(
-                    ErrorCode::ApiError,
-                    format!("Dataflow run failed: {message}"),
-                    dataflow_run_failure_hint(message, &job_id),
-                )
-                .into());
-            }
-            "Cancelled" => {
-                let _ = JobLedger::update(&job_id, "cancelled", None);
-                return Err(FabioError::new(
-                    ErrorCode::ApiError,
-                    format!("Dataflow run was cancelled. Job ID: {job_id}"),
-                )
-                .into());
-            }
-            _ => {} // NotStarted, InProgress, Deduped → keep polling
-        }
-    }
+    let tracked = crate::commands::jobs::tracking::TrackedJob::record(
+        client,
+        &job_id,
+        &format!("dataflow-{job_path}"),
+        workspace,
+        id,
+    );
+    crate::commands::jobs::tracking::finish(
+        cli,
+        client,
+        tracked,
+        wait,
+        timeout_secs,
+        cancel_on_timeout,
+        serde_json::json!({"itemId":id,"jobId":job_id,"jobType":job_path,"status":"accepted"}),
+        "jobId",
+    )
+    .await
 }
 
 /// Build the request body for a dataflow run.

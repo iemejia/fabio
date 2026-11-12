@@ -1,5 +1,7 @@
 # Fabio CLI — Key Decisions
 
+- **Job receipt tracking belongs in one runner primitive**: notebook/dataflow/dbt/scheduler and shared copy/pipeline/Spark execution use `jobs/tracking.rs` for durable snapshots, explicit persistence warnings and exact-scope bounded observation. Accepted work is retained in stdout when storage fails; append conflicts cannot trigger replacement. Timeout and cancel acknowledgement are nonterminal, and observation failures never suggest resubmission.
+
 - **Deployment prerequisites are fail-closed, not best-effort mutations**: retain typed inter-tier/dependency errors, report unexecuted actions and halt before dependent definitions/deletes; stop later hooks after a failure and never duplicate inter-tier refresh. Shortcut reads and scope validation must succeed completely before reconciliation, and a mutation failure stops the sequence. See the submission retry audit for remaining boundaries.
 
 This file captures significant architectural and design decisions, bug fixes, and
