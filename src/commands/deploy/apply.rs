@@ -48,6 +48,8 @@ pub async fn execute_changeset(
     let mut succeeded: Vec<Change> = Vec::new();
     let mut failed: Vec<DeployFailure> = Vec::new();
     let mut skipped: Vec<Change> = Vec::new();
+    let mut hook_results = Vec::new();
+    let mut halted = false;
 
     // Separate changes by action
     let mut creates_updates: Vec<&Change> = Vec::new();
@@ -131,7 +133,7 @@ pub async fn execute_changeset(
     let total_changes = creates_updates.len();
     let completed = AtomicUsize::new(0);
 
-    for tier_types in &tier_groups {
+    'tiers: for tier_types in &tier_groups {
         // Split tier items into parallel (most types) and sequential (pipeline/dataflow)
         let mut parallel_changes: Vec<&Change> = Vec::new();
         let mut sequential_changes: Vec<Vec<&Change>> = Vec::new();
@@ -248,26 +250,33 @@ pub async fn execute_changeset(
                     let mut sm_ids = build_semantic_model_name_map(&created_ids);
                     extend_semantic_model_map_with_dir_aliases(&mut sm_ids, source);
 
-                    handles.push(tokio::spawn(async move {
-                        let _permit = sem.acquire().await.unwrap();
-                        let result = execute_single_change_owned(
-                            dry_run,
-                            &client_clone,
-                            &ws_id,
-                            &change_owned,
-                            source_item.as_ref(),
-                            &res_map,
-                            &sm_ids,
-                            preserve_identities,
-                        )
-                        .await;
-                        (change_owned, result)
-                    }));
+                    handles.push((
+                        (*change).clone(),
+                        tokio::spawn(async move {
+                            let _permit = sem.acquire().await.unwrap();
+                            let result = execute_single_change_owned(
+                                dry_run,
+                                &client_clone,
+                                &ws_id,
+                                &change_owned,
+                                source_item.as_ref(),
+                                &res_map,
+                                &sm_ids,
+                                preserve_identities,
+                            )
+                            .await;
+                            (change_owned, result)
+                        }),
+                    ));
                 }
 
                 // Collect results
-                for handle in handles {
-                    let (mut change_owned, result) = handle.await?;
+                for (original, handle) in handles {
+                    let (mut change_owned, result) = handle.await.unwrap_or_else(|_| {
+                        (original, Err(FabioError::with_hint(ErrorCode::ApiError,
+                            "Deployment worker failed before returning its outcome; submission may already have occurred.",
+                            super::failure::NO_REPLAY_HINT).set_retriable(Some(false)).into()))
+                    });
                     match result {
                         Ok(deployed_id) => {
                             if let Some(ref id) = deployed_id {
@@ -306,10 +315,8 @@ pub async fn execute_changeset(
                                     e.root_cause()
                                 ),
                             );
-                            if fail_fast {
-                                failed.push(DeployFailure::from_error(change_owned, &e));
-                                break;
-                            }
+                            // All tasks in this tier have already been submitted.
+                            // Drain their outcomes even in fail-fast mode.
                             failed.push(DeployFailure::from_error(change_owned, &e));
                         }
                     }
@@ -372,6 +379,15 @@ pub async fn execute_changeset(
                                         id.to_owned(),
                                     );
                                 }
+                            } else {
+                                let e = FabioError::api_error("Dependency create was acknowledged without an item identity; do not resubmit.").into();
+                                hook_results.push(super::failure::prerequisite_failure(
+                                    "create_dependency",
+                                    lakehouse_name,
+                                    &e,
+                                ));
+                                halted = true;
+                                break 'tiers;
                             }
                         }
                         Err(e) => {
@@ -381,6 +397,13 @@ pub async fn execute_changeset(
                                     "  WARNING: failed to auto-create Lakehouse \"{lakehouse_name}\": {e}"
                                 ),
                             );
+                            hook_results.push(super::failure::prerequisite_failure(
+                                "create_dependency",
+                                lakehouse_name,
+                                &e,
+                            ));
+                            halted = true;
+                            break 'tiers;
                         }
                     }
                 }
@@ -464,8 +487,8 @@ pub async fn execute_changeset(
         // completes. Map each newly-created lakehouse's SOURCE SQL-endpoint id +
         // server FQDN to the deployed endpoint, so a later-tier SemanticModel's
         // `Sql.Database("<server>","<endpointId>")` resolves to the new lakehouse.
-        if !cli.dry_run {
-            populate_sql_endpoint_resolutions(
+        if !cli.dry_run
+            && let Err(e) = populate_sql_endpoint_resolutions(
                 client,
                 workspace_id,
                 source,
@@ -474,7 +497,15 @@ pub async fn execute_changeset(
                 &mut polled_lakehouses,
                 cli.quiet,
             )
-            .await;
+            .await
+        {
+            hook_results.push(super::failure::prerequisite_failure(
+                "sql_endpoint_resolution",
+                "Lakehouse",
+                &e,
+            ));
+            halted = true;
+            break;
         }
 
         // Inter-tier hook: refresh SemanticModels after their tier completes.
@@ -495,7 +526,14 @@ pub async fn execute_changeset(
                             change.name
                         ),
                     );
-                    let _ = refresh_semantic_model(client, workspace_id, item_id).await;
+                    match refresh_semantic_model(client, workspace_id, item_id).await {
+                        Ok(()) => hook_results.push(json!({"hook":"refresh","item_type":"SemanticModel","item_name":change.name,"status":"triggered","phase":"inter_tier"})),
+                        Err(e) => {
+                            hook_results.push(super::failure::prerequisite_failure("refresh", &change.name, &e));
+                            halted = true;
+                            break 'tiers;
+                        }
+                    }
                 }
             }
         }
@@ -513,7 +551,7 @@ pub async fn execute_changeset(
     }
 
     for (i, change) in deletes_sorted.iter().enumerate() {
-        if fail_fast && !failed.is_empty() {
+        if halted || (fail_fast && !failed.is_empty()) {
             break;
         }
 
@@ -554,6 +592,8 @@ pub async fn execute_changeset(
         failed,
         skipped,
         duration_ms,
+        hook_results,
+        halted,
     })
 }
 
@@ -806,6 +846,8 @@ pub async fn execute_changeset_bulk(
         failed,
         skipped,
         duration_ms,
+        hook_results: Vec::new(),
+        halted: false,
     })
 }
 
@@ -826,6 +868,9 @@ pub async fn execute_post_hooks(
     let mut results: Vec<Value> = Vec::new();
 
     for change in succeeded {
+        if super::failure::hooks_failed(&results) {
+            break;
+        }
         match change.action {
             ChangeAction::Create | ChangeAction::Update | ChangeAction::Rename => {}
             _ => continue,
@@ -996,6 +1041,9 @@ pub async fn activate_variable_library_value_sets(
     let mut results: Vec<Value> = Vec::new();
 
     for change in succeeded {
+        if super::failure::hooks_failed(&results) {
+            break;
+        }
         if !change.item_type.eq_ignore_ascii_case("VariableLibrary") {
             continue;
         }
@@ -1084,6 +1132,9 @@ pub async fn apply_item_schedules(
     let mut results: Vec<Value> = Vec::new();
 
     for change in succeeded {
+        if super::failure::hooks_failed(&results) {
+            break;
+        }
         match change.action {
             ChangeAction::Create | ChangeAction::Update => {}
             _ => continue,
@@ -1119,6 +1170,9 @@ pub async fn apply_item_schedules(
         );
 
         for schedule in schedules {
+            if super::failure::hooks_failed(&results) {
+                break;
+            }
             let job_type = schedule
                 .get("jobType")
                 .and_then(|v| v.as_str())
@@ -1212,7 +1266,7 @@ async fn populate_sql_endpoint_resolutions(
     extra: &mut HashMap<String, String>,
     polled: &mut std::collections::HashSet<String>,
     quiet: bool,
-) {
+) -> Result<()> {
     for ((item_type, name), deployed_id) in created_ids {
         if !item_type.eq_ignore_ascii_case("Lakehouse") || polled.contains(deployed_id) {
             continue;
@@ -1232,8 +1286,8 @@ async fn populate_sql_endpoint_resolutions(
             continue;
         }
 
-        if let Ok(Some((target_id, target_server))) =
-            poll_lakehouse_sql_endpoint(client, workspace_id, deployed_id).await
+        if let Some((target_id, target_server)) =
+            poll_lakehouse_sql_endpoint(client, workspace_id, deployed_id).await?
         {
             extra.insert(src_ep.id.clone(), target_id);
             extra.insert(src_ep.server.clone(), target_server);
@@ -1241,13 +1295,16 @@ async fn populate_sql_endpoint_resolutions(
                 quiet,
                 &format!("  rewired Direct Lake connection to deployed lakehouse \"{name}\""),
             );
+        } else {
+            return Err(FabioError::api_error("SQL endpoint reported success without a complete endpoint identity; dependent definitions were not submitted.").into());
         }
     }
+    Ok(())
 }
 
 /// Refresh (frame) a deployed `SemanticModel`. A deploy-created Direct Lake model
 /// is "definition-managed" and rejects a refresh with `EntityNotFound` until it
-/// is taken over, so this takes ownership (best-effort) first, then refreshes via
+/// is taken over, so this takes ownership first, then refreshes via
 /// the Power BI datasets endpoint (the Fabric `/semanticModels/{id}/refreshes`
 /// path 404s for a definition-managed model).
 async fn refresh_semantic_model(
@@ -1255,15 +1312,13 @@ async fn refresh_semantic_model(
     workspace_id: &str,
     item_id: &str,
 ) -> Result<()> {
-    // Best-effort takeover — converts definition-managed → service-managed so the
-    // dataset refresh endpoint resolves. Ignore errors (an import model may already
-    // be service-managed, or the principal may lack takeover rights).
-    let _ = client
+    // Never follow a failed/uncertain takeover with another mutation.
+    client
         .post_powerbi(
             &format!("/groups/{workspace_id}/datasets/{item_id}/Default.TakeOver"),
             &json!({}),
         )
-        .await;
+        .await?;
     client
         .post_powerbi(
             &format!("/groups/{workspace_id}/datasets/{item_id}/refreshes"),
@@ -1349,10 +1404,7 @@ async fn poll_environment_publish(
 
         tokio::time::sleep(poll_interval).await;
 
-        let resp = client.get(&url).await;
-        let Ok(body) = resp else {
-            continue; // Retry on transient errors
-        };
+        let body = client.get(&url).await?;
 
         let state = body
             .get("properties")
@@ -1412,6 +1464,9 @@ pub async fn execute_shortcut_hooks(
     let mut results: Vec<Value> = Vec::new();
 
     for change in succeeded {
+        if super::failure::hooks_failed(&results) {
+            break;
+        }
         // Only process Lakehouse items that were successfully deployed
         if !change.item_type.eq_ignore_ascii_case("Lakehouse") {
             continue;
@@ -1519,47 +1574,32 @@ async fn reconcile_shortcuts(
 ) -> Result<ShortcutSummary> {
     // 1. List currently deployed shortcuts
     let list_url = format!("/workspaces/{workspace_id}/items/{item_id}/shortcuts");
-    let deployed = client.get(&list_url).await.map_or_else(
-        |_| Vec::new(),
-        |data| {
-            data.get("value")
-                .and_then(|v| v.as_array())
-                .cloned()
-                .unwrap_or_default()
-        },
-    );
+    let data = client.get(&list_url).await?;
+    let deployed = data.get("value").and_then(Value::as_array).ok_or_else(|| {
+        FabioError::api_error("Shortcut inventory is malformed; no reconciliation was attempted.")
+    })?;
+    if ["continuationToken", "continuationUri"].iter().any(|key| {
+        data.get(*key)
+            .is_some_and(|value| !value.is_null() && value != "")
+    }) {
+        return Err(FabioError::with_hint(ErrorCode::ApiError,
+            "Shortcut inventory is incomplete; no reconciliation was attempted.",
+            "Inspect all shortcut pages read-only and use an explicitly scoped shortcut operation; do not reconcile against a partial inventory.").into());
+    }
 
     // Build a set of deployed shortcut keys: "path/name"
-    let deployed_keys: std::collections::HashSet<String> = deployed
-        .iter()
-        .filter_map(|sc| {
-            let path = sc.get("path")?.as_str()?;
-            let name = sc.get("name")?.as_str()?;
-            // Normalize: trim leading slash from path for consistent matching
-            let normalized_path = path.trim_start_matches('/');
-            Some(format!("{normalized_path}/{name}"))
-        })
-        .collect();
+    let deployed_keys = shortcut_keys(deployed)?;
 
     // Build a map of source shortcuts keyed by "path/name"
-    let source_keys: std::collections::HashSet<String> = source_shortcuts
-        .iter()
-        .filter_map(|sc| {
-            let path = sc.get("path")?.as_str()?;
-            let name = sc.get("name")?.as_str()?;
-            let normalized_path = path.trim_start_matches('/');
-            Some(format!("{normalized_path}/{name}"))
-        })
-        .collect();
+    let source_keys = shortcut_keys(source_shortcuts)?;
 
     // 2. Delete orphans (deployed but not in source)
     let mut deleted = 0;
     for key in &deployed_keys {
         if !source_keys.contains(key) {
             let delete_url = format!("/workspaces/{workspace_id}/items/{item_id}/shortcuts/{key}");
-            if client.delete(&delete_url).await.is_ok() {
-                deleted += 1;
-            }
+            client.delete(&delete_url).await?;
+            deleted += 1;
         }
     }
 
@@ -1569,9 +1609,8 @@ async fn reconcile_shortcuts(
         "/workspaces/{workspace_id}/items/{item_id}/shortcuts?shortcutConflictPolicy=CreateOrOverwrite"
     );
     for shortcut in source_shortcuts {
-        if client.post(&create_url, shortcut, false).await.is_ok() {
-            created += 1;
-        }
+        client.post(&create_url, shortcut, false).await?;
+        created += 1;
     }
 
     Ok(ShortcutSummary {
@@ -1579,6 +1618,34 @@ async fn reconcile_shortcuts(
         deleted,
         total: source_shortcuts.len(),
     })
+}
+
+fn shortcut_keys(shortcuts: &[Value]) -> Result<std::collections::HashSet<String>> {
+    let mut keys = std::collections::HashSet::new();
+    for shortcut in shortcuts {
+        let path = shortcut["path"]
+            .as_str()
+            .unwrap_or("")
+            .trim_start_matches('/');
+        let name = shortcut["name"].as_str().unwrap_or("");
+        if path.is_empty()
+            || name.trim().is_empty()
+            || name.contains('/')
+            || [path, name].iter().any(|part| {
+                part.contains(['%', '\\', '?', '#'])
+                    || part.chars().any(char::is_control)
+                    || part
+                        .split('/')
+                        .any(|segment| matches!(segment, "" | "." | ".."))
+            })
+            || !keys.insert(format!("{path}/{name}"))
+        {
+            return Err(FabioError::with_hint(ErrorCode::InvalidInput,
+                "Shortcut scope is malformed or duplicated; no reconciliation was attempted.",
+                "Use unique nonempty path/name pairs without traversal or URL syntax. Inspect source and target inventories before mutation.").into());
+        }
+    }
+    Ok(keys)
 }
 
 /// Apply governance tags to items that were created during deployment.
@@ -1595,6 +1662,9 @@ pub async fn apply_governance_tags(
     let mut results = Vec::new();
 
     for change in succeeded {
+        if super::failure::hooks_failed(&results) {
+            break;
+        }
         if change.action != ChangeAction::Create {
             continue;
         }
@@ -2985,6 +3055,26 @@ pub async fn verify_convergence(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shortcut_scope_rejects_malformed_duplicate_and_traversal_before_mutation() {
+        for shortcuts in [
+            json!([{}]),
+            json!([{"path":"Files","name":"../root"}]),
+            json!([{"path":"Files/..","name":"x"}]),
+            json!([{"path":"Files","name":"%2f"}]),
+            json!([{"path":"Files","name":"x"},{"path":"/Files","name":"x"}]),
+        ] {
+            assert!(shortcut_keys(shortcuts.as_array().unwrap()).is_err());
+        }
+        assert_eq!(shortcut_keys(&[]).unwrap().len(), 0);
+        assert_eq!(
+            shortcut_keys(&[json!({"path":"/Files/Folder","name":"x"})])
+                .unwrap()
+                .len(),
+            1
+        );
+    }
     use base64::Engine;
     use base64::engine::general_purpose::STANDARD as BASE64;
 

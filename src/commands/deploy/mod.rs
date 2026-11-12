@@ -1013,14 +1013,27 @@ async fn execute_apply(
     };
 
     // Execute post-deploy hooks (unless --no-post-hooks)
-    let mut hook_results: Vec<serde_json::Value> = if !no_post_hooks && !cli.dry_run {
-        apply::execute_post_hooks(cli, client, &workspace_id, &result.succeeded).await
-    } else {
-        Vec::new()
-    };
+    let mut hook_results = result.hook_results.clone();
+    if !no_post_hooks && !cli.dry_run && !result.halted {
+        // Inter-tier framing is a mutation, not a read-only readiness check.
+        // Never repeat it in the final post-hook phase, even after success.
+        let post_items: Vec<_> = result
+            .succeeded
+            .iter()
+            .filter(|change| {
+                !change.item_type.eq_ignore_ascii_case("SemanticModel")
+                    || !hook_results
+                        .iter()
+                        .any(|hook| hook["hook"] == "refresh" && hook["item_name"] == change.name)
+            })
+            .cloned()
+            .collect();
+        hook_results
+            .extend(apply::execute_post_hooks(cli, client, &workspace_id, &post_items).await);
+    }
 
     // Execute shortcut reconciliation for Lakehouse items (unless --no-post-hooks)
-    if !no_post_hooks && !cli.dry_run {
+    if !no_post_hooks && !cli.dry_run && !result.halted && !failure::hooks_failed(&hook_results) {
         let shortcut_results = apply::execute_shortcut_hooks(
             cli,
             client,
@@ -1033,7 +1046,7 @@ async fn execute_apply(
     }
 
     // Apply governance tags to newly created items (unless --no-post-hooks)
-    if !no_post_hooks && !cli.dry_run {
+    if !no_post_hooks && !cli.dry_run && !result.halted && !failure::hooks_failed(&hook_results) {
         let governance_results = apply::apply_governance_tags(
             cli,
             client,
@@ -1048,6 +1061,8 @@ async fn execute_apply(
     // Activate variable library value sets matching --env name (unless --no-post-hooks)
     if !no_post_hooks
         && !cli.dry_run
+        && !result.halted
+        && !failure::hooks_failed(&hook_results)
         && let Some(env_name) = env
     {
         let vl_results = apply::activate_variable_library_value_sets(
@@ -1062,7 +1077,7 @@ async fn execute_apply(
     }
 
     // Apply job schedules for deployed items (unless --no-post-hooks)
-    if !no_post_hooks && !cli.dry_run {
+    if !no_post_hooks && !cli.dry_run && !result.halted && !failure::hooks_failed(&hook_results) {
         let schedule_results = apply::apply_item_schedules(
             cli,
             client,
@@ -1077,6 +1092,9 @@ async fn execute_apply(
     // Run a post-deploy item (pipeline/notebook) if specified (unless --no-post-hooks)
     if !no_post_hooks
         && !cli.dry_run
+        && !result.halted
+        && result.failed.is_empty()
+        && !failure::hooks_failed(&hook_results)
         && let Some(item_name) = post_run_item
     {
         apply::emit_progress(
@@ -1116,7 +1134,7 @@ async fn execute_apply(
 
     // Render result
     let mut output_data = json!({
-        "status": if result.failed.is_empty() { "succeeded" } else { "partial_failure" },
+        "status": if result.failed.is_empty() && !result.halted { "succeeded" } else { "partial_failure" },
         "succeeded": result.succeeded.len(),
         "failed": result.failed.len(),
         "skipped": result.skipped.len(),
@@ -1124,6 +1142,25 @@ async fn execute_apply(
         "failures": result.failed,
         "destructive":changeset.has_destructive_actions() || force_all,
     });
+    if result.halted {
+        output_data["halted"] = json!(true);
+        output_data["notExecuted"] = json!(
+            changeset
+                .changes
+                .iter()
+                .filter(|change| {
+                    change.action != ChangeAction::Skip
+                        && !result.succeeded.iter().any(|done| {
+                            done.name == change.name && done.item_type == change.item_type
+                        })
+                        && !result.failed.iter().any(|failed| {
+                            failed.change.name == change.name
+                                && failed.change.item_type == change.item_type
+                        })
+                })
+                .collect::<Vec<_>>()
+        );
+    }
 
     // Add contextual hints for common failure patterns
     let has_pipeline_reference_error = result.failed.iter().any(|f| {
@@ -1189,6 +1226,16 @@ async fn execute_apply(
 
     if !result.failed.is_empty() {
         return Err(failure::terminal_error(result.failed.len()));
+    }
+    if result.halted {
+        return Err(FabioError::with_typed_hint(
+            ErrorCode::ApiError,
+            "Deployment halted after a prerequisite failure; remaining actions were not executed.",
+            failure::NO_REPLAY_HINT,
+            HintType::SemanticCorrection,
+        )
+        .set_retriable(Some(false))
+        .into());
     }
 
     Ok(())

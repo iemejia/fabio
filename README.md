@@ -119,6 +119,7 @@ fabio deploy apply --source ./export --workspace "Production (empty)" --env prod
 - **Throttling-aware** -- Bulk/batch APIs preferred; parallel execution with rate-limit retry
 - **Mutation-aware retries** -- Generic Fabric JSON submissions do not replay ambiguous gateway failures; selected JSON/job paths retain acknowledgement or uncertainty evidence with non-retriable guidance. Safe reads keep bounded retries. See [submission retry safety](https://ismaelmejia.com/fabio/guides/submission-retries/).
 - **Deployment failure evidence** -- `deploy apply` retains typed `errorDetails` beside legacy failure text/codes and emits `retryAllowed:false` for failed actions/recorded hooks. Reconcile existing work read-only before reviewing further mutation; never automatically replay an uncertain batch. Nonfatal hook errors can still return status `succeeded`.
+- **Fail-closed deployment prerequisites** -- Failed dependency creation/framing/endpoint resolution halts remaining actions with `notExecuted`; hook failures stop subsequent hook mutations. Inter-tier refreshes are not submitted twice, and incomplete shortcut inventories never drive reconciliation.
 - **Destructive-discovery coverage** -- Safety metadata is generated from reviewed judgment and checked against the real CLI, including nested commands and flag-conditional modes. Preview notices distinguish selected destructive actions from create-only/no-op plans. See [destructive previews](https://ismaelmejia.com/fabio/guides/destructive-previews/).
 
 ## Installation

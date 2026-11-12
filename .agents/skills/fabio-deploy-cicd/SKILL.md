@@ -170,7 +170,7 @@ Manage variable libraries (shared variables)
 - --force-all overwrites ALL matched items regardless of content changes — irreversible; run 'deploy plan' first.
 - --delete-orphans removes workspace items not in source; protected data types (Lakehouse/Warehouse/SQLDatabase/Eventhouse/KQLDatabase) require --allow-delete-types.
 - Deploy output includes a 'destructive' boolean — surface it to the human before applying.
-- Never automatically replay a failed deployment batch or switch strategy/disconnect Git after uncertain submission. Preserve evidence, reconcile existing work read-only and review a new scoped plan before further mutation. A missing errorDetails/submission is not proof nothing was submitted; internally discarded best-effort errors and hook scheduling are unchanged.
+- Never automatically replay a failed deployment batch or switch strategy/disconnect Git after uncertain submission. Preserve evidence, reconcile existing work read-only and review a new scoped plan before further mutation. Prerequisite failures halt remaining actions/deletes with halted:true/notExecuted; hook errors stop later hook mutations. Inter-tier refresh is not repeated by post-hooks. Shortcut reconciliation refuses malformed/partial inventories. Missing errorDetails/submission is not proof nothing was submitted.
 
 ## Shared references
 Cross-cutting operational guidance (the "common" layer) — consult the relevant topic before non-trivial work:

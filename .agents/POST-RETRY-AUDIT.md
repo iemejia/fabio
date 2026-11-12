@@ -59,12 +59,21 @@ disconnect. Documented complete member results and coherent legacy aliases are
 validated conservatively; missing/duplicate/partial/unknown results are not success.
 Locally rejected sources are not submitted or counted twice; no empty bulk is sent.
 
+Deployment prerequisite errors (dependency create, takeover, inter-tier refresh and
+SQL-endpoint discovery) now reach recorded hook failures and halt remaining actions,
+including deletes, with `halted:true` and `notExecuted`. Successful inter-tier refresh
+is not repeated by post-hooks. A hook failure stops subsequent hook mutations;
+post-run orchestration is also suppressed on action failures. Shortcut reconciliation
+requires a complete well-formed unique inventory/scope and stops on its first failed
+mutation instead of treating failed reads as an empty inventory or claiming success.
+Paginated shortcut inventories fail closed before mutation; explicit scoped shortcut
+commands remain available after read-only reconciliation.
+
 Remaining aggregation boundaries: other batch/workflow summaries can still stringify
-errors; deployment errors discarded BEFORE aggregation (best-effort takeover,
-inter-tier refresh/SQL-endpoint discovery, shortcut list/delete/create and fallback
-paths) are not recovered by this change. Hook scheduling is unchanged, so this is
-not a claim that later hooks cannot run after an internally ignored uncertain error.
-Task/join and other early returns can also bypass completed batch reporting.
+errors; data transformation fallbacks are not a universal proof of readiness.
+Parallel tasks are drained even with fail-fast; worker failures become unknown-outcome
+action errors instead of discarding earlier results. Other pre-execution early returns
+remain normal errors rather than completed-batch reports.
 End-to-end propagation into ALL batches/receipts and durable registration remain
 separate work. Absence of the optional object is never proof of non-submission.
 

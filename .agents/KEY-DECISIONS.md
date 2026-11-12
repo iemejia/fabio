@@ -1,5 +1,7 @@
 # Fabio CLI — Key Decisions
 
+- **Deployment prerequisites are fail-closed, not best-effort mutations**: retain typed inter-tier/dependency errors, report unexecuted actions and halt before dependent definitions/deletes; stop later hooks after a failure and never duplicate inter-tier refresh. Shortcut reads and scope validation must succeed completely before reconciliation, and a mutation failure stops the sequence. See the submission retry audit for remaining boundaries.
+
 This file captures significant architectural and design decisions, bug fixes, and
 their rationale. It is extracted from `AGENTS.md` to reduce the auto-loaded agent
 context size (see `.agents/API-BEHAVIORS-DISCOVERED.md` and `.agents/RELEVANT-FILES.md`

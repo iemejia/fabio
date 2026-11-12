@@ -132,6 +132,8 @@ pub struct DeployResult {
     pub failed: Vec<DeployFailure>,
     pub skipped: Vec<Change>,
     pub duration_ms: u64,
+    pub hook_results: Vec<serde_json::Value>,
+    pub halted: bool,
 }
 
 #[derive(Debug, Serialize)]

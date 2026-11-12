@@ -17,6 +17,17 @@ pub(super) fn hook_failure(mut record: Value, error: &anyhow::Error) -> Value {
     record
 }
 
+pub(super) fn hooks_failed(hooks: &[Value]) -> bool {
+    hooks.iter().any(|hook| hook["retryAllowed"] == false)
+}
+
+pub(super) fn prerequisite_failure(hook: &str, name: &str, error: &anyhow::Error) -> Value {
+    hook_failure(
+        json!({"hook":hook,"item_name":name,"status":"failed","error":error.to_string()}),
+        error,
+    )
+}
+
 pub(super) fn annotate_summary(summary: &mut Value, action_failures: bool, hooks: &[Value]) {
     if action_failures || hooks.iter().any(|hook| hook["retryAllowed"] == false) {
         summary["retryAllowed"] = json!(false);
@@ -282,6 +293,8 @@ mod tests {
         let value = hook_failure(record, &anyhow::anyhow!("mock"));
         assert_eq!(value["retryAllowed"], false);
         assert!(value.get("errorDetails").is_none());
+        assert!(hooks_failed(&[value]));
+        assert!(!hooks_failed(&[json!({"status":"triggered"})]));
     }
 
     #[test]

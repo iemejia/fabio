@@ -108,8 +108,12 @@ Source items rejected before payload assembly are reported once and not submitte
 Existing status/count/exit behavior remains: action failures yield
 `partial_failure` and exit 1; nonfatal hook errors can coexist with
 `status:succeeded` and exit 0. Check `post_hooks` and `retryAllowed`, not only the
-status. Hook timing and best-effort helpers that discard errors internally are
-unchanged; those discarded errors cannot reach `errorDetails`.
+status. Hook errors now stop later hook mutations. Failed dependency creation,
+takeover, inter-tier refresh or SQL-endpoint resolution halts remaining deployment
+actions (including deletes), emits `halted:true`/`notExecuted` and exits nonzero.
+An inter-tier refresh is never repeated in final post-hooks. Shortcut inventory
+read/validation or mutation failures stop reconciliation; a partial/paginated
+inventory cannot drive destructive reconciliation.
 
 ## Boundaries
 

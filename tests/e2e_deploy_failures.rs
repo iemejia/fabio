@@ -51,6 +51,7 @@ impl Fixture {
             .env("HOME", self.home.path())
             .env("USERPROFILE", self.home.path())
             .env("FABIO_NO_VERSION_CHECK", "1")
+            .env("FABIO_POWERBI_ENDPOINT", server.uri())
             .args(["deploy", "apply", "--plan"])
             .arg(&self.plan)
             .args(["--strategy", strategy, "--concurrency", "4", "--no-folders"]);
@@ -415,7 +416,7 @@ async fn nonfatal_schedule_hook_keeps_submission_evidence_and_blocks_whole_batch
     let dir = fixture.item("Scheduled", "Notebook");
     std::fs::write(
         dir.join("schedules.metadata.json"),
-        json!([{"jobType":"RunNotebook","enabled":true,"configuration":{"type":"Daily"}}])
+        json!([{"jobType":"RunNotebook","enabled":true,"configuration":{"type":"Daily"}}, {"jobType":"RunNotebook","enabled":false,"configuration":{"type":"Daily"}}])
             .to_string(),
     )
     .unwrap();
@@ -449,6 +450,121 @@ async fn nonfatal_schedule_hook_keeps_submission_evidence_and_blocks_whole_batch
     assert_eq!(hook["errorDetails"]["submission"]["operationId"], OP);
     assert_eq!(hook["errorDetails"]["parameters"][0]["value"], "preserved");
     assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn uncertain_takeover_halts_dependent_definitions_without_refresh_or_later_hooks() {
+    let server = MockServer::start().await;
+    let fixture = Fixture::new();
+    fixture.item("Model", "SemanticModel");
+    fixture.item("Report", "Report");
+    fixture.plan(&[change("Model", "SemanticModel"), change("Report", "Report")]);
+    Mock::given(method("POST"))
+        .and(path(format!("/workspaces/{WS}/items")))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({"id":ITEM})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path(format!(
+            "/groups/{WS}/datasets/{ITEM}/Default.TakeOver"
+        )))
+        .respond_with(uncertain())
+        .expect(1)
+        .mount(&server)
+        .await;
+    let output = fixture.command(&server, "default").assert().failure();
+    let summary = data(&output);
+    assert_eq!(summary["halted"], true);
+    assert_eq!(summary["notExecuted"][0]["name"], "Report");
+    assert_eq!(
+        summary["post_hooks"][0]["errorDetails"]["submission"]["state"],
+        "unknown"
+    );
+    assert_no_replay(&summary);
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn successful_intertier_refresh_is_not_submitted_again_by_post_hooks() {
+    let server = MockServer::start().await;
+    let fixture = Fixture::new();
+    fixture.item("Model", "SemanticModel");
+    fixture.plan(&[change("Model", "SemanticModel")]);
+    Mock::given(method("POST"))
+        .and(path(format!("/workspaces/{WS}/items")))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({"id":ITEM})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    for action in ["Default.TakeOver", "refreshes"] {
+        Mock::given(method("POST"))
+            .and(path(format!("/groups/{WS}/datasets/{ITEM}/{action}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    let output = fixture.command(&server, "default").assert().success();
+    assert_eq!(data(&output)["post_hooks"].as_array().unwrap().len(), 1);
+    assert_eq!(server.received_requests().await.unwrap().len(), 3);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shortcut_reconciliation_stops_on_bad_inventory_or_first_mutation_failure() {
+    for inventory in [
+        json!({}),
+        json!({"value":[],"continuationToken":"more"}),
+        json!({"value":[{"path":"Files","name":"../unsafe"}]}),
+        json!({"value":[{"path":"Files","name":"Orphan"}]}),
+    ] {
+        let server = MockServer::start().await;
+        let fixture = Fixture::new();
+        let dir = fixture.item("Lake", "Lakehouse");
+        std::fs::write(dir.join("shortcuts.metadata.json"), json!([{"path":"Files","name":"New","target":{"oneLake":{"workspaceId":WS,"itemId":ITEM,"path":"Files"}}}]).to_string()).unwrap();
+        let mut update = change("Lake", "Lakehouse");
+        update["action"] = json!("update");
+        update["deployed_id"] = json!(ITEM);
+        fixture.plan(&[update]);
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/workspaces/{WS}/items/{ITEM}/updateDefinition"
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("/workspaces/{WS}/items/{ITEM}/shortcuts")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&inventory))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("DELETE"))
+            .respond_with(uncertain())
+            .mount(&server)
+            .await;
+        let output = fixture.command(&server, "default").assert().success();
+        let summary = data(&output);
+        assert_eq!(summary["post_hooks"][0]["status"], "failed");
+        assert_no_replay(&summary);
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(
+            requests.len(),
+            if inventory["value"][0]["name"] == "Orphan" {
+                3
+            } else {
+                2
+            }
+        );
+        assert_eq!(
+            requests
+                .iter()
+                .filter(|request| request.method.as_str() == "POST")
+                .count(),
+            1
+        );
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

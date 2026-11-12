@@ -17,7 +17,7 @@
   ],
   "limits": [
     "This is a bounded transport audit, not a universal exactly-once or end-to-end idempotence guarantee. Raw text/binary/multipart/ARM/OneLake/custom HTTP/SDK paths and bespoke definition-retrieval callers are not all migrated to the new contextual error contract. No newly verified idempotent mutation exception or idempotency key is invented.",
-    "Normal successful outputs and existing receipt-aware workflows remain unchanged. Generic submission evidence is not durably registered by this increment; some job handlers still persist receipts best-effort and other batch summaries stringify errors rather than carrying structured evidence. deploy apply only preserves errors reaching its action/recorded-hook aggregation: best-effort takeover, inter-tier refresh/poll, shortcut reconciliation and other internally discarded errors remain outside this contract; hook scheduling is unchanged. Absence of the optional object is not proof of rejection. No automatic repair/import, remote correlation heuristic or post-upgrade readiness check is added."
+    "Deployment prerequisite failures halt remaining actions/deletes with halted:true/notExecuted; recorded hook failures stop later hook mutations. Successful inter-tier refreshes are not repeated. Shortcut reconciliation refuses malformed/partial inventories and stops on failed mutations. Other batch summaries and specialized transports remain separately scoped. Absence of evidence is not proof of rejection; no remote recovery heuristic is implied."
   ],
   "see_also": ["fabio context best-practices throttling", "fabio context best-practices receipt-storage", "fabio context best-practices gen1-upgrade-execution"]
 }
