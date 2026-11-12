@@ -167,6 +167,7 @@
 - `src/commands/context/data/best_practices/post_gen1_readiness.json`: first-refresh/data/freshness/consumer acceptance guardrails
 - `docs/src/content/docs/guides/post-gen1-readiness.md`: operational acceptance checklist and fixture/approval boundaries
 - `tests/e2e_gen1_readiness.rs`: local discovery and readonly exact-item/definition/job observation checks (not live acceptance)
+- `.agents/SAFETY-CLOSEOUT.md`: committed implementation/validation status and explicit model/live acceptance blockers
 - `src/commands/deploy/plan.rs`: build_changeset (two-pass with rename), validate_references, fetch_deployed_logical_id, compute_workspace_fingerprint
 - `src/commands/deploy/params.rs`: Parameter substitution: find_replace, key_value_replace, spark_pool, semantic_model_binding
 - `src/commands/deploy/init_params.rs`: scan_for_candidates, diff_for_parameters (GUID discovery, cross-environment diffing)
