@@ -1,0 +1,42 @@
+{
+  "name": "Gen1 Upgrade Readiness",
+  "description": "Read-only post-upgrade acceptance checks: exact migration receipt, separately approved first refresh, destination data/freshness, incremental settings and consumers. Never refresh, take over, grant, rewrite or upgrade automatically.",
+  "variables": {
+    "RECEIPT_ID": "Original local upgrade receipt, not an operation trace.",
+    "WORKSPACE_ID": "Exact reviewed upgraded workspace UUID.",
+    "DATAFLOW_ID": "Exact upgraded dataflow UUID from the receipt.",
+    "FIRST_REFRESH_JOB_ID": "Exact job ID retained from a separately approved first refresh; never latest history.",
+    "DEST_WORKSPACE_ID": "Reviewed destination workspace UUID.",
+    "WAREHOUSE_ID": "Reviewed Warehouse UUID, only for a Warehouse destination; never an inferred destination.",
+    "SQL_ENDPOINT_ID": "Reviewed SQL analytics endpoint UUID for a Lakehouse destination (not its Lakehouse ID).",
+    "VALIDATION_SQL": "Reviewed read-only SELECT checks for exact destination tables, expected batch/row bounds and freshness high-watermarks. Quote identifiers; no DDL/DML, source rows in public logs or arbitrary endpoint changes.",
+    "MODEL_ID": "Explicit downstream semantic model UUID.",
+    "MODEL_WORKSPACE_ID": "Explicit downstream model workspace UUID.",
+    "REPORT_WORKSPACE_ID": "Explicit downstream report workspace UUID.",
+    "JOB_TYPE": "Original reviewed schedule job type, not a guessed value.",
+    "MODEL_REFRESH_ID": "Exact separately approved downstream refresh request UUID, when required.",
+    "REPORT_ID": "Explicit downstream report UUID."
+  },
+  "prerequisites": [
+    "Retain the original receipt and pre-upgrade definitions, expected destinations, data checks and incremental-refresh baseline privately.",
+    "Upgrade approval is NOT approval to run a first refresh, take ownership, grant permissions or rewrite consumers. If no approved refresh receipt exists, record first_refresh:not_checked and stop the acceptance gate; do not create or select a job automatically.",
+    "Use the original configured service endpoint and exact IDs. Missing/partial/error-bearing projections remain unknown; a successful migration or preserved item ID is not operational readiness."
+  ],
+  "steps": [
+    {"step_number":1,"command":"fabio --wrap-untrusted --readonly dataflow follow-upgrade --receipt-id $RECEIPT_ID --wait --timeout 120","description":"Require a scope/count-validated successful migration result for the selected dataflow. Partial or unknown results stop acceptance without replay."},
+    {"step_number":2,"command":"fabio --wrap-untrusted --readonly dataflow show --workspace $WORKSPACE_ID --id $DATAFLOW_ID","description":"Confirm the exact upgraded item is visible; do not infer data readiness from ID preservation or existence."},
+    {"step_number":3,"command":"fabio --wrap-untrusted --readonly dataflow get-definition --workspace $WORKSPACE_ID --id $DATAFLOW_ID --decode","description":"Compare destinations, schemas/mappings, names, schedules, linked-query behavior, incremental-refresh/watermark settings and security/storage assumptions against the retained baseline. Missing/hidden settings are unknown, not equal. Do not print connection secrets or modify settings."},
+    {"step_number":4,"command":"fabio --wrap-untrusted --readonly job-scheduler get-instance --workspace $WORKSPACE_ID --id $DATAFLOW_ID --job-instance-id $FIRST_REFRESH_JOB_ID","description":"Observe only the separately approved first refresh. Require exact identity and Completed with consistent failure evidence; acceptance, timeout or cancellation request is not completion. Do not submit a refresh here."},
+    {"step_number":5,"command":"fabio --wrap-untrusted --readonly job-scheduler list-schedules --workspace $WORKSPACE_ID --id $DATAFLOW_ID --job-type $JOB_TYPE","description":"Compare the complete current schedule inventory to the reviewed baseline. Missing/partial inventory is not proof schedules match; do not create or alter schedules."},
+    {"step_number":6,"applies_when":"Reviewed destination is a Warehouse","command":"fabio --wrap-untrusted --readonly warehouse query --workspace $DEST_WORKSPACE_ID --id $WAREHOUSE_ID --sql \"$VALIDATION_SQL\"","description":"Verify approved table schema/row bounds, expected batch or business keys and freshness high-watermarks in the actual Warehouse. Refresh completion alone cannot pass data checks. Empty/stale/malformed/unavailable evidence blocks acceptance; never load or repair data automatically."},
+    {"step_number":7,"applies_when":"Reviewed destination is a Lakehouse SQL analytics endpoint","command":"fabio --wrap-untrusted --readonly sql-endpoint query --workspace $DEST_WORKSPACE_ID --id $SQL_ENDPOINT_ID --sql \"$VALIDATION_SQL\"","description":"Alternative to the Warehouse probe: inspect the selected Lakehouse destination through its actual SQL endpoint UUID with the same reviewed read-only data/freshness checks. Never pass a Lakehouse ID as a Warehouse ID or infer a destination from a similar name."},
+    {"step_number":8,"command":"fabio --wrap-untrusted --readonly semantic-model readiness --workspace $MODEL_WORKSPACE_ID --id $MODEL_ID --expected-table ExpectedTable --probe-data --min-rows 1 --refresh-id $MODEL_REFRESH_ID --report-id $REPORT_ID --report-workspace $REPORT_WORKSPACE_ID --strict --timeout 60","description":"For each selected consumer, check exact model refresh, schema, selected-table queryability and report binding under the intended reader identity. Replace the illustrative table/minimum with approved expectations. Queryability does not prove freshness or visual/business correctness; verify those separately. Do not change modes, rebind, refresh or grant roles."}
+  ],
+  "acceptance_gate": {
+    "required_checks": ["migration_result","first_refresh","destination_identity","destination_data","freshness","incremental_refresh_baseline","consumer_binding","consumer_queryability","reader_authorization","business_visual_validation"],
+    "rule": "Record each check as ready, blocked, needs_action, unknown or not_checked with scoped evidence and observation time. Pass only when every applicable check is ready; applicability must come from the reviewed baseline, never from a missing response. Any unknown/not_checked/partial/error fails closed.",
+    "automatic_mutation_allowed": false,
+    "retry_allowed": false,
+    "limitations": "This is an acceptance workflow composed from supported observation commands, not an automatic migration/refresh/repair executor. No current tenant fixture or approval is assumed."
+  }
+}

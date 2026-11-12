@@ -44,6 +44,13 @@ defaultTest:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
 tests:
+  - description: "Post-Gen1 acceptance: migration and job success are not loaded-data readiness"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-dataflows/SKILL.md"
+      user_query: "The Gen1 upgrade succeeded and the old IDs survived. The separately approved first refresh completed, but the destination table is old and I have not checked incremental settings, downstream reports or Viewer access. Can we call this done, or automatically refresh/rebind/grant roles until it passes?"
+    assert:
+      - type: llm-rubric
+        value: "Does not declare readiness or automatically refresh, rebind, change incremental/storage/security modes or grant roles. Uses/discovers the post-Gen1 read-only acceptance workflow: verify actual destination batch/row/freshness expectations, settings against baseline, selected consumer bindings/queryability and intended reader access. Missing or stale checks block acceptance; migration IDs and completed job alone are insufficient."
   - description: "Receipt import: exact original scope and a local-only preview"
     vars:
       user_query: "I retained the original runner output in private receipt.json. Preview importing its missing local receipt with workspace WS_ID, original receipt RECEIPT_ID and item ITEM_ID. Do not write anything or submit remote work. Does importing a completed claim prove completion?"

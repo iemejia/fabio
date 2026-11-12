@@ -218,6 +218,39 @@ fn published_gen1_execution_and_observation_use_supported_scoped_syntax() {
 }
 
 #[test]
+fn post_upgrade_readiness_recipe_is_readonly_scoped_and_fails_closed() {
+    with_cli(|cli| {
+        let workflow: Value =
+            serde_json::from_str(include_str!("data/workflows/gen1_upgrade_readiness.json"))
+                .unwrap();
+        assert_eq!(
+            validate_document(&cli, &workflow, "gen1-upgrade-readiness"),
+            8
+        );
+        for step in workflow["steps"].as_array().unwrap() {
+            let command = step["command"].as_str().unwrap();
+            let args = shlex::split(command).unwrap();
+            let matches = cli.clone().try_get_matches_from(args).unwrap();
+            assert!(matches.get_flag("readonly"), "{command}");
+            assert!(!command.contains(" upgrade-gen1 "));
+            assert!(!command.contains(" dataflow run "));
+        }
+        assert_eq!(
+            workflow["acceptance_gate"]["automatic_mutation_allowed"],
+            false
+        );
+        assert_eq!(workflow["acceptance_gate"]["retry_allowed"], false);
+        assert_eq!(
+            workflow["acceptance_gate"]["required_checks"]
+                .as_array()
+                .unwrap()
+                .len(),
+            10
+        );
+    });
+}
+
+#[test]
 fn gen1_example_safety_checks_reject_parseable_but_nonexecutable_invocations() {
     with_cli(|cli| {
         for invalid in [

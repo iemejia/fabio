@@ -95,3 +95,6 @@ storage/security-mode change or Save As fallback runs. The new Gen2 still needs
 a separately approved first refresh and consumer validation. Preserved IDs and a
 completed migration do not prove historic data, fresh tables, compatible Viewer
 or legacy-connector consumers, or rendered reports.
+
+Use the [post-upgrade acceptance workflow](../post-gen1-readiness/) for these
+separately scoped read-only checks. It never submits refreshes or repairs.

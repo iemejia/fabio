@@ -15,6 +15,7 @@
     "Loading files directly into Delta tables -> use fabio-lakehouse."
   ],
   "must": [
+    "After migration, follow context workflow gen1-upgrade-readiness and best-practices post-gen1-readiness: verify the exact separately approved first refresh, actual destination data/freshness, incremental settings and consumers. Upgrade success/ID preservation is not readiness. Unknown/not_checked evidence fails acceptance; never refresh, grant, take over, switch modes or rewrite consumers automatically.",
     "Never use isRetriable:true as approval to retry a Gen1 upgrade or as an override of the published 24-hour failed-upgrade cooldown. Unknown/accepted work must be correlated, not resubmitted for an ID. No whole-batch retry or cancellation. The planner never executes; separate upgrade-gen1 requires explicit --allow-in-place-upgrade approval and complete all-ready assessment, then sends exactly ONE POST. Keep BOTH --readonly/--dry-run on previews.",
     "Use --readonly dataflow plan-upgrade --workspace <WS> --id <GEN1_ID> (repeatable) for bounded review before considering irreversible in-place migration. The service assesses ALL Gen1 in that workspace; IDs select output, not an upstream ID filter. --dry-run is offline. Respect page-size/page-limit/assessment-limit and the TOTAL timeout; --all/--force do not bypass bounds.",
     "Treat 'dataflow' as Dataflow Gen2 (the current Power Query item); see 'fabio context disambiguate dataflow'.",
@@ -50,7 +51,7 @@
     "Deleting or overwriting a dataflow definition replaces its transformation logic — confirm with the user.",
     "Gen1-to-Gen2 upgrade changes the item in place. Preview with --dry-run and review readiness results before executing."
   ],
-  "shared_references": ["gen1-upgrade-execution", "gen1-upgrade-planning", "receipt-storage", "throttling", "pagination", "lro"],
+  "shared_references": ["gen1-upgrade-execution", "gen1-upgrade-planning", "post-gen1-readiness", "receipt-storage", "throttling", "pagination", "lro"],
   "see_also": [
     "fabio context persona data-engineer",
     "fabio context disambiguate dataflow",

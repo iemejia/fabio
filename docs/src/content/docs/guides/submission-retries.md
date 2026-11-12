@@ -130,8 +130,9 @@ Custom HTTP/MCP/database SDK transports and bespoke definition callers still hav
 their own semantics; no blanket retry rule or invented idempotency key is added.
 
 Job runners now expose persistence failures and exact job receipts without replay;
-see [local receipt storage](../local-job-receipts/). Supported recovery/import and
-post-upgrade readiness are separate capabilities.
+see [local receipt storage](../local-job-receipts/) for explicit retained-receipt
+import. [Post-Gen1 acceptance](../post-gen1-readiness/) uses separately scoped
+read-only checks; migration completion never implies refreshed data or consumers.
 
 Other batch/workflow summaries still stringify per-action errors instead of exposing
 the optional structured object. Absence of `submission` in such a summary—or in an

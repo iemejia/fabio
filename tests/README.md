@@ -39,6 +39,12 @@ require a separately configured provider to run.
 developer ledger and proves acknowledgement survives broken storage, observation
 and update failures. It also checks cancellation requests never imply completion.
 
+`cargo test --test e2e_gen1_readiness` validates acceptance-workflow discovery and
+exact-item/definition/job reads under readonly. The recipe is also parsed against
+clap and checked for readonly-only commands. These are not live loaded-data,
+freshness, incremental-setting or consumer acceptance results; those need an
+existing approved fixture, retained baseline and separately approved refreshes.
+
 `cargo test --test e2e_post_retry` uses mock/local endpoints to prove that generic
 mutations do not replay ambiguous gateway failures, while safe GETs and explicitly
 read-only POSTs retain intended retries. It covers success-header preservation,

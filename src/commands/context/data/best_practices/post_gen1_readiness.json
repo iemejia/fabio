@@ -1,0 +1,13 @@
+{
+  "topic":"post-gen1-readiness",
+  "title":"Migration completion is not Gen2 operational readiness",
+  "summary":"After Gen1 migration, verify the exact separately approved first refresh, actual destination data/freshness, incremental settings and downstream consumers. Unknown or unchecked evidence cannot pass; never refresh, grant, take over, switch modes or replay automatically.",
+  "must":[
+    "Use context workflow gen1-upgrade-readiness with original receipt, endpoint and explicit scoped identities. Match migration result scope/counts; partial/unknown is not success.",
+    "First refresh requires separate approval. Observe the exact retained job, not latest history; no refresh receipt means not_checked, not permission to submit.",
+    "Compare actual destinations/mappings/incremental settings against the pre-upgrade baseline. Query actual destination tables read-only for expected rows/batch keys and approved freshness high-watermarks; completed refresh and preserved IDs do not prove data arrived correctly.",
+    "Verify each consumer's exact refresh, binding, schema/queryability and expected visual/business behavior under intended reader identities. Metadata visibility does not prove grants for other users. Never alter credentials, roles, storage/security modes, definitions or consumers to make checks pass.",
+    "Keep results private and scoped. Report unknown/not_checked/blocked honestly and fail the acceptance gate unless every applicable required check is ready. Missing baseline or unavailable fixture is a blocker, not inferred equivalence."
+  ],
+  "see_also":["fabio context workflow gen1-upgrade-readiness","fabio context best-practices gen1-upgrade-execution","fabio context best-practices receipt-storage","fabio context workflow bi-readiness"]
+}
