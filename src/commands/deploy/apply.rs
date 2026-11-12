@@ -223,11 +223,7 @@ pub async fn execute_changeset(
                                     e.root_cause()
                                 ),
                             );
-                            failed.push(DeployFailure {
-                                change: (*change).clone(),
-                                error: e.to_string(),
-                                code: extract_error_code(&e),
-                            });
+                            failed.push(DeployFailure::from_error((*change).clone(), &e));
                         }
                     }
                 }
@@ -311,18 +307,10 @@ pub async fn execute_changeset(
                                 ),
                             );
                             if fail_fast {
-                                failed.push(DeployFailure {
-                                    change: change_owned,
-                                    error: e.to_string(),
-                                    code: extract_error_code(&e),
-                                });
+                                failed.push(DeployFailure::from_error(change_owned, &e));
                                 break;
                             }
-                            failed.push(DeployFailure {
-                                change: change_owned,
-                                error: e.to_string(),
-                                code: extract_error_code(&e),
-                            });
+                            failed.push(DeployFailure::from_error(change_owned, &e));
                         }
                     }
                 }
@@ -466,11 +454,7 @@ pub async fn execute_changeset(
                                 e.root_cause()
                             ),
                         );
-                        failed.push(DeployFailure {
-                            change: (*change).clone(),
-                            error: e.to_string(),
-                            code: extract_error_code(&e),
-                        });
+                        failed.push(DeployFailure::from_error((*change).clone(), &e));
                     }
                 }
             }
@@ -558,11 +542,7 @@ pub async fn execute_changeset(
                         e.root_cause()
                     ),
                 );
-                failed.push(DeployFailure {
-                    change: (*change).clone(),
-                    error: e.to_string(),
-                    code: extract_error_code(&e),
-                });
+                failed.push(DeployFailure::from_error((*change).clone(), &e));
             }
         }
     }
@@ -616,7 +596,7 @@ pub(super) fn bulk_failure_hint(signature: &str) -> Option<&'static str> {
 /// - Items with duplicate logical IDs (e.g., all `00000000-...`) are rejected (`BadSystemFiles`)
 /// - Items with inter-dependencies (`KQLDatabase` -> `Eventhouse`, `Report` -> `SemanticModel`)
 ///   fail with `DependenciesCouldNotBeResolved` — the bulk API cannot sequence creation order
-/// - No per-item error granularity (response includes per-item status in `importItemDefinitionsDetails`)
+/// - Requires unique, complete per-item results in `importItemDefinitionsDetails`
 /// - Requires workspace NOT connected to Git (API limitation: `ActiveCiCdOperationInProgress`)
 /// - Renames still executed per-item
 ///
@@ -667,11 +647,11 @@ pub async fn execute_changeset_bulk(
                     succeeded.push(c);
                 }
                 Err(e) => {
-                    failed.push(DeployFailure {
-                        change: (*change).clone(),
-                        error: e.to_string(),
-                        code: "RENAME_FAILED".to_owned(),
-                    });
+                    failed.push(DeployFailure::from_error_with_code(
+                        (*change).clone(),
+                        &e,
+                        "RENAME_FAILED",
+                    ));
                 }
             }
         }
@@ -681,6 +661,48 @@ pub async fn execute_changeset_bulk(
     // The API expects: { "definitionParts": [{path, payload, payloadType}, ...], "options": {...} }
     // Each part path includes the item directory prefix: /<displayName>.<itemType>/<relativePath>
     // This matches the format returned by bulkExportDefinitions.
+    let mut definition_parts: Vec<Value> = Vec::new();
+    bulk_items.retain(|change| {
+        // Find the source item definition
+        let source_item = source.items.iter().find(|si| {
+            si.metadata
+                .item_type
+                .eq_ignore_ascii_case(&change.item_type)
+                && si.metadata.display_name == change.name
+        });
+
+        let Some(source_item) = source_item else {
+            failed.push(DeployFailure::local(
+                (*change).clone(),
+                "Source item not found in source workspace",
+                "SOURCE_NOT_FOUND",
+            ));
+            return false;
+        };
+
+        if source_item.parts.is_empty() {
+            failed.push(DeployFailure::local(
+                (*change).clone(),
+                "Source item has no definition parts for bulk import",
+                "SOURCE_DEFINITION_EMPTY",
+            ));
+            return false;
+        }
+
+        // Build the item directory prefix: /<displayName>.<itemType>/
+        let item_dir = format!("/{}.{}", change.name, change.item_type);
+
+        // Include ALL parts (including .platform) with full paths.
+        // The server infers items from the directory structure in the paths.
+        for p in &source_item.parts {
+            definition_parts.push(json!({
+                "path": format!("{}/{}", item_dir, p.path),
+                "payload": p.payload,
+                "payloadType": p.payload_type,
+            }));
+        }
+        true
+    });
     if !bulk_items.is_empty() {
         emit_progress(
             cli.quiet,
@@ -689,41 +711,6 @@ pub async fn execute_changeset_bulk(
                 bulk_items.len()
             ),
         );
-
-        let mut definition_parts: Vec<Value> = Vec::new();
-
-        for change in &bulk_items {
-            // Find the source item definition
-            let source_item = source.items.iter().find(|si| {
-                si.metadata
-                    .item_type
-                    .eq_ignore_ascii_case(&change.item_type)
-                    && si.metadata.display_name == change.name
-            });
-
-            let Some(source_item) = source_item else {
-                failed.push(DeployFailure {
-                    change: (*change).clone(),
-                    error: "Source item not found in source workspace".to_owned(),
-                    code: "SOURCE_NOT_FOUND".to_owned(),
-                });
-                continue;
-            };
-
-            // Build the item directory prefix: /<displayName>.<itemType>/
-            let item_dir = format!("/{}.{}", change.name, change.item_type);
-
-            // Include ALL parts (including .platform) with full paths.
-            // The server infers items from the directory structure in the paths.
-            for p in &source_item.parts {
-                definition_parts.push(json!({
-                    "path": format!("{}/{}", item_dir, p.path),
-                    "payload": p.payload,
-                    "payloadType": p.payload_type,
-                }));
-            }
-        }
-
         // Submit bulk import with flat definitionParts format
         let import_body = json!({
             "definitionParts": definition_parts,
@@ -741,73 +728,49 @@ pub async fn execute_changeset_bulk(
             .await
         {
             Ok(response) => {
-                // Parse per-item results from importItemDefinitionsDetails
-                let details = response
-                    .get("importItemDefinitionsDetails")
-                    .and_then(|v| v.as_array())
-                    .cloned()
-                    .unwrap_or_default();
-
                 for change in &bulk_items {
                     let mut c = (*change).clone();
-                    // Find matching detail by displayName + type
-                    let detail = details.iter().find(|d| {
-                        d.get("displayName")
-                            .and_then(|v| v.as_str())
-                            .is_some_and(|n| n.eq_ignore_ascii_case(&change.name))
-                            && d.get("type")
-                                .and_then(|v| v.as_str())
-                                .is_some_and(|t| t.eq_ignore_ascii_case(&change.item_type))
-                    });
-                    if let Some(detail) = detail {
-                        let status = detail.get("status").and_then(|v| v.as_str()).unwrap_or("");
-                        if status.eq_ignore_ascii_case("Failed") {
-                            let err_msg = detail
-                                .get("errorDetails")
-                                .and_then(|v| v.get("errorCode"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("Unknown bulk import error");
-                            let full_err = bulk_failure_hint(err_msg).map_or_else(
-                                || err_msg.to_owned(),
-                                |hint| format!("{err_msg} — {hint}"),
-                            );
-                            failed.push(DeployFailure {
-                                change: c,
-                                error: full_err,
-                                code: "BULK_IMPORT_FAILED".to_owned(),
-                            });
-                            continue;
+                    match super::failure::bulk_item_result(change, &response) {
+                        Ok(id) => {
+                            c.deployed_id = Some(id);
+                            succeeded.push(c);
                         }
-                        c.deployed_id =
-                            detail.get("id").and_then(|v| v.as_str()).map(str::to_owned);
+                        Err(error) => failed.push(*error),
                     }
-                    succeeded.push(c);
                 }
             }
             Err(e) => {
                 let err_msg = e.to_string();
-                // If bulk fails, mark ALL items as failed
-                if err_msg.contains("ActiveCiCdOperation") {
+                // These records share request-level evidence, not proof that
+                // every member failed remotely or that none of its substeps ran.
+                let known_rejection = crate::errors::can_retry_submission_rejection(&e);
+                if known_rejection && err_msg.contains("ActiveCiCdOperation") {
                     let hint = "Bulk strategy requires workspace not connected to Git. Use --strategy default, or disconnect Git: fabio git disconnect --workspace <WS>";
                     for change in &bulk_items {
-                        failed.push(DeployFailure {
-                            change: (*change).clone(),
-                            error: format!(
-                                "Bulk import blocked: workspace has Git integration active. {hint}"
-                            ),
-                            code: "BULK_GIT_BLOCKED".to_owned(),
-                        });
+                        let mut failure = DeployFailure::from_error_with_code(
+                            (*change).clone(),
+                            &e,
+                            "BULK_GIT_BLOCKED",
+                        );
+                        failure.error = format!(
+                            "Bulk import blocked: workspace has Git integration active. {hint}"
+                        );
+                        failed.push(failure);
                     }
                 } else {
-                    let hint = bulk_failure_hint(&err_msg);
+                    let hint = known_rejection
+                        .then(|| bulk_failure_hint(&err_msg))
+                        .flatten();
                     for change in &bulk_items {
                         let error =
                             hint.map_or_else(|| err_msg.clone(), |h| format!("{err_msg} — {h}"));
-                        failed.push(DeployFailure {
-                            change: (*change).clone(),
-                            error,
-                            code: "BULK_IMPORT_FAILED".to_owned(),
-                        });
+                        let mut failure = DeployFailure::from_error_with_code(
+                            (*change).clone(),
+                            &e,
+                            "BULK_IMPORT_FAILED",
+                        );
+                        failure.error = error;
+                        failed.push(failure);
                     }
                 }
             }
@@ -827,11 +790,11 @@ pub async fn execute_changeset_bulk(
             {
                 Ok(_) => succeeded.push((*change).clone()),
                 Err(e) => {
-                    failed.push(DeployFailure {
-                        change: (*change).clone(),
-                        error: e.to_string(),
-                        code: "DELETE_FAILED".to_owned(),
-                    });
+                    failed.push(DeployFailure::from_error_with_code(
+                        (*change).clone(),
+                        &e,
+                        "DELETE_FAILED",
+                    ));
                 }
             }
         }
@@ -900,13 +863,16 @@ pub async fn execute_post_hooks(
                                 e.root_cause()
                             ),
                         );
-                        results.push(json!({
-                            "hook": "sql_endpoint_poll",
-                            "item_type": "Lakehouse",
-                            "item_name": change.name,
-                            "status": "timeout",
-                            "error": e.to_string()
-                        }));
+                        results.push(super::failure::hook_failure(
+                            json!({
+                                "hook": "sql_endpoint_poll",
+                                "item_type": "Lakehouse",
+                                "item_name": change.name,
+                                "status": "timeout",
+                                "error": e.to_string()
+                            }),
+                            &e,
+                        ));
                     }
                 }
             }
@@ -936,13 +902,16 @@ pub async fn execute_post_hooks(
                                 e.root_cause()
                             ),
                         );
-                        results.push(json!({
-                            "hook": "refresh",
-                            "item_type": "SemanticModel",
-                            "item_name": change.name,
-                            "status": "failed",
-                            "error": e.to_string()
-                        }));
+                        results.push(super::failure::hook_failure(
+                            json!({
+                                "hook": "refresh",
+                                "item_type": "SemanticModel",
+                                "item_name": change.name,
+                                "status": "failed",
+                                "error": e.to_string()
+                            }),
+                            &e,
+                        ));
                     }
                 }
             }
@@ -966,15 +935,19 @@ pub async fn execute_post_hooks(
                             &change.name,
                         )
                         .await;
-                        results.push(json!({
+                        let record = json!({
                             "hook": "publish",
                             "item_type": "Environment",
                             "item_name": change.name,
-                            "status": match poll_result {
+                            "status": match &poll_result {
                                 Ok(()) => "succeeded",
                                 Err(_) => "triggered"
                             }
-                        }));
+                        });
+                        results.push(match poll_result {
+                            Ok(()) => record,
+                            Err(e) => super::failure::hook_failure(record, &e),
+                        });
                     }
                     Err(e) => {
                         emit_progress(
@@ -985,13 +958,16 @@ pub async fn execute_post_hooks(
                                 e.root_cause()
                             ),
                         );
-                        results.push(json!({
-                            "hook": "publish",
-                            "item_type": "Environment",
-                            "item_name": change.name,
-                            "status": "failed",
-                            "error": e.to_string()
-                        }));
+                        results.push(super::failure::hook_failure(
+                            json!({
+                                "hook": "publish",
+                                "item_type": "Environment",
+                                "item_name": change.name,
+                                "status": "failed",
+                                "error": e.to_string()
+                            }),
+                            &e,
+                        ));
                     }
                 }
             }
@@ -1073,14 +1049,17 @@ pub async fn activate_variable_library_value_sets(
                         env_name, change.name, err_msg
                     ),
                 );
-                results.push(json!({
-                    "hook": "activate_value_set",
-                    "item_type": "VariableLibrary",
-                    "item_name": change.name,
-                    "value_set": env_name,
-                    "status": "failed",
-                    "error": err_msg
-                }));
+                results.push(super::failure::hook_failure(
+                    json!({
+                        "hook": "activate_value_set",
+                        "item_type": "VariableLibrary",
+                        "item_name": change.name,
+                        "value_set": env_name,
+                        "status": "failed",
+                        "error": err_msg
+                    }),
+                    &e,
+                ));
             }
         }
     }
@@ -1173,14 +1152,17 @@ pub async fn apply_item_schedules(
                             change.name, err_msg
                         ),
                     );
-                    results.push(json!({
-                        "hook": "create_schedule",
-                        "item_type": change.item_type,
-                        "item_name": change.name,
-                        "job_type": job_type,
-                        "status": "failed",
-                        "error": err_msg
-                    }));
+                    results.push(super::failure::hook_failure(
+                        json!({
+                            "hook": "create_schedule",
+                            "item_type": change.item_type,
+                            "item_name": change.name,
+                            "job_type": job_type,
+                            "status": "failed",
+                            "error": err_msg
+                        }),
+                        &e,
+                    ));
                 }
             }
         }
@@ -1502,13 +1484,16 @@ pub async fn execute_shortcut_hooks(
                         e.root_cause()
                     ),
                 );
-                results.push(json!({
-                    "hook": "shortcuts",
-                    "item_type": "Lakehouse",
-                    "item_name": change.name,
-                    "status": "failed",
-                    "error": e.to_string()
-                }));
+                results.push(super::failure::hook_failure(
+                    json!({
+                        "hook": "shortcuts",
+                        "item_type": "Lakehouse",
+                        "item_name": change.name,
+                        "status": "failed",
+                        "error": e.to_string()
+                    }),
+                    &e,
+                ));
             }
         }
     }
@@ -1669,13 +1654,16 @@ pub async fn apply_governance_tags(
                         e.root_cause()
                     ),
                 );
-                results.push(json!({
-                    "hook": "apply_tags",
-                    "item_type": change.item_type,
-                    "item_name": change.name,
-                    "status": "failed",
-                    "error": e.to_string()
-                }));
+                results.push(super::failure::hook_failure(
+                    json!({
+                        "hook": "apply_tags",
+                        "item_type": change.item_type,
+                        "item_name": change.name,
+                        "status": "failed",
+                        "error": e.to_string()
+                    }),
+                    &e,
+                ));
             }
         }
     }
@@ -2881,13 +2869,6 @@ fn is_guid_like(s: &str) -> bool {
         && s.chars().filter(|&c| c == '-').count() == 4
 }
 
-fn extract_error_code(err: &anyhow::Error) -> String {
-    err.downcast_ref::<FabioError>().map_or_else(
-        || "UNKNOWN".to_owned(),
-        |fabio_err| format!("{:?}", fabio_err.code),
-    )
-}
-
 /// Outcome of a post-apply convergence verification.
 pub struct VerificationResult {
     /// True when every checked item matched the source (no discrepancies).
@@ -3683,34 +3664,6 @@ mod tests {
         let map = build_resolution_map(&source, &created_ids, &HashMap::new());
         assert_eq!(map.len(), 1);
         assert_eq!(map.get("lid-lh1"), Some(&"deployed-lh1".to_owned()));
-    }
-
-    #[test]
-    fn test_extract_error_code_fabio_error() {
-        use crate::errors::{ErrorCode, FabioError};
-        let err = FabioError {
-            code: ErrorCode::NotFound,
-            message: "Not found".to_owned(),
-            hint: None,
-            hint_type: None,
-            verify_after: None,
-            retriable: None,
-            request_id: None,
-            more_details: None,
-            related_resource: None,
-            parameters: None,
-            submission: None,
-        };
-        let anyhow_err: anyhow::Error = err.into();
-        let code = extract_error_code(&anyhow_err);
-        assert_eq!(code, "NotFound");
-    }
-
-    #[test]
-    fn test_extract_error_code_unknown_error() {
-        let err = anyhow::anyhow!("some random error");
-        let code = extract_error_code(&err);
-        assert_eq!(code, "UNKNOWN");
     }
 
     // ─── report byConnection semanticmodelid resolution tests ────────────────

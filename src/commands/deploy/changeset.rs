@@ -139,6 +139,46 @@ pub struct DeployFailure {
     pub change: Change,
     pub error: String,
     pub code: String,
+    #[serde(rename = "errorDetails", skip_serializing_if = "Option::is_none")]
+    pub error_details: Option<Box<serde_json::Value>>,
+    /// An action can contain earlier successful substeps; a failure is never
+    /// permission to replay the action or its containing batch automatically.
+    #[serde(rename = "retryAllowed")]
+    pub retry_allowed: bool,
+}
+
+impl DeployFailure {
+    pub fn from_error(change: Change, error: &anyhow::Error) -> Self {
+        let code = error
+            .downcast_ref::<crate::errors::FabioError>()
+            .map_or_else(
+                || "UNKNOWN".to_string(),
+                |error| format!("{:?}", error.code),
+            );
+        Self::from_error_with_code(change, error, code)
+    }
+
+    pub fn from_error_with_code(
+        change: Change,
+        error: &anyhow::Error,
+        code: impl Into<String>,
+    ) -> Self {
+        let mut failure = Self::local(change, error.to_string(), code);
+        failure.error_details = error
+            .downcast_ref::<crate::errors::FabioError>()
+            .map(|error| Box::new(crate::output::error_details(error)));
+        failure
+    }
+
+    pub fn local(change: Change, error: impl Into<String>, code: impl Into<String>) -> Self {
+        Self {
+            change,
+            error: error.into(),
+            code: code.into(),
+            error_details: None,
+            retry_allowed: false,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -173,6 +213,102 @@ mod tests {
             source_hash: None,
             previous_name: None,
         }
+    }
+
+    #[test]
+    fn failure_preserves_legacy_fields_and_canonical_metadata_through_context() {
+        use crate::errors::{
+            ErrorCode, ErrorDetail, ErrorParameter, FabioError, HintType, RelatedResource,
+            SubmissionEvidence,
+        };
+        let error = FabioError::with_typed_hint(
+            ErrorCode::ApiError,
+            "mock failure",
+            "Inspect read-only",
+            HintType::SemanticCorrection,
+        )
+        .set_retriable(Some(false))
+        .set_request_id(Some("mock-trace".into()))
+        .set_more_details(Some(vec![ErrorDetail {
+            error_code: "MockDetail".into(),
+            message: "detail".into(),
+        }]))
+        .set_related_resource(Some(RelatedResource {
+            resource_id: "mock-resource".into(),
+            resource_type: "Notebook".into(),
+        }))
+        .set_parameters(Some(vec![ErrorParameter {
+            name: Some("mock".into()),
+            value: Some("preserved".into()),
+            message: None,
+        }]))
+        .set_verify_after("fabio item list --workspace <WS>");
+        let mut error = error;
+        error.submission = Some(Box::new(SubmissionEvidence {
+            service: "fabric",
+            state: "unknown",
+            http_status: Some(503),
+            workspace_id: None,
+            target_id: None,
+            operation_id: None,
+            location_present: false,
+            server_retriable: Some(true),
+        }));
+        let expected = crate::output::error_details(&error);
+        let error = anyhow::Error::new(error).context("wrapped diagnostic");
+        let change = make_change(ChangeAction::Create, "Mock", "Notebook");
+        let failure = DeployFailure::from_error(change.clone(), &error);
+        let value = serde_json::to_value(&failure).unwrap();
+        assert_eq!(value["change"], serde_json::to_value(&change).unwrap());
+        assert_eq!(value["error"], "wrapped diagnostic");
+        assert_eq!(value["code"], "ApiError");
+        assert_eq!(value["retryAllowed"], false);
+        assert_eq!(value["errorDetails"], expected);
+        assert_eq!(expected["code"], "API_ERROR");
+        assert_eq!(expected["hintType"], "semantic_correction");
+        assert_eq!(expected["hint"], "Inspect read-only");
+        assert_eq!(expected["verifyAfter"], "fabio item list --workspace <WS>");
+        assert_eq!(expected["requestId"], "mock-trace");
+        assert_eq!(expected["moreDetails"][0]["errorCode"], "MockDetail");
+        assert_eq!(expected["relatedResource"]["resourceId"], "mock-resource");
+        assert_eq!(expected["submission"]["serverRetriable"], true);
+        assert_eq!(expected["parameters"][0]["value"], "preserved");
+        let override_failure =
+            DeployFailure::from_error_with_code(change, &error, "BULK_IMPORT_FAILED");
+        assert_eq!(override_failure.code, "BULK_IMPORT_FAILED");
+        assert_eq!(override_failure.error_details, failure.error_details);
+    }
+
+    #[test]
+    fn untyped_and_local_failures_do_not_fabricate_submission_evidence() {
+        let error = anyhow::anyhow!("mock local failure");
+        let change = make_change(ChangeAction::Create, "Mock", "Notebook");
+        for failure in [
+            DeployFailure::from_error(change.clone(), &error),
+            DeployFailure::local(change, "mock local failure", "UNKNOWN"),
+        ] {
+            let value = serde_json::to_value(failure).unwrap();
+            assert_eq!(value["code"], "UNKNOWN");
+            assert_eq!(value["error"], "mock local failure");
+            assert_eq!(value["retryAllowed"], false);
+            assert!(value.get("errorDetails").is_none());
+        }
+    }
+
+    #[test]
+    fn failure_keeps_legacy_debug_code_and_does_not_promote_nested_retry_permission() {
+        let error = crate::errors::FabioError::not_found("mock")
+            .set_retriable(Some(true))
+            .into();
+        let failure = DeployFailure::from_error(
+            make_change(ChangeAction::Update, "Mock", "Notebook"),
+            &error,
+        );
+        let value = serde_json::to_value(failure).unwrap();
+        assert_eq!(value["code"], "NotFound");
+        assert_eq!(value["errorDetails"]["code"], "NOT_FOUND");
+        assert_eq!(value["errorDetails"]["retriable"], true);
+        assert_eq!(value["retryAllowed"], false);
     }
 
     #[test]

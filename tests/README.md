@@ -28,6 +28,13 @@ submission/acknowledgement behavior. No tests prune the developer's ledger or
 replay a live upgrade; these tests do not simulate hardware power loss or replace
 Windows runtime CI.
 
+`cargo test --test e2e_deploy_failures` exercises local-only batch evidence:
+sequential/parallel/ordered actions, one uncertain bulk request, mixed/unusable
+member results, source accounting, legacy field/code compatibility, nonfatal
+schedule-hook errors and no-replay summary/terminal guidance. No live deployment
+is needed or performed. Model safety cases are defined in the eval corpus but
+require a separately configured provider to run.
+
 `cargo test --test e2e_post_retry` uses mock/local endpoints to prove that generic
 mutations do not replay ambiguous gateway failures, while safe GETs and explicitly
 read-only POSTs retain intended retries. It covers success-header preservation,

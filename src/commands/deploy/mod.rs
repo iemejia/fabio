@@ -2,6 +2,7 @@ pub mod apply;
 pub mod changeset;
 pub mod config;
 pub mod export;
+mod failure;
 pub mod folders;
 pub mod git_diff;
 mod identities;
@@ -1100,12 +1101,15 @@ async fn execute_apply(
                         e.root_cause()
                     ),
                 );
-                hook_results.push(json!({
-                    "hook": "post_run_item",
-                    "item_name": item_name,
-                    "status": "failed",
-                    "error": e.to_string()
-                }));
+                hook_results.push(failure::hook_failure(
+                    json!({
+                        "hook": "post_run_item",
+                        "item_name": item_name,
+                        "status": "failed",
+                        "error": e.to_string()
+                    }),
+                    &e,
+                ));
             }
         }
     }
@@ -1137,16 +1141,20 @@ async fn execute_apply(
     // items (or hit placeholder/duplicate logicalIds), point at the per-item strategy.
     let has_bulk_dependency_error = result.failed.iter().any(|f| {
         f.code == "BULK_IMPORT_FAILED"
+            && f.error_details
+                .as_deref()
+                .is_none_or(|details| details.get("submission").is_none())
             && (f.error.contains("DependenciesCouldNotBeResolved")
                 || f.error.contains("BadSystemFiles"))
     });
     if has_bulk_dependency_error {
         output_data.as_object_mut().unwrap().insert(
             "hint".to_owned(),
-            json!("--strategy bulk cannot sequence interdependent items or resolve cross-item logical-ID references mid-batch. Re-run with --strategy default (per-item), which creates dependencies first and resolves references in a single pass."),
+            json!("--strategy bulk cannot sequence interdependent items or resolve cross-item logical-ID references mid-batch. After reconciling prior outcomes, plan only the reviewed remaining work with --strategy default; do not blindly rerun the entire batch."),
         );
     }
 
+    failure::annotate_summary(&mut output_data, !result.failed.is_empty(), &hook_results);
     if !hook_results.is_empty() {
         output_data
             .as_object_mut()
@@ -1180,7 +1188,7 @@ async fn execute_apply(
     output::render_object(cli, &output_data, "status");
 
     if !result.failed.is_empty() {
-        bail!("Deployment completed with {} failures", result.failed.len());
+        return Err(failure::terminal_error(result.failed.len()));
     }
 
     Ok(())

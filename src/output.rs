@@ -391,12 +391,12 @@ pub fn render_object(cli: &Cli, obj: &Value, plain_key: &str) {
     }
 }
 
-/// Render an error to stderr as structured JSON.
+/// Build canonical error fields for both stderr and aggregate results.
 ///
 /// When an AI agent is detected and the error hint suggests a dangerous
 /// (safety-bypass) flag, an `agentNotice` field is appended to warn the
 /// agent not to retry with that flag without explicit user approval.
-pub fn render_error(err: &FabioError) {
+fn build_error_body(err: &FabioError) -> ErrorBody {
     // Resolve the effective hint type: use explicit if set, otherwise infer.
     let effective_hint_type = err.hint.as_ref().map(|hint| {
         err.hint_type
@@ -412,21 +412,32 @@ pub fn render_error(err: &FabioError) {
         None
     };
 
+    ErrorBody {
+        code: err.code.to_string(),
+        message: err.message.clone(),
+        hint: err.hint.clone(),
+        hint_type: effective_hint_type,
+        verify_after: err.verify_after.clone(),
+        retriable: err.retriable,
+        request_id: err.request_id.clone(),
+        more_details: err.more_details.clone(),
+        related_resource: err.related_resource.clone(),
+        parameters: err.parameters.clone(),
+        agent_notice,
+        submission: err.submission.clone(),
+    }
+}
+
+/// Canonical structured error fields for batch records. The same serializer and
+/// hint/notice rules are used by stderr, without flattening metadata to text.
+pub fn error_details(err: &FabioError) -> Value {
+    serde_json::to_value(build_error_body(err)).expect("error fields are serializable")
+}
+
+/// Render an error to stderr as structured JSON.
+pub fn render_error(err: &FabioError) {
     let envelope = ErrorEnvelope {
-        error: ErrorBody {
-            code: err.code.to_string(),
-            message: err.message.clone(),
-            hint: err.hint.clone(),
-            hint_type: effective_hint_type,
-            verify_after: err.verify_after.clone(),
-            retriable: err.retriable,
-            request_id: err.request_id.clone(),
-            more_details: err.more_details.clone(),
-            related_resource: err.related_resource.clone(),
-            parameters: err.parameters.clone(),
-            agent_notice,
-            submission: err.submission.clone(),
-        },
+        error: build_error_body(err),
     };
     eprintln!(
         "{}",

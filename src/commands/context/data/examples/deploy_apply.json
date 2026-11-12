@@ -11,17 +11,45 @@
       "destructive": true,
       "failures": [],
       "post_hooks": [
-        {"item": "SalesModel", "type": "SemanticModel", "hook": "refresh", "status": "ok"}
+        {"item_name": "ExampleModel", "item_type": "SemanticModel", "hook": "refresh", "status": "triggered"}
       ]
     }
   },
-  "notes": "Status values: 'succeeded' (all OK), 'partial_failure' (some items failed), 'no_changes' (everything already in sync). The 'failures' array contains per-item error details with 'change', 'error', and 'code' fields. Post-hooks fire after successful creates/updates (SemanticModel refresh, Environment publish). AUDIT: pass --verify to add a 'verification' block ({converged, checked, discrepancies[], existence_only[]}) that re-fetches the applied items and confirms convergence (content items hash-compared to source, platform-only existence-checked) — report-only, exit code unchanged. Equivalent to re-running 'deploy plan' and expecting all Skip. NOTE the API normalizes hand-authored content (notebooks) on first ingest, so a first deploy may report converged:false; re-deploy from 'deploy export' output to converge. .platform is excluded from the hash, so pure metadata-only changes won't surface as drift.",
-  "safety_notes": "This example includes existing-definition updates. The destructive field describes the selected plan: updates, rename/republication, deletes or force-all are destructive; create-only/no-op plans are not. A destructive dry-run carries agentNotice for detected AI agents and requires approval before execution.",
+  "failure_response": {
+    "data": {
+      "status": "partial_failure",
+      "succeeded": 1,
+      "failed": 1,
+      "skipped": 0,
+      "duration_ms": 120,
+      "destructive": false,
+      "retryAllowed": false,
+      "hint": "Do not automatically retry the deployment or its entire batch. Preserve evidence, reconcile existing work read-only and review a new scoped plan before further mutation.",
+      "failures": [{
+        "change": {"name": "ExampleNotebook", "item_type": "Notebook", "action": "create", "reason": "Not in target workspace"},
+        "error": "API_ERROR: Service unavailable",
+        "code": "ApiError",
+        "retryAllowed": false,
+        "errorDetails": {
+          "code": "API_ERROR",
+          "message": "Service unavailable",
+          "hint": "Preserve the exact request and inspect existing work read-only; do not resubmit.",
+          "hintType": "semantic_correction",
+          "retriable": false,
+          "submission": {"service": "fabric", "state": "unknown", "httpStatus": 503, "locationPresent": false, "serverRetriable": true}
+        }
+      }]
+    }
+  },
+  "notes": "Status values: 'succeeded' (no action failures; recorded nonfatal hooks can still fail), 'partial_failure' (action failures; exit 1), 'no_changes' (everything already in sync). The 'failures' array retains 'change', 'error', and legacy 'code'; typed errors add canonical 'errorDetails'. A legacy strategy override such as BULK_IMPORT_FAILED does not replace errorDetails.code. Every action/recorded-hook failure carries retryAllowed:false and triggers batch no-replay guidance. Post-hooks fire after successful creates/updates (SemanticModel refresh, Environment publish). AUDIT: pass --verify to add a 'verification' block ({converged, checked, discrepancies[], existence_only[]}) that re-fetches the applied items and confirms convergence (content items hash-compared to source, platform-only existence-checked) — report-only, exit code unchanged. Equivalent to re-running 'deploy plan' and expecting all Skip. NOTE the API normalizes hand-authored content (notebooks) on first ingest, so a first deploy may report converged:false; reconcile outcomes and review a new plan using canonical 'deploy export' output to converge. .platform is excluded from the hash, so pure metadata-only changes won't surface as drift.",
+  "safety_notes": "The main success example includes existing-definition updates. The destructive field describes the selected plan: updates, rename/republication, deletes or force-all are destructive; create-only/no-op plans are not. A destructive dry-run carries agentNotice for detected AI agents and requires approval before execution. retryAllowed:false overrides nested retriable:true and diagnosticHint; do not replay a whole batch. Shared bulk request evidence is not proof every member failed remotely. Missing/duplicate/unknown bulk results become BULK_RESULT_UNVERIFIED, not success. Reconcile read-only before reviewing further mutation; missing structured evidence is not proof of non-submission.",
   "query_examples": [
     {"query": "status", "description": "Get overall deployment status."},
     {"query": "succeeded", "description": "Count of successfully deployed items."},
     {"query": "failures[].error", "description": "Get error messages for failed items."},
+    {"query": "failures[].errorDetails", "description": "Inspect canonical typed errors and optional submission evidence."},
+    {"query": "retryAllowed", "description": "False blocks automatic batch replay, even with nested retriable:true."},
     {"query": "duration_ms", "description": "Get total deployment time in milliseconds."},
-    {"query": "post_hooks[?status!='ok']", "description": "Find post-hooks that failed."}
+    {"query": "post_hooks[?retryAllowed==`false`]", "description": "Find recorded hook errors; these can be nonfatal."}
   ]
 }

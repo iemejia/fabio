@@ -202,6 +202,14 @@ UUIDs and a unique operation-header UUID. It is not a verified scoped receipt or
 proof of completion; do not pass an operation ID as a local receipt ID. See
 `fabio context best-practices submission-retries`.
 
+For `deploy apply`, also honor batch/action/hook `retryAllowed:false`: it overrides
+nested `errorDetails.retriable:true` or `diagnosticHint`. Typed action/recorded-hook
+errors retain canonical `errorDetails`, including optional `submission`. Shared
+bulk-request evidence is not proof every item failed remotely. Preserve the result,
+reconcile read-only and review a new scoped plan; never automatically replay the
+batch, switch strategy or disconnect Git after uncertain submission. Nonfatal hook
+errors can retain `status:succeeded` and exit 0; inspect `post_hooks` too.
+
 | `hintType` | Action after retry |
 |---|---|
 | `auth_fix` | Proceed normally — no semantic change to the operation |

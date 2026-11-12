@@ -48,11 +48,25 @@ transport evidence, not a verified scoped ledger receipt. API error metadata is
 preserved while local replay safety overrides retriability; the server hint remains
 separate. No raw request body, query string or returned URL is added to evidence.
 
-Some existing batch/workflow summaries (including deployment apply) stringify
-per-action errors. Blocking the inspected internal loops does not imply structured
-submission evidence survives every aggregate output. End-to-end propagation into
-all batch summaries/receipts remains separate work; absence of the optional object
-must never be treated as proof of non-submission.
+Deployment apply now preserves typed action/recorded-hook errors through the same
+canonical serializer as stderr (`errorDetails`), retaining legacy text/codes. Every
+failed action/recorded hook carries `retryAllowed:false`; the batch no-replay hint
+dominates contextual diagnostics and the final action-failure stderr is explicitly
+non-retriable. Existing action counts/exit codes and nonfatal hook behavior remain.
+Whole-request bulk evidence is shared request-level context, not a per-member remote
+failure assertion. Uncertain bulk errors cannot suggest strategy switching or Git
+disconnect. Documented complete member results and coherent legacy aliases are
+validated conservatively; missing/duplicate/partial/unknown results are not success.
+Locally rejected sources are not submitted or counted twice; no empty bulk is sent.
+
+Remaining aggregation boundaries: other batch/workflow summaries can still stringify
+errors; deployment errors discarded BEFORE aggregation (best-effort takeover,
+inter-tier refresh/SQL-endpoint discovery, shortcut list/delete/create and fallback
+paths) are not recovered by this change. Hook scheduling is unchanged, so this is
+not a claim that later hooks cannot run after an internally ignored uncertain error.
+Task/join and other early returns can also bypass completed batch reporting.
+End-to-end propagation into ALL batches/receipts and durable registration remain
+separate work. Absence of the optional object is never proof of non-submission.
 
 The mock suite checks gateway failure after a possible acceptance, malformed success
 bodies, contradictory rejection/ACK markers, accepted observation failure, local
@@ -60,6 +74,13 @@ transport timeout/disconnect, readonly/dry-run guards, safe read retries and a
 command-level named-rejection loop. Existing Gen1 and Power BI receipt tests remain
 regression coverage. Physical service failures and tenant mutations are not needed
 to prove request counts.
+
+`tests/e2e_deploy_failures.rs` adds local-only CLI regressions for sequential,
+parallel, ordered and bulk failures, shared uncertain-request evidence, mixed and
+unusable member results, no empty payload/double count, canonical-vs-legacy codes,
+nonfatal schedule hooks, unchanged successful summaries and dry-run/readonly guards.
+No live deployment or tenant mutation was performed for this increment. New model
+evaluation cases are authored separately; no configured-provider run is claimed.
 
 ## Authoritative rejection guidance
 

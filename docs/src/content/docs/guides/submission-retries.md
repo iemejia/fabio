@@ -81,6 +81,36 @@ operation/resource with read-only tooling for the correct configured service.
 Do not guess identities, choose latest history, repeat accepted/unknown work,
 automatically cancel it, or repeat a mutation merely to use a longer timeout.
 
+## Deployment batch failures
+
+`deploy apply` preserves the legacy `failures[].change`, `error` and `code`
+fields. Typed failures also carry `errorDetails`, using the same canonical fields
+as stderr, including `hintType`, API parameters/traces and optional `submission`.
+The legacy `code` may be a strategy-specific value such as `BULK_IMPORT_FAILED`;
+`errorDetails.code` remains the canonical underlying Fabio code.
+
+Every failed action has `retryAllowed:false`. The batch also carries this flag
+and dominant no-replay guidance when an action or a recorded hook fails. Do not
+override it with a nested server `retriable:true` or a `diagnosticHint`: actions
+can have successful substeps and deployment is not an atomic transaction.
+Preserve the output privately, reconcile the existing resources read-only, and
+review a new scoped plan before any further mutation. Do not automatically replay
+the batch, switch strategy or disconnect Git after an uncertain submission.
+
+For bulk import, evidence copied into multiple action records describes the **one
+shared request**, not independently verified remote failures of those items.
+Only a unique complete `Succeeded` member result with a valid nonzero item ID
+counts as success. Missing, duplicate, contradictory or unknown results become
+`BULK_RESULT_UNVERIFIED`; `Failed` and `SucceededDespiteFailures` remain failures.
+No transport acknowledgement or operation identity is fabricated from these rows.
+Source items rejected before payload assembly are reported once and not submitted.
+
+Existing status/count/exit behavior remains: action failures yield
+`partial_failure` and exit 1; nonfatal hook errors can coexist with
+`status:succeeded` and exit 0. Check `post_hooks` and `retryAllowed`, not only the
+status. Hook timing and best-effort helpers that discard errors internally are
+unchanged; those discarded errors cannot reach `errorDetails`.
+
 ## Boundaries
 
 This increment covers the shared Fabric JSON mutation path, configurable-LRO JSON,
@@ -92,6 +122,6 @@ migrated to the new evidence contract. Existing successful outputs remain unchan
 Other job handlers' best-effort persistence, supported recovery/import and
 post-upgrade readiness remain separate work. See [local receipt storage](../local-job-receipts/).
 
-Some batch/workflow summaries still stringify per-action errors instead of exposing
+Other batch/workflow summaries still stringify per-action errors instead of exposing
 the optional structured object. Absence of `submission` in such a summary—or in an
 older/specialized transport—is not proof that no remote work was submitted.

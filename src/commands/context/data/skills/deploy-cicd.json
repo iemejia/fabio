@@ -23,6 +23,7 @@
     "Deploy is STATELESS — content-hash diffing against the live workspace, no state file. --workspace accepts a display name or GUID.",
     "The .platform part IS sent (enables metadata propagation) but is EXCLUDED from the content hash, so idempotent skip still works.",
     "--strategy: default (per-item, content-hash skip) | bulk (fast initial deploy to an empty, non-Git workspace) | sequential (debugging).",
+    "Failed actions/recorded hooks carry retryAllowed:false; typed errors retain canonical errorDetails with optional submission evidence alongside legacy error/code. The batch no-replay hint dominates nested retriable:true/diagnosticHint. Shared bulk-request evidence does not establish every member's remote failure. Missing/duplicate/unknown bulk member results are BULK_RESULT_UNVERIFIED, never implicit success. Nonfatal hook errors can coexist with status:succeeded and exit 0; inspect post_hooks.",
     "git relation (WorkspaceRelations, preview) manages base/branch links between workspaces as a standalone resource — distinct from 'git branch-out', which creates+connects a feature workspace in one flow.",
     "Use 'git status --include-files-details' to discover root-relative changed paths, then repeat 'git commit --file-selection ITEM_ID=PATH' for an object-ID FileLevelSelective commit or --logical-file-selection for a logical ID. An empty selectedFiles list (via the corresponding --all-files flag) commits every file in that item.",
     "Git pull and deployment-pipeline deploy support item-type-specific definition options: use git pull --item-options with entries keyed by logicalId, or deployment-pipeline deploy --item-options with entries keyed by sourceItemId. Each ID may occur once; values are JSON option objects such as {\"validateOnly\":true}.",
@@ -43,7 +44,8 @@
   "safety": [
     "--force-all overwrites ALL matched items regardless of content changes — irreversible; run 'deploy plan' first.",
     "--delete-orphans removes workspace items not in source; protected data types (Lakehouse/Warehouse/SQLDatabase/Eventhouse/KQLDatabase) require --allow-delete-types.",
-    "Deploy output includes a 'destructive' boolean — surface it to the human before applying."
+    "Deploy output includes a 'destructive' boolean — surface it to the human before applying.",
+    "Never automatically replay a failed deployment batch or switch strategy/disconnect Git after uncertain submission. Preserve evidence, reconcile existing work read-only and review a new scoped plan before further mutation. A missing errorDetails/submission is not proof nothing was submitted; internally discarded best-effort errors and hook scheduling are unchanged."
   ],
   "must": [
     "Run 'deploy plan' (dry-run) and review the changeset before 'deploy apply'.",
@@ -64,13 +66,13 @@
   "troubleshooting": [
     {"symptom": "Plan shows a rename as delete+create", "fix": "Ensure the item has a stable logicalId in its .platform file so rename detection matches it."},
     {"symptom": "Re-running apply keeps changing the same items (or --verify reports 'definition content differs')", "fix": "The .platform part is excluded from the content hash; a real convergent deploy should show 0 changes. Causes: (1) portal edits since deploy, or (2) the API NORMALIZES hand-authored content on first ingest (notebooks especially) so the source hash != deployed hash. Fix (2) by re-exporting after the first deploy ('deploy export') and deploying the canonical form — it then converges. Verify with 'deploy apply --verify'."},
-    {"symptom": "bulk strategy fails on a Git-connected workspace", "fix": "Bulk import requires no Git integration; use --strategy default."},
-    {"symptom": "bulk deploy fails with DependenciesCouldNotBeResolved or BadSystemFiles", "fix": "The bulk API creates all items in one batch and cannot sequence interdependent items (Report->SemanticModel, KQLDatabase->Eventhouse) or resolve duplicate/placeholder logicalIds. Re-run with --strategy default (per-item), which creates dependencies first and resolves cross-item logical-ID references in a single pass. fabio appends this hint to the bulk failure automatically."},
+    {"symptom": "bulk strategy fails on a Git-connected workspace", "fix": "Bulk import requires no Git integration. First inspect errorDetails/submission and reconcile prior effects read-only; never disconnect Git or switch strategy automatically after uncertainty. Only a reviewed new plan for remaining work may choose the default strategy."},
+    {"symptom": "bulk deploy fails with DependenciesCouldNotBeResolved or BadSystemFiles", "fix": "The bulk API cannot sequence interdependent items or resolve duplicate/placeholder logicalIds. Do not replay the batch. Preserve evidence, reconcile existing work read-only and review a new scoped plan for remaining items, normally using --strategy default. Diagnostic hints do not override retryAllowed:false; familiar text in an uncertain error is not proof of rejection."},
     {"symptom": "Connections resolve to TODO in params", "fix": "Run deploy init-params --resolve-connections and fill in the correct connection IDs before apply."},
     {"symptom": "PR to dev blocked / feature workspace GUIDs leaked into the shared branch", "fix": "Run 'deploy rebind --from-env <feature> --to-env dev' to restore dev IDs, delete any feature value-set files, then confirm with 'deploy validate --pr-ready --expect-env dev --allow-value-set Test,Prod'."},
     {"symptom": "Semantic model / notebook in a branched-out workspace still points at the dev lakehouse", "fix": "'deploy apply' cannot target a Git-synced Branch-out workspace (causes drift). Rewrite the local files instead: 'deploy rebind --from-env dev --to-env <feature>', commit, then sync via 'git pull' (Update from Git)."}
   ],
-  "shared_references": ["cicd-lifecycle", "deployment-plans", "deploy-parameters", "variable-libraries", "item-tracking-categories", "hotfix-rollback", "fabric-cicd-migration", "lro"],
+  "shared_references": ["cicd-lifecycle", "deployment-plans", "deploy-parameters", "variable-libraries", "item-tracking-categories", "hotfix-rollback", "fabric-cicd-migration", "lro", "submission-retries"],
   "see_also": [
     "fabio context persona migration-engineer",
     "fabio context workflow cicd-deploy",

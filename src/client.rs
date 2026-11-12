@@ -3724,8 +3724,9 @@ async fn read_body_capped(mut resp: Response, cap: u64) -> String {
 /// machine-readable metadata (`error.parameters`, `requestId`, `moreDetails`,
 /// `relatedResource`, `isRetriable`) from the failure body so it survives the same
 /// as a regular HTTP failure. Extracted so a regression test can guard the contract
-/// without needing a (trusted-URL-gated) live poll.
-fn failed_lro_error(body: &Value) -> FabioError {
+/// without needing a (trusted-URL-gated) live poll. Bulk member failures reuse the
+/// same decoder; this does not fabricate an HTTP acknowledgement for a member.
+pub fn failed_lro_error(body: &Value) -> FabioError {
     let (retriable, request_id, more_details, related_resource, parameters) =
         extract_error_metadata(Some(body));
     FabioError::api_error(lro_failure_message(body))
