@@ -230,3 +230,35 @@ async fn receipt_import_is_local_scoped_append_only_and_never_promotes_completio
     assert_eq!(std::fs::read(&ledger).unwrap(), original);
     assert_eq!(server.received_requests().await.unwrap().len(), 0);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn contradictory_completed_job_bodies_never_complete_or_prune_the_receipt() {
+    for body in [
+        json!({"id":WS,"status":"Completed"}),
+        json!({"status":"Completed","error":{"message":"failed"}}),
+        json!({"status":"Completed","failureReason":{"message":"failed"}}),
+    ] {
+        let server = MockServer::start().await;
+        let home = tempfile::TempDir::new().unwrap();
+        Mock::given(method("POST"))
+            .respond_with(trigger())
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let output = command(&server, &home, "notebook")
+            .arg("--wait")
+            .assert()
+            .failure();
+        let result = data(&output);
+        assert_eq!(result["status"], "Unknown");
+        assert_eq!(result["jobReceipt"]["status"], "running");
+        assert!(result["jobReceipt"].get("completed_at").is_none());
+        assert_eq!(result["retryAllowed"], false);
+        assert_eq!(server.received_requests().await.unwrap().len(), 2);
+    }
+}

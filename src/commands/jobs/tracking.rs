@@ -12,6 +12,40 @@ use crate::output;
 
 const HINT: &str = "Preserve the exact job receipt privately. Do not resubmit or rerun to recover local bookkeeping. Inspect this existing job with job-scheduler get-instance using its workspace, item and job-instance-id. A timeout or cancel acknowledgement is not proof of terminal completion.";
 
+fn observed_state<'a>(body: &'a Value, entry: &JobEntry) -> Option<&'a str> {
+    if !body.is_object()
+        || crate::commands::diagnostics::has_error(body)
+        || [
+            ("id", &entry.id),
+            ("itemId", &entry.item_id),
+            ("workspaceId", &entry.workspace),
+        ]
+        .iter()
+        .any(|(key, expected)| {
+            body.get(*key).is_some_and(|actual| {
+                actual
+                    .as_str()
+                    .is_none_or(|actual| !actual.eq_ignore_ascii_case(expected))
+            })
+        })
+    {
+        return None;
+    }
+    let status = body["status"].as_str()?;
+    if status == "Completed"
+        && body
+            .get("failureReason")
+            .is_some_and(|failure| !failure.is_null())
+    {
+        return None;
+    }
+    matches!(
+        status,
+        "Completed" | "Failed" | "Cancelled" | "Deduped" | "NotStarted" | "InProgress"
+    )
+    .then_some(status)
+}
+
 pub struct TrackedJob {
     entry: JobEntry,
     persisted: bool,
@@ -188,10 +222,20 @@ pub async fn finish_with_delay(
             tracked.status("timeout");
             value["status"] = json!("timeout");
             if cancel_on_timeout {
-                match client
-                    .post(&format!("{path}/cancel"), &json!({}), false)
-                    .await
-                {
+                let cancel = tokio::time::timeout(
+                    std::time::Duration::from_secs(30),
+                    client.post(&format!("{path}/cancel"), &json!({}), false),
+                )
+                .await
+                .unwrap_or_else(|_| {
+                    Err(FabioError::new(
+                        ErrorCode::Timeout,
+                        "Cancellation observation timed out; cancellation acceptance is unknown.",
+                    )
+                    .set_retriable(Some(false))
+                    .into())
+                });
+                match cancel {
                     Ok(_) => {
                         tracked.status("cancel_requested");
                         value["cancelRequested"] = json!(true);
@@ -219,7 +263,7 @@ pub async fn finish_with_delay(
             Ok(Err(error)) => return Err(tracked.failure(cli, value, error)),
             Err(_) => continue,
         };
-        let status = response["status"].as_str().unwrap_or("Unknown");
+        let status = observed_state(&response, &tracked.entry).unwrap_or("Unknown");
         value["jobResult"] = response.clone();
         tracked.entry.result = Some(response.clone());
         if value.get("jobInstanceId").is_some()
@@ -295,5 +339,24 @@ mod tests {
         assert_eq!(value["receiptPersisted"], false);
         assert_eq!(value["jobReceipt"]["id"], "mock");
         assert_eq!(value["warnings"][0]["code"], "RECEIPT_PERSISTENCE_FAILED");
+    }
+
+    #[test]
+    fn observed_completion_requires_consistent_explicit_scope_and_error_free_evidence() {
+        let entry = JobEntry::new("job", "kind", "workspace", "item");
+        assert_eq!(
+            observed_state(&json!({"id":"job","status":"Completed"}), &entry),
+            Some("Completed")
+        );
+        for body in [
+            json!({"id":"different","status":"Completed"}),
+            json!({"status":"Completed","error":{}}),
+            json!({"status":"Completed","failureReason":{"message":"failed"}}),
+            json!({"itemId":"wrong","status":"Completed"}),
+            json!({"status":"future"}),
+            json!({"id":null,"status":"Completed"}),
+        ] {
+            assert_eq!(observed_state(&body, &entry), None, "{body}");
+        }
     }
 }

@@ -1,5 +1,7 @@
 # Fabio CLI — Key Decisions
 
+- **An observed job status must agree with its scope and error evidence**: conflicting returned IDs or error-bearing Completed bodies cannot mark a receipt terminal. Bound cancellation observation separately without treating a timeout as rejection. A bodyless/binary 202 is accepted, not a completed download, unless an explicit LRO observer establishes the result.
+
 - **Post-Gen1 readiness is an acceptance workflow, not an automatic refresh executor**: compose existing exact-receipt/job, definition, T-SQL and BI observation primitives. Require separately approved refresh scope and baseline-backed data/freshness/incremental/consumer checks; unknown/not_checked fails acceptance. Keep Warehouse vs Lakehouse SQL endpoint identities distinct. The recipe is syntax-checked against clap and all its commands are readonly; absent live fixtures remain a validation blocker.
 
 - **Specialized senders share uncertainty policy; acceptance never authorizes destructive fallback**: raw/binary/multipart/ARM and OneLake mutation stages reuse the canonical submission evidence builder. ACKs suppress auth replay; LRO observation stays on the configured service. Validate every upload stage, restrict rename fallback to recognized definitive unsupported errors, and require explicit copy success before any source deletion. Source/mock findings, not new live service behavior, are recorded in the POST retry audit.

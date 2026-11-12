@@ -91,7 +91,9 @@ impl FabricClient {
             Some(response.status()),
             response.headers(),
         );
-        let result = if response.status().is_success() {
+        let result = if response.status() == StatusCode::ACCEPTED {
+            Err(FabioError::api_error("Binary submission was accepted but no completed download is established; observe the original operation read-only.").into())
+        } else if response.status().is_success() {
             response
                 .bytes()
                 .await
@@ -452,6 +454,39 @@ mod tests {
                 ErrorCode::ReadonlyMode
             );
         }
+    }
+
+    #[tokio::test]
+    async fn binary_acceptance_without_an_observer_never_becomes_a_completed_download() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(202).insert_header("x-ms-operation-id", OP),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = FabricClient::new();
+        let response = client
+            .send_mutation(
+                client.http.post(server.uri()),
+                "powerbi",
+                "/groups/mock/export",
+            )
+            .await
+            .unwrap();
+        let error = client
+            .mutation_bytes(response, "powerbi", "/groups/mock/export")
+            .await
+            .unwrap_err();
+        let error = error.downcast_ref::<FabioError>().unwrap();
+        assert_eq!(error.retriable, Some(false));
+        assert_eq!(error.submission.as_ref().unwrap().state, "accepted");
+        assert_eq!(
+            error.submission.as_ref().unwrap().operation_id.as_deref(),
+            Some(OP)
+        );
+        assert_eq!(server.received_requests().await.unwrap().len(), 1);
     }
 
     #[test]

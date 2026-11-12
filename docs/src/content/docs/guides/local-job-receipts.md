@@ -23,6 +23,10 @@ not `cancelled`; a failed cancel retains its typed error and uncertain evidence.
 Default pruning keeps these nonterminal states. Successful observation remains
 successful even if its final receipt snapshot could not be persisted.
 
+Conflicting returned job/item/workspace identities or error-bearing `Completed`
+bodies remain unknown, never terminal success. Cancellation observation is bounded
+separately to 30 seconds; expiration is not proof the cancel request was rejected.
+
 ## Inspect and preview
 
 ```bash
