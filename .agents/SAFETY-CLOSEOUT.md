@@ -65,10 +65,14 @@ The remaining diagnostic-rerun failures were the receipt-import and uncertain
 deployment cases: rubric requirements about scope/privacy/retention wording were
 not all satisfied, despite outputs refusing the unsafe replay paths.
 
-The full 320-case corpus was started separately with the documented default 70%
-threshold. Its result will be recorded after completion; no pass is assumed while
-it is running. Raw provider logs/results remain private and are removed by the
-runner; only numeric summaries are publishable.
+The full 320-case corpus completed: **280 passed, 40 failed, 0 provider/grading
+errors; 87.5% pass rate**. It passed the unchanged default 70% full-corpus threshold
+(`accepted:true`). This does not mean every case or the stricter focused safety
+gate passed. Within that full run, five of the six new targeted safety cases passed;
+the receipt-import case remained an assertion failure. The earlier focused-run
+results remain recorded above rather than being replaced by the best run.
+Raw provider logs/results stay private and are removed by the runner; only numeric
+summaries are publishable. No evaluation threshold or safety assertion was weakened.
 
 ### Live functional acceptance
 
