@@ -709,94 +709,113 @@ impl FabricClient {
         validate_uuid(workspace, "workspace")?;
         validate_uuid(item, "item")?;
         self.guard_readonly("PUT", &format!("onelake:{item}/{path}"))?;
-        let mut token = self.require_storage_auth().await?;
-        let encoded_path = encode_onelake_path(path);
-        let base = self.onelake_dfs_url(workspace, &format!("{item}/{encoded_path}"));
+        Box::pin(async move {
+            let mut token = self.require_storage_auth().await?;
+            let encoded_path = encode_onelake_path(path);
+            let base = self.onelake_dfs_url(workspace, &format!("{item}/{encoded_path}"));
 
-        // Step 1: Create
-        let create_url = format!("{base}?resource=file");
-        verbose::trace_request("PUT", &create_url, None);
-        let start = std::time::Instant::now();
+            // Step 1: Create
+            let create_url = format!("{base}?resource=file");
+            verbose::trace_request("PUT", &create_url, None);
+            let start = std::time::Instant::now();
 
-        let resp = self
-            .http
-            .put(&create_url)
-            .header(AUTHORIZATION, &token)
-            .header("Content-Length", "0")
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            let scope = format!("/workspaces/{workspace}/items/{item}");
+            let mut resp = self
+                .send_mutation(
+                    self.http
+                        .put(&create_url)
+                        .header(AUTHORIZATION, &token)
+                        .header("Content-Length", "0"),
+                    "onelake",
+                    &scope,
+                )
+                .await?;
 
-        verbose::trace_response(
-            resp.status().as_u16(),
-            &create_url,
-            start.elapsed().as_millis(),
-        );
+            verbose::trace_response(
+                resp.status().as_u16(),
+                &create_url,
+                start.elapsed().as_millis(),
+            );
 
-        if resp.status() == StatusCode::UNAUTHORIZED {
-            self.invalidate_storage_token().await;
-            token = self.require_storage_auth().await?;
-            self.http
-                .put(&create_url)
-                .header(AUTHORIZATION, &token)
-                .header("Content-Length", "0")
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-        }
+            if resp.status() == StatusCode::UNAUTHORIZED
+                && submission::can_retry_rejection(PostSemantics::Mutation, resp.headers())
+            {
+                self.invalidate_storage_token().await;
+                token = self.require_storage_auth().await?;
+                resp = self
+                    .send_mutation(
+                        self.http
+                            .put(&create_url)
+                            .header(AUTHORIZATION, &token)
+                            .header("Content-Length", "0"),
+                        "onelake",
+                        &scope,
+                    )
+                    .await?;
+            }
+            self.mutation_json(resp, "onelake", &scope).await?;
 
-        // Step 2: Append
-        let data_len = data.len();
-        let content_md5 = {
-            let hash = md5::compute(&data);
-            BASE64.encode(hash.0)
-        };
-        let append_url = format!("{base}?action=append&position=0");
-        verbose::trace_request("PATCH", &append_url, None);
-        let start = std::time::Instant::now();
+            // Step 2: Append
+            let data_len = data.len();
+            let content_md5 = {
+                let hash = md5::compute(&data);
+                BASE64.encode(hash.0)
+            };
+            let append_url = format!("{base}?action=append&position=0");
+            verbose::trace_request("PATCH", &append_url, None);
+            let start = std::time::Instant::now();
 
-        let resp = self
-            .http
-            .patch(&append_url)
-            .header(AUTHORIZATION, &token)
-            .header("Content-Length", data_len.to_string())
-            .body(data)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            let resp = self
+                .send_mutation(
+                    self.http
+                        .patch(&append_url)
+                        .header(AUTHORIZATION, &token)
+                        .header("Content-Length", data_len.to_string())
+                        .body(data),
+                    "onelake",
+                    &scope,
+                )
+                .await?;
 
-        verbose::trace_response(
-            resp.status().as_u16(),
-            &append_url,
-            start.elapsed().as_millis(),
-        );
+            verbose::trace_response(
+                resp.status().as_u16(),
+                &append_url,
+                start.elapsed().as_millis(),
+            );
+            self.mutation_json(resp, "onelake", &scope).await?;
 
-        // Step 3: Flush (with Content-MD5 for content verification)
-        let flush_url = format!("{base}?action=flush&position={data_len}");
-        verbose::trace_request("PATCH", &flush_url, None);
-        let start = std::time::Instant::now();
+            // Step 3: Flush (with Content-MD5 for content verification)
+            let flush_url = format!("{base}?action=flush&position={data_len}");
+            verbose::trace_request("PATCH", &flush_url, None);
+            let start = std::time::Instant::now();
 
-        let resp = self
-            .http
-            .patch(&flush_url)
-            .header(AUTHORIZATION, &token)
-            .header("Content-Length", "0")
-            .header("x-ms-content-md5", &content_md5)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            let resp = self
+                .send_mutation(
+                    self.http
+                        .patch(&flush_url)
+                        .header(AUTHORIZATION, &token)
+                        .header("Content-Length", "0")
+                        .header("x-ms-content-md5", &content_md5),
+                    "onelake",
+                    &scope,
+                )
+                .await?;
 
-        verbose::trace_response(
-            resp.status().as_u16(),
-            &flush_url,
-            start.elapsed().as_millis(),
-        );
+            verbose::trace_response(
+                resp.status().as_u16(),
+                &flush_url,
+                start.elapsed().as_millis(),
+            );
+            self.mutation_json(resp, "onelake", &scope).await?;
 
-        Ok(serde_json::json!({
-            "path": path,
-            "size": data_len,
-            "status": "uploaded"
-        }))
+            Ok::<_, anyhow::Error>(serde_json::json!({
+                "path": path,
+                "size": data_len,
+                "status": "uploaded"
+            }))
+        })
+        .await
+        .map_err(submission::compound_error)
     }
 
     /// Download a file from `OneLake` via DFS. Retries once on 401.
@@ -1033,15 +1052,18 @@ impl FabricClient {
         verbose::trace_request("PUT", &dest_url, None);
         let start = std::time::Instant::now();
 
+        let scope = format!("/workspaces/{dst_workspace}/items/{dst_item}");
         let resp = self
-            .http
-            .put(&dest_url)
-            .header(AUTHORIZATION, &token)
-            .header("x-ms-copy-source", &source_url)
-            .header("Content-Length", "0")
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            .send_mutation(
+                self.http
+                    .put(&dest_url)
+                    .header(AUTHORIZATION, &token)
+                    .header("x-ms-copy-source", &source_url)
+                    .header("Content-Length", "0"),
+                "onelake",
+                &scope,
+            )
+            .await?;
 
         verbose::trace_response(
             resp.status().as_u16(),
@@ -1049,45 +1071,34 @@ impl FabricClient {
             start.elapsed().as_millis(),
         );
 
-        if resp.status() == StatusCode::UNAUTHORIZED {
+        if resp.status() == StatusCode::UNAUTHORIZED
+            && submission::can_retry_rejection(PostSemantics::Mutation, resp.headers())
+        {
             self.invalidate_storage_token().await;
             let token = self.require_storage_auth().await?;
             let resp = self
-                .http
-                .put(&dest_url)
-                .header(AUTHORIZATION, &token)
-                .header("x-ms-copy-source", &source_url)
-                .header("Content-Length", "0")
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            if !resp.status().is_success() && resp.status() != StatusCode::ACCEPTED {
-                return Err(error_from_failed_response(resp).await.into());
-            }
-            return Ok(serde_json::json!({
-                "source": src_path,
-                "destination": dst_path,
-                "status": "copied"
-            }));
+                .send_mutation(
+                    self.http
+                        .put(&dest_url)
+                        .header(AUTHORIZATION, &token)
+                        .header("x-ms-copy-source", &source_url)
+                        .header("Content-Length", "0"),
+                    "onelake",
+                    &scope,
+                )
+                .await?;
+            return self.mutation_copy(resp, &scope, src_path, dst_path).await;
         }
 
-        if !resp.status().is_success() && resp.status() != StatusCode::ACCEPTED {
-            return Err(error_from_failed_response(resp).await.into());
-        }
-
-        Ok(serde_json::json!({
-            "source": src_path,
-            "destination": dst_path,
-            "status": "copied"
-        }))
+        self.mutation_copy(resp, &scope, src_path, dst_path).await
     }
 
     /// Atomic server-side rename/move via `OneLake` DFS `x-ms-rename-source` header.
     ///
     /// Only works when source and destination are within the **same `OneLake` item**
     /// (same workspace + same lakehouse/item). Returns `Ok(Some(json))` on success,
-    /// `Ok(None)` if the server rejects the rename (unsupported path or cross-item),
-    /// and `Err` only on network/auth errors.
+    /// `Ok(None)` only for a recognized definitive unsupported-operation rejection;
+    /// every uncertain or other failed outcome returns `Err` without fallback.
     pub async fn rename_onelake_file(
         &self,
         workspace: &str,
@@ -1108,21 +1119,24 @@ impl FabricClient {
         verbose::trace_category("http", &format!("x-ms-rename-source: {rename_source}"));
         let start = std::time::Instant::now();
 
-        let resp = self
-            .http
-            .put(&url)
-            .header(AUTHORIZATION, &token)
-            .header("x-ms-rename-source", &rename_source)
-            .header("Content-Length", "0")
-            .header("x-ms-version", "2021-06-08")
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+        let scope = format!("/workspaces/{workspace}/items/{item}");
+        let mut resp = self
+            .send_mutation(
+                self.http
+                    .put(&url)
+                    .header(AUTHORIZATION, &token)
+                    .header("x-ms-rename-source", &rename_source)
+                    .header("Content-Length", "0")
+                    .header("x-ms-version", "2021-06-08"),
+                "onelake",
+                &scope,
+            )
+            .await?;
 
         let status = resp.status();
         verbose::trace_response(status.as_u16(), &url, start.elapsed().as_millis());
 
-        if status == StatusCode::CREATED || status.is_success() {
+        if status.is_success() && status != StatusCode::ACCEPTED {
             return Ok(Some(serde_json::json!({
                 "source": src_path,
                 "destination": dst_path,
@@ -1132,21 +1146,25 @@ impl FabricClient {
         }
 
         // 401: retry with fresh token
-        if status == StatusCode::UNAUTHORIZED {
+        if status == StatusCode::UNAUTHORIZED
+            && submission::can_retry_rejection(PostSemantics::Mutation, resp.headers())
+        {
             self.invalidate_storage_token().await;
             let token = self.require_storage_auth().await?;
-            let resp = self
-                .http
-                .put(&url)
-                .header(AUTHORIZATION, &token)
-                .header("x-ms-rename-source", &rename_source)
-                .header("Content-Length", "0")
-                .header("x-ms-version", "2021-06-08")
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            resp = self
+                .send_mutation(
+                    self.http
+                        .put(&url)
+                        .header(AUTHORIZATION, &token)
+                        .header("x-ms-rename-source", &rename_source)
+                        .header("Content-Length", "0")
+                        .header("x-ms-version", "2021-06-08"),
+                    "onelake",
+                    &scope,
+                )
+                .await?;
 
-            if resp.status() == StatusCode::CREATED || resp.status().is_success() {
+            if resp.status().is_success() && resp.status() != StatusCode::ACCEPTED {
                 return Ok(Some(serde_json::json!({
                     "source": src_path,
                     "destination": dst_path,
@@ -1156,8 +1174,32 @@ impl FabricClient {
             }
         }
 
-        // 403/400/UnsupportedHeader: rename not supported for this path — fall back
-        Ok(None)
+        let status = resp.status();
+        if status == StatusCode::ACCEPTED {
+            let evidence = submission::evidence(
+                PostSemantics::Mutation,
+                "onelake",
+                &scope,
+                Some(status),
+                resp.headers(),
+            );
+            return submission::finish(Err(FabioError::api_error("Rename was accepted but completion is unknown; no copy/delete fallback was attempted.").into()),evidence);
+        }
+        match self.mutation_json(resp, "onelake", &scope).await {
+            Err(error)
+                if matches!(status, StatusCode::BAD_REQUEST | StatusCode::FORBIDDEN)
+                    && crate::errors::can_retry_submission_rejection(&error)
+                    && (error.to_string().contains("UnsupportedHeader")
+                        || error.to_string().contains("UnsupportedOperation")) =>
+            {
+                Ok(None)
+            }
+            Err(error) => Err(error),
+            Ok(_) => Err(FabioError::api_error(
+                "Rename result was not verified; no copy/delete fallback was attempted.",
+            )
+            .into()),
+        }
     }
 
     /// Move a file within the same `OneLake` item. Tries atomic rename first,
@@ -1179,8 +1221,14 @@ impl FabricClient {
 
         // Fallback: copy + delete
         verbose::trace_category("http", "rename not supported, falling back to copy+delete");
-        self.copy_onelake_file(workspace, item, src_path, workspace, item, dst_path)
+        let copied = self
+            .copy_onelake_file(workspace, item, src_path, workspace, item, dst_path)
             .await?;
+        if copied["copyStatus"] != "success" {
+            return Err(FabioError::with_hint(ErrorCode::ApiError,
+                "Destination copy completion is unverified; the source was NOT deleted.",
+                "Inspect the existing destination copy read-only. Do not retry the move, copy or source deletion automatically.").set_retriable(Some(false)).into());
+        }
         self.delete_onelake_file(workspace, item, src_path).await?;
 
         Ok(serde_json::json!({
@@ -1208,31 +1256,32 @@ impl FabricClient {
         verbose::trace_request("DELETE", &url, None);
         let start = std::time::Instant::now();
 
+        let scope = format!("/workspaces/{workspace}/items/{item}");
         let resp = self
-            .http
-            .delete(&url)
-            .header(AUTHORIZATION, &token)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            .send_mutation(
+                self.http.delete(&url).header(AUTHORIZATION, &token),
+                "onelake",
+                &scope,
+            )
+            .await?;
 
         verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
-        if resp.status() == StatusCode::UNAUTHORIZED {
+        if resp.status() == StatusCode::UNAUTHORIZED
+            && submission::can_retry_rejection(PostSemantics::Mutation, resp.headers())
+        {
             self.invalidate_storage_token().await;
             let token = self.require_storage_auth().await?;
             let resp = self
-                .http
-                .delete(&url)
-                .header(AUTHORIZATION, &token)
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            if !resp.status().is_success() {
-                return Err(error_from_failed_response(resp).await.into());
-            }
-        } else if !resp.status().is_success() {
-            return Err(error_from_failed_response(resp).await.into());
+                .send_mutation(
+                    self.http.delete(&url).header(AUTHORIZATION, &token),
+                    "onelake",
+                    &scope,
+                )
+                .await?;
+            self.mutation_json(resp, "onelake", &scope).await?;
+        } else {
+            self.mutation_json(resp, "onelake", &scope).await?;
         }
 
         Ok(serde_json::json!({
@@ -1697,31 +1746,37 @@ impl FabricClient {
         let url = self.fabric_url(path);
 
         let resp = self
-            .http
-            .post(&url)
-            .header(AUTHORIZATION, &token)
-            .header("Content-Type", "text/plain")
-            .body(content.to_owned())
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            .send_mutation(
+                self.http
+                    .post(&url)
+                    .header(AUTHORIZATION, &token)
+                    .header("Content-Type", "text/plain")
+                    .body(content.to_owned()),
+                "fabric",
+                path,
+            )
+            .await?;
 
-        if resp.status() == StatusCode::UNAUTHORIZED {
+        if resp.status() == StatusCode::UNAUTHORIZED
+            && submission::can_retry_rejection(PostSemantics::Mutation, resp.headers())
+        {
             self.invalidate_fabric_token().await;
             let token = self.require_auth().await?;
             let resp = self
-                .http
-                .post(&url)
-                .header(AUTHORIZATION, &token)
-                .header("Content-Type", "text/plain")
-                .body(content.to_owned())
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            return handle_response(resp).await;
+                .send_mutation(
+                    self.http
+                        .post(&url)
+                        .header(AUTHORIZATION, &token)
+                        .header("Content-Type", "text/plain")
+                        .body(content.to_owned()),
+                    "fabric",
+                    path,
+                )
+                .await?;
+            return self.mutation_json(resp, "fabric", path).await;
         }
 
-        handle_response(resp).await
+        self.mutation_json(resp, "fabric", path).await
     }
 
     /// POST binary data with `application/octet-stream` content type (retries once on 401).
@@ -1731,31 +1786,37 @@ impl FabricClient {
         let url = self.fabric_url(path);
 
         let resp = self
-            .http
-            .post(&url)
-            .header(AUTHORIZATION, &token)
-            .header("Content-Type", "application/octet-stream")
-            .body(data.clone())
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            .send_mutation(
+                self.http
+                    .post(&url)
+                    .header(AUTHORIZATION, &token)
+                    .header("Content-Type", "application/octet-stream")
+                    .body(data.clone()),
+                "fabric",
+                path,
+            )
+            .await?;
 
-        if resp.status() == StatusCode::UNAUTHORIZED {
+        if resp.status() == StatusCode::UNAUTHORIZED
+            && submission::can_retry_rejection(PostSemantics::Mutation, resp.headers())
+        {
             self.invalidate_fabric_token().await;
             let token = self.require_auth().await?;
             let resp = self
-                .http
-                .post(&url)
-                .header(AUTHORIZATION, &token)
-                .header("Content-Type", "application/octet-stream")
-                .body(data)
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            return handle_response(resp).await;
+                .send_mutation(
+                    self.http
+                        .post(&url)
+                        .header(AUTHORIZATION, &token)
+                        .header("Content-Type", "application/octet-stream")
+                        .body(data),
+                    "fabric",
+                    path,
+                )
+                .await?;
+            return self.mutation_json(resp, "fabric", path).await;
         }
 
-        handle_response(resp).await
+        self.mutation_json(resp, "fabric", path).await
     }
 
     /// POST JSON request returning binary response bytes (retries once on 401).
@@ -1769,40 +1830,38 @@ impl FabricClient {
         let url = self.fabric_url(path);
 
         let resp = self
-            .http
-            .post(&url)
-            .header(AUTHORIZATION, &token)
-            .json(body)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            .send_mutation(
+                self.http
+                    .post(&url)
+                    .header(AUTHORIZATION, &token)
+                    .json(body),
+                "fabric",
+                path,
+            )
+            .await?;
 
-        if resp.status() == StatusCode::UNAUTHORIZED {
+        if resp.status() == StatusCode::UNAUTHORIZED
+            && submission::can_retry_rejection(PostSemantics::Mutation, resp.headers())
+        {
             self.invalidate_fabric_token().await;
             let token = self.require_auth().await?;
             let resp = self
-                .http
-                .post(&url)
-                .header(AUTHORIZATION, &token)
-                .json(body)
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+                .send_mutation(
+                    self.http
+                        .post(&url)
+                        .header(AUTHORIZATION, &token)
+                        .json(body),
+                    "fabric",
+                    path,
+                )
+                .await?;
             // The retried response must be status-checked too — otherwise a 4xx/5xx
             // after re-auth would be returned as "success" with the error body, and
             // structured error.parameters / the correct failure code would be lost.
-            if !resp.status().is_success() {
-                return Err(error_from_failed_response(resp).await.into());
-            }
-            return Ok(resp.bytes().await?.to_vec());
+            return self.mutation_bytes(resp, "fabric", path).await;
         }
 
-        if !resp.status().is_success() {
-            // Try to parse error response as JSON
-            return Err(error_from_failed_response(resp).await.into());
-        }
-
-        Ok(resp.bytes().await?.to_vec())
+        self.mutation_bytes(resp, "fabric", path).await
     }
 
     /// POST request that returns binary bytes with a custom Accept header.
@@ -1818,31 +1877,37 @@ impl FabricClient {
         let url = self.fabric_url(path);
 
         let resp = self
-            .http
-            .post(&url)
-            .header(AUTHORIZATION, &token)
-            .header("Accept", accept)
-            .json(body)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            .send_mutation(
+                self.http
+                    .post(&url)
+                    .header(AUTHORIZATION, &token)
+                    .header("Accept", accept)
+                    .json(body),
+                "fabric",
+                path,
+            )
+            .await?;
 
-        if resp.status() == StatusCode::UNAUTHORIZED {
+        if resp.status() == StatusCode::UNAUTHORIZED
+            && submission::can_retry_rejection(PostSemantics::Mutation, resp.headers())
+        {
             self.invalidate_fabric_token().await;
             let token = self.require_auth().await?;
             let resp = self
-                .http
-                .post(&url)
-                .header(AUTHORIZATION, &token)
-                .header("Accept", accept)
-                .json(body)
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            return self.handle_bytes_lro_response(resp, &token, accept).await;
+                .send_mutation(
+                    self.http
+                        .post(&url)
+                        .header(AUTHORIZATION, &token)
+                        .header("Accept", accept)
+                        .json(body),
+                    "fabric",
+                    path,
+                )
+                .await?;
+            return self.mutation_bytes_lro(resp, path, &token, accept).await;
         }
 
-        self.handle_bytes_lro_response(resp, &token, accept).await
+        self.mutation_bytes_lro(resp, path, &token, accept).await
     }
 
     /// Handle a response that may be 200 (immediate bytes) or 202 (LRO → poll → bytes).
@@ -1867,6 +1932,7 @@ impl FabricClient {
                 .unwrap_or(2);
 
             if let Some(poll_url) = location {
+                submission::validate_observation_url(&poll_url, &self.fabric_endpoint())?;
                 // Poll the LRO until completion
                 let start = std::time::Instant::now();
                 loop {
@@ -1901,8 +1967,7 @@ impl FabricClient {
                     return Err(error_from_failed_response(poll_resp).await.into());
                 }
             }
-            // No Location header — treat as immediate empty
-            return Ok(Vec::new());
+            return Err(FabioError::api_error("Binary submission was accepted without a usable observation URL; completion is unknown.").into());
         }
 
         if !resp.status().is_success() {
@@ -2029,31 +2094,37 @@ impl FabricClient {
         let start = std::time::Instant::now();
 
         let resp = self
-            .http
-            .patch(&url)
-            .header(AUTHORIZATION, &token)
-            .json(body)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            .send_mutation(
+                self.http
+                    .patch(&url)
+                    .header(AUTHORIZATION, &token)
+                    .json(body),
+                "fabric",
+                path,
+            )
+            .await?;
 
         verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
-        if resp.status() == StatusCode::UNAUTHORIZED {
+        if resp.status() == StatusCode::UNAUTHORIZED
+            && submission::can_retry_rejection(PostSemantics::Mutation, resp.headers())
+        {
             self.invalidate_fabric_token().await;
             let token = self.require_auth().await?;
             let resp = self
-                .http
-                .patch(&url)
-                .header(AUTHORIZATION, &token)
-                .json(body)
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            return handle_response(resp).await;
+                .send_mutation(
+                    self.http
+                        .patch(&url)
+                        .header(AUTHORIZATION, &token)
+                        .json(body),
+                    "fabric",
+                    path,
+                )
+                .await?;
+            return self.mutation_json(resp, "fabric", path).await;
         }
 
-        handle_response(resp).await
+        self.mutation_json(resp, "fabric", path).await
     }
 
     /// PUT request to Fabric REST API (retries once on 401).
@@ -2070,31 +2141,31 @@ impl FabricClient {
         let start = std::time::Instant::now();
 
         let resp = self
-            .http
-            .put(&url)
-            .header(AUTHORIZATION, &token)
-            .json(body)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            .send_mutation(
+                self.http.put(&url).header(AUTHORIZATION, &token).json(body),
+                "fabric",
+                path,
+            )
+            .await?;
 
         verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
-        if resp.status() == StatusCode::UNAUTHORIZED {
+        if resp.status() == StatusCode::UNAUTHORIZED
+            && submission::can_retry_rejection(PostSemantics::Mutation, resp.headers())
+        {
             self.invalidate_fabric_token().await;
             let token = self.require_auth().await?;
             let resp = self
-                .http
-                .put(&url)
-                .header(AUTHORIZATION, &token)
-                .json(body)
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            return handle_response(resp).await;
+                .send_mutation(
+                    self.http.put(&url).header(AUTHORIZATION, &token).json(body),
+                    "fabric",
+                    path,
+                )
+                .await?;
+            return self.mutation_json(resp, "fabric", path).await;
         }
 
-        handle_response(resp).await
+        self.mutation_json(resp, "fabric", path).await
     }
 
     /// PUT request with raw text body (e.g., for file uploads requiring text/plain).
@@ -2104,31 +2175,37 @@ impl FabricClient {
         let url = self.fabric_url(path);
 
         let resp = self
-            .http
-            .put(&url)
-            .header(AUTHORIZATION, &token)
-            .header("Content-Type", "text/plain")
-            .body(content.to_owned())
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            .send_mutation(
+                self.http
+                    .put(&url)
+                    .header(AUTHORIZATION, &token)
+                    .header("Content-Type", "text/plain")
+                    .body(content.to_owned()),
+                "fabric",
+                path,
+            )
+            .await?;
 
-        if resp.status() == StatusCode::UNAUTHORIZED {
+        if resp.status() == StatusCode::UNAUTHORIZED
+            && submission::can_retry_rejection(PostSemantics::Mutation, resp.headers())
+        {
             self.invalidate_fabric_token().await;
             let token = self.require_auth().await?;
             let resp = self
-                .http
-                .put(&url)
-                .header(AUTHORIZATION, &token)
-                .header("Content-Type", "text/plain")
-                .body(content.to_owned())
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            return handle_response(resp).await;
+                .send_mutation(
+                    self.http
+                        .put(&url)
+                        .header(AUTHORIZATION, &token)
+                        .header("Content-Type", "text/plain")
+                        .body(content.to_owned()),
+                    "fabric",
+                    path,
+                )
+                .await?;
+            return self.mutation_json(resp, "fabric", path).await;
         }
 
-        handle_response(resp).await
+        self.mutation_json(resp, "fabric", path).await
     }
 
     /// DELETE request to Fabric REST API (retries once on 401).
@@ -2141,29 +2218,31 @@ impl FabricClient {
         let start = std::time::Instant::now();
 
         let resp = self
-            .http
-            .delete(&url)
-            .header(AUTHORIZATION, &token)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            .send_mutation(
+                self.http.delete(&url).header(AUTHORIZATION, &token),
+                "fabric",
+                path,
+            )
+            .await?;
 
         verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
-        if resp.status() == StatusCode::UNAUTHORIZED {
+        if resp.status() == StatusCode::UNAUTHORIZED
+            && submission::can_retry_rejection(PostSemantics::Mutation, resp.headers())
+        {
             self.invalidate_fabric_token().await;
             let token = self.require_auth().await?;
             let resp = self
-                .http
-                .delete(&url)
-                .header(AUTHORIZATION, &token)
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            return handle_response(resp).await;
+                .send_mutation(
+                    self.http.delete(&url).header(AUTHORIZATION, &token),
+                    "fabric",
+                    path,
+                )
+                .await?;
+            return self.mutation_json(resp, "fabric", path).await;
         }
 
-        handle_response(resp).await
+        self.mutation_json(resp, "fabric", path).await
     }
 
     /// POST request to Power BI REST API (different base URL, same Fabric auth scope).
@@ -2408,35 +2487,35 @@ impl FabricClient {
         let url = format!("{}{path}", *POWERBI_BASE_URL);
 
         let resp = self
-            .http
-            .post(&url)
-            .header(AUTHORIZATION, &token)
-            .json(body)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            .send_mutation(
+                self.http
+                    .post(&url)
+                    .header(AUTHORIZATION, &token)
+                    .json(body),
+                "powerbi",
+                path,
+            )
+            .await?;
 
-        if resp.status() == StatusCode::UNAUTHORIZED {
+        if resp.status() == StatusCode::UNAUTHORIZED
+            && submission::can_retry_rejection(PostSemantics::Mutation, resp.headers())
+        {
             self.invalidate_fabric_token().await;
             let token = self.require_auth().await?;
             let resp = self
-                .http
-                .post(&url)
-                .header(AUTHORIZATION, &token)
-                .json(body)
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-            if !resp.status().is_success() {
-                return Err(error_from_failed_response(resp).await.into());
-            }
-            return Ok(resp.bytes().await?.to_vec());
+                .send_mutation(
+                    self.http
+                        .post(&url)
+                        .header(AUTHORIZATION, &token)
+                        .json(body),
+                    "powerbi",
+                    path,
+                )
+                .await?;
+            return self.mutation_bytes(resp, "powerbi", path).await;
         }
 
-        if !resp.status().is_success() {
-            return Err(error_from_failed_response(resp).await.into());
-        }
-        Ok(resp.bytes().await?.to_vec())
+        self.mutation_bytes(resp, "powerbi", path).await
     }
 
     /// GET raw bytes from the Power BI REST API (for downloading exported files).
@@ -2486,25 +2565,22 @@ impl FabricClient {
         let url = format!("{}{path}", *POWERBI_BASE_URL);
 
         let resp = self
-            .http
-            .post(&url)
-            .header(AUTHORIZATION, &token)
-            .multipart(form)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            .send_mutation(
+                self.http
+                    .post(&url)
+                    .header(AUTHORIZATION, &token)
+                    .multipart(form),
+                "powerbi",
+                path,
+            )
+            .await?;
 
         if resp.status() == StatusCode::UNAUTHORIZED {
             self.invalidate_fabric_token().await;
-            // Cannot retry multipart (form is consumed) — return auth error
-            return Err(FabioError::new(
-                ErrorCode::AuthRequired,
-                "Authentication failed for Power BI import. Please re-authenticate.".to_string(),
-            )
-            .into());
+            // The form is consumed: do not replay, and retain native failure/ACK evidence.
         }
 
-        handle_response(resp).await
+        self.mutation_json(resp, "powerbi", path).await
     }
 
     // ── ARM (Azure Resource Manager) methods ──────────────────────────────
@@ -2544,27 +2620,19 @@ impl FabricClient {
         let start = std::time::Instant::now();
 
         let resp = self
-            .http
-            .post(&url)
-            .header(AUTHORIZATION, &token)
-            .json(body)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            .send_mutation(
+                self.http
+                    .post(&url)
+                    .header(AUTHORIZATION, &token)
+                    .json(body),
+                "arm",
+                path,
+            )
+            .await?;
 
         verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
-        if poll {
-            let status = resp.status();
-            if status == StatusCode::OK {
-                return handle_response(resp).await;
-            }
-            if status == StatusCode::ACCEPTED {
-                return self.poll_arm_lro(resp).await;
-            }
-        }
-
-        handle_response(resp).await
+        self.mutation_arm(resp, path, poll).await
     }
 
     /// PUT request to Azure Resource Manager API (with LRO polling).
@@ -2581,25 +2649,16 @@ impl FabricClient {
         let start = std::time::Instant::now();
 
         let resp = self
-            .http
-            .put(&url)
-            .header(AUTHORIZATION, &token)
-            .json(body)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            .send_mutation(
+                self.http.put(&url).header(AUTHORIZATION, &token).json(body),
+                "arm",
+                path,
+            )
+            .await?;
 
         verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
-        let status = resp.status();
-        if status == StatusCode::OK || status == StatusCode::CREATED {
-            return handle_response(resp).await;
-        }
-        if status == StatusCode::ACCEPTED {
-            return self.poll_arm_lro(resp).await;
-        }
-
-        handle_response(resp).await
+        self.mutation_arm(resp, path, true).await
     }
 
     /// PATCH request to Azure Resource Manager API (with LRO polling).
@@ -2616,25 +2675,19 @@ impl FabricClient {
         let start = std::time::Instant::now();
 
         let resp = self
-            .http
-            .patch(&url)
-            .header(AUTHORIZATION, &token)
-            .json(body)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            .send_mutation(
+                self.http
+                    .patch(&url)
+                    .header(AUTHORIZATION, &token)
+                    .json(body),
+                "arm",
+                path,
+            )
+            .await?;
 
         verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
-        let status = resp.status();
-        if status == StatusCode::OK {
-            return handle_response(resp).await;
-        }
-        if status == StatusCode::ACCEPTED {
-            return self.poll_arm_lro(resp).await;
-        }
-
-        handle_response(resp).await
+        self.mutation_arm(resp, path, true).await
     }
 
     /// DELETE request to Azure Resource Manager API (with LRO polling).
@@ -2647,12 +2700,12 @@ impl FabricClient {
         let start = std::time::Instant::now();
 
         let resp = self
-            .http
-            .delete(&url)
-            .header(AUTHORIZATION, &token)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+            .send_mutation(
+                self.http.delete(&url).header(AUTHORIZATION, &token),
+                "arm",
+                path,
+            )
+            .await?;
 
         verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
@@ -2660,11 +2713,7 @@ impl FabricClient {
         if status == StatusCode::NO_CONTENT {
             return Ok(serde_json::json!({"status": "deleted"}));
         }
-        if status == StatusCode::ACCEPTED {
-            return self.poll_arm_lro(resp).await;
-        }
-
-        handle_response(resp).await
+        self.mutation_arm(resp, path, true).await
     }
 
     /// Poll an ARM LRO using `Azure-AsyncOperation` or `Location` header.
@@ -2677,9 +2726,9 @@ impl FabricClient {
             .map(ToString::to_string);
 
         let Some(poll_url) = poll_url else {
-            // No LRO header — just return the response as-is
-            return handle_response(resp).await;
+            return Err(FabioError::api_error("ARM submission was accepted without a usable observation URL; completion is unknown.").into());
         };
+        submission::validate_observation_url(&poll_url, &ARM_BASE_URL)?;
 
         verbose::trace_category("lro", &format!("ARM polling {poll_url}"));
 

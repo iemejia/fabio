@@ -15,10 +15,12 @@ certificate that every workload-level fallback or external SDK is idempotent.
 | Notebook / generic item / path-based job triggers | Notebook one attempt; other triggers one auth refresh; no gateway retries | Attempt policy retained. Typed submission errors retain accepted/unknown state and requested route IDs. Generic trigger delegates to the path transport instead of duplicating it. Job Location validation/correlation is not redesigned here. |
 | Power BI JSON / metadata refresh | One auth refresh, no gateway retries; receipt-aware refresh already retains unreadable success ACKs | JSON sender distinguishes mutation from DAX read semantics. Mutation errors retain evidence and suppress replay hints; successful refresh acknowledgement handling remains intact. |
 | Power BI DAX query | Explicit semantic read; auth refresh, no generic gateway replay | Existing read policy unchanged; no mutation evidence attached. |
-| Fabric raw text / octet-stream / bytes / bytes-with-Accept | Auth refresh but no generic 5xx loop | Audited, not migrated to contextual JSON errors in this increment. Binary response/LRO routing remains separate work. |
-| Power BI bytes / multipart | Bytes auth refresh; consumed multipart form is not retried | Audited, no new retry or evidence contract promised. |
-| ARM POST | One attempt; optional GET-only LRO observation | No replay added; contextual ARM errors not covered here. |
-| OneLake / custom HTTP / MCP / database SDK paths | Separate transport and operation semantics | Not certified by this audit. No blanket global HTTP retry switch or invented idempotency key. |
+| Fabric raw text / octet-stream / bytes / bytes-with-Accept | Auth refresh but no generic 5xx loop | Shared uncertainty evidence for transport/body/LRO failures; ACK markers block auth replay. Binary observation URLs are pinned to the configured service; accepted responses without a usable observation URL fail as unverified. |
+| Power BI bytes / multipart | Bytes auth refresh; consumed multipart form is not retried | Typed uncertainty evidence retained, including multipart 401+ACK; no multipart replay. |
+| ARM POST/PUT/PATCH/DELETE | One attempt; optional GET-only LRO observation | Shared uncertainty evidence; Azure-AsyncOperation is an ACK marker, not an operation ID. Poll URLs are pinned to the configured service; no accepted-without-observation success claim. |
+| OneLake upload / copy / rename / delete | Upload ignored status failures; rename treated unrelated errors as unsupported; copy acceptance could trigger source deletion | Check every upload step and stop before the next on failure; retain compound no-replay guidance. Rename fallback requires a recognized definitive unsupported rejection. Copy needs unique x-ms-copy-status success before consumers can treat it as completed or delete a source. |
+| Fabric JSON PATCH/PUT/DELETE and raw PUT | One auth refresh, no gateway retry | Shared uncertainty evidence and ACK-aware auth refresh. |
+| Other OneLake / custom HTTP / MCP / database SDK paths | Separate transport and operation semantics | No blanket SDK/global retry switch or invented idempotency key; this audit does not certify external transports. |
 
 ## Command-level loops
 
@@ -83,6 +85,11 @@ transport timeout/disconnect, readonly/dry-run guards, safe read retries and a
 command-level named-rejection loop. Existing Gen1 and Power BI receipt tests remain
 regression coverage. Physical service failures and tenant mutations are not needed
 to prove request counts.
+
+`tests/e2e_specialized_submission.rs` covers raw/octet/binary/multipart/ARM senders,
+ACK-bearing auth responses, untrusted binary/ARM poll URLs, OneLake rename/copy/delete
+ordering and every upload step with local request counts. No live fault injection
+or remote mutation was used to verify these failure boundaries.
 
 `tests/e2e_deploy_failures.rs` adds local-only CLI regressions for sequential,
 parallel, ordered and bulk failures, shared uncertain-request evidence, mixed and

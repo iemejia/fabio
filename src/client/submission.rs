@@ -18,6 +18,132 @@ pub(super) enum PostSemantics {
 }
 
 impl FabricClient {
+    pub(super) async fn mutation_copy(
+        &self,
+        response: Response,
+        path: &str,
+        source: &str,
+        destination: &str,
+    ) -> Result<Value> {
+        if !response.status().is_success() {
+            return self.mutation_json(response, "onelake", path).await;
+        }
+        let mut statuses = response.headers().get_all("x-ms-copy-status").iter();
+        let status = statuses
+            .next()
+            .and_then(|value| value.to_str().ok())
+            .filter(|_| statuses.next().is_none());
+        let complete = status.is_some_and(|status| status.eq_ignore_ascii_case("success"));
+        if !complete {
+            let context = evidence(
+                PostSemantics::Mutation,
+                "onelake",
+                path,
+                Some(response.status()),
+                response.headers(),
+            );
+            return finish(Err(FabioError::api_error("Destination copy completion is unverified; no source deletion is authorized. Observe the existing copy read-only; do not replay.").into()),context);
+        }
+        Ok(
+            serde_json::json!({"source":source,"destination":destination,"status":"copied","copyStatus":"success"}),
+        )
+    }
+    /// One specialized mutation attempt. Raw/binary/multipart senders share the
+    /// same uncertainty contract without inventing retries or idempotency.
+    pub(super) async fn send_mutation(
+        &self,
+        request: reqwest::RequestBuilder,
+        service: &'static str,
+        path: &str,
+    ) -> Result<Response> {
+        request
+            .send()
+            .await
+            .map_err(|error| network_error(&error, PostSemantics::Mutation, service, path))
+    }
+
+    pub(super) async fn mutation_json(
+        &self,
+        response: Response,
+        service: &'static str,
+        path: &str,
+    ) -> Result<Value> {
+        let context = evidence(
+            PostSemantics::Mutation,
+            service,
+            path,
+            Some(response.status()),
+            response.headers(),
+        );
+        finish(super::handle_response(response).await, context)
+    }
+
+    pub(super) async fn mutation_bytes(
+        &self,
+        response: Response,
+        service: &'static str,
+        path: &str,
+    ) -> Result<Vec<u8>> {
+        let context = evidence(
+            PostSemantics::Mutation,
+            service,
+            path,
+            Some(response.status()),
+            response.headers(),
+        );
+        let result = if response.status().is_success() {
+            response
+                .bytes()
+                .await
+                .map(|bytes| bytes.to_vec())
+                .map_err(anyhow::Error::from)
+        } else {
+            Err(super::error_from_failed_response(response).await.into())
+        };
+        finish(result, context)
+    }
+
+    pub(super) async fn mutation_bytes_lro(
+        &self,
+        response: Response,
+        path: &str,
+        token: &str,
+        accept: &str,
+    ) -> Result<Vec<u8>> {
+        let context = evidence(
+            PostSemantics::Mutation,
+            "fabric",
+            path,
+            Some(response.status()),
+            response.headers(),
+        );
+        finish(
+            self.handle_bytes_lro_response(response, token, accept)
+                .await,
+            context,
+        )
+    }
+
+    pub(super) async fn mutation_arm(
+        &self,
+        response: Response,
+        path: &str,
+        poll: bool,
+    ) -> Result<Value> {
+        let context = evidence(
+            PostSemantics::Mutation,
+            "arm",
+            path,
+            Some(response.status()),
+            response.headers(),
+        );
+        let result = if poll && response.status() == StatusCode::ACCEPTED {
+            self.poll_arm_lro(response).await
+        } else {
+            super::handle_response(response).await
+        };
+        finish(result, context)
+    }
     /// One HTTP attempt. Mutation transport errors are deliberately not retry-safe.
     pub(super) async fn send_json_post(
         &self,
@@ -78,8 +204,46 @@ impl FabricClient {
 
 const NO_REPLAY_HINT: &str = "Preserve the original request scope and this submission evidence. Do not automatically resubmit: inspect the existing operation/resource with read-only commands. An acknowledgement is not completion; a missing operation ID is not rejection.";
 
+pub(super) fn compound_error(error: anyhow::Error) -> anyhow::Error {
+    let mut error = error.downcast::<FabioError>().map_or_else(
+        |_| {
+            FabioError::api_error(
+                "A compound mutation failed; earlier substeps may already have applied.",
+            )
+        },
+        |error| error.with_replaced_hint(NO_REPLAY_HINT, Some(HintType::SemanticCorrection)),
+    );
+    error.hint = Some(NO_REPLAY_HINT.to_string());
+    error.hint_type = Some(HintType::SemanticCorrection);
+    error.verify_after = None;
+    error.retriable = Some(false);
+    error.into()
+}
+
 pub(super) fn has_acknowledgement(headers: &HeaderMap) -> bool {
-    headers.contains_key("x-ms-operation-id") || headers.contains_key("location")
+    headers.contains_key("x-ms-operation-id")
+        || headers.contains_key("location")
+        || headers.contains_key("azure-asyncoperation")
+}
+
+pub(super) fn validate_observation_url(value: &str, endpoint: &str) -> Result<()> {
+    let base = reqwest::Url::parse(endpoint)
+        .map_err(|_| FabioError::invalid_input("Invalid configured observation endpoint."))?;
+    let url = reqwest::Url::parse(value).map_err(|_| {
+        FabioError::api_error("Invalid acknowledgement observation URL; no request was sent.")
+    })?;
+    let prefix = base.path().trim_end_matches('/');
+    if !super::is_secure_or_loopback(value)
+        || url.origin() != base.origin()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.fragment().is_some()
+        || !(url.path() == prefix || url.path().starts_with(&format!("{prefix}/")))
+        || value.contains(['\\', '%'])
+    {
+        return Err(FabioError::api_error("Acknowledgement observation URL is outside the configured service; no request was sent.").into());
+    }
+    Ok(())
 }
 
 /// Known rejection responses can be retried only without contradictory ACK
@@ -205,7 +369,7 @@ mod tests {
     fn rejection_retries_are_semantic_and_conflicting_markers_block_mutation_replay() {
         let mut headers = HeaderMap::new();
         assert!(can_retry_rejection(PostSemantics::Mutation, &headers));
-        for marker in ["location", "x-ms-operation-id"] {
+        for marker in ["location", "x-ms-operation-id", "azure-asyncoperation"] {
             headers.insert(marker, "malformed-private-value".parse().unwrap());
             assert!(!can_retry_rejection(PostSemantics::Mutation, &headers));
             assert!(can_retry_rejection(PostSemantics::ReadOnly, &headers));
@@ -243,6 +407,51 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn observation_locations_are_pinned_to_the_configured_secure_service() {
+        let endpoint = "https://api.fabric.microsoft.com/v1";
+        assert!(
+            validate_observation_url(
+                "https://api.fabric.microsoft.com/v1/operations/mock",
+                endpoint
+            )
+            .is_ok()
+        );
+        for value in [
+            "https://evil.example/v1/operations/mock",
+            "https://api.fabric.microsoft.com/v10/operations/mock",
+            "https://user@api.fabric.microsoft.com/v1/operations/mock",
+            "https://api.fabric.microsoft.com/v1/operations/mock#fragment",
+            "https://api.fabric.microsoft.com/v1/operations/%2fmock",
+        ] {
+            assert!(validate_observation_url(value, endpoint).is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn specialized_mutation_guards_precede_auth_and_network() {
+        let client = FabricClient::new().with_readonly(true);
+        for result in [
+            client.post_raw("/mock", "raw").await,
+            client.post_octet_stream("/mock", vec![0]).await,
+            client
+                .arm_post("/mock", &serde_json::json!({}), false)
+                .await,
+            client
+                .post_powerbi_multipart("/mock", reqwest::multipart::Form::new())
+                .await,
+        ] {
+            assert_eq!(
+                result
+                    .unwrap_err()
+                    .downcast_ref::<FabioError>()
+                    .unwrap()
+                    .code,
+                ErrorCode::ReadonlyMode
+            );
+        }
     }
 
     #[test]

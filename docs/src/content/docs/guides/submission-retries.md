@@ -117,11 +117,17 @@ inventory cannot drive destructive reconciliation.
 
 ## Boundaries
 
-This increment covers the shared Fabric JSON mutation path, configurable-LRO JSON,
-job trigger paths and Power BI JSON/refresh paths. It is **not** a universal
-exactly-once or end-to-end idempotence guarantee. Raw text, binary, multipart, ARM,
-OneLake, custom HTTP/SDK paths and bespoke read-only definition callers are not all
-migrated to the new evidence contract. Existing successful outputs remain unchanged.
+Coverage includes shared Fabric JSON mutations and job triggers, raw/octet/binary
+senders, Power BI JSON/bytes/multipart, ARM mutations and OneLake upload/copy/rename/
+delete. ACK markers prevent auth replay; multipart remains one-attempt. Binary/ARM
+poll URLs must stay on the configured service, and an accepted response without a
+usable observation URL is not completion. OneLake upload checks every step;
+rename never falls back after uncertainty, and an unverified copy never permits
+source deletion. These failures retain typed evidence and no-replay guidance.
+
+This is **not** a universal exactly-once or end-to-end idempotence guarantee.
+Custom HTTP/MCP/database SDK transports and bespoke definition callers still have
+their own semantics; no blanket retry rule or invented idempotency key is added.
 
 Job runners now expose persistence failures and exact job receipts without replay;
 see [local receipt storage](../local-job-receipts/). Supported recovery/import and

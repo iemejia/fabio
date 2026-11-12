@@ -162,6 +162,7 @@
 - `src/commands/jobs/recovery.rs`: bounded explicit-scope local receipt import; append-only with unverified results and no network calls
 - `src/commands/context/data/examples/jobs_import.json`: local import response shape and exact-scope/no-replay boundaries
 - `tests/e2e_job_receipts.rs`: isolated request-count tests for job runners with broken storage, observation/update failures and cancellation uncertainty
+- `tests/e2e_specialized_submission.rs`: local raw/binary/multipart/ARM uncertainty, observation URL and OneLake upload/move request-order regressions
 - `src/commands/deploy/plan.rs`: build_changeset (two-pass with rename), validate_references, fetch_deployed_logical_id, compute_workspace_fingerprint
 - `src/commands/deploy/params.rs`: Parameter substitution: find_replace, key_value_replace, spark_pool, semantic_model_binding
 - `src/commands/deploy/init_params.rs`: scan_for_candidates, diff_for_parameters (GUID discovery, cross-environment diffing)
