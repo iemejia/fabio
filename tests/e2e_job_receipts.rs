@@ -190,3 +190,43 @@ async fn terminal_observation_preserves_remote_result_when_receipt_update_fails(
     assert_eq!(result["warnings"][0]["code"], "RECEIPT_PERSISTENCE_FAILED");
     assert_eq!(server.received_requests().await.unwrap().len(), 2);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn receipt_import_is_local_scoped_append_only_and_never_promotes_completion() {
+    let server = MockServer::start().await;
+    let home = tempfile::TempDir::new().unwrap();
+    let file = home.path().join("receipt.json");
+    std::fs::write(&file,json!({"data":{"jobReceipt":{"id":JOB,"kind":"notebook-run","workspace":WS,"item_id":ITEM,
+        "status":"completed","started_at":"2026-01-01T00:00:00Z","completed_at":"2026-01-01T01:00:00Z",
+        "submission_state":"accepted","fabric_endpoint":server.uri(),"result":{"status":"Completed"}}}}).to_string()).unwrap();
+    let invoke = || {
+        let mut command = mock_fabio(&server);
+        command
+            .env("HOME", home.path())
+            .env("USERPROFILE", home.path())
+            .env("FABIO_NO_VERSION_CHECK", "1")
+            .args(["jobs", "import", "--file"])
+            .arg(&file)
+            .args(["--workspace", WS, "--id", JOB, "--item-ids", ITEM]);
+        command
+    };
+    let preview = invoke()
+        .args(["--readonly", "--dry-run"])
+        .assert()
+        .success();
+    assert_eq!(data(&preview)["dry_run"], true);
+    assert!(!home.path().join(".fabio").join("jobs.jsonl").exists());
+    invoke().arg("--readonly").assert().failure();
+    let output = invoke().assert().success();
+    assert_eq!(data(&output)["status"], "imported");
+    assert_eq!(data(&output)["remoteVerified"], false);
+    let ledger = home.path().join(".fabio").join("jobs.jsonl");
+    let original = std::fs::read(&ledger).unwrap();
+    let row: Value = serde_json::from_slice(&original).unwrap();
+    assert_eq!(row["status"], "unknown");
+    assert!(row.get("completed_at").is_none());
+    assert!(row.get("result").is_none());
+    invoke().assert().failure();
+    assert_eq!(std::fs::read(&ledger).unwrap(), original);
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
+}

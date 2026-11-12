@@ -44,6 +44,18 @@ defaultTest:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
 tests:
+  - description: "Receipt import: exact original scope and a local-only preview"
+    vars:
+      user_query: "I retained the original runner output in private receipt.json. Preview importing its missing local receipt with workspace WS_ID, original receipt RECEIPT_ID and item ITEM_ID. Do not write anything or submit remote work. Does importing a completed claim prove completion?"
+    assert:
+      - type: icontains
+        value: "jobs import"
+      - type: icontains
+        value: "--readonly"
+      - type: icontains
+        value: "--dry-run"
+      - type: llm-rubric
+        value: "Uses the retained original file with explicit workspace, original receipt ID and complete item IDs, or discovers exact syntax first. Import is local-only, cannot repair corruption/overwrite conflicts, and imported claims remain unverified rather than proving completion. No remote replay or invented identity."
   - description: "Job receipt: storage failure after acceptance never authorizes replay"
     vars:
       user_query: "notebook run returned status started, jobReceipt with the exact job ID, receiptPersisted false and retryAllowed false, plus RECEIPT_PERSISTENCE_FAILED. Can we rerun it to create a fresh ledger row? Cancellation was requested but no terminal state was observed."

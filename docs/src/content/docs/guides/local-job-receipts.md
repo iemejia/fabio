@@ -80,9 +80,8 @@ coordinated. Stop old processes before upgrading or restoring receipt storage.
    failing line or I/O category without echoing receipt contents. Fabio never
    promotes an orphan file or silently removes corrupt rows.
 3. After all Fabio processes exit, restore only a verified private backup with
-   explicitly reviewed scope and identity. There is no automatic repair/import
-   command in this increment. A truncated or old backup is not proof that missing
-   work was never submitted.
+   explicitly reviewed scope and identity. Never strip corrupt rows. A truncated
+   or old backup is not proof that missing work was never submitted.
 4. Inspect existing receipts and observe the original operation when its identity
    is available. Never invent an operation ID, use latest-history guesses, or
    repeat an accepted/unknown submission to recreate its receipt.
@@ -90,3 +89,28 @@ coordinated. Stop old processes before upgrading or restoring receipt storage.
 For Gen1 upgrades, storage must succeed **before POST**. A later persistence error
 preserves the acknowledgement in stdout and warns against resubmission; see
 [Gen1 execution receipts](../gen1-upgrade-execution/).
+
+## Import one retained original receipt
+
+When the ledger is healthy but one receipt is absent, use a private original
+`jobs get` JSON record or runner output containing `jobReceipt`:
+
+```bash
+fabio --readonly --dry-run jobs import --file receipt.json \
+  --workspace "$WS_ID" --id "$RECEIPT_ID" --item-ids "$ITEM_ID"
+fabio jobs import --file receipt.json \
+  --workspace "$WS_ID" --id "$RECEIPT_ID" --item-ids "$ITEM_ID"
+```
+
+For a retained Gen1 `JobEntry`, supply the complete original comma-separated item
+set; its receipt ID is **not** its operation ID. A partial acknowledgement without
+the complete original receipt is insufficient. The configured Fabric endpoint
+must match exactly, including private-link configuration. Input is bounded to
+1 MiB and checked before any write. Actual import is blocked by `--readonly`.
+
+Import is local and append-only: no network requests, submissions, cancellations,
+corrupt-ledger repair or overwrite. Existing IDs conflict. Imported results are
+retained as unverified evidence, never completion; status becomes `unknown` and
+`remoteVerified:false`. Observe only the exact existing job (`job-scheduler
+get-instance`) or imported Gen1 receipt (`dataflow follow-upgrade`). Never
+reconstruct a receipt from a trace, guessed IDs or latest-history matching.

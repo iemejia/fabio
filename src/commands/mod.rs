@@ -277,7 +277,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
         // Configuration
         Command::Auth { command } => auth::execute(&cli, command).await,
         Command::Profile { command } => profile::execute(&cli, command),
-        Command::Jobs { command } => jobs::execute(&cli, command),
+        Command::Jobs { command } => jobs::execute(&cli, &client, command),
         Command::Feedback { command } => feedback::execute(&cli, command),
         Command::Lro { command } => lro::execute(&cli, &client, command).await,
         Command::Rest { command } => rest::execute(&cli, &client, command).await,

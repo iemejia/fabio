@@ -28330,8 +28330,38 @@
   },
   "jobs": {
     "auth_scope": "local",
-    "description": "Inspect and manage async job history",
+    "description": "Manage local job receipts",
     "subcommands": {
+      "import": {
+        "description": "Import a retained original receipt locally; never submits remote work",
+        "flags": {
+          "--file": {
+            "type": "string",
+            "required": true,
+            "description": "Raw jobs get output, jobReceipt output, or one `JobEntry` JSON file (maximum 1 MiB)"
+          },
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Expected original workspace UUID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Expected original receipt UUID (not a guessed trace or latest-history match)"
+          },
+          "--item-ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Complete expected original item UUID set, comma-separated"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
       "list": {
         "description": "List recent jobs from the local ledger",
         "flags": {

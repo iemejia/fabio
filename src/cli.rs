@@ -724,7 +724,7 @@ pub enum Command {
         #[command(subcommand)]
         command: profile::ProfileCommand,
     },
-    /// Inspect and manage async job history
+    /// Manage local job receipts
     #[command(display_order = 62)]
     Jobs {
         #[command(subcommand)]

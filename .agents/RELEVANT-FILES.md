@@ -159,6 +159,8 @@
 - `src/commands/deploy/failure.rs`: additive recorded-hook errors, dominant batch no-replay policy, terminal teaching error and conservative bulk-member result validation
 - `tests/e2e_deploy_failures.rs`: local-only CLI tests for typed failure aggregation, uncertain request counts, bulk accounting/results, legacy compatibility, nonfatal hooks and guards
 - `src/commands/jobs/tracking.rs`: shared exact-job receipt persistence, warnings, bounded observation and nonterminal cancellation requests
+- `src/commands/jobs/recovery.rs`: bounded explicit-scope local receipt import; append-only with unverified results and no network calls
+- `src/commands/context/data/examples/jobs_import.json`: local import response shape and exact-scope/no-replay boundaries
 - `tests/e2e_job_receipts.rs`: isolated request-count tests for job runners with broken storage, observation/update failures and cancellation uncertainty
 - `src/commands/deploy/plan.rs`: build_changeset (two-pass with rename), validate_references, fetch_deployed_logical_id, compute_workspace_fingerprint
 - `src/commands/deploy/params.rs`: Parameter substitution: find_replace, key_value_replace, spark_pool, semantic_model_binding

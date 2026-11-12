@@ -1,0 +1,7 @@
+{
+  "command": "fabio jobs import --file receipt.json --workspace $WS_ID --id $RECEIPT_ID --item-ids $ITEM_ID",
+  "description": "Append one retained original receipt locally after exact endpoint/scope validation; never submit remote work.",
+  "response": {"data":{"status":"imported","id":"$RECEIPT_ID","remoteVerified":false,"retryAllowed":false,"destructive":false}},
+  "notes": "Preview with --readonly --dry-run. Raw jobs get output, runner jobReceipt output or one original JobEntry JSON is required (maximum 1 MiB). Match the original configured endpoint, workspace, receipt ID and complete item set. Gen1 receipt IDs differ from operation IDs. Imported claims become status unknown, never verified completion; inspect the exact existing operation read-only. Conflicts/corrupt ledgers block import; no overwrite, repair, cancellation or resubmission occurs.",
+  "query_examples": [{"query":"remoteVerified","description":"False: imported claims are not remote verification."}]
+}

@@ -9,6 +9,7 @@ use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
 mod ledger;
+mod recovery;
 pub mod tracking;
 
 #[derive(Debug, Subcommand)]
@@ -16,6 +17,21 @@ pub mod tracking;
     after_help = "For complete flag reference, run: fabio context agent\nReturns machine-readable JSON schema of all commands, flags, and types."
 )]
 pub enum JobsCommand {
+    /// Import a retained original receipt locally; never submits remote work
+    Import {
+        /// Raw jobs get output, jobReceipt output, or one `JobEntry` JSON file (maximum 1 MiB)
+        #[arg(long)]
+        file: std::path::PathBuf,
+        /// Expected original workspace UUID
+        #[arg(long)]
+        workspace: String,
+        /// Expected original receipt UUID (not a guessed trace or latest-history match)
+        #[arg(long)]
+        id: String,
+        /// Complete expected original item UUID set, comma-separated
+        #[arg(long, value_delimiter = ',', required = true)]
+        item_ids: Vec<String>,
+    },
     /// List recent jobs from the local ledger
     List {
         /// Filter by status (e.g., running, completed, failed)
@@ -142,8 +158,25 @@ impl JobLedger {
     }
 }
 
-pub fn execute(cli: &Cli, command: &JobsCommand) -> Result<()> {
+pub fn execute(
+    cli: &Cli,
+    client: &crate::client::FabricClient,
+    command: &JobsCommand,
+) -> Result<()> {
     match command {
+        JobsCommand::Import {
+            file,
+            workspace,
+            id,
+            item_ids,
+        } => recovery::import(
+            cli,
+            file,
+            workspace,
+            id,
+            item_ids,
+            &client.fabric_endpoint(),
+        ),
         JobsCommand::List { status } => list(cli, status.as_deref()),
         JobsCommand::Get { id } => get(cli, id),
         JobsCommand::Prune { include_running } => prune(cli, *include_running),

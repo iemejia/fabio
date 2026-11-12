@@ -800,6 +800,7 @@ fabio admin activate-policy-set --workspace $WS --policy-set-id $POLICY_SET
 # Async job ledger (Principle 8) — inspect jobs tracked locally by supported run handlers
 fabio jobs list                                                             # local ledger of async jobs fabio has run
 fabio jobs get --id $JOB_ID                                                 # status/result of a tracked job
+fabio --readonly --dry-run jobs import --file receipt.json --workspace $WS_ID --id $RECEIPT_ID --item-ids $ITEM_ID # validate one retained original receipt
 fabio --readonly --dry-run jobs prune                                       # preview finished receipt removal
 # Tenant-wide item discovery (OneLake catalog)
 fabio catalog search --search "sales" --top 25                              # POST /catalog/search (tenant-level, no --workspace); or --content '{"searchString":"...","top":25}'
