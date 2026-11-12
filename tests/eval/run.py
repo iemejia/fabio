@@ -6,20 +6,51 @@ import math
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import tempfile
 from urllib.parse import urlsplit
 
 
+REQUIRED_ENVIRONMENT = (
+    "AZURE_OPENAI_API_BASE_URL",
+    "AZURE_OPENAI_DEPLOYMENT_NAME",
+    "AZURE_OPENAI_MODEL_NAME",
+    "AZURE_OPENAI_API_KEY",
+)
+
+
+def load_environment(environ, path=None):
+    """Read an explicitly selected dotenv file as data, never as shell code."""
+    result = dict(environ)
+    if path is None:
+        return result
+    loaded = {}
+    for line in Path(path).read_text(encoding="utf-8").splitlines():
+        match = re.match(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$", line)
+        if not match or match[1] not in REQUIRED_ENVIRONMENT:
+            continue
+        name, raw = match.groups()
+        if name in loaded:
+            raise ValueError(f"Duplicate evaluation variable: {name}")
+        try:
+            values = shlex.split(raw, comments=False, posix=True)
+        except ValueError:
+            raise ValueError(f"Malformed evaluation variable: {name}") from None
+        if len(values) > 1 and values[1].startswith("#"):
+            values = values[:1]
+        if len(values) != 1:
+            raise ValueError(f"Expected one literal value for {name}")
+        loaded[name] = values[0]
+    for name, value in loaded.items():
+        if not result.get(name, "").strip():
+            result[name] = value
+    return result
+
+
 def validate_environment(env):
-    required = (
-        "AZURE_OPENAI_API_BASE_URL",
-        "AZURE_OPENAI_DEPLOYMENT_NAME",
-        "AZURE_OPENAI_MODEL_NAME",
-        "AZURE_OPENAI_API_KEY",
-    )
-    missing = [key for key in required if not env.get(key, "").strip()]
+    missing = [key for key in REQUIRED_ENVIRONMENT if not env.get(key, "").strip()]
     if missing:
         raise ValueError("Missing evaluation configuration: " + ", ".join(missing))
     try:
@@ -114,13 +145,18 @@ def main():
     parser.add_argument("--min-pass-rate", type=float, default=70)
     parser.add_argument("--timeout", type=int, default=1200)
     parser.add_argument("--summary", type=Path, help="Write a publishable numeric summary")
+    parser.add_argument(
+        "--env-file", type=Path,
+        help="Explicit private dotenv file; loads only evaluation variables without executing shell code. Existing environment values take precedence.",
+    )
     args = parser.parse_args()
     try:
         if args.summary:
             # A failed rerun must not leave a previous accepted summary behind.
             args.summary.write_text('{"accepted":false}\n', encoding="utf-8")
         try:
-            validate_environment(os.environ)
+            configured_env = load_environment(os.environ, args.env_file)
+            validate_environment(configured_env)
         except ValueError as error:
             # These messages enumerate variable names, never their values.
             print(f"Invalid evaluation configuration: {error}")
@@ -136,7 +172,7 @@ def main():
         # resolved endpoints, deployment aliases, credentials, and tenant data.
         with tempfile.TemporaryDirectory(prefix="fabio-eval-") as temporary:
             directory = Path(temporary)
-            env = dict(os.environ)
+            env = dict(configured_env)
             env.update(
                 PROMPTFOO_DISABLE_TELEMETRY="1",
                 PROMPTFOO_DISABLE_UPDATE="1",

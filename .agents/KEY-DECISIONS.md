@@ -1,5 +1,7 @@
 # Fabio CLI — Key Decisions
 
+- **Private evaluation configuration is explicitly selected, never sourced as shell code**: `tests/eval/run.py --env-file <PRIVATE_FILE>` reads only the four evaluation variables as literal dotenv data and preserves nonempty process-environment overrides. Never auto-load unrelated credentials or print file values; malformed/duplicate assignments fail closed. Azure CLI discovery reuses an existing compatible deployment without changing local-auth policy, keys, resources or roles. Private bindings and credentials stay outside Git.
+
 - **An observed job status must agree with its scope and error evidence**: conflicting returned IDs or error-bearing Completed bodies cannot mark a receipt terminal. Bound cancellation observation separately without treating a timeout as rejection. A bodyless/binary 202 is accepted, not a completed download, unless an explicit LRO observer establishes the result.
 
 - **Post-Gen1 readiness is an acceptance workflow, not an automatic refresh executor**: compose existing exact-receipt/job, definition, T-SQL and BI observation primitives. Require separately approved refresh scope and baseline-backed data/freshness/incremental/consumer checks; unknown/not_checked fails acceptance. Keep Warehouse vs Lakehouse SQL endpoint identities distinct. The recipe is syntax-checked against clap and all its commands are readonly; absent live fixtures remain a validation blocker.

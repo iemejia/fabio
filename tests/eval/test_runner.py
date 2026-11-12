@@ -43,6 +43,56 @@ def report(outcomes=(True, True)):
 
 
 class EnvironmentTests(unittest.TestCase):
+    def test_explicit_env_file_loads_only_evaluation_values_without_execution(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / ".env"
+            path.write_text(
+                "IGNORED=$(not-a-command)\r\n"
+                "export AZURE_OPENAI_MODEL_NAME='gpt-6.1-sol'\r\n"
+                "AZURE_OPENAI_API_KEY='literal$NOT_EXPANDED#key' # ignored comment\r\n",
+                encoding="utf-8",
+            )
+            original = {"UNCHANGED": "value"}
+            loaded = run.load_environment(original, path)
+            self.assertEqual(loaded["AZURE_OPENAI_MODEL_NAME"], "gpt-6.1-sol")
+            self.assertEqual(loaded["AZURE_OPENAI_API_KEY"], "literal$NOT_EXPANDED#key")
+            self.assertNotIn("IGNORED", loaded)
+            self.assertEqual(original, {"UNCHANGED": "value"})
+
+    def test_process_environment_takes_precedence_over_explicit_file(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / ".env"
+            path.write_text("AZURE_OPENAI_API_KEY=file-value\n", encoding="utf-8")
+            for existing, expected in (("process-value", "process-value"), (" ", "file-value")):
+                loaded = run.load_environment({"AZURE_OPENAI_API_KEY": existing}, path)
+                self.assertEqual(loaded["AZURE_OPENAI_API_KEY"], expected)
+
+    def test_malformed_or_duplicate_env_settings_fail_without_echoing_values(self):
+        for content in [
+            "AZURE_OPENAI_API_KEY='secret",
+            "AZURE_OPENAI_API_KEY=secret two-values",
+            "AZURE_OPENAI_API_KEY=secret\nAZURE_OPENAI_API_KEY=other-secret",
+        ]:
+            with tempfile.TemporaryDirectory() as temporary:
+                path = Path(temporary) / ".env"
+                path.write_text(content, encoding="utf-8")
+                with self.assertRaises(ValueError) as error:
+                    run.load_environment({}, path)
+                self.assertNotIn("secret", str(error.exception))
+
+    def test_hash_inside_an_unquoted_value_is_not_silently_removed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / ".env"
+            endpoint = "https://example.openai.azure.com/#fragment"
+            path.write_text(f"AZURE_OPENAI_API_BASE_URL={endpoint}\n", encoding="utf-8")
+            loaded = run.load_environment(environment(), path)
+            self.assertEqual(loaded["AZURE_OPENAI_API_BASE_URL"], environment()["AZURE_OPENAI_API_BASE_URL"])
+            loaded = run.load_environment({}, path)
+            self.assertEqual(loaded["AZURE_OPENAI_API_BASE_URL"], endpoint)
+            loaded.update({name: value for name, value in environment().items() if name != "AZURE_OPENAI_API_BASE_URL"})
+            with self.assertRaises(ValueError):
+                run.validate_environment(loaded)
+
     def test_accepts_https_account_origin(self):
         run.validate_environment(environment())
 
@@ -126,7 +176,7 @@ class SummaryTests(unittest.TestCase):
 
 
 class RunnerTests(unittest.TestCase):
-    def invoke(self, args=(), returncode=0, payload=None, failure=None):
+    def invoke(self, args=(), returncode=0, payload=None, failure=None, process_environment=None):
         self.command = None
         self.process_env = None
 
@@ -142,7 +192,11 @@ class RunnerTests(unittest.TestCase):
 
         output = io.StringIO()
         with (
-            patch.dict(os.environ, environment(), clear=True),
+            patch.dict(
+                os.environ,
+                environment() if process_environment is None else process_environment,
+                clear=True,
+            ),
             patch("sys.argv", ["run.py", *args]),
             patch("run.shutil.which", return_value="promptfoo"),
             patch("run.subprocess.run", side_effect=fake_process),
@@ -188,6 +242,20 @@ class RunnerTests(unittest.TestCase):
             process.assert_not_called()
         for key in environment():
             self.assertIn(key, output.getvalue())
+
+    def test_explicit_file_supplies_missing_provider_configuration_to_the_child(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / ".env"
+            path.write_text(
+                "".join(f"{name}='{value}'\n" for name, value in environment().items()),
+                encoding="utf-8",
+            )
+            status, _ = self.invoke(
+                ("--env-file", str(path)), payload=report(), process_environment={}
+            )
+            self.assertEqual(status, 0)
+            for name, value in environment().items():
+                self.assertEqual(self.process_env[name], value)
 
     def test_errored_results_fail_even_with_permissive_pass_rate(self):
         payload = report()

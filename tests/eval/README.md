@@ -54,6 +54,20 @@ the deployment alias, so promptfoo applies the right model capability rules.
 budget is 4,096 completion tokens. Both generation and rubric requests were
 validated live with these settings.
 
+Alternatively keep these four assignments in a private, Git-ignored `.env` and
+pass `--env-file .env` explicitly. Preserve unrelated existing entries and restrict
+file permissions (for example `chmod 600 .env` on Unix; use a private account ACL
+on Windows). The runner loads only the four evaluation variables as literal data:
+it never executes shell code, expands variables or loads an env file implicitly.
+Existing nonempty process-environment values take precedence. Malformed or
+duplicate evaluation assignments fail without printing their values.
+
+Use the existing account/deployment in the intended Azure CLI tenant. Do not
+switch tenants, create resources, enable local-key auth, rotate keys or change
+roles just to configure an evaluation. If local-key auth is disabled, do not
+bypass that policy; this runner's API-key provider needs an authorized compatible
+deployment. Local discovery/configuration does not update GitHub secrets.
+
 ## Run
 
 From the repository root:
@@ -63,6 +77,7 @@ python3 -m unittest discover -s tests/eval -p 'test_*.py'
 node tests/eval/check-config.mjs "$(npm root -g)"
 python3 tests/eval/run.py --filter-pattern '^(Remediation hints:|Workspace diagnostics:|BI routing:)' --min-pass-rate 100
 python3 tests/eval/run.py --summary /path/outside/repository/eval-summary.json
+python3 tests/eval/run.py --env-file .env --filter-pattern '^(Deploy evidence:|Job receipt:|Receipt import:|Post-Gen1 acceptance:)' --min-pass-rate 100
 ```
 
 The runner uses only Python's standard library. It validates required variables
