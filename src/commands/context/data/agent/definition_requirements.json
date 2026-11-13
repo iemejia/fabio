@@ -133,9 +133,9 @@
       "note": "environment.metadata.json holds Spark compute + libraries. Publish staging after update: fabio environment publish."
     },
     "Warehouse": {
-      "requiredOneOf": [["sqldw.dacpac", "sqldw.sqlproj"]],
+      "requiredOneOf": [["sqldw.dacpac", "sqldw.sqlproj", "*.dacpac", "*.sqlproj"]],
       "optionalParts": [".platform", "dbo/**/*.sql", ".sharedqueries/*.sql"],
-      "note": "Public definitions support dacpac (single sqldw.dacpac) and sqlproj (sqldw.sqlproj plus project files); omitted format defaults to sqlproj. Every part requires path, payload, and payloadType. Create definition is mutually exclusive with creationPayload/collation."
+      "note": "Public definitions support dacpac and sqlproj; omitted format defaults to sqlproj. Documentation uses sqldw.dacpac/sqldw.sqlproj, but live exports also use the warehouse display name as the root filename. Preserve returned part paths when round-tripping. Every part requires path, payload, and payloadType. Create definition is mutually exclusive with creationPayload/collation."
     },
     "CustomStreamConnector": {
       "requiredParts": ["connector.json"],

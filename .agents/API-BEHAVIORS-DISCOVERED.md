@@ -3548,17 +3548,57 @@ implemented or confirmed to require no code change.
   shared HTTP client retains bounded known-rejection retries and submission
   uncertainty; the new raw Markdown transport must preserve that policy.
 
-### November consolidation validation limitations
+### November consolidation live acceptance follow-up
 
-- The consolidated implementation adds request-level mock tests for the shared
-  features and new item families, including readonly behavior and destructive
-  notices. Text formatting polls operation state separately from downloading the
-  Markdown result and validates result URLs against the configured Fabric origin.
-- Live checks succeeded for isolated workspace creation/deletion, new-family list
-  endpoints, and OneLake settings retrieval. Full live validation remains blocked:
-  configured workspace fixtures are not accessible to the current identity,
-  capacity assignment returns `InsufficientPrivileges`, and actor-rule listing
-  returns `InsufficientPermissions`. Item creation/definition lifecycles, topics,
-  scheduling, feedback downloads, completed publish logs, and retention mutation
-  therefore remain unverified live. No roles or tenant settings were changed; the
-  isolated test workspace was deleted.
+- **Fixture access was stale, not a reason to grant roles.** The original private
+  bindings were absent from the active identity's visible inventory. Fresh fixtures
+  in an isolated workspace on an accessible paid capacity removed those blockers.
+  No existing workspace, directory role, application consent, or tenant setting
+  was changed.
+- **Verified live:** Custom Stream Connector creation, metadata updates, definition
+  round-trip and deletion; Copy Job disabled-schedule CRUD and exact execute-instance
+  lookup; Warehouse SQL project and DACPAC export/update preserving synthetic rows,
+  plus definition-on-create reproducing schema without copying rows; Data Agent
+  create/update dry-run isolation and actual metadata updates; datasource topic
+  upload/read/update/format/publish/delete; and OneLake retention enable/change/disable
+  with persisted settings checks. Published topics remained readable after deleting
+  the staging copy.
+- **Warehouse exported part names differ from the documented upload examples.**
+  The service returned a root project filename derived from the warehouse name,
+  rather than always `sqldw.sqlproj`. Preserve returned paths when round-tripping
+  an envelope. Root `*.sqlproj`/`*.dacpac` requirements now accept these exports
+  without false strict-validation warnings; nested project files alone do not
+  satisfy the root-part requirement.
+- **The live topic service accepted a stale `If-Match` header.** The supplied ETag
+  was quoted and changed after each successful upload, yet another write using the
+  old value succeeded. This contradicts the documented conditional-write promise.
+  Fabio now rejects an already-stale/unverifiable client snapshot before mutation,
+  still sends the header, and returns a snapshot/race warning. This is deliberately
+  NOT advertised as atomic compare-and-swap. Mock tests separately verify the
+  actual outgoing header and absence of mutation when the snapshot mismatches.
+- **Publish acknowledgement is not log readiness.** `environment publish` returned
+  `publish_started`; immediate log retrieval returned `PublishInProgress`. Observing
+  that same publish later produced a nonempty UTF-8 driver log and truncation metadata.
+  No second publish was submitted to obtain the log.
+- **Capacity-wide actor rules were isolated.** A new empty F2 capacity supported the
+  full rule create/list/show/update/delete lifecycle. The capacity was deleted and
+  ARM absence verified; one inventory read briefly lagged the successful delete,
+  so cleanup used another read rather than replaying deletion. Shared-capacity
+  rules were never modified.
+- **ARM name availability uses POST without allocating a resource.** The existing
+  generic write guard incorrectly blocked this action under `--readonly`. Its
+  dedicated readonly transport and validated path now pass both a mock contract
+  and a live name-availability request; ordinary ARM writes remain guarded.
+- **Cleanup verified:** every session-owned artifact and workspace was removed,
+  the dedicated capacity was absent, and the original paid capacity retained its
+  SKU/state. Raw evidence and all resource bindings remain private outside Git.
+- **Still blocked/not exercised:** Share creation returned a disabled-tenant-setting
+  error, while tenant-setting inspection was unavailable to the current identity.
+  Its token lacked tenant-admin scopes; a non-interactive Azure CLI request for
+  `Tenant.Read.All` was rejected with `AADSTS65002` (first-party preauthorization).
+  No new consent, role grant, unverified setting mapping, or enablement was attempted. Share
+  Subscription creation consequently lacked a session-owned invitation. Feedback
+  search returned `EntityNotFound` even though the newly published agent and its
+  published topics were readable. A feedback-backend/published-title prerequisite
+  remains unresolved; no synthetic feedback-with-attachment fixture was available
+  for show/download tests. These are not counted as passed lifecycles.

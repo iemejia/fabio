@@ -6114,10 +6114,10 @@
         },
         "mutates": false,
         "returns": "object",
+        "async": true,
         "examples": [
           "fabio warehouse get-definition --workspace $WS --id $WAREHOUSE --format sqlproj"
-        ],
-        "async": true
+        ]
       },
       "update-definition": {
         "description": "Replace the warehouse public definition",
@@ -6155,11 +6155,11 @@
         },
         "mutates": true,
         "returns": "object",
+        "async": true,
         "destructive": true,
         "examples": [
           "fabio warehouse update-definition --workspace $WS --id $WAREHOUSE --file ./Sales.sqlproj --format sqlproj"
-        ],
-        "async": true
+        ]
       },
       "query": {
         "description": "Execute a SQL query against a warehouse or SQL endpoint",
@@ -8920,7 +8920,7 @@
           },
           "--if-match": {
             "type": "string",
-            "description": "Quoted `ETag` for optimistic concurrency"
+            "description": "Quoted `ETag`: checked against a client snapshot, not an atomic guarantee"
           }
         },
         "mutates": true,
@@ -8952,7 +8952,7 @@
           },
           "--if-match": {
             "type": "string",
-            "description": "Quoted `ETag`; delete only if the stored version still matches"
+            "description": "Quoted `ETag`: reject a stale client snapshot; server enforcement is unverified"
           }
         },
         "mutates": true,
@@ -8985,10 +8985,10 @@
         },
         "mutates": false,
         "returns": "object",
+        "async": true,
         "examples": [
           "fabio data-agent format-topic --workspace $WS --id $AGENT --datasource $SOURCE --file-name guidance.md"
-        ],
-        "async": true
+        ]
       },
       "query-feedback": {
         "description": "Search user-shared feedback for a data agent",
@@ -21105,10 +21105,10 @@
         },
         "mutates": true,
         "returns": "object",
+        "async": true,
         "examples": [
           "fabio custom-stream-connector create --workspace $WS --name \"Example\""
-        ],
-        "async": true
+        ]
       },
       "update": {
         "description": "Update Custom Stream Connector properties",
@@ -21183,10 +21183,10 @@
         },
         "mutates": false,
         "returns": "object",
+        "async": true,
         "examples": [
           "fabio custom-stream-connector get-definition --workspace $WS --id $ID"
-        ],
-        "async": true
+        ]
       },
       "update-definition": {
         "description": "Replace a Custom Stream Connector definition",
@@ -21220,11 +21220,11 @@
         },
         "mutates": true,
         "returns": "object",
+        "async": true,
         "destructive": true,
         "examples": [
           "fabio custom-stream-connector update-definition --workspace $WS --id $ID --file definition.json"
-        ],
-        "async": true
+        ]
       }
     }
   },
@@ -21319,10 +21319,10 @@
         },
         "mutates": true,
         "returns": "object",
+        "async": true,
         "examples": [
           "fabio share create --workspace $WS --name \"Example\""
-        ],
-        "async": true
+        ]
       },
       "update": {
         "description": "Update share properties",
@@ -21405,10 +21405,10 @@
         },
         "mutates": false,
         "returns": "object",
+        "async": true,
         "examples": [
           "fabio share get-definition --workspace $WS --id $ID"
-        ],
-        "async": true
+        ]
       },
       "update-definition": {
         "description": "Replace a share definition",
@@ -21438,11 +21438,11 @@
         },
         "mutates": true,
         "returns": "object",
+        "async": true,
         "destructive": true,
         "examples": [
           "fabio share update-definition --workspace $WS --id $ID --file definition.json"
-        ],
-        "async": true
+        ]
       }
     }
   },

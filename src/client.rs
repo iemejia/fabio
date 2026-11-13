@@ -2639,6 +2639,36 @@ impl FabricClient {
         handle_response(resp).await
     }
 
+    /// Semantically read-only, synchronous ARM POST (e.g. name availability).
+    /// Callers must validate any user-supplied path segments before using it.
+    pub async fn arm_post_readonly(&self, path: &str, body: &Value) -> Result<Value> {
+        let url = format!("{}{path}", *ARM_BASE_URL);
+        let send = async || {
+            let token = self.require_arm_auth().await?;
+            self.http
+                .post(&url)
+                .header(AUTHORIZATION, token)
+                .json(body)
+                .send()
+                .await
+                .map_err(|error| {
+                    anyhow::Error::from(FabioError::new(ErrorCode::NetworkError, error.to_string()))
+                })
+        };
+        let mut response = send().await?;
+        if response.status() == StatusCode::UNAUTHORIZED {
+            *self.arm_token.write().await = None;
+            response = send().await?;
+        }
+        if response.status() == StatusCode::ACCEPTED {
+            return Err(FabioError::api_error(
+                "Read-only ARM action returned asynchronous acceptance without a completed result",
+            )
+            .into());
+        }
+        handle_response(response).await
+    }
+
     /// POST request to Azure Resource Manager API (with optional LRO polling).
     pub async fn arm_post(&self, path: &str, body: &Value, poll: bool) -> Result<Value> {
         self.guard_readonly("POST", path)?;

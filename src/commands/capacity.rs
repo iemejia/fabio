@@ -974,18 +974,35 @@ async fn check_name(
     location: &str,
     resource_type: &str,
 ) -> Result<()> {
-    let path = format!(
-        "/subscriptions/{subscription}/providers/Microsoft.Fabric/locations/{location}/checkNameAvailability?api-version={ARM_API_VERSION}"
-    );
+    let path = name_check_path(subscription, location)?;
 
     let body = json!({
         "name": name,
         "type": resource_type
     });
 
-    let data = client.arm_post(&path, &body, false).await?;
+    let data = client.arm_post_readonly(&path, &body).await?;
     output::render_object(cli, &data, "nameAvailable");
     Ok(())
+}
+
+fn name_check_path(subscription: &str, location: &str) -> Result<String> {
+    crate::client::validate_uuid(subscription, "--subscription")?;
+    let location = location.replace(' ', "").to_ascii_lowercase();
+    if location.is_empty()
+        || location.len() > 64
+        || !location.bytes().all(|byte| byte.is_ascii_alphanumeric())
+    {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Invalid Azure region for name availability",
+            "Use a region identifier such as westeurope or eastus2.",
+        )
+        .into());
+    }
+    Ok(format!(
+        "/subscriptions/{subscription}/providers/Microsoft.Fabric/locations/{location}/checkNameAvailability?api-version={ARM_API_VERSION}"
+    ))
 }
 
 /// Enrich ARM API errors with Azure RBAC guidance.
@@ -1006,6 +1023,24 @@ fn enrich_arm_error(err: anyhow::Error, operation: &str) -> anyhow::Error {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn readonly_name_check_scope_cannot_be_replaced_with_another_arm_action() {
+        let subscription = "00000000-0000-0000-0000-000000000001";
+        assert!(
+            super::name_check_path(subscription, "West Europe")
+                .unwrap()
+                .contains("/locations/westeurope/checkNameAvailability?")
+        );
+        for location in [
+            "",
+            "../capacities",
+            "westeurope/../../resume",
+            "westeurope?other=true",
+        ] {
+            assert!(super::name_check_path(subscription, location).is_err());
+        }
+        assert!(super::name_check_path("../other-subscription", "westeurope").is_err());
+    }
     use super::*;
 
     #[test]

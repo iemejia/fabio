@@ -233,7 +233,21 @@ fn part_present(paths: &[String], wanted: &str, aliases: &[String]) -> bool {
         // Template placeholder like "<displayName>.rdl" — cannot match literally.
         return true;
     }
-    paths.iter().any(|p| p == wanted) || aliases.iter().any(|a| paths.iter().any(|p| p == a))
+    let matches = |pattern: &str| {
+        glob::Pattern::new(pattern).is_ok_and(|pattern| {
+            paths.iter().any(|path| {
+                pattern.matches_with(
+                    path,
+                    glob::MatchOptions {
+                        case_sensitive: true,
+                        require_literal_separator: true,
+                        require_literal_leading_dot: true,
+                    },
+                )
+            })
+        })
+    };
+    matches(wanted) || aliases.iter().any(|alias| matches(alias))
 }
 
 /// Validate a definition envelope offline. `item_type`, when supplied, enables
@@ -471,6 +485,29 @@ fn validate_type_requirements(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn warehouse_exported_root_filenames_satisfy_requirements() {
+        for path in [
+            "Example.sqlproj",
+            "Example.dacpac",
+            "sqldw.sqlproj",
+            "sqldw.dacpac",
+        ] {
+            let mut findings = Vec::new();
+            validate_type_requirements("Warehouse", &[path.to_owned()], &mut findings);
+            assert_eq!(findings.len(), 0, "{path}");
+        }
+        for path in ["dbo/Tables/Example.sql", "nested/Example.sqlproj"] {
+            let mut findings = Vec::new();
+            validate_type_requirements("Warehouse", &[path.to_owned()], &mut findings);
+            assert!(
+                findings
+                    .iter()
+                    .any(|finding| finding.code == "MISSING_ONE_OF")
+            );
+        }
+    }
 
     fn b64(s: &str) -> String {
         BASE64.encode(s.as_bytes())

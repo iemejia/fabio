@@ -6,12 +6,12 @@
   "supported_definition_formats": ["sqlproj", "dacpac"],
   "definition_parts": [
     {
-      "path": "sqldw.dacpac",
-      "description": "Single DACPAC binary encoded as InlineBase64 when format is dacpac."
+      "path": "<displayName>.dacpac",
+      "description": "Single DACPAC binary encoded as InlineBase64. The documented upload name is sqldw.dacpac; live exports can use the warehouse display name."
     },
     {
-      "path": "sqldw.sqlproj and project files",
-      "description": "SQL project and SQL source files encoded as separate InlineBase64 parts when format is sqlproj."
+      "path": "<displayName>.sqlproj",
+      "description": "Root SQL project plus separately encoded SQL source parts. The documented upload name is sqldw.sqlproj; live exports can use the warehouse display name."
     },
     {
       "path": ".platform",

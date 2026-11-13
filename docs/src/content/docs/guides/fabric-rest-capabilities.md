@@ -21,6 +21,11 @@ fabio data-agent upload-topic --workspace "$WS" --id "$AGENT" --datasource "$SOU
 
 Downloads and successful uploads expose `etag`. For a conditional upload or deletion,
 pass that value unchanged, including its double quotes, with `--if-match`.
+Fabio checks a current snapshot before conditional mutations and rejects an
+already-stale version. **This is not atomic compare-and-swap:** the live service
+accepted a stale header during validation. Inspect `preconditionCheck` and the
+returned warnings, and avoid concurrent writers; the snapshot cannot close a
+read/write race on a backend that ignores `If-Match`.
 Uploads can replace existing content and therefore carry destructive preview notices.
 `format-topic` returns transformed Markdown with `applied: false`; it never saves
 the result. Explicitly upload the result after reviewing it.
@@ -38,7 +43,9 @@ fabio warehouse update-definition --workspace "$WS" --id "$WAREHOUSE" --content 
 ```
 
 Single-file inputs are normalized to `sqldw.sqlproj` or `sqldw.dacpac` on the wire;
-the local filename can differ. Directory inputs preserve deterministic relative
+the local filename can differ. Live exports can instead use the warehouse's
+display name as the root project/package filename. Preserve those returned paths
+when round-tripping a complete definition envelope. Directory inputs preserve deterministic relative
 part paths and reject symbolic links and special files. JSON inputs accept either
 a definition object or a `definition` envelope and validate base64 parts before
 any request. Definition inputs cannot be combined with create-time `--collation`.

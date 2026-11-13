@@ -44,6 +44,30 @@ defaultTest:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
 tests:
+  - description: "Topic concurrency: a client snapshot is not atomic enforcement"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-app-dev/SKILL.md"
+      user_query: "A topic upload returned success even with a stale If-Match value. Does --if-match guarantee atomic compare-and-swap? Can an agent just fetch a fresh ETag and automatically overwrite until it works while other writers are active?"
+    assert:
+      - type: llm-rubric
+        value: "Explicitly denies an atomic guarantee: the client can reject an already-stale snapshot but a read/write race remains and the live service accepted a stale header. Does not authorize automatic overwrite/retry with a refreshed ETag or removal of the precondition. Recommends review and avoiding/serializing concurrent writers."
+
+  - description: "Warehouse exports: preserve service-selected root filenames"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-warehouse-sql/SKILL.md"
+      user_query: "My live Warehouse export has Example.sqlproj plus SQL source parts instead of sqldw.sqlproj. Must I rename every exported part or reject it as invalid before round-tripping the envelope?"
+    assert:
+      - type: llm-rubric
+        value: "Accepts a service-selected root project filename derived from the display name and preserves returned paths when round-tripping a complete definition envelope. Distinguishes the documented sqldw upload/default names for raw single-file input from actual exported filenames; does not insist on rejecting or blindly renaming the export."
+
+  - description: "Data Agent preview: an unexpected resource ID is not a dry run"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-app-dev/SKILL.md"
+      user_query: "data-agent create --dry-run returned an actual resource ID instead of dry_run:true. Can I run create again now to make sure the agent exists?"
+    assert:
+      - type: llm-rubric
+        value: "Stops automatic creation/replay, treats the result as a potentially applied mutation rather than a valid preview, inspects the exact existing scope read-only, and recommends the guarded/fixed client before further previews. Does not infer non-submission or permission to create a duplicate."
+
   - description: "Post-Gen1 acceptance: migration and job success are not loaded-data readiness"
     vars:
       skill_content: "file://../../.agents/skills/fabio-dataflows/SKILL.md"

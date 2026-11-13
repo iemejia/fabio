@@ -2,6 +2,38 @@
 
 mod common;
 
+#[test]
+fn dataagent_create_and_update_dry_runs_make_no_requests() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let server = runtime.block_on(wiremock::MockServer::start());
+    let workspace = "00000000-0000-0000-0000-000000000001";
+    let agent = "00000000-0000-0000-0000-000000000002";
+    for flags in [vec!["--dry-run"], vec!["--readonly", "--dry-run"]] {
+        for (command, extra) in [
+            ("create", vec!["--name", "synthetic"]),
+            ("update", vec!["--id", agent, "--description", "synthetic"]),
+        ] {
+            let output = common::mock_fabio(&server)
+                .args(&flags)
+                .args(["data-agent", command, "--workspace", workspace])
+                .args(extra)
+                .assert()
+                .success();
+            let output = common::parse_json(&output);
+            assert_eq!(output["data"]["dry_run"], true);
+            assert_eq!(
+                output["data"]["would_execute"],
+                format!("data-agent {command}")
+            );
+            assert_eq!(output["data"]["details"]["workspace"], workspace);
+        }
+    }
+    assert_eq!(
+        runtime.block_on(server.received_requests()).unwrap().len(),
+        0
+    );
+}
+
 use base64::Engine;
 use common::{TestConfig, extract_count, extract_data, fabio, parse_json, unique_name};
 use predicates::prelude::*;
@@ -28,6 +60,11 @@ fn dataagent_topic_upload_sends_markdown_and_etag() {
             .expect(1)
             .mount(&server)
             .await;
+        Mock::given(method("GET"))
+            .and(path(format!("/workspaces/{workspace}/dataAgents/{agent}/staging/datasources/{datasource}/topics/content")))
+            .and(query_param("fileName", "sales-guidance.md"))
+            .respond_with(ResponseTemplate::new(200).insert_header("ETag", "\"etag-1\"").set_body_string("previous content"))
+            .expect(1).mount(&server).await;
         Mock::given(method("PUT"))
             .and(path(format!(
                 "/workspaces/{workspace}/dataAgents/{agent}/staging/datasources/{datasource}/topics"
@@ -70,6 +107,56 @@ fn dataagent_topic_upload_sends_markdown_and_etag() {
     let data = parse_json(&output)["data"].clone();
     assert_eq!(data["status"], "uploaded");
     assert_eq!(data["etag"], "\"etag-2\"");
+    assert_eq!(data["preconditionCheck"], "client_snapshot");
+    assert!(
+        data["warnings"][0]
+            .as_str()
+            .unwrap()
+            .contains("not an atomic")
+    );
+}
+
+#[test]
+fn stale_topic_etags_are_blocked_before_service_mutations() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let server = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/workspaces/00000000-0000-0000-0000-000000000001/dataAgents/00000000-0000-0000-0000-000000000002/staging/datasources"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"value":[{"id":"00000000-0000-0000-0000-000000000003","displayName":"synthetic"}]}))).mount(&server).await;
+        Mock::given(method("GET")).and(path("/workspaces/00000000-0000-0000-0000-000000000001/dataAgents/00000000-0000-0000-0000-000000000002/staging/datasources/00000000-0000-0000-0000-000000000003/topics/content"))
+            .respond_with(ResponseTemplate::new(200).insert_header("ETag","\"current\"").set_body_string("current content")).mount(&server).await;
+        for verb in ["PUT", "DELETE"] {
+            Mock::given(method(verb)).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({}))).expect(0).mount(&server).await;
+        }
+        server
+    });
+    for command in ["upload-topic", "delete-topic"] {
+        let mut cmd = common::mock_fabio(&server);
+        cmd.args([
+            "data-agent",
+            command,
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000002",
+            "--datasource",
+            "synthetic",
+            "--file-name",
+            "guidance.md",
+            "--if-match",
+            "\"stale\"",
+        ]);
+        if command == "upload-topic" {
+            cmd.args(["--content", "replacement"]);
+        }
+        cmd.assert()
+            .failure()
+            .stderr(predicates::str::contains("CONFLICT"));
+    }
+    assert_eq!(
+        runtime.block_on(server.received_requests()).unwrap().len(),
+        4
+    );
 }
 
 #[test]
@@ -112,7 +199,7 @@ fn dataagent_topic_read_format_and_delete_routes_cover_both_stages() {
                         .insert_header("ETag", "\"etag-1\"")
                         .set_body_string("# Guidance"),
                 )
-                .expect(1)
+                .expect(if prefix == "/staging" { 2 } else { 1 })
                 .mount(&server)
                 .await;
         }

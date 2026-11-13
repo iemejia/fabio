@@ -1,4 +1,5 @@
 ## Relevant Files
+- `tests/live-api-sync.md`: scoped live acceptance plan, isolation/cleanup requirements, and per-capability acceptance matrix for the consolidated REST changes
 - `tests/e2e_api_sync_workflow.rs`: hermetic concurrency, cross-date open-PR detection, and pre-generation skip contracts for `.github/workflows/sync-fabric-api-specs.yml`
 - `src/client/text.rs`: strict UTF-8 file metadata and bodyless readonly text LRO handling, with same-origin result URL checks and bounded polling
 - `tests/e2e_api_sync.rs`: consolidated new-family CRUD/readonly/input guards, Copy Job schedule wire tests, feedback no-clobber downloads and text/plain compatibility

@@ -8,6 +8,34 @@ use wiremock::matchers::{body_json, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[test]
+fn capacity_name_check_is_readonly_despite_using_post() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let server=runtime.block_on(async {
+        let server=MockServer::start().await;
+        Mock::given(method("POST")).and(path("/subscriptions/00000000-0000-0000-0000-000000000001/providers/Microsoft.Fabric/locations/westeurope/checkNameAvailability"))
+            .and(body_json(serde_json::json!({"name":"syntheticcapacity","type":"Microsoft.Fabric/capacities"})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"nameAvailable":true}))).expect(1).mount(&server).await;
+        server
+    });
+    let result = mock_fabio(&server)
+        .env("FABIO_ARM_ENDPOINT", server.uri())
+        .args([
+            "--readonly",
+            "capacity",
+            "check-name",
+            "--subscription",
+            "00000000-0000-0000-0000-000000000001",
+            "--name",
+            "syntheticcapacity",
+            "--location",
+            "westeurope",
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&result)["data"]["nameAvailable"], true);
+}
+
+#[test]
 #[ignore = "requires live Fabric tenant"]
 fn capacity_list() {
     let output = fabio().args(["capacity", "list"]).assert().success();

@@ -3,7 +3,6 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::FabioError;
 use crate::output;
 
 pub(super) async fn list(cli: &Cli, client: &FabricClient, workspace: &str) -> Result<()> {
@@ -94,28 +93,18 @@ pub(super) async fn create(
     description: Option<&str>,
     sensitivity_label: Option<&str>,
 ) -> Result<()> {
-    let mut body = serde_json::json!({
-        "displayName": name,
-    });
-    if let Some(desc) = description {
-        body["description"] = Value::from(desc);
-    }
-    if let Some(label_id) = sensitivity_label {
-        body["sensitivityLabelSettings"] = serde_json::json!({
-            "sensitivityLabelId": label_id
-        });
-    }
-
-    let data = client
-        .post(
-            &format!("/workspaces/{workspace}/dataAgents"),
-            &body,
-            true, // LRO-aware
-        )
-        .await?;
-
-    output::render_object(cli, &data, "id");
-    Ok(())
+    crate::commands::crud::create(
+        cli,
+        client,
+        "data-agent",
+        "dataAgents",
+        "Member",
+        workspace,
+        name,
+        description,
+        sensitivity_label,
+    )
+    .await
 }
 
 pub(super) async fn update(
@@ -126,30 +115,18 @@ pub(super) async fn update(
     name: Option<&str>,
     description: Option<&str>,
 ) -> Result<()> {
-    if name.is_none() && description.is_none() {
-        return Err(FabioError::invalid_input(
-            "At least one of --name or --description must be provided",
-        )
-        .into());
-    }
-
-    let mut body = serde_json::Map::new();
-    if let Some(n) = name {
-        body.insert("displayName".to_string(), Value::from(n));
-    }
-    if let Some(d) = description {
-        body.insert("description".to_string(), Value::from(d));
-    }
-
-    let data = client
-        .patch(
-            &format!("/workspaces/{workspace}/dataAgents/{id}"),
-            &Value::Object(body),
-        )
-        .await?;
-
-    output::render_object(cli, &data, "id");
-    Ok(())
+    crate::commands::crud::update(
+        cli,
+        client,
+        "data-agent",
+        "dataAgents",
+        "Contributor",
+        workspace,
+        id,
+        name,
+        description,
+    )
+    .await
 }
 
 pub(super) async fn delete(

@@ -676,7 +676,7 @@ pub enum DataAgentCommand {
         /// Markdown content; omit both flags to read stdin
         #[arg(long)]
         content: Option<String>,
-        /// Quoted `ETag` for optimistic concurrency
+        /// Quoted `ETag`: checked against a client snapshot, not an atomic guarantee
         #[arg(long)]
         if_match: Option<String>,
     },
@@ -691,7 +691,7 @@ pub enum DataAgentCommand {
         /// Topic file name ending in `.md`
         #[arg(long)]
         file_name: String,
-        /// Quoted `ETag`; delete only if the stored version still matches
+        /// Quoted `ETag`: reject a stale client snapshot; server enforcement is unverified
         #[arg(long)]
         if_match: Option<String>,
     },
