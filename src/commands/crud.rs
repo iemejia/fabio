@@ -30,13 +30,34 @@ pub async fn list(
     base_columns: &[&str],
     base_headers: &[&str],
 ) -> Result<()> {
+    list_with_options(
+        cli,
+        client,
+        collection,
+        workspace,
+        false,
+        None,
+        base_columns,
+        base_headers,
+    )
+    .await
+}
+
+/// List workspace items with the standard optional folder filters.
+#[allow(clippy::too_many_arguments)]
+pub async fn list_with_options(
+    cli: &Cli,
+    client: &FabricClient,
+    collection: &str,
+    workspace: &str,
+    no_recursive: bool,
+    root_folder_id: Option<&str>,
+    base_columns: &[&str],
+    base_headers: &[&str],
+) -> Result<()> {
+    let path = item_list_path(collection, workspace, no_recursive, root_folder_id)?;
     let resp = client
-        .get_list(
-            &format!("/workspaces/{workspace}/{collection}"),
-            "value",
-            cli.all,
-            cli.continuation_token.as_deref(),
-        )
+        .get_list(&path, "value", cli.all, cli.continuation_token.as_deref())
         .await?;
     output::render_item_list(
         cli,
@@ -47,6 +68,28 @@ pub async fn list(
         resp.continuation_token.as_deref(),
     );
     Ok(())
+}
+
+pub(super) fn item_list_path(
+    collection: &str,
+    workspace: &str,
+    no_recursive: bool,
+    root_folder_id: Option<&str>,
+) -> Result<String> {
+    let mut path = format!("/workspaces/{workspace}/{collection}");
+    let mut params = Vec::new();
+    if no_recursive {
+        params.push("recursive=false".to_owned());
+    }
+    if let Some(folder) = root_folder_id {
+        crate::client::validate_uuid(folder, "--root-folder-id")?;
+        params.push(format!("rootFolderId={}", urlencoding::encode(folder)));
+    }
+    if !params.is_empty() {
+        path.push('?');
+        path.push_str(&params.join("&"));
+    }
+    Ok(path)
 }
 
 /// GET a single item by id and render it.
@@ -115,16 +158,37 @@ pub async fn get_definition(
     id: &str,
     decode: bool,
 ) -> Result<()> {
+    get_definition_with_options(
+        cli, client, group, collection, role, workspace, id, None, decode,
+    )
+    .await
+}
+
+/// Fetch an optional-format public definition using the common readonly transport.
+#[allow(clippy::too_many_arguments)]
+pub async fn get_definition_with_options(
+    cli: &Cli,
+    client: &FabricClient,
+    group: &str,
+    collection: &str,
+    role: &str,
+    workspace: &str,
+    id: &str,
+    format: Option<&str>,
+    decode: bool,
+) -> Result<()> {
     let op = format!("{group} get-definition");
     // This explicitly read-only POST must not accept path/query injection that
     // could turn a user-supplied ID into another action under --readonly.
     crate::client::validate_uuid(workspace, "--workspace")?;
     crate::client::validate_uuid(id, "--id")?;
+    let mut path = format!("/workspaces/{workspace}/{collection}/{id}/getDefinition");
+    if let Some(format) = format {
+        path.push_str("?format=");
+        path.push_str(&urlencoding::encode(format));
+    }
     let data = client
-        .post_readonly_with_lro(
-            &format!("/workspaces/{workspace}/{collection}/{id}/getDefinition"),
-            &serde_json::json!({}),
-        )
+        .post_readonly_with_lro(&path, &serde_json::json!({}))
         .await
         .map_err(|e| enrich_forbidden(e, &op, role))?;
     if decode {
@@ -154,6 +218,39 @@ pub async fn update_definition(
     file: Option<&str>,
     content: Option<&str>,
 ) -> Result<()> {
+    update_definition_with_options(
+        cli,
+        client,
+        group,
+        collection,
+        role,
+        part_filename,
+        workspace,
+        id,
+        file,
+        content,
+        None,
+        false,
+    )
+    .await
+}
+
+/// Replace a definition with optional format and .platform metadata handling.
+#[allow(clippy::too_many_arguments)]
+pub async fn update_definition_with_options(
+    cli: &Cli,
+    client: &FabricClient,
+    group: &str,
+    collection: &str,
+    role: &str,
+    part_filename: &str,
+    workspace: &str,
+    id: &str,
+    file: Option<&str>,
+    content: Option<&str>,
+    format: Option<&str>,
+    update_metadata: bool,
+) -> Result<()> {
     let op = format!("{group} update-definition");
     let script = match (file, content) {
         (Some(path), _) => std::fs::read_to_string(path)
@@ -170,20 +267,23 @@ pub async fn update_definition(
             .into());
         }
     };
-    let body = crate::definition_spec::build_update_definition_body(&script, part_filename);
+    let mut body = crate::definition_spec::build_update_definition_body(&script, part_filename);
+    if let Some(format) = format {
+        body["definition"]["format"] = serde_json::Value::from(format);
+    }
     if output::dry_run_guard(
         cli,
         &op,
-        &serde_json::json!({ "workspace": workspace, "id": id, "contentLength": script.len() }),
+        &serde_json::json!({ "workspace": workspace, "id": id, "contentLength": script.len(), "format": format, "updateMetadata": update_metadata }),
     ) {
         return Ok(());
     }
+    let mut path = format!("/workspaces/{workspace}/{collection}/{id}/updateDefinition");
+    if update_metadata {
+        path.push_str("?updateMetadata=true");
+    }
     let data = client
-        .post(
-            &format!("/workspaces/{workspace}/{collection}/{id}/updateDefinition"),
-            &body,
-            true,
-        )
+        .post(&path, &body, true)
         .await
         .map_err(|e| enrich_forbidden(e, &op, role))?;
     if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {

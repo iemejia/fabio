@@ -80,6 +80,7 @@ pub(super) async fn show(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn create(
     cli: &Cli,
     client: &FabricClient,
@@ -88,7 +89,12 @@ pub(super) async fn create(
     description: Option<&str>,
     sensitivity_label: Option<&str>,
     collation: Option<&str>,
+    definition_file: Option<&str>,
+    definition_dir: Option<&str>,
+    definition_content: Option<&str>,
+    definition_format: Option<super::WarehouseDefinitionFormat>,
 ) -> Result<()> {
+    crate::client::validate_uuid(workspace, "--workspace")?;
     let mut body = serde_json::json!({
         "displayName": name,
     });
@@ -104,6 +110,14 @@ pub(super) async fn create(
         // Warehouse collation is set at create time via creationPayload.collationType.
         body["creationPayload"] = serde_json::json!({ "collationType": c });
     }
+    if let Some(definition) = super::definitions::optional_definition(
+        definition_file,
+        definition_dir,
+        definition_content,
+        definition_format,
+    )? {
+        body["definition"] = definition;
+    }
 
     if output::dry_run_guard(
         cli,
@@ -113,7 +127,11 @@ pub(super) async fn create(
             "displayName": name,
             "description": description,
             "sensitivityLabel": sensitivity_label,
-            "collation": collation
+            "collation": collation,
+            "definitionFormat": body.get("definition").map(|definition| definition.get("format").and_then(Value::as_str).unwrap_or("sqlproj")),
+            "hasDefinition": body.get("definition").is_some(),
+            "definitionPartCount": body["definition"]["parts"].as_array().map_or(0, Vec::len),
+            "definition": body.get("definition")
         }),
     ) {
         return Ok(());

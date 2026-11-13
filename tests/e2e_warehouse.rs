@@ -5,8 +5,288 @@ mod common;
 use common::{TestConfig, extract_data, fabio, parse_json};
 use predicates::prelude::*;
 use serial_test::serial;
-use wiremock::matchers::{body_json, method, path};
+use wiremock::matchers::{body_json, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+
+#[test]
+fn warehouse_definition_create_and_update_dry_runs() {
+    let directory = tempfile::tempdir().unwrap();
+    let dacpac = directory.path().join("definition.dacpac");
+    std::fs::write(&dacpac, b"synthetic-dacpac").unwrap();
+    let dacpac = dacpac.to_str().unwrap();
+    let workspace = uuid::Uuid::nil().to_string();
+    let warehouse = "5b218778-e7a5-4d73-8187-f10824047715";
+
+    let created = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "create",
+            "--workspace",
+            &workspace,
+            "--name",
+            "definition-test",
+            "--definition-file",
+            dacpac,
+            "--definition-format",
+            "dacpac",
+        ])
+        .assert()
+        .success();
+    let created = parse_json(&created);
+    assert_eq!(created["data"]["details"]["definitionFormat"], "dacpac");
+    assert_eq!(created["data"]["details"]["definitionPartCount"], 1);
+
+    let updated = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "update-definition",
+            "--workspace",
+            &workspace,
+            "--id",
+            warehouse,
+            "--definition-file",
+            dacpac,
+            "--format",
+            "dacpac",
+            "--update-metadata",
+        ])
+        .assert()
+        .success();
+    let updated = parse_json(&updated);
+    assert_eq!(updated["data"]["details"]["format"], "dacpac");
+    assert_eq!(updated["data"]["details"]["partCount"], 1);
+    assert_eq!(updated["data"]["details"]["updateMetadata"], true);
+    assert_eq!(updated["data"]["destructive"], true);
+}
+
+#[test]
+fn warehouse_get_definition_uses_format_query_and_readonly_mode() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let workspace = uuid::Uuid::nil().to_string();
+    let warehouse = "5b218778-e7a5-4d73-8187-f10824047715";
+    let route = format!("/workspaces/{workspace}/warehouses/{warehouse}/getDefinition");
+    let server = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(route))
+            .and(wiremock::matchers::query_param("format", "dacpac"))
+            .and(body_json(serde_json::json!({})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "definition": {"parts": [{
+                    "path": "definition.dacpac",
+                    "payload": "ZGFjcGFj",
+                    "payloadType": "InlineBase64"
+                }]}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        server
+    });
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", server.uri())
+        .args([
+            "--readonly",
+            "warehouse",
+            "get-definition",
+            "--workspace",
+            &workspace,
+            "--id",
+            warehouse,
+            "--format",
+            "dacpac",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&output)["data"]["definition"]["parts"][0]["path"],
+        "definition.dacpac"
+    );
+}
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn warehouse_definition_mutations_send_parts_and_enforce_readonly() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let workspace = uuid::Uuid::nil().to_string();
+    let warehouse = "5b218778-e7a5-4d73-8187-f10824047715";
+    let create_directory = tempfile::tempdir().unwrap();
+    let dacpac = create_directory.path().join("definition.dacpac");
+    std::fs::write(&dacpac, b"dacpac").unwrap();
+    let project_directory = tempfile::tempdir().unwrap();
+    std::fs::write(project_directory.path().join("sqldw.sqlproj"), b"project").unwrap();
+    let tables = project_directory.path().join("dbo").join("Tables");
+    std::fs::create_dir_all(&tables).unwrap();
+    std::fs::write(tables.join("Orders.sql"), b"table").unwrap();
+    let create_path = format!("/workspaces/{workspace}/warehouses");
+    let update_path = format!("/workspaces/{workspace}/warehouses/{warehouse}/updateDefinition");
+    let server = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(&create_path))
+            .and(body_json(serde_json::json!({
+                "displayName": "definition-test",
+                "definition": {
+                    "format": "dacpac",
+                    "parts": [{
+                        "path": "sqldw.dacpac",
+                        "payload": "ZGFjcGFj",
+                        "payloadType": "InlineBase64"
+                    }]
+                }
+            })))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "id": warehouse, "displayName": "definition-test"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(&update_path))
+            .and(query_param("updateMetadata", "true"))
+            .and(body_json(serde_json::json!({
+                "definition": {
+                    "format": "sqlproj",
+                    "parts": [
+                        {
+                            "path": "dbo/Tables/Orders.sql",
+                            "payload": "dGFibGU=",
+                            "payloadType": "InlineBase64"
+                        },
+                        {
+                            "path": "sqldw.sqlproj",
+                            "payload": "cHJvamVjdA==",
+                            "payloadType": "InlineBase64"
+                        }
+                    ]
+                }
+            })))
+            .respond_with(
+                ResponseTemplate::new(202)
+                    .insert_header(
+                        "Location",
+                        format!("{}/operations/warehouse-update", server.uri()),
+                    )
+                    .insert_header("Retry-After", "0"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/operations/warehouse-update"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "status": "Succeeded"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        server
+    });
+
+    let created = common::mock_fabio(&server)
+        .args([
+            "warehouse",
+            "create",
+            "--workspace",
+            &workspace,
+            "--name",
+            "definition-test",
+            "--definition-file",
+            dacpac.to_str().unwrap(),
+            "--definition-format",
+            "dacpac",
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&created)["data"]["id"], warehouse);
+
+    let updated = common::mock_fabio(&server)
+        .args([
+            "warehouse",
+            "update-definition",
+            "--workspace",
+            &workspace,
+            "--id",
+            warehouse,
+            "--definition-dir",
+            project_directory.path().to_str().unwrap(),
+            "--format",
+            "sqlproj",
+            "--update-metadata",
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&updated)["data"]["status"], "Succeeded");
+
+    for (command, args) in [
+        (
+            "create",
+            vec![
+                "--workspace",
+                &workspace,
+                "--name",
+                "definition-test",
+                "--definition-file",
+                dacpac.to_str().unwrap(),
+                "--definition-format",
+                "dacpac",
+            ],
+        ),
+        (
+            "update-definition",
+            vec![
+                "--workspace",
+                &workspace,
+                "--id",
+                warehouse,
+                "--definition-dir",
+                project_directory.path().to_str().unwrap(),
+                "--format",
+                "sqlproj",
+            ],
+        ),
+    ] {
+        let output = common::mock_fabio(&server)
+            .args(["--quiet", "--readonly", "warehouse", command])
+            .args(args)
+            .assert()
+            .failure();
+        let error: serde_json::Value = serde_json::from_slice(&output.get_output().stderr).unwrap();
+        assert_eq!(error["error"]["code"], "READONLY_MODE");
+    }
+
+    assert_eq!(
+        runtime.block_on(server.received_requests()).unwrap().len(),
+        3
+    );
+}
+
+#[test]
+fn warehouse_definition_json_format_is_preserved_in_dry_run_previews() {
+    let directory = tempfile::tempdir().unwrap();
+    // JSON envelopes are detected by content, not only a .json filename.
+    let file = directory.path().join("warehouse.definition");
+    std::fs::write(&file, r#"{"definition":{"format":"dacpac","parts":[{"path":"sqldw.dacpac","payload":"ZGFjcGFj","payloadType":"InlineBase64"}]}}"#).unwrap();
+    let workspace = uuid::Uuid::nil().to_string();
+    let result = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "update-definition",
+            "--workspace",
+            &workspace,
+            "--id",
+            &workspace,
+            "--file",
+            file.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&result)["data"]["details"]["format"], "dacpac");
+}
 
 #[test]
 fn warehouse_sql_pools_get_and_patch_use_stable_route_without_beta() {
@@ -2094,6 +2374,50 @@ fn warehouse_update_audit_settings_predicate_dry_run() {
         details["predicateExpression"],
         "database_principal_name <> 'dbo'"
     );
+}
+
+#[test]
+fn test_create_with_definition_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "create",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--name",
+            "definition-test",
+            "--definition-content",
+            "<Project />",
+            "--definition-format",
+            "sqlproj",
+        ])
+        .assert()
+        .success();
+    let json: serde_json::Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "warehouse create");
+    assert_eq!(json["data"]["details"]["definitionFormat"], "sqlproj");
+}
+
+#[test]
+fn test_update_definition_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "warehouse",
+            "update-definition",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000000",
+            "--id",
+            "00000000-0000-0000-0000-000000000001",
+            "--content",
+            "<Project />",
+        ])
+        .assert()
+        .success();
+    let json: serde_json::Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+    assert_eq!(json["data"]["would_execute"], "warehouse update-definition");
+    assert_eq!(json["data"]["details"]["format"], "sqlproj");
 }
 
 #[test]

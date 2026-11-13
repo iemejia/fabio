@@ -86,6 +86,69 @@ fn capacity_update_surge_protection_dry_run() {
 }
 
 #[test]
+fn capacity_actor_auto_detection_rules_dry_runs() {
+    let capacity = "96f3f0ff-4fe2-4712-b61b-05a456ba9357";
+    let rule = "a1f0c3e4-5b6d-4890-abcd-ef1234567890";
+    let created = fabio()
+        .args([
+            "--dry-run",
+            "capacity",
+            "create-actor-auto-detection-rule",
+            "--id",
+            capacity,
+            "--threshold",
+            "25",
+            "--block-duration",
+            "Hours",
+            "--hours",
+            "24",
+        ])
+        .assert()
+        .success();
+    let created = parse_json(&created);
+    assert_eq!(
+        created["data"]["details"]["blockDuration"],
+        serde_json::json!({"type": "Hours", "hours": 24})
+    );
+
+    let updated = fabio()
+        .args([
+            "--dry-run",
+            "capacity",
+            "update-actor-auto-detection-rule",
+            "--id",
+            capacity,
+            "--rule-id",
+            rule,
+            "--block-duration",
+            "Indefinite",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&updated)["data"]["details"]["blockDuration"]["type"],
+        "Indefinite"
+    );
+
+    let deleted = fabio()
+        .args([
+            "--dry-run",
+            "capacity",
+            "delete-actor-auto-detection-rule",
+            "--id",
+            capacity,
+            "--rule-id",
+            rule,
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&deleted)["data"]["details"]["existingBlocksRemain"],
+        true
+    );
+}
+
+#[test]
 #[serial]
 fn capacity_update_surge_protection_sends_patch() {
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -311,6 +374,7 @@ fn test_create_blocked_actor_dry_run() {
 const CAPACITY: &str = "aaaaaaaa-1111-2222-3333-444444444444";
 const ACTOR: &str = "bbbbbbbb-1111-2222-3333-444444444444";
 const WORKSPACE: &str = "cccccccc-1111-2222-3333-444444444444";
+const RULE: &str = "dddddddd-1111-2222-3333-444444444444";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn capacity_actor_previews_identify_each_target_without_requests() {
@@ -600,6 +664,186 @@ async fn capacity_actor_lists_follow_continuation() {
     }
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[allow(clippy::too_many_lines)]
+async fn capacity_actor_auto_detection_rules_cover_crud_pagination_and_readonly() {
+    let server = MockServer::start().await;
+    let collection_path = format!("/capacities/{CAPACITY}/surgeProtection/actorAutoDetectionRules");
+    let item_path = format!("{collection_path}/{RULE}");
+    let create_body = serde_json::json!({
+        "actorsSubjectToRule": {"type": "AllWorkspaces"},
+        "capacityUnitsConsumptionThresholdPercentage": 25,
+        "blockDuration": {"type": "Hours", "hours": 24}
+    });
+    let mut rule = create_body.clone();
+    rule["id"] = serde_json::Value::from(RULE);
+    Mock::given(method("POST"))
+        .and(path(&collection_path))
+        .and(body_json(&create_body))
+        .respond_with(ResponseTemplate::new(201).set_body_json(&rule))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(&collection_path))
+        .and(query_param("continuationToken", "next-page"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "value": [{"id": RULE}]
+        })))
+        .with_priority(1)
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(&collection_path))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "value": [rule],
+            "continuationToken": "next-page"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(&item_path))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&rule))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("PATCH"))
+        .and(path(&item_path))
+        .and(body_json(serde_json::json!({
+            "capacityUnitsConsumptionThresholdPercentage": 50
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&rule))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path(&item_path))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let created = mock_fabio(&server)
+        .args([
+            "capacity",
+            "create-actor-auto-detection-rule",
+            "--id",
+            CAPACITY,
+            "--threshold",
+            "25",
+            "--block-duration",
+            "Hours",
+            "--hours",
+            "24",
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&created)["data"], rule);
+
+    let listed = mock_fabio(&server)
+        .args([
+            "--all",
+            "capacity",
+            "list-actor-auto-detection-rules",
+            "--id",
+            CAPACITY,
+        ])
+        .assert()
+        .success();
+    let listed = parse_json(&listed);
+    assert_eq!(listed["count"], 2);
+    assert_eq!(listed["data"][0]["id"], RULE);
+
+    let shown = mock_fabio(&server)
+        .args([
+            "capacity",
+            "show-actor-auto-detection-rule",
+            "--id",
+            CAPACITY,
+            "--rule-id",
+            RULE,
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&shown)["data"], rule);
+
+    let updated = mock_fabio(&server)
+        .args([
+            "capacity",
+            "update-actor-auto-detection-rule",
+            "--id",
+            CAPACITY,
+            "--rule-id",
+            RULE,
+            "--threshold",
+            "50",
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&updated)["data"], rule);
+
+    let deleted = mock_fabio(&server)
+        .args([
+            "capacity",
+            "delete-actor-auto-detection-rule",
+            "--id",
+            CAPACITY,
+            "--rule-id",
+            RULE,
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&deleted)["data"],
+        serde_json::json!({"id": RULE, "status": "deleted"})
+    );
+
+    for args in [
+        vec![
+            "capacity",
+            "create-actor-auto-detection-rule",
+            "--id",
+            CAPACITY,
+            "--threshold",
+            "25",
+            "--block-duration",
+            "Hours",
+            "--hours",
+            "24",
+        ],
+        vec![
+            "capacity",
+            "update-actor-auto-detection-rule",
+            "--id",
+            CAPACITY,
+            "--rule-id",
+            RULE,
+            "--threshold",
+            "50",
+        ],
+        vec![
+            "capacity",
+            "delete-actor-auto-detection-rule",
+            "--id",
+            CAPACITY,
+            "--rule-id",
+            RULE,
+        ],
+    ] {
+        let output = mock_fabio(&server)
+            .args(["--quiet", "--readonly"])
+            .args(args)
+            .assert()
+            .failure();
+        let error: serde_json::Value = serde_json::from_slice(&output.get_output().stderr).unwrap();
+        assert_eq!(error["error"]["code"], "READONLY_MODE");
+    }
+
+    assert_eq!(server.received_requests().await.unwrap().len(), 6);
+}
+
 #[test]
 fn test_delete_mission_critical_actor_dry_run() {
     let output = fabio()
@@ -620,6 +864,56 @@ fn test_delete_mission_critical_actor_dry_run() {
         "capacity delete-mission-critical-actor"
     );
     assert_eq!(data["destructive"], true);
+}
+
+#[test]
+fn test_create_actor_auto_detection_rule_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "capacity",
+            "create-actor-auto-detection-rule",
+            "--id",
+            "96f3f0ff-4fe2-4712-b61b-05a456ba9357",
+            "--threshold-percentage",
+            "25",
+            "--block-duration",
+            "Hours",
+            "--hours",
+            "24",
+        ])
+        .assert()
+        .success();
+    let data = parse_json(&output)["data"].clone();
+    assert_eq!(
+        data["details"]["actorsSubjectToRule"]["type"],
+        "AllWorkspaces"
+    );
+    assert_eq!(
+        data["details"]["capacityUnitsConsumptionThresholdPercentage"],
+        25
+    );
+}
+
+#[test]
+fn test_delete_actor_auto_detection_rule_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "capacity",
+            "delete-actor-auto-detection-rule",
+            "--id",
+            "96f3f0ff-4fe2-4712-b61b-05a456ba9357",
+            "--rule-id",
+            "33445566-7788-49aa-bbcc-ddeeff001122",
+        ])
+        .assert()
+        .success();
+    let data = parse_json(&output)["data"].clone();
+    assert_eq!(
+        data["would_execute"],
+        "capacity delete-actor-auto-detection-rule"
+    );
 }
 
 #[test]

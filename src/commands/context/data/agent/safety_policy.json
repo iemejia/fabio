@@ -3,7 +3,9 @@
   "destructive_verbs": ["delete", "remove", "vacuum", "prune", "purge", "drop", "truncate", "kill", "cancel", "clear", "reset", "stop", "checkout"],
   "destructive_commands": {
     "deploy apply": "Deployment can replace existing definitions and delete items. The concrete plan still reports whether its selected actions are destructive.",
-    "dataflow upgrade-gen1": "Execution always replaces the selected Gen1 items irreversibly. The approval flag gates execution; it does not make an otherwise harmless mode destructive."
+    "dataflow upgrade-gen1": "Execution always replaces the selected Gen1 items irreversibly. The approval flag gates execution; it does not make an otherwise harmless mode destructive.",
+    "data-agent upload-topic": "PUT can permanently replace an existing topic; ETag preconditions prevent concurrent replacement but do not make replacement reversible.",
+    "workspace modify-file-soft-delete": "Disabling retention or reducing its duration changes recovery guarantees for future file deletions; already deleted files retain their original expiry."
   },
   "action_scoped_commands": ["deploy apply"],
   "destructive_flags": ["--force-all", "--overwrite", "--hard-delete", "--drop-if-exists", "--delete-orphans", "--allow-replace", "--allow-delete-types", "--allow-purge-data", "--allow-in-place-upgrade", "--cancel-on-timeout", "--include-running"],

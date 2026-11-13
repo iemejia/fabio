@@ -15,7 +15,7 @@
   },
   "notes": [
     "Topology is graph-based: nodes reference each other via inputNodes arrays",
-    "Source types include CustomEndpoint, AzureEventHub, LakehouseChangeFeed, SampleData, AmazonKinesis, etc.",
+    "Source types include CustomEndpoint, AzureEventHub, LakehouseChangeFeed, SampleData, AmazonKinesis, BusinessEvents, CustomStreamConnector, etc.",
     "Destination types include Eventhouse, Lakehouse, BusinessEvents, CustomEndpoint, Activator",
     "Eventhouse destination itemId must be KQL Database ID (not Eventhouse ID)",
     "Use add-source/add-destination helpers to avoid manual definition crafting",
@@ -29,7 +29,9 @@
     "LakehouseChangeFeed requires workspaceId, itemId, and tableNames; currently tableNames supports only [\"*\"] (all tables)",
     "BusinessEvents destination requires workspaceId, itemId (an Event Schema Set), and businessEventTypeId; inputSerialization is optional",
     "SQL Server-family CDC sources support heartbeatIntervalMs, heartbeatActionQuery, and storeOnlyCapturedTablesDdl; PostgreSQL CDC supports heartbeatIntervalMs; MySQL/Oracle CDC support storeOnlyCapturedTablesDdl",
-    "FabricAnomalyDetectionEvents source properties: workspaceId, itemId, configurationId, includedEventTypes (e.g. Microsoft.Fabric.AnomalyDetection.AnomalyDetected), and optional Event Grid advanced filters"
+    "FabricAnomalyDetectionEvents source properties: workspaceId, itemId, configurationId, includedEventTypes (e.g. Microsoft.Fabric.AnomalyDetection.AnomalyDetected), and optional Event Grid advanced filters",
+    "BusinessEvents source responses contain workspaceId, itemId, businessEventTypeId, and advanced filters. operatorType is PascalCase and supports NumberIn, NumberNotIn, NumberLessThan, NumberLessThanOrEquals, NumberGreaterThan, NumberGreaterThanOrEquals, NumberInRange, NumberNotInRange, BoolEquals, StringIn, StringNotIn, StringBeginsWith, StringNotBeginsWith, StringEndsWith, StringNotEndsWith, StringContains, StringNotContains, IsNullOrUndefined, and IsNotNull.",
+    "CustomStreamConnector source responses reference the connector item through workspaceId and itemId."
   ],
   "related_commands": [
     "fabio eventstream add-source --workspace <WS> --id <ID> --name <N> --source-type CustomEndpoint",

@@ -1,0 +1,27 @@
+{
+  "command": "fabio capacity list-actor-auto-detection-rules --id $CAPACITY",
+  "description": "List automated capacity surge-protection rules.",
+  "response": {
+    "data": [
+      {
+        "id": "<rule-id>",
+        "actorsSubjectToRule": {
+          "type": "AllWorkspaces"
+        },
+        "capacityUnitsConsumptionThresholdPercentage": 25,
+        "blockDuration": {
+          "type": "Hours",
+          "hours": 24
+        }
+      }
+    ],
+    "count": 1
+  },
+  "notes": "Threshold consumption is measured per actor over a rolling 24-hour window. blockDuration is discriminated by type: Hours requires hours>=1; Indefinite has no hours field.",
+  "query_examples": [
+    {
+      "query": "[].capacityUnitsConsumptionThresholdPercentage",
+      "description": "Extract configured percentage thresholds."
+    }
+  ]
+}

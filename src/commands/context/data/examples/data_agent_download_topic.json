@@ -1,0 +1,22 @@
+{
+  "command": "fabio data-agent download-topic --workspace $WS --id $AGENT --datasource $SOURCE --file-name guidance.md --stage staging",
+  "description": "Download a staging or published Data Agent datasource topic.",
+  "response": {
+    "data": {
+      "fileName": "guidance.md",
+      "content": "# Business guidance\nUse fiscal-year terminology.",
+      "etag": "\"topic-etag\""
+    }
+  },
+  "notes": "Topic files are Markdown basenames ending in .md. Preserve the ETag and pass it with --if-match for conditional upload or deletion. format-topic returns this shape plus applied:false because formatting never modifies the source.",
+  "query_examples": [
+    {
+      "query": "content",
+      "description": "Extract the Markdown content."
+    },
+    {
+      "query": "etag",
+      "description": "Extract the concurrency token."
+    }
+  ]
+}

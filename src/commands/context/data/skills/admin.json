@@ -11,7 +11,9 @@
     "connection",
     "managed-private-endpoint",
     "label",
-    "policy-set"
+    "policy-set",
+    "share",
+    "share-subscription"
   ],
   "when_to_use": [
     "Bounded admin connection review: explicit IDs or opt-in inventory, historical recency, complete ownership evidence and target similarity, with guarded previews but no cleanup executor.",
@@ -45,7 +47,9 @@
     "label list resolves UUIDs to names via Microsoft Graph (needs M365 E5 + InformationProtection.Read).",
     "workspace recover-item can partially succeed: a failed child and its descendants remain soft-deleted while independent branches may recover.",
     "Customer-Managed Key (CMK) governance: enable/rotate per workspace with 'workspace assign-encryption --key-identifier <versionless Key Vault key URI>' (rotation reuses assign since the URI is versionless), inspect with 'workspace get-encryption', revert to Microsoft-managed keys with 'workspace reset-encryption'. For a tenant-wide audit, 'admin list-workspaces --include encryption' returns each workspace's encryption state and accepts '--encryption-status' (Active/EnableInProgress/DisableInProgress/Failed/Disabled) and '--capacity-id' to scope the view (e.g. find workspaces mid-enablement on one capacity)."
-    ,"OneLake access-time tracking is workspace-scoped and requires Admin: 'workspace modify-access-time-tracking --status Enabled|Disabled'. Reads and writes update LastAccessTime when enabled; metadata-only operations do not."
+    ,"OneLake access-time tracking is workspace-scoped and requires Admin: 'workspace modify-access-time-tracking --status Enabled|Disabled'. Reads and writes update LastAccessTime when enabled; metadata-only operations do not.",
+    "OneLake file soft-delete is workspace-scoped and requires Admin. Enabling requires --retention-days 1-365. Disabling discards the configured retention for future use and makes new deletions permanent, but already soft-deleted files keep their original expiry; mirrored items are unaffected.",
+    "Capacity actor auto-detection currently supports actorsSubjectToRule.type=AllWorkspaces only. The threshold is 1-100 percent of capacity units over a rolling 24-hour window. Block duration is Hours (at least 1) or Indefinite; deleting a rule does not unblock actors already blocked by it."
   ],
   "safety": [
     "Admin connection hygiene is review-only. NEVER choose a winner/keepId, rebind, delete or grant owners from recency/target similarity, even when the user asks for automatic cleanup without dependency/security review. All plans are applied:false/readyToApply:false; unknown/partial/pending evidence cannot authorize mutation. Keep both --readonly and --dry-run on any separate preview.",

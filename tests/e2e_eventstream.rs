@@ -129,6 +129,40 @@ fn eventstream_dry_run_create() {
     assert_eq!(json["data"]["would_execute"], "eventstream create");
 }
 
+#[test]
+fn test_add_custom_stream_connector_source_dry_run() {
+    let properties = serde_json::json!({
+        "dataConnectionId": "67a65f1d-6f20-4f80-aef0-a67730de7a2f",
+        "workspaceId": "9625b495-17b3-4d6c-aeea-a81ae76ba369",
+        "itemId": "ee579458-85ea-4652-bd77-5c7d7c298b2a",
+        "configurations": [{"key":"topic","value":"orders"}]
+    });
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "eventstream",
+            "add-source",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "custom-connector",
+            "--source-type",
+            "CustomStreamConnector",
+            "--properties",
+            &properties.to_string(),
+        ])
+        .assert()
+        .success();
+    let data = parse_json(&output)["data"].clone();
+    assert_eq!(data["details"]["source"]["type"], "CustomStreamConnector");
+    assert_eq!(
+        data["details"]["source"]["properties"]["configurations"][0]["key"],
+        "topic"
+    );
+}
+
 // ─── Topology tests ──────────────────────────────────────────────────────────
 
 #[test]
@@ -623,13 +657,14 @@ fn eventstream_list_components_filter_source() {
     let json = parse_json(&output);
     let data = extract_data(&json);
     let items = data.as_array().expect("should be array");
-    assert_eq!(items.len(), 38, "Should match the complete SourceType enum");
+    assert_eq!(items.len(), 39, "Should match the complete SourceType enum");
     let types: Vec<&str> = items
         .iter()
         .filter_map(|item| item["type"].as_str())
         .collect();
     for new_type in [
         "Cribl",
+        "CustomStreamConnector",
         "FabricCapacityOperationEvents",
         "LakehouseChangeFeed",
         "ReferenceLakehouse",

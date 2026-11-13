@@ -24,7 +24,7 @@
       }
     }
   },
-  "notes": "Two INDEPENDENT axes. `supports_definition` (get/update-definition API) is distinct from `deploy_strategy`: e.g. Lakehouse supports the definition API but deploys as a shell (platform_only, supports_definition=true, deployable_from_definition=false), while Warehouse has no definition API at all (supports_definition=false). Use this BEFORE deploy/export/update-definition so an agent doesn't attempt an unsupported operation. The full matrix (no TYPE arg) returns {item_capabilities:[...], count, legend}. Scorecard is NOT here — it's a Power BI Goals artifact, not a Fabric item (fabio scorecard ...).",
+   "notes": "Two INDEPENDENT axes. `supports_definition` (get/update-definition API) is distinct from `deploy_strategy`: Lakehouse supports the definition API but deploys as a shell (platform_only, supports_definition=true, deployable_from_definition=false), while Warehouse now supports public definitions and content-backed deployment. Share Subscriptions are creatable but require an invitation payload and have no public definition, so generic deployment is unsupported. Use this BEFORE deploy/export/update-definition. The full matrix (no TYPE arg) returns {item_capabilities:[...], count, legend}. Scorecard is NOT here — it is a Power BI Goals artifact, not a Fabric item.",
   "query_examples": [
     {"query": "deploy_strategy", "description": "content | platform_only | unsupported for one type."},
     {"query": "item_capabilities[?deploy_strategy=='content'].type", "description": "(full matrix) types fabio can deploy from a definition."},

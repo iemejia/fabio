@@ -6,7 +6,7 @@ use crate::client::{FabricClient, validate_uuid};
 use crate::errors::{ErrorCode, FabioError, enrich_capacity};
 use crate::output;
 
-use super::BlockedActorExpirationPolicy;
+use super::{AutoDetectionBlockDuration, BlockedActorExpirationPolicy};
 
 fn expiration_policy(
     policy: BlockedActorExpirationPolicy,
@@ -287,6 +287,189 @@ pub(super) async fn delete_mission_critical(
     Ok(())
 }
 
+fn auto_detection_rules_path(capacity_id: &str) -> String {
+    format!("/capacities/{capacity_id}/surgeProtection/actorAutoDetectionRules")
+}
+
+fn auto_detection_configuration(
+    block_duration: AutoDetectionBlockDuration,
+    hours: Option<u32>,
+) -> Result<Value> {
+    match (block_duration, hours) {
+        (AutoDetectionBlockDuration::Hours, Some(value)) if value >= 1 => {
+            Ok(serde_json::json!({"type": "Hours", "hours": value}))
+        }
+        (AutoDetectionBlockDuration::Hours, _) => Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "--hours must be at least 1 when --block-duration Hours",
+            "Provide --block-duration Hours --hours 24, or use --block-duration Indefinite.",
+        )
+        .into()),
+        (AutoDetectionBlockDuration::Indefinite, None) => {
+            Ok(serde_json::json!({"type": "Indefinite"}))
+        }
+        (AutoDetectionBlockDuration::Indefinite, Some(_)) => Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "--hours cannot be used with --block-duration Indefinite",
+            "Remove --hours or change --block-duration to Hours.",
+        )
+        .into()),
+    }
+}
+
+pub(super) async fn create_auto_detection_rule(
+    cli: &Cli,
+    client: &FabricClient,
+    capacity_id: &str,
+    threshold_percentage: u8,
+    block_duration: AutoDetectionBlockDuration,
+    hours: Option<u32>,
+) -> Result<()> {
+    validate_uuid(capacity_id, "--id")?;
+    let body = serde_json::json!({
+        "actorsSubjectToRule": {"type": "AllWorkspaces"},
+        "capacityUnitsConsumptionThresholdPercentage": threshold_percentage,
+        "blockDuration": auto_detection_configuration(block_duration, hours)?,
+    });
+    if output::dry_run_guard(cli, "capacity create-actor-auto-detection-rule", &body) {
+        return Ok(());
+    }
+    let data = client
+        .post(&auto_detection_rules_path(capacity_id), &body, false)
+        .await
+        .map_err(|e| enrich_capacity(e, "capacity create-actor-auto-detection-rule"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+pub(super) async fn list_auto_detection_rules(
+    cli: &Cli,
+    client: &FabricClient,
+    capacity_id: &str,
+) -> Result<()> {
+    validate_uuid(capacity_id, "--id")?;
+    let response = client
+        .get_list(
+            &auto_detection_rules_path(capacity_id),
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_capacity(e, "capacity list-actor-auto-detection-rules"))?;
+    output::render_list_with_token(
+        cli,
+        &response.items,
+        &[
+            "id",
+            "actorsSubjectToRule.type",
+            "capacityUnitsConsumptionThresholdPercentage",
+            "blockDuration.type",
+        ],
+        &["ID", "TYPE", "THRESHOLD", "BLOCK DURATION"],
+        "id",
+        response.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+pub(super) async fn show_auto_detection_rule(
+    cli: &Cli,
+    client: &FabricClient,
+    capacity_id: &str,
+    rule_id: &str,
+) -> Result<()> {
+    validate_uuid(capacity_id, "--id")?;
+    validate_uuid(rule_id, "--rule-id")?;
+    let data = client
+        .get(&format!(
+            "{}/{rule_id}",
+            auto_detection_rules_path(capacity_id)
+        ))
+        .await
+        .map_err(|e| enrich_capacity(e, "capacity show-actor-auto-detection-rule"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+pub(super) async fn update_auto_detection_rule(
+    cli: &Cli,
+    client: &FabricClient,
+    capacity_id: &str,
+    rule_id: &str,
+    threshold_percentage: Option<u8>,
+    block_duration: Option<AutoDetectionBlockDuration>,
+    hours: Option<u32>,
+) -> Result<()> {
+    validate_uuid(capacity_id, "--id")?;
+    validate_uuid(rule_id, "--rule-id")?;
+    if threshold_percentage.is_none() && block_duration.is_none() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "At least one of --threshold-percentage or --block-duration must be provided",
+            "Provide --threshold-percentage 80 and/or --block-duration Hours --hours 24.",
+        )
+        .into());
+    }
+    if block_duration.is_none() && hours.is_some() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "--hours requires --block-duration Hours",
+            "Add --block-duration Hours or remove --hours.",
+        )
+        .into());
+    }
+    let mut body = serde_json::json!({});
+    if let Some(value) = threshold_percentage {
+        body["capacityUnitsConsumptionThresholdPercentage"] = serde_json::json!(value);
+    }
+    if let Some(value) = block_duration {
+        body["blockDuration"] = auto_detection_configuration(value, hours)?;
+    }
+    if output::dry_run_guard(cli, "capacity update-actor-auto-detection-rule", &body) {
+        return Ok(());
+    }
+    let data = client
+        .patch(
+            &format!("{}/{rule_id}", auto_detection_rules_path(capacity_id)),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_capacity(e, "capacity update-actor-auto-detection-rule"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+pub(super) async fn delete_auto_detection_rule(
+    cli: &Cli,
+    client: &FabricClient,
+    capacity_id: &str,
+    rule_id: &str,
+) -> Result<()> {
+    validate_uuid(capacity_id, "--id")?;
+    validate_uuid(rule_id, "--rule-id")?;
+    if output::dry_run_guard(
+        cli,
+        "capacity delete-actor-auto-detection-rule",
+        &serde_json::json!({"capacityId": capacity_id, "ruleId": rule_id, "existingBlocksRemain": true}),
+    ) {
+        return Ok(());
+    }
+    client
+        .delete(&format!(
+            "{}/{rule_id}",
+            auto_detection_rules_path(capacity_id)
+        ))
+        .await
+        .map_err(|e| enrich_capacity(e, "capacity delete-actor-auto-detection-rule"))?;
+    output::render_object(
+        cli,
+        &serde_json::json!({"id": rule_id, "status": "deleted"}),
+        "status",
+    );
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -383,6 +566,18 @@ mod tests {
                 Some("2026-12-31T23:59:59+01:00")
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn auto_detection_configuration_validates_duration() {
+        assert_eq!(
+            auto_detection_configuration(AutoDetectionBlockDuration::Hours, Some(12)).unwrap(),
+            serde_json::json!({"type": "Hours", "hours": 12})
+        );
+        assert!(auto_detection_configuration(AutoDetectionBlockDuration::Hours, None).is_err());
+        assert!(
+            auto_detection_configuration(AutoDetectionBlockDuration::Indefinite, Some(1)).is_err()
         );
     }
 }

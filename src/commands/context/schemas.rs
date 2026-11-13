@@ -173,6 +173,15 @@ const ITEM_SCHEMAS: &[(&str, &str)] = &[
         "DigitalTwinBuilderFlow",
         include_str!("data/schemas/digital_twin_builder_flow.json"),
     ),
+    (
+        "CustomStreamConnector",
+        include_str!("data/schemas/custom_stream_connector.json"),
+    ),
+    ("Share", include_str!("data/schemas/share.json")),
+    (
+        "ShareSubscription",
+        include_str!("data/schemas/share_subscription.json"),
+    ),
 ];
 
 #[cfg(test)]

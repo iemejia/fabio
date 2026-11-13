@@ -2019,7 +2019,7 @@ At plan time, `validate_references()` cross-checks logical ID references:
 - For each item: calls `getDefinition` (LRO POST with empty body `{}`) **in parallel** (bounded by `--concurrency`, default 8)
 - **Auto-provisioned types excluded by default**: SQLEndpoints are filtered out of the item list before processing — they don't appear in `total_items`, `exported`, or `skipped`. This avoids confusing count gaps for agents. They can still be explicitly inspected via `--item-types SQLEndpoint`.
 - **Items that fail `getDefinition`**: Added to `skipped` list with reason (not fatal), UNLESS the item type is a "shell-only" type (see below)
-- **Shell-only types** (Warehouse, SQLDatabase, MLExperiment, MLModel): These types don't support `getDefinition` but ARE valid deployment targets. When `getDefinition` fails, they are exported with just a `.platform` metadata file (no definition parts). `deploy apply` creates them with just `displayName` + `type` and skips `updateDefinition`. This aligns with fabric-cicd's `SHELL_ONLY_PUBLISH` concept.
+- **Shell-only fallback types** (SQLDatabase, MLExperiment, MLModel): When `getDefinition` fails, these retain the `.platform`-only export fallback; `deploy apply` creates an empty container and skips absent definition content. Warehouse was removed from this fallback after its public definition API became available, so a failed Warehouse definition fetch is reported instead of silently exporting an empty shell.
 - **SQLEndpoint is always skipped**: SQLEndpoints are auto-provisioned by Fabric when a Lakehouse, Warehouse, or SQL Database is created. They are NOT independently deployable — fabric-cicd doesn't even include them as a supported item type. Skipping them during export is correct behavior.
 - **Legacy-format items fail `getDefinition`**: Some SemanticModel and Report items created through the portal UI or from Microsoft-provided templates use the older PBIX format internally. These do NOT support `getDefinition` — only items using newer definition formats (TMDL for SemanticModel, PBIR/PBIR-Legacy for Report) expose definitions through the API. Known examples: pre-installed "Microsoft Fabric Capacity Metrics" workspace items, Direct Lake semantic models created via the portal in legacy format. These appear in the `skipped` list with reason "getDefinition not supported" — this is a Fabric platform constraint, not a fabio bug.
 - **Items without definition parts**: Skipped with reason "no definition parts" (unless shell-only type)
@@ -3201,7 +3201,7 @@ implemented or confirmed to require no code change.
   casing), and given its own skill family (`data/skills/planning.json`) plus
   `definition_requirements.json` entry. Plan has no `hardDelete` semantics and is not in
   `PROTECTED_DELETE_TYPES` (it holds planning metadata, not bulk data) or `SHELL_ONLY_TYPES` (it DOES
-  support `getDefinition`/`updateDefinition`, unlike shell-only types such as Warehouse/SQLDatabase).
+  support `getDefinition`/`updateDefinition`, unlike the remaining shell-only fallback types).
 - **Admin network communication policy `filter` query parameter + response enrichment**:
   `GET /admin/workspaces/networking/communicationpolicies` gained an OData-style `filter` query
   parameter (e.g. `inbound/publicAccessRules/defaultAction eq 'deny'`) and three new response
@@ -3477,3 +3477,88 @@ implemented or confirmed to require no code change.
   Data Factory jobs (timing/coverage can differ). Recovery hints therefore describe
   observed policy records, not a guaranteed workload failure cause or guaranteed
   repair. Both the record and probe workspace were cleaned up.
+
+## Custom Stream Connector, Share, and Share Subscription item APIs (November 2026 spec)
+
+- **Custom Stream Connector**: workspace item CRUD uses
+  `/workspaces/{workspaceId}/customStreamConnectors`; list supports `recursive`,
+  `rootFolderId`, and continuation pagination. Create can include `folderId`,
+  sensitivity-label settings, and an optional public definition. Definitions use
+  `CustomStreamConnectorDefinitionV1`, with `connector.json`, optional
+  `resources/*`, `CustomConnectorPackages/*`, and `.platform` parts.
+  `getDefinition` accepts `format`; `updateDefinition` accepts `updateMetadata`.
+- **Share**: producer-side CRUD uses `/workspaces/{workspaceId}/shares` with the same
+  folder-scoped pagination. Its optional definition (`share.json` plus optional
+  `.platform`) contains assets, recipients, and policies. Fabric generates
+  `properties.invitationUrl`, `shareStatus`, and monotonically increasing
+  `shareVersion`; runtime properties are not exported by `getDefinition`.
+  Replacing the definition replaces the configured assets, recipients, and policies;
+  `updateMetadata` applies `.platform` metadata.
+- **Share Subscription**: consumer-side CRUD uses
+  `/workspaces/{workspaceId}/shareSubscriptions`; create requires
+  `creationPayload.invitationUrl` and supports optional folder/sensitivity-label
+  settings. It has no definition endpoints. Status values are `Pending`, `Active`,
+  `Revoked`, and `Expired`; `producerTenantDetails` is returned by get but omitted
+  from list. The APIs require the Share Subscription, external-share acceptance, and
+  Share Item tenant switches.
+
+## November 2026 Fabric REST parity behaviors
+
+- **Copy Job execute schedules** use
+  `/copyJobs/{id}/jobs/execute/schedules`; configuration is a complete `Cron`,
+  `Daily`, `Weekly`, or `Monthly` object. Execute instances can now be fetched
+  individually.
+- **Data Agent datasource topics** are `.md` files. Published topics are
+  read-only; staging supports list/download/upload/delete/format. Upload sends
+  raw `text/markdown` and an optional quoted `If-Match`. Format can be an LRO,
+  returns formatted Markdown, and does not modify the original.
+- **Data Agent feedback** requires exactly one `beta=true`, user delegated auth,
+  and write permission. Results may contain PII. Continuation tokens are opaque,
+  user/title-bound, valid for 24 hours, and must be sent without a body or page
+  size. Attachment downloads return ZIP bytes, strip sensitivity labels, and
+  require `allowDownloadWithoutSensitivityLabel=true`.
+- **Environment publish logs** return UTF-8 driver stdout for the latest
+  completed Spark-backed publish, successful or failed. Logs over exactly
+  50,000,000 bytes are truncated and end with the service marker.
+- **Eventstream source responses** add `BusinessEvents` and
+  `CustomStreamConnector`. Business Events advanced-filter operators are 19
+  PascalCase discriminator values; preserve their casing.
+- **Actor auto-detection rules** live under capacity surge protection and
+  currently target `AllWorkspaces` only. Threshold is 1-100 percent over a
+  rolling 24-hour window; blocks are `Hours` (at least 1) or `Indefinite`.
+  Deleting a rule does not clear actors already blocked by it.
+- **OneLake file soft-delete** enablement requires 1-365 retention days.
+  Disabling drops the configured retention for future use and makes subsequent
+  deletes permanent, while already soft-deleted files keep their expiry.
+  Mirrored-item retention is unaffected. `fileSoftDelete` can be omitted from a
+  successful settings response when the feature/backend lookup is unavailable.
+- **Warehouse definitions** now support `dacpac` and `sqlproj` (`sqlproj`
+  default) for create/get/update. Create cannot combine `definition` with
+  `creationPayload`. Every definition part requires `path`, `payload`, and
+  `payloadType`. Microsoft Learn specifies canonical root parts `sqldw.dacpac`
+  and `sqldw.sqlproj`; local single-file names must not become arbitrary API part
+  names. These contracts are specification/documentation-backed, not all live-verified.
+- **Mirrored Catalog discovery/status APIs are GA** and no longer take
+  `beta=true`.
+- **Domains are GA-only**: the old preview domain definitions/endpoints were
+  removed. Domain limits are documented per minute per principal.
+- **Platform principal references no longer expose `objectType`**; Fabio did not
+  model that removed response-only field.
+- New and updated APIs consistently document `429` with `Retry-After`; Fabio's
+  shared HTTP client retains bounded known-rejection retries and submission
+  uncertainty; the new raw Markdown transport must preserve that policy.
+
+### November consolidation validation limitations
+
+- The consolidated implementation adds request-level mock tests for the shared
+  features and new item families, including readonly behavior and destructive
+  notices. Text formatting polls operation state separately from downloading the
+  Markdown result and validates result URLs against the configured Fabric origin.
+- Live checks succeeded for isolated workspace creation/deletion, new-family list
+  endpoints, and OneLake settings retrieval. Full live validation remains blocked:
+  configured workspace fixtures are not accessible to the current identity,
+  capacity assignment returns `InsufficientPrivileges`, and actor-rule listing
+  returns `InsufficientPermissions`. Item creation/definition lifecycles, topics,
+  scheduling, feedback downloads, completed publish logs, and retention mutation
+  therefore remain unverified live. No roles or tenant settings were changed; the
+  isolated test workspace was deleted.

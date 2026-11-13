@@ -17,6 +17,7 @@ use crate::verbose;
 
 mod onelake_metadata;
 mod submission;
+mod text;
 pub use onelake_metadata::MetadataPage;
 use submission::PostSemantics;
 
@@ -1443,40 +1444,26 @@ impl FabricClient {
     /// GET request returning raw text response as a JSON string value.
     /// Used for endpoints that return non-JSON content (e.g., file downloads).
     pub async fn get_text(&self, path: &str) -> Result<String> {
-        let token = self.require_auth().await?;
-        let url = self.fabric_url(path);
+        Ok(self.get_text_response(path).await?.content)
+    }
 
-        let resp = self
-            .http
-            .get(&url)
-            .header(AUTHORIZATION, &token)
-            .send()
-            .await
-            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-        if resp.status() == StatusCode::UNAUTHORIZED {
-            self.invalidate_fabric_token().await;
-            let token = self.require_auth().await?;
-            let resp = self
-                .http
-                .get(&url)
-                .header(AUTHORIZATION, &token)
-                .send()
-                .await
-                .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
-
-            let status = resp.status();
-            if !status.is_success() {
-                return Err(error_from_failed_response(resp).await.into());
-            }
-            return Ok(resp.text().await.unwrap_or_default());
+    /// GET request returning raw bytes for binary downloads.
+    pub async fn get_bytes(&self, path: &str) -> Result<Vec<u8>> {
+        let resp = self.get_raw_response(path).await?;
+        if resp.status() == StatusCode::ACCEPTED {
+            return Err(FabioError::api_error(
+                "Binary download was accepted but no completed result is available",
+            )
+            .into());
         }
-
-        let status = resp.status();
-        if !status.is_success() {
+        if !resp.status().is_success() {
             return Err(error_from_failed_response(resp).await.into());
         }
-        Ok(resp.text().await.unwrap_or_default())
+        Ok(resp
+            .bytes()
+            .await
+            .map_err(|e| FabioError::api_error(format!("Failed to read response body: {e}")))?
+            .to_vec())
     }
 
     /// GET a paginated list from Fabric REST API.
@@ -1633,6 +1620,12 @@ impl FabricClient {
     pub async fn post_empty(&self, path: &str, poll: bool) -> Result<Value> {
         self.guard_readonly("POST", path)?;
         self.post_impl(path, None, poll, PostSemantics::Mutation)
+            .await
+    }
+
+    /// Semantically read-only POST request without a request body.
+    pub async fn post_readonly_empty(&self, path: &str) -> Result<Value> {
+        self.post_impl(path, None, false, PostSemantics::ReadOnly)
             .await
     }
 
@@ -2170,20 +2163,24 @@ impl FabricClient {
 
     /// PUT request with raw text body (e.g., for file uploads requiring text/plain).
     pub async fn put_raw(&self, path: &str, content: &str) -> Result<Value> {
+        self.put_raw_with_if_match(path, content, "text/plain", None)
+            .await
+    }
+
+    /// PUT raw text with a caller-selected content type and optional `ETag`.
+    pub async fn put_raw_with_if_match(
+        &self,
+        path: &str,
+        content: &str,
+        content_type: &str,
+        if_match: Option<&str>,
+    ) -> Result<Value> {
         self.guard_readonly("PUT", path)?;
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
 
         let resp = self
-            .send_mutation(
-                self.http
-                    .put(&url)
-                    .header(AUTHORIZATION, &token)
-                    .header("Content-Type", "text/plain")
-                    .body(content.to_owned()),
-                "fabric",
-                path,
-            )
+            .send_raw_put(path, &url, &token, content, content_type, if_match)
             .await?;
 
         if resp.status() == StatusCode::UNAUTHORIZED
@@ -2192,24 +2189,54 @@ impl FabricClient {
             self.invalidate_fabric_token().await;
             let token = self.require_auth().await?;
             let resp = self
-                .send_mutation(
-                    self.http
-                        .put(&url)
-                        .header(AUTHORIZATION, &token)
-                        .header("Content-Type", "text/plain")
-                        .body(content.to_owned()),
-                    "fabric",
-                    path,
-                )
+                .send_raw_put(path, &url, &token, content, content_type, if_match)
                 .await?;
-            return self.mutation_json(resp, "fabric", path).await;
+            return self.mutation_etag(resp, path).await;
         }
 
-        self.mutation_json(resp, "fabric", path).await
+        self.mutation_etag(resp, path).await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn send_raw_put(
+        &self,
+        path: &str,
+        url: &str,
+        token: &str,
+        content: &str,
+        content_type: &str,
+        if_match: Option<&str>,
+    ) -> Result<Response> {
+        let mut request = self
+            .http
+            .put(url)
+            .header(AUTHORIZATION, token)
+            .header("Content-Type", content_type)
+            .body(content.to_owned());
+        if let Some(etag) = if_match {
+            request = request.header("If-Match", etag);
+        }
+        self.send_mutation(request, "fabric", path).await
+    }
+
+    async fn mutation_etag(&self, resp: Response, path: &str) -> Result<Value> {
+        let evidence = submission::evidence(
+            PostSemantics::Mutation,
+            "fabric",
+            path,
+            Some(resp.status()),
+            resp.headers(),
+        );
+        submission::finish(Self::merge_etag(resp).await, evidence)
     }
 
     /// DELETE request to Fabric REST API (retries once on 401).
     pub async fn delete(&self, path: &str) -> Result<Value> {
+        self.delete_with_if_match(path, None).await
+    }
+
+    /// DELETE with an optional optimistic-concurrency `ETag`.
+    pub async fn delete_with_if_match(&self, path: &str, if_match: Option<&str>) -> Result<Value> {
         self.guard_readonly("DELETE", path)?;
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
@@ -2218,11 +2245,7 @@ impl FabricClient {
         let start = std::time::Instant::now();
 
         let resp = self
-            .send_mutation(
-                self.http.delete(&url).header(AUTHORIZATION, &token),
-                "fabric",
-                path,
-            )
+            .send_conditional_delete(path, &url, &token, if_match)
             .await?;
 
         verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
@@ -2233,16 +2256,26 @@ impl FabricClient {
             self.invalidate_fabric_token().await;
             let token = self.require_auth().await?;
             let resp = self
-                .send_mutation(
-                    self.http.delete(&url).header(AUTHORIZATION, &token),
-                    "fabric",
-                    path,
-                )
+                .send_conditional_delete(path, &url, &token, if_match)
                 .await?;
             return self.mutation_json(resp, "fabric", path).await;
         }
 
         self.mutation_json(resp, "fabric", path).await
+    }
+
+    async fn send_conditional_delete(
+        &self,
+        path: &str,
+        url: &str,
+        token: &str,
+        if_match: Option<&str>,
+    ) -> Result<Response> {
+        let mut request = self.http.delete(url).header(AUTHORIZATION, token);
+        if let Some(etag) = if_match {
+            request = request.header("If-Match", etag);
+        }
+        self.send_mutation(request, "fabric", path).await
     }
 
     /// POST request to Power BI REST API (different base URL, same Fabric auth scope).

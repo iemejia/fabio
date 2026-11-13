@@ -69,6 +69,7 @@ Manage workspaces
 | `fabio workspace modify-access-time-tracking` | yes | Enable or disable `OneLake` file access-time tracking |
 | `fabio workspace modify-default-tier` | yes | Modify `OneLake` default tier (Hot, Cool, or Cold) |
 | `fabio workspace modify-diagnostics` | yes | Modify `OneLake` diagnostics configuration |
+| `fabio workspace modify-file-soft-delete` | yes | Modify `OneLake` file soft-delete settings |
 | `fabio workspace modify-immutability-policy` | yes | Modify `OneLake` immutability policy |
 | `fabio workspace move-folder` | yes | Move a folder to another parent (or root) |
 | `fabio workspace provision-identity` | yes | Provision a workspace identity (managed identity) |
@@ -169,23 +170,28 @@ List and inspect Fabric capacities
 |---|---|---|
 | `fabio capacity check-name` | no | Check if a capacity name is available (ARM API) |
 | `fabio capacity create` | yes | Create a new Fabric capacity (ARM API) |
+| `fabio capacity create-actor-auto-detection-rule` | yes | Create an all-workspaces actor auto-detection rule |
 | `fabio capacity create-blocked-actor` | yes | Create or update a blocked workspace actor on a capacity |
 | `fabio capacity create-mission-critical-actor` | yes | Create a mission-critical workspace actor on a capacity |
 | `fabio capacity delete` | yes | Delete a Fabric capacity (ARM API) |
+| `fabio capacity delete-actor-auto-detection-rule` | yes | Delete an actor auto-detection rule |
 | `fabio capacity delete-blocked-actor` | yes | Delete a blocked actor |
 | `fabio capacity delete-mission-critical-actor` | yes | Delete a mission-critical actor |
 | `fabio capacity get-overage-configuration` | no | Get a capacity's overage configuration |
 | `fabio capacity get-surge-protection` | no | Get a capacity's background-operation surge protection configuration |
 | `fabio capacity list` | no | List capacities available to the caller (Fabric API) |
+| `fabio capacity list-actor-auto-detection-rules` | no | List actor auto-detection rules |
 | `fabio capacity list-blocked-actors` | no | List blocked actors on a capacity |
 | `fabio capacity list-mission-critical-actors` | no | List mission-critical actors on a capacity |
 | `fabio capacity list-skus` | no | List available SKUs for Fabric capacities (ARM API) |
 | `fabio capacity resume` | yes | Resume a suspended capacity (ARM API) |
 | `fabio capacity show` | no | Show details of a specific capacity (Fabric API) |
+| `fabio capacity show-actor-auto-detection-rule` | no | Show an actor auto-detection rule |
 | `fabio capacity show-blocked-actor` | no | Show a blocked actor |
 | `fabio capacity show-mission-critical-actor` | no | Show a mission-critical actor |
 | `fabio capacity suspend` | yes | Suspend (pause) a capacity (ARM API) |
 | `fabio capacity update` | yes | Update an existing Fabric capacity (ARM API) |
+| `fabio capacity update-actor-auto-detection-rule` | yes | Update an actor auto-detection rule |
 | `fabio capacity update-blocked-actor` | yes | Update a blocked actor expiration policy |
 | `fabio capacity update-overage-configuration` | yes | Update a capacity's overage configuration |
 | `fabio capacity update-surge-protection` | yes | Update a capacity's background-operation surge protection configuration |
@@ -291,6 +297,30 @@ Manage governance policy sets and policy rules
 | `fabio policy-set update-definition` | yes | Replace a policy-set definition |
 | `fabio policy-set update-rule` | yes | Update a policy rule (beta) |
 
+### fabio share
+Manage producer-side Fabric shares
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio share create` | yes | Create a share |
+| `fabio share delete` | yes | Delete a share |
+| `fabio share get-definition` | no | Get a share definition |
+| `fabio share list` | no | List shares in a workspace |
+| `fabio share show` | no | Show a share |
+| `fabio share update` | yes | Update share properties |
+| `fabio share update-definition` | yes | Replace a share definition |
+
+### fabio share-subscription
+Manage consumer-side Fabric Share Subscriptions
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio share-subscription create` | yes | Create a Share Subscription from an invitation |
+| `fabio share-subscription delete` | yes | Delete a Share Subscription |
+| `fabio share-subscription list` | no | List Share Subscriptions in a workspace |
+| `fabio share-subscription show` | no | Show a Share Subscription |
+| `fabio share-subscription update` | yes | Update Share Subscription properties |
+
 ## Must / Prefer / Avoid
 ### MUST
 - Run admin connection-hygiene metadata reads with --readonly as defense in depth, even though the command itself is GET-only. Use repeatable --id flags (for example --id CONN_A --id CONN_B) OR explicit --inventory, not both. Respect --connection-limit, --page-limit, --role-limit and the total --timeout even with --all/--force. Discover exact bounds via context describe admin connection-hygiene if needed; local offline introspection needs no tenant guard. Never substitute an unbounded list or an automatic admin fallback.
@@ -325,6 +355,8 @@ Manage governance policy sets and policy rules
 - workspace recover-item can partially succeed: a failed child and its descendants remain soft-deleted while independent branches may recover.
 - Customer-Managed Key (CMK) governance: enable/rotate per workspace with 'workspace assign-encryption --key-identifier <versionless Key Vault key URI>' (rotation reuses assign since the URI is versionless), inspect with 'workspace get-encryption', revert to Microsoft-managed keys with 'workspace reset-encryption'. For a tenant-wide audit, 'admin list-workspaces --include encryption' returns each workspace's encryption state and accepts '--encryption-status' (Active/EnableInProgress/DisableInProgress/Failed/Disabled) and '--capacity-id' to scope the view (e.g. find workspaces mid-enablement on one capacity).
 - OneLake access-time tracking is workspace-scoped and requires Admin: 'workspace modify-access-time-tracking --status Enabled|Disabled'. Reads and writes update LastAccessTime when enabled; metadata-only operations do not.
+- OneLake file soft-delete is workspace-scoped and requires Admin. Enabling requires --retention-days 1-365. Disabling discards the configured retention for future use and makes new deletions permanent, but already soft-deleted files keep their original expiry; mirrored items are unaffected.
+- Capacity actor auto-detection currently supports actorsSubjectToRule.type=AllWorkspaces only. The threshold is 1-100 percent of capacity units over a rolling 24-hour window. Block duration is Hours (at least 1) or Indefinite; deleting a rule does not unblock actors already blocked by it.
 
 ## Troubleshooting
 | Symptom | Fix |

@@ -4,9 +4,11 @@ mod datasources;
 mod definition;
 mod elements;
 mod evaluate;
+mod feedback;
 mod fewshots;
 mod mcp;
 mod query;
+mod topics;
 mod validate;
 
 use anyhow::Result;
@@ -629,6 +631,137 @@ pub enum DataAgentCommand {
         #[arg(long)]
         element_id: String,
     },
+    /// List datasource topic files
+    ListTopics {
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        #[arg(long)]
+        id: String,
+        /// Data source name or ID
+        #[arg(long)]
+        datasource: String,
+        /// Stage to read: staging or published
+        #[arg(long, default_value = "staging", value_parser = ["staging", "published"])]
+        stage: String,
+    },
+    /// Download a datasource topic Markdown file
+    DownloadTopic {
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        datasource: String,
+        /// Topic file name ending in `.md`
+        #[arg(long)]
+        file_name: String,
+        /// Stage to read: staging or published
+        #[arg(long, default_value = "staging", value_parser = ["staging", "published"])]
+        stage: String,
+    },
+    /// Upload or replace a staging datasource topic Markdown file
+    UploadTopic {
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        datasource: String,
+        /// Topic file name ending in `.md`
+        #[arg(long)]
+        file_name: String,
+        /// Markdown file to upload
+        #[arg(long, conflicts_with = "content")]
+        file: Option<String>,
+        /// Markdown content; omit both flags to read stdin
+        #[arg(long)]
+        content: Option<String>,
+        /// Quoted `ETag` for optimistic concurrency
+        #[arg(long)]
+        if_match: Option<String>,
+    },
+    /// Delete a staging datasource topic file
+    DeleteTopic {
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        datasource: String,
+        /// Topic file name ending in `.md`
+        #[arg(long)]
+        file_name: String,
+        /// Quoted `ETag`; delete only if the stored version still matches
+        #[arg(long)]
+        if_match: Option<String>,
+    },
+    /// Format a staging datasource topic without modifying it
+    FormatTopic {
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        datasource: String,
+        /// Topic file name ending in `.md`
+        #[arg(long)]
+        file_name: String,
+    },
+    /// Search user-shared feedback for a data agent
+    QueryFeedback {
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        #[arg(long)]
+        id: String,
+        /// Results per page (1-9999)
+        #[arg(long, value_parser = clap::value_parser!(u16).range(1..=9999))]
+        page_size: Option<u16>,
+        #[arg(long)]
+        search: Option<String>,
+        #[arg(long)]
+        start_submitted_date_time: Option<String>,
+        #[arg(long)]
+        end_submitted_date_time: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        channels: Vec<String>,
+        #[arg(long, value_delimiter = ',')]
+        products: Vec<String>,
+        #[arg(long, value_delimiter = ',')]
+        platforms: Vec<String>,
+        #[arg(long, value_delimiter = ',')]
+        feedback_types: Vec<String>,
+        #[arg(long, value_parser = ["SubmittedDateTime"])]
+        sort_by: Option<String>,
+        #[arg(long, value_parser = ["Ascending", "Descending"])]
+        sort_order: Option<String>,
+    },
+    /// Show one user-shared feedback record
+    ShowFeedback {
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        feedback_id: String,
+    },
+    /// Download feedback attachments as a ZIP file
+    DownloadFeedbackAttachments {
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        feedback_id: String,
+        /// Output ZIP file path
+        #[arg(long)]
+        output_file: String,
+        /// Attachment language
+        #[arg(long)]
+        language: Option<String>,
+        /// Allow downloads when the data agent has no sensitivity label
+        #[arg(long)]
+        allow_download_without_sensitivity_label: bool,
+    },
 
     // ── Definitions ──────────────────────────────────────────────────────
     /// Get the definition of a data agent (configuration, data sources, etc.)
@@ -1045,6 +1178,125 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &DataAgentComman
         } => elements::delete_element(cli, client, workspace, id, datasource, element_id)
             .await
             .map_err(|e| enrich_forbidden(e, "data-agent delete-element", "Contributor")),
+        DataAgentCommand::ListTopics {
+            workspace,
+            id,
+            datasource,
+            stage,
+        } => topics::list(cli, client, workspace, id, datasource, stage).await,
+        DataAgentCommand::DownloadTopic {
+            workspace,
+            id,
+            datasource,
+            file_name,
+            stage,
+        } => topics::download(cli, client, workspace, id, datasource, file_name, stage).await,
+        DataAgentCommand::UploadTopic {
+            workspace,
+            id,
+            datasource,
+            file_name,
+            file,
+            content,
+            if_match,
+        } => {
+            topics::upload(
+                cli,
+                client,
+                workspace,
+                id,
+                datasource,
+                file_name,
+                file.as_deref(),
+                content.as_deref(),
+                if_match.as_deref(),
+            )
+            .await
+        }
+        DataAgentCommand::DeleteTopic {
+            workspace,
+            id,
+            datasource,
+            file_name,
+            if_match,
+        } => {
+            topics::delete(
+                cli,
+                client,
+                workspace,
+                id,
+                datasource,
+                file_name,
+                if_match.as_deref(),
+            )
+            .await
+        }
+        DataAgentCommand::FormatTopic {
+            workspace,
+            id,
+            datasource,
+            file_name,
+        } => topics::format(cli, client, workspace, id, datasource, file_name).await,
+        DataAgentCommand::QueryFeedback {
+            workspace,
+            id,
+            page_size,
+            search,
+            start_submitted_date_time,
+            end_submitted_date_time,
+            channels,
+            products,
+            platforms,
+            feedback_types,
+            sort_by,
+            sort_order,
+        } => {
+            feedback::query(
+                cli,
+                client,
+                feedback::QueryParams {
+                    workspace,
+                    id,
+                    page_size: *page_size,
+                    continuation_token: cli.continuation_token.as_deref(),
+                    search: search.as_deref(),
+                    start_submitted_date_time: start_submitted_date_time.as_deref(),
+                    end_submitted_date_time: end_submitted_date_time.as_deref(),
+                    channels,
+                    products,
+                    platforms,
+                    feedback_types,
+                    sort_by: sort_by.as_deref(),
+                    sort_order: sort_order.as_deref(),
+                },
+            )
+            .await
+        }
+        DataAgentCommand::ShowFeedback {
+            workspace,
+            id,
+            feedback_id,
+        } => feedback::show(cli, client, workspace, id, feedback_id).await,
+        DataAgentCommand::DownloadFeedbackAttachments {
+            workspace,
+            id,
+            feedback_id,
+            output_file,
+            language,
+            allow_download_without_sensitivity_label,
+        } => {
+            feedback::download_attachments(
+                cli,
+                client,
+                workspace,
+                id,
+                feedback_id,
+                output_file,
+                language.as_deref(),
+                *allow_download_without_sensitivity_label,
+            )
+            .await
+        }
         DataAgentCommand::GetDefinition {
             workspace,
             id,
@@ -1095,10 +1347,23 @@ pub(super) async fn resolve_datasource_id(
     agent_id: &str,
     datasource: &str,
 ) -> Result<String> {
+    resolve_datasource_id_at_stage(client, workspace, agent_id, datasource, "staging").await
+}
+
+pub(super) async fn resolve_datasource_id_at_stage(
+    client: &FabricClient,
+    workspace: &str,
+    agent_id: &str,
+    datasource: &str,
+    stage: &str,
+) -> Result<String> {
+    crate::client::validate_uuid(workspace, "--workspace")?;
+    crate::client::validate_uuid(agent_id, "--id")?;
+    let prefix = stage_prefix(stage);
     // Always list datasources and match by name, datasource ID, or artifact ID
     let resp = client
         .get_list(
-            &format!("/workspaces/{workspace}/dataAgents/{agent_id}/staging/datasources"),
+            &format!("/workspaces/{workspace}/dataAgents/{agent_id}{prefix}/datasources"),
             "value",
             true,
             None,

@@ -43,6 +43,7 @@ Manage warehouses and run SQL queries
 | `fabio warehouse delete-restore-point` | yes | Delete a restore point |
 | `fabio warehouse describe-table` | no | Describe the columns of a table (from `INFORMATION_SCHEMA.COLUMNS`) |
 | `fabio warehouse get-audit-settings` | no | Get SQL audit settings for a warehouse |
+| `fabio warehouse get-definition` | no | Get the warehouse public definition |
 | `fabio warehouse get-retention` | no | Report the configured data-retention (time-travel) period, in days |
 | `fabio warehouse get-sql-pools-config` | no | Get SQL pools configuration for a workspace (requires workspace Admin) |
 | `fabio warehouse list` | no | List warehouses in a workspace |
@@ -69,6 +70,7 @@ Manage warehouses and run SQL queries
 | `fabio warehouse statistics-update` | yes | Update (refresh) an existing statistic |
 | `fabio warehouse update` | yes | Update warehouse properties (name and/or description) |
 | `fabio warehouse update-audit-settings` | yes | Update SQL audit settings for a warehouse |
+| `fabio warehouse update-definition` | yes | Replace the warehouse public definition |
 | `fabio warehouse update-restore-point` | yes | Update a restore point |
 | `fabio warehouse update-sql-pools-config` | yes | Update SQL pools configuration for a workspace (requires workspace Admin) |
 
@@ -179,6 +181,7 @@ Manage warehouse snapshots
 - SQL Audit predicate filtering is available on ALL THREE T-SQL surfaces: 'warehouse', 'sql-endpoint', and 'sql-database' update-audit-settings all accept '--predicate-expression' (the expression only, WITHOUT a WHERE keyword, max 3000 characters; empty clears it) as top-level predicateExpression. Omitting it on a later update preserves the existing predicate. Pair it with '--state Enabled', '--retention-days', and '--audit-actions'. Writing audit settings needs Contributor+ AND an elevated audit scope — a correctly-formed request may still return FORBIDDEN/InsufficientScopes on a low-privilege token.
 - IDENTITY_INSERT is supported (GA): to insert explicit values into an IDENTITY column (e.g. to preserve keys when reloading/migrating a Fabric Warehouse table), wrap the load in SET IDENTITY_INSERT dbo.<table> ON; INSERT ... (<explicit id cols>) VALUES ...; SET IDENTITY_INSERT dbo.<table> OFF; via 'warehouse query'. Only ONE table can have IDENTITY_INSERT ON at a time in a session, the column list MUST be explicit in the INSERT, and you must have ALTER on the table. Without it, inserting an explicit value into an IDENTITY column fails. Applies to Fabric Warehouse T-SQL (arbitrary T-SQL runs through 'warehouse query', so no fabio flag is needed).
 - Workspace SQL pools configuration is GA: get-sql-pools-config/update-sql-pools-config require workspace Admin and use /warehouses/sqlPoolsConfiguration with no beta query parameter. customSQLPools classifiers accept Application Name, Application Name Regex, and Statement Type.
+- Warehouse public definitions support dacpac and sqlproj formats; sqlproj is the default. Create accepts either creationPayload (--collation) or definition input, never both. Use --definition-dir for multi-part SQL projects (symlinks are rejected), --definition-file for a raw file or JSON envelope, or --definition-content for inline JSON/@file. Single raw files use canonical sqldw.dacpac/sqldw.sqlproj part names regardless of local filename. update-definition replaces content and is irreversible; failed definition fetches must not become shell-only exports.
 
 ## Troubleshooting
 | Symptom | Fix |

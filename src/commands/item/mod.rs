@@ -964,6 +964,7 @@ fn read_json_input(file: Option<&str>, content: Option<&str>, command: &str) -> 
 const KNOWN_ITEM_TYPES: &[&str] = &[
     "AzureDatabricksStorage",
     "CopyJob",
+    "CustomStreamConnector",
     "Dashboard",
     "DataAgent",
     "DataBuildToolJob",
@@ -999,6 +1000,8 @@ const KNOWN_ITEM_TYPES: &[&str] = &[
     "Report",
     "SQLEndpoint",
     "SemanticModel",
+    "Share",
+    "ShareSubscription",
     "SparkJobDefinition",
     "Warehouse",
 ];

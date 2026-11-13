@@ -6,7 +6,7 @@
   "categories": {
     "git_tracked": {
       "definition": "Items supported by Fabric Git integration and fabric-cicd. Their definitions serialize to files (.platform + definition parts), enabling version control, branching, and code review.",
-      "fabio_handling": "Fully handled by 'fabio deploy export' (definition parts written), 'deploy plan' (content-hash diff), and 'deploy apply' (create/update via item-definition API). Shell-only data types (Warehouse, SQLDatabase, MLExperiment, MLModel) export as a .platform-only stub and apply recreates the empty container.",
+      "fabio_handling": "Fully handled by 'fabio deploy export' (definition parts written), 'deploy plan' (content-hash diff), and 'deploy apply' (create/update via item-definition API). Warehouse and SQLDatabase now have public DACPAC/SQL project definitions. Remaining shell-only data types such as MLExperiment and MLModel export as a .platform-only stub and apply recreate the empty container.",
       "examples": ["Notebook", "SemanticModel", "Report", "DataPipeline", "Lakehouse (shell)", "Environment", "VariableLibrary", "Eventhouse", "KQLDatabase", "Ontology", "DataAgent"]
     },
     "deployment_pipeline_only": {

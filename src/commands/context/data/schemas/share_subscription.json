@@ -1,0 +1,17 @@
+{
+  "type": "ShareSubscription",
+  "description": "Preview consumer-side subscription to a producer's Fabric share.",
+  "create_command": "fabio share-subscription create --workspace <WS> --name <NAME> --invitation-url <HTTPS_URL>",
+  "definition_format": null,
+  "creation_body_template": {
+    "displayName": "{{name}}",
+    "creationPayload": {
+      "invitationUrl": "{{share_invitation_url}}"
+    }
+  },
+  "notes": [
+    "creationPayload.invitationUrl is required and must be an HTTPS Fabric invitation URL.",
+    "Share Subscriptions do not expose get-definition or update-definition APIs.",
+    "The status can be Pending, Active, Revoked, or Expired; producer tenant details are returned by show but omitted from list."
+  ]
+}

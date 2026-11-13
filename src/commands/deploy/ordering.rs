@@ -34,6 +34,7 @@ pub const DEPLOY_ORDER: &[&str] = &[
     "SQLDatabase",                           // fabric-cicd 5
     "CosmosDbDatabase",                      // fabio-only (database family)
     "SnowflakeDatabase",                     // fabio-only (database family)
+    "CustomStreamConnector",                 // fabio-only (before Eventstream consumers)
     "Environment",                           // fabric-cicd 6
     "UserDataFunction",                      // fabric-cicd 7
     "Eventhouse",                            // fabric-cicd 8
@@ -74,6 +75,7 @@ pub const DEPLOY_ORDER: &[&str] = &[
     "Connection",     // fabio-only (cross-cutting, last)
     "OrgApp",         // fabio-only
     "OrgAppAudience", // fabio-only
+    "Share",          // fabio-only (after shareable artifacts)
 ];
 
 /// Returns the deploy priority for a given item type.
@@ -106,24 +108,32 @@ pub fn deploy_priority(item_type: &str) -> usize {
 /// - Tier 10: `DataAgent` (binds any data source; must come after all of them)
 /// - Tier 11: `MLExperiment`
 /// - Tier 12: `MLModel`, visualization & cross-cutting (+ unknown)
+/// - Tier 13: producer-side `Share` definitions (after shareable artifacts)
 #[inline]
 pub fn deploy_tier(item_type: &str) -> usize {
     let priority = deploy_priority(item_type);
-    match priority {
-        0..=10 => 0,  // Storage: VariableLibrary..SnowflakeDatabase
-        11..=13 => 1, // Compute: Environment, UserDataFunction, Eventhouse
-        14..=15 => 2, // Code: SparkJobDefinition, Notebook
-        16 => 3,      // SemanticModel (needs refresh before Reports can use it)
-        17..=22 => 4, // Reports, jobs & KQLDatabase: Report..KQLDatabase
-        23..=29 => 5, // Reactive: KQLQueryset..KQLDashboard
-        30..=32 => 6, // APIs: GraphQLApi..MountedDataFactory
-        33..=35 => 7, // RTI agents and Monitoring: OperationsAgent..AnomalyDetector
-        36 => 8,      // Ontology
-        37..=40 => 9, // Graph: GraphModel..DigitalTwinBuilderFlow
-        41 => 10,     // DataAgent: binds any data source, must come after all of them
-        42 => 11,     // MLExperiment
-        _ => 12,      // MLModel, Map, Connection, OrgApp, OrgAppAudience + unknown
+    // Named boundaries avoid silently shifting every tier when a new type is
+    // inserted into DEPLOY_ORDER. Shares follow all ordinary artifact tiers.
+    if item_type.eq_ignore_ascii_case("Share") {
+        return 13;
     }
+    [
+        "CustomStreamConnector",
+        "Eventhouse",
+        "Notebook",
+        "SemanticModel",
+        "KQLDatabase",
+        "KQLDashboard",
+        "MountedDataFactory",
+        "AnomalyDetector",
+        "Ontology",
+        "DigitalTwinBuilderFlow",
+        "DataAgent",
+        "MLExperiment",
+    ]
+    .iter()
+    .position(|boundary| priority <= deploy_priority(boundary))
+    .unwrap_or(12)
 }
 
 /// Reverse deployment order for deletes.
@@ -216,6 +226,14 @@ pub fn topological_sort(items: &[(String, Vec<String>)]) -> Result<Vec<String>> 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn connector_and_share_dependencies_have_distinct_deployment_tiers() {
+        assert!(deploy_priority("CustomStreamConnector") < deploy_priority("Eventstream"));
+        assert!(deploy_tier("CustomStreamConnector") < deploy_tier("Eventstream"));
+        assert!(deploy_tier("Share") > deploy_tier("MLModel"));
+        assert!(deploy_priority("Share") > deploy_priority("DataAgent"));
+        assert_eq!(deploy_tier("share"), deploy_tier("Share"));
+    }
     use super::*;
 
     #[test]
@@ -403,8 +421,8 @@ mod tests {
         // Guard against accidental additions/removals — update this if DEPLOY_ORDER changes
         assert_eq!(
             DEPLOY_ORDER.len(),
-            51,
-            "DEPLOY_ORDER should have 51 entries; update this test if intentionally changed"
+            53,
+            "DEPLOY_ORDER should have 53 entries; update this test if intentionally changed"
         );
     }
 

@@ -2,11 +2,11 @@ use anyhow::Result;
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
-use crate::errors::enrich_forbidden;
+use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
-use super::AccessTimeTrackingStatus;
 use super::read_json_body;
+use super::{AccessTimeTrackingStatus, FileSoftDeleteStatus};
 
 pub(super) async fn apply_tags(
     cli: &Cli,
@@ -181,6 +181,63 @@ pub(super) async fn modify_immutability_policy(
         .await
         .map_err(|e| enrich_forbidden(e, "workspace modify-immutability-policy", "Admin"))?;
     output::render_object(cli, &data, "workspaceId");
+    Ok(())
+}
+
+fn file_soft_delete_body(
+    status: FileSoftDeleteStatus,
+    retention_days: Option<u16>,
+) -> Result<serde_json::Value> {
+    match (status, retention_days) {
+        (FileSoftDeleteStatus::Enabled, Some(days)) => Ok(serde_json::json!({
+            "status": "Enabled",
+            "retentionPeriodInDays": days,
+        })),
+        (FileSoftDeleteStatus::Enabled, None) => Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "--retention-days is required when --status Enabled",
+            "Provide --status Enabled --retention-days 14.",
+        )
+        .into()),
+        (FileSoftDeleteStatus::Disabled, None) => Ok(serde_json::json!({"status": "Disabled"})),
+        (FileSoftDeleteStatus::Disabled, Some(_)) => Err(FabioError::invalid_input(
+            "--retention-days cannot be combined with --status Disabled",
+        )
+        .into()),
+    }
+}
+
+pub(super) async fn modify_file_soft_delete(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    status: FileSoftDeleteStatus,
+    retention_days: Option<u16>,
+) -> Result<()> {
+    crate::client::validate_uuid(workspace, "--workspace")?;
+    let body = file_soft_delete_body(status, retention_days)?;
+    let mut preview = body.clone();
+    preview["workspaceId"] = serde_json::Value::from(workspace);
+    if output::dry_run_guard(cli, "workspace modify-file-soft-delete", &preview) {
+        return Ok(());
+    }
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/onelake/settings/modifyFileSoftDelete"),
+            &body,
+            false,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "workspace modify-file-soft-delete", "Admin"))?;
+    if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
+        output::render_object(
+            cli,
+            &serde_json::json!({"workspaceId": workspace, "fileSoftDelete": body, "status": "updated"}),
+            "status",
+        );
+    } else {
+        output::render_object(cli, &data, "status");
+    }
     Ok(())
 }
 

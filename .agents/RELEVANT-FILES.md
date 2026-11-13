@@ -1,4 +1,7 @@
 ## Relevant Files
+- `src/client/text.rs`: strict UTF-8 file metadata and bodyless readonly text LRO handling, with same-origin result URL checks and bounded polling
+- `tests/e2e_api_sync.rs`: consolidated new-family CRUD/readonly/input guards, Copy Job schedule wire tests, feedback no-clobber downloads and text/plain compatibility
+- `docs/src/content/docs/guides/fabric-rest-capabilities.md`: expanded REST capability workflows and safety caveats
 - `src/commands/semantic_model/source.rs`, `src/commands/semantic_model/source_delta.rs`: source URL/scope validation, shared bounded observations and creation gate, conservative Delta protocol/schema/mapping checks
 - `src/client/onelake_metadata.rs`: shared authenticated OneLake GET and strict bounded directory/file body readers (existing downloads/directory reads reuse the transport)
 - `tests/e2e_bi_source.rs`, `src/commands/context/data/best_practices/bi_source_preflight.json`, `src/commands/context/data/workflows/source_checked_creation.json`, `src/commands/context/data/examples/semantic_model_check_source.json`, `docs/src/content/docs/guides/bi-source-preflight.md`: source gate regressions, canonical guidance/recipe/output and human guide
@@ -133,6 +136,9 @@
 - `src/commands/spark_job_definition.rs`: list/show/create/update/delete/get-definition/update-definition/run
 - `src/commands/map.rs`: list/show/create/update/delete/get-definition/update-definition (geospatial Azure Maps)
 - `src/commands/plan.rs`: list/show/create/update/delete/get-definition/update-definition (connected-planning Plan item, PlanV1 / connectedPlanning/infobridge.json)
+- `src/commands/custom_stream_connector.rs`: Custom Stream Connector CRUD + definition APIs (`CustomStreamConnectorDefinitionV1`, `connector.json`, optional package/resource parts)
+- `src/commands/share.rs`: producer-side Share CRUD + definition APIs (`share.json`, recipients/assets/policies, invitation URL runtime properties)
+- `src/commands/share_subscription.rs`: consumer-side Share Subscription CRUD (required invitation URL creation payload; no definition API)
 - `src/commands/capacity.rs`: list/show, surge protection, and overage configuration (Fabric API) + suspend/resume/create/update/delete/list-skus/check-name (ARM API)
 - `src/commands/connection/`: directory module (split from `connection.rs` when it crossed the 1500-line limit) — `mod.rs` (enum + execute dispatch), `crud.rs` (list/show/create/update/delete/list-supported-types + body builders + recency-aware `list_table_columns`), `roles.rs` (role assignments + test-connection), `hygiene.rs` (find-stale/find-duplicates/find-single-owner governance commands built on connection-recency signals — all read-only pure logic + unit tests)
 - `src/commands/deployment_pipeline.rs`: list/show/create/update/delete/list-stages/list-stage-items/assign-workspace/unassign-workspace/deploy
@@ -244,6 +250,9 @@
 - `tests/e2e_git.rs`: Git command group tests
 - `tests/e2e_ontology.rs`: Ontology CRUD + definition tests
 - `tests/e2e_plan.rs`: Plan CRUD + definition tests (list, create/show/delete, update, get-definition incl. --format, dry-run create/delete/update-definition, folder-scoping flags)
+- `tests/e2e_custom_stream_connector.rs`: hermetic Custom Stream Connector create/delete/update-definition dry-run tests
+- `tests/e2e_share.rs`: hermetic Share create/delete/update-definition dry-run tests
+- `tests/e2e_share_subscription.rs`: hermetic Share Subscription create/delete dry-run tests
 - `tests/e2e_agent_native.rs`: Agent-native compliance tests (principles 1-10)
 - `tests/e2e_verbose.rs`: Verbose flag tests (16 tests: offline flag acceptance, HTTP/auth/LRO tracing, --quiet suppression, --dry-run interaction)
 - `tests/e2e_sync.rs`: Lakehouse sync tests (24 tests: basic copy, skip unchanged, delete, checksum, parallel, rename detection, dedup, include/exclude, size-only, no-overwrite, force, max-delete, existing, remove-source-files, local-to-remote sync)

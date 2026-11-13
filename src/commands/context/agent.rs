@@ -1477,6 +1477,15 @@ fn generate_subcommands_at(
                 serde_json::json!(infer_returns(&sc_name)),
             );
         }
+        if group.get_name() == "data-agent"
+            && matches!(
+                sc_name.as_str(),
+                "download-topic" | "format-topic" | "download-feedback-attachments"
+            )
+        {
+            sc_obj.insert("mutates".to_owned(), serde_json::json!(false));
+        }
+
         // Local auth login/logout change persisted credential selection and both
         // return structured status objects; command-name inference cannot express this.
         if group.get_name() == "auth" && matches!(sc_name.as_str(), "login" | "logout") {
@@ -1505,6 +1514,8 @@ fn generate_subcommands_at(
             sc_obj.insert("examples".to_owned(), examples);
         }
 
+        apply_spec_sync_metadata(group.get_name(), &sc_name, &mut sc_obj);
+
         // Safety judgment overrides missing AND stale false annotations. It is
         // derived from the real command/flags, not the previously annotated set.
         let path = format!("{parent_path} {sc_name}");
@@ -1521,6 +1532,51 @@ fn generate_subcommands_at(
     }
 
     subcommands
+}
+
+#[cfg(test)]
+fn apply_spec_sync_metadata(
+    group: &str,
+    command: &str,
+    metadata: &mut serde_json::Map<String, serde_json::Value>,
+) {
+    // Explicit result and LRO semantics are not inferable from verb names.
+    if matches!(
+        (group, command),
+        (
+            "custom-stream-connector" | "share",
+            "create" | "update" | "delete" | "get-definition" | "update-definition"
+        ) | ("share-subscription", "update" | "delete")
+            | (
+                "capacity",
+                "update-actor-auto-detection-rule" | "delete-actor-auto-detection-rule"
+            )
+            | ("copy-job", "update-schedule" | "delete-schedule")
+            | (
+                "data-agent",
+                "upload-topic"
+                    | "delete-topic"
+                    | "format-topic"
+                    | "download-topic"
+                    | "download-feedback-attachments"
+            )
+            | ("warehouse", "get-definition" | "update-definition")
+    ) {
+        metadata.insert("returns".to_owned(), serde_json::json!("object"));
+    }
+    if (group, command) == ("data-agent", "query-feedback") {
+        metadata.insert("returns".to_owned(), serde_json::json!("list"));
+    }
+    if matches!(
+        (group, command),
+        (
+            "custom-stream-connector" | "share",
+            "create" | "get-definition" | "update-definition"
+        ) | ("warehouse", "get-definition" | "update-definition")
+            | ("data-agent", "format-topic")
+    ) {
+        metadata.insert("async".to_owned(), serde_json::json!(true));
+    }
 }
 
 #[cfg(test)]
@@ -1550,26 +1606,115 @@ fn apply_safety_metadata(
 /// Marked workflow steps own these examples; regenerated discovery must not
 /// preserve older invocations after the command's runtime guard contract changes.
 #[cfg(test)]
+#[allow(clippy::too_many_lines)]
 fn authored_discovery_examples(group: &str, command: &str) -> Option<serde_json::Value> {
-    let content = match (group, command) {
-        ("dataflow", "upgrade-gen1") => include_str!("data/workflows/gen1_upgrade_execution.json"),
+    if (group, command) == ("dataflow", "upgrade-gen1") {
+        let workflow: serde_json::Value =
+            serde_json::from_str(include_str!("data/workflows/gen1_upgrade_execution.json"))
+                .expect("valid discovery workflow");
+        let examples: Vec<_> = workflow["steps"]
+            .as_array()
+            .expect("workflow steps")
+            .iter()
+            .filter(|step| step["discovery_example"] == true)
+            .map(|step| step["command"].as_str().expect("discovery example command"))
+            .collect();
+        assert_ne!(
+            examples.len(),
+            0,
+            "Canonical discovery workflow has no marked examples"
+        );
+        return Some(serde_json::json!(examples));
+    }
+
+    let example = match (group, command) {
+        ("custom-stream-connector" | "share" | "share-subscription", "list") => {
+            format!("fabio {group} list --workspace $WS")
+        }
+        ("custom-stream-connector" | "share" | "share-subscription", "show" | "delete") => {
+            format!("fabio {group} {command} --workspace $WS --id $ID")
+        }
+        ("custom-stream-connector" | "share", "create") => {
+            format!("fabio {group} create --workspace $WS --name \"Example\"")
+        }
+        ("custom-stream-connector" | "share" | "share-subscription", "update") => {
+            format!("fabio {group} update --workspace $WS --id $ID --name \"Updated\"")
+        }
+        ("custom-stream-connector" | "share", "get-definition") => {
+            format!("fabio {group} get-definition --workspace $WS --id $ID")
+        }
+        ("custom-stream-connector" | "share", "update-definition") => format!(
+            "fabio {group} update-definition --workspace $WS --id $ID --file definition.json"
+        ),
+        ("share-subscription", "create") => "fabio share-subscription create --workspace $WS \
+             --name \"Partner Feed\" --invitation-url $INVITATION_URL"
+            .to_owned(),
+        ("copy-job", "show-run") => {
+            "fabio copy-job show-run --workspace $WS --id $COPY_JOB --job-instance-id $JOB".to_owned()
+        }
+        ("copy-job", "list-schedules") => {
+            "fabio copy-job list-schedules --workspace $WS --id $COPY_JOB".to_owned()
+        }
+        ("copy-job", "create-schedule") => "fabio copy-job create-schedule --workspace $WS --id $COPY_JOB --config @schedule.json".to_owned(),
+        ("copy-job", "update-schedule") => "fabio copy-job update-schedule --workspace $WS --id $COPY_JOB --schedule-id $SCHEDULE --config @schedule.json".to_owned(),
+        ("copy-job", "show-schedule" | "delete-schedule") => format!(
+            "fabio copy-job {command} --workspace $WS --id $COPY_JOB --schedule-id $SCHEDULE"
+        ),
+        ("data-agent", "list-topics") => "fabio data-agent list-topics --workspace $WS \
+             --id $AGENT --datasource $SOURCE --stage staging"
+            .to_owned(),
+        ("data-agent", "download-topic" | "delete-topic" | "format-topic") => format!(
+            "fabio data-agent {command} --workspace $WS --id $AGENT \
+             --datasource $SOURCE --file-name guidance.md"
+        ),
+        ("data-agent", "upload-topic") => "fabio data-agent upload-topic --workspace $WS \
+             --id $AGENT --datasource $SOURCE --file-name guidance.md --file ./guidance.md"
+            .to_owned(),
+        ("data-agent", "query-feedback") => {
+            "fabio data-agent query-feedback --workspace $WS --id $AGENT --page-size 100".to_owned()
+        }
+        ("data-agent", "show-feedback") => "fabio data-agent show-feedback --workspace $WS \
+             --id $AGENT --feedback-id $FEEDBACK"
+            .to_owned(),
+        ("data-agent", "download-feedback-attachments") => {
+            "fabio data-agent download-feedback-attachments --workspace $WS --id $AGENT \
+             --feedback-id $FEEDBACK --output-file ./attachments.zip \
+             --allow-download-without-sensitivity-label"
+                .to_owned()
+        }
+        ("capacity", "list-actor-auto-detection-rules") => {
+            "fabio capacity list-actor-auto-detection-rules --id $CAPACITY".to_owned()
+        }
+        ("capacity", "show-actor-auto-detection-rule" | "delete-actor-auto-detection-rule") => {
+            format!("fabio capacity {command} --id $CAPACITY --rule-id $RULE")
+        }
+        ("capacity", "create-actor-auto-detection-rule") => "fabio capacity \
+             create-actor-auto-detection-rule --id $CAPACITY --threshold-percentage 80 \
+             --block-duration Hours --hours 4"
+            .to_owned(),
+        ("capacity", "update-actor-auto-detection-rule") => "fabio capacity \
+             update-actor-auto-detection-rule --id $CAPACITY --rule-id $RULE \
+             --threshold-percentage 90"
+            .to_owned(),
+        ("workspace", "modify-file-soft-delete") => "fabio workspace modify-file-soft-delete \
+             --workspace $WS --status Enabled --retention-days 30"
+            .to_owned(),
+        ("environment", "get-publish-log") => {
+            "fabio environment get-publish-log --workspace $WS --id $ENVIRONMENT".to_owned()
+        }
+        ("warehouse", "create") => "fabio warehouse create --workspace $WS --name Sales \
+             --definition-file ./Sales.sqlproj --definition-format sqlproj"
+            .to_owned(),
+        ("warehouse", "get-definition") => {
+            "fabio warehouse get-definition --workspace $WS --id $WAREHOUSE --format sqlproj"
+                .to_owned()
+        }
+        ("warehouse", "update-definition") => "fabio warehouse update-definition \
+             --workspace $WS --id $WAREHOUSE --file ./Sales.sqlproj --format sqlproj"
+            .to_owned(),
         _ => return None,
     };
-    let workflow: serde_json::Value =
-        serde_json::from_str(content).expect("valid discovery workflow");
-    let examples: Vec<_> = workflow["steps"]
-        .as_array()
-        .expect("workflow steps")
-        .iter()
-        .filter(|step| step["discovery_example"] == true)
-        .map(|step| step["command"].as_str().expect("discovery example command"))
-        .collect();
-    assert_ne!(
-        examples.len(),
-        0,
-        "Canonical discovery workflow has no marked examples"
-    );
-    Some(serde_json::json!(examples))
+    Some(serde_json::json!([example]))
 }
 
 /// Generate flag entries for a single subcommand from clap arg metadata.
@@ -1642,6 +1787,7 @@ fn generate_flags(
                                 .and_then(|f| f.get(&flag_name))
                                 .and_then(|fv| fv.get("type"))
                                 .and_then(serde_json::Value::as_str)
+                                .filter(|value| *value != "enum")
                         })
                         .unwrap_or("string");
                     flag_obj.insert("type".to_owned(), serde_json::json!(type_str));
@@ -1729,10 +1875,11 @@ fn infer_mutates(cmd_name: &str) -> bool {
         "discover-",
         "iceberg-",
         "table-schema",
+        "download",
     ];
     if matches!(
         cmd_name,
-        "connection-hygiene" | "plan-upgrade" | "follow-upgrade"
+        "connection-hygiene" | "plan-upgrade" | "follow-upgrade" | "format-topic"
     ) {
         return false;
     }
@@ -1807,6 +1954,48 @@ fn infer_returns(cmd_name: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn sync_semantics_replace_stale_return_and_async_metadata() {
+        for (group, command, returns, asynchronous) in [
+            (
+                "custom-stream-connector",
+                "update-definition",
+                "object",
+                true,
+            ),
+            ("share", "get-definition", "object", true),
+            ("share-subscription", "delete", "object", false),
+            (
+                "capacity",
+                "delete-actor-auto-detection-rule",
+                "object",
+                false,
+            ),
+            ("copy-job", "delete-schedule", "object", false),
+            ("data-agent", "query-feedback", "list", false),
+            ("data-agent", "format-topic", "object", true),
+            ("warehouse", "update-definition", "object", true),
+        ] {
+            let cli = clap::Command::new(group).subcommand(clap::Command::new(command));
+            let mut existing = serde_json::json!({"subcommands": {}});
+            existing["subcommands"][command] = serde_json::json!({"returns": "void"});
+            let metadata = super::generate_subcommands(&cli, Some(&existing));
+            assert_eq!(metadata[command]["returns"], returns);
+            assert_eq!(
+                metadata[command]["async"].as_bool().unwrap_or_default(),
+                asynchronous
+            );
+        }
+    }
+    #[test]
+    fn generation_drops_stale_scalar_enum_metadata() {
+        let command = clap::Command::new("test").arg(clap::Arg::new("format").long("format"));
+        let existing =
+            serde_json::json!({"flags": {"--format": {"type": "enum", "values": ["Obsolete"]}}});
+        let flags = super::generate_flags(&command, Some(&existing));
+        assert_eq!(flags["--format"]["type"], "string");
+        assert!(flags["--format"].get("values").is_none());
+    }
+    #[test]
     fn safety_policy_overrides_stale_false_and_generates_nested_and_conditional_metadata() {
         let group = clap::Command::new("future")
             .subcommand(clap::Command::new("update-definition"))
@@ -1880,6 +2069,8 @@ mod tests {
             )
             .destructive
         );
+        assert!(!super::infer_mutates("download-topic"));
+        assert!(!super::infer_mutates("format-topic"));
     }
     use super::*;
 
@@ -2085,6 +2276,51 @@ mod tests {
             existing["subcommands"]["list"]["examples"]
         );
         assert!(authored_discovery_examples("dataflow", "list").is_none());
+    }
+
+    #[test]
+    fn spec_sync_commands_have_authored_examples() {
+        for (group, command) in [
+            ("custom-stream-connector", "create"),
+            ("share", "update-definition"),
+            ("share-subscription", "create"),
+            ("copy-job", "create-schedule"),
+            ("data-agent", "upload-topic"),
+            ("data-agent", "query-feedback"),
+            ("capacity", "create-actor-auto-detection-rule"),
+            ("workspace", "modify-file-soft-delete"),
+            ("environment", "get-publish-log"),
+            ("warehouse", "create"),
+        ] {
+            assert!(
+                authored_discovery_examples(group, command).is_some(),
+                "{group} {command}"
+            );
+        }
+    }
+
+    #[test]
+    fn spec_sync_discovery_examples_parse_against_the_current_cli() {
+        use clap::{CommandFactory as _, Parser as _};
+        with_large_stack(|| {
+            let cli = crate::cli::Cli::command();
+            for group in cli.get_subcommands() {
+                for command in group.get_subcommands() {
+                    if let Some(examples) =
+                        authored_discovery_examples(group.get_name(), command.get_name())
+                    {
+                        for example in examples.as_array().unwrap() {
+                            let text = example.as_str().unwrap();
+                            let args = shlex::split(text).unwrap();
+                            assert!(
+                                crate::cli::Cli::try_parse_from(args).is_ok(),
+                                "Invalid discovery example: {text}"
+                            );
+                        }
+                    }
+                }
+            }
+        });
     }
 
     /// Regenerate `commands.json` from clap metadata.

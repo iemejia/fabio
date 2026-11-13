@@ -214,6 +214,19 @@ Manage workspace Monitoring items and Fabric data collection
 | `fabio monitoring update` | yes | Update Monitoring item properties |
 | `fabio monitoring update-definition` | yes | Update a Monitoring definition |
 
+### fabio custom-stream-connector
+Manage Custom Stream Connectors
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio custom-stream-connector create` | yes | Create a Custom Stream Connector |
+| `fabio custom-stream-connector delete` | yes | Delete a Custom Stream Connector |
+| `fabio custom-stream-connector get-definition` | no | Get a Custom Stream Connector definition |
+| `fabio custom-stream-connector list` | no | List Custom Stream Connectors in a workspace |
+| `fabio custom-stream-connector show` | no | Show a Custom Stream Connector |
+| `fabio custom-stream-connector update` | yes | Update Custom Stream Connector properties |
+| `fabio custom-stream-connector update-definition` | yes | Replace a Custom Stream Connector definition |
+
 ## Must / Prefer / Avoid
 ### MUST
 - Create the eventhouse first; kql-database create requires --eventhouse-id.
@@ -242,7 +255,7 @@ Manage workspace Monitoring items and Fabric data collection
 - ReferenceLakehouse eventstream sources are point-in-time Delta-table snapshots for enrichment. Set workspaceId, itemId, absoluteOneLakePath (the IDs must match its first two path segments), optional referencedColumns, and optional refreshRate in hh:mm:ss (<24h; omitted/00:00:00 is static). They can feed only Join (or SQL when reference input is enabled): repeat --input-node for the streaming input first and reference input second, provide joinOn keys, omit duration, and use LeftOuter to preserve the streaming side.
 - eventstream get-source-connection is type-discriminated: CustomEndpoint returns Event Hub namespace/name/access keys; Cribl and SAPDatasphere return KafkaEndpoint with bootstrapServer, topicName, securityProtocol (SASL_PLAINTEXT|PLAINTEXT|SASL_SSL|SSL), and OAuthBearer/Plain authentications. The response contains credentials and must not be logged.
 - eventstream add-destination --destination-type Eventhouse needs per-ingestion-mode --properties: ProcessedIngestion (pure-REST, self-contained) needs {workspaceId,itemId,databaseName,tableName,inputSerialization} -> status Running; DirectIngestion needs {workspaceId,itemId,connectionName,mappingRuleName} referencing a PRE-EXISTING Kusto data connection -> status External. The WRONG shape is accepted then silently sits in status:Warning and ingests 0 rows — fabio validates offline and teaches the correct shape.
-- LakehouseChangeFeed eventstream sources require {workspaceId,itemId,tableNames:["*"]}; the preview currently supports all tables only, not individual table selection. BusinessEvents destinations require {workspaceId,itemId,businessEventTypeId}, where itemId is an Event Schema Set.
+- LakehouseChangeFeed eventstream sources require {workspaceId,itemId,tableNames:["*"]}; the preview currently supports all tables only, not individual table selection. BusinessEvents destinations require {workspaceId,itemId,businessEventTypeId}, where itemId is an Event Schema Set. Eventstream source responses now also include BusinessEvents and CustomStreamConnector discriminators. BusinessEvents source filters use PascalCase operatorType values (NumberIn, NumberNotIn, NumberLessThan, NumberLessThanOrEquals, NumberGreaterThan, NumberGreaterThanOrEquals, NumberInRange, NumberNotInRange, BoolEquals, StringIn, StringNotIn, StringBeginsWith, StringNotBeginsWith, StringEndsWith, StringNotEndsWith, StringContains, StringNotContains, IsNullOrUndefined, IsNotNull).
 - Eventstream TLS certificate objects use certificateResource (not certificate). SolacePubSub now accepts tlsSettings. SQL Server-family CDC sources accept heartbeatIntervalMs, heartbeatActionQuery, and storeOnlyCapturedTablesDdl; PostgreSQL accepts heartbeatIntervalMs; MySQL/Oracle accept storeOnlyCapturedTablesDdl.
 - kql-database create-shortcut REQUIRES --enable-query-acceleration and supports only the 6 STORAGE targets (OneLake, AmazonS3, AdlsGen2, GoogleCloudStorage, S3Compatible, AzureBlobStorage) — Dataverse/ExternalDataShare/OneDriveSharePoint are rejected offline. Use the typed flags (--target-type/--connection-id/--location/...) instead of hand-writing the target JSON.
 - kql-queryset add-tab --kql-database <kqlDbId> authors a tab bound to a Fabric KQL DB without hand-crafting RealTimeQueryset.json (it resolves queryServiceUri + display name and uses a type:'Fabric' data source with databaseItemName). A Fabric data source that omits databaseItemName makes 'run' fall back to NetDefaultDB and fail with EntityNotFound.

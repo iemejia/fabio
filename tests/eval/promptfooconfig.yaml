@@ -3562,6 +3562,48 @@ tests:
         value: "The response uses 'fabio data-agent add-fewshot' with --question for the natural-language question and --sql (or --answer) for the SQL query that answers it. The example query is carried in a flag, not in the global --query."
         metric: data-agent-fewshot-routing
 
+  - description: "Data agent: upload a staging datasource topic"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-app-dev/SKILL.md"
+      user_query: "Upload the Markdown topic sales-guidance.md to datasource source-1 in my data agent draft, preserving the ETag abc123"
+    assert:
+      - type: icontains
+        value: "data-agent upload-topic"
+      - type: javascript
+        value: |
+          !output.includes('--source-id') && (output.includes('context describe data-agent upload-topic') || (output.includes('--datasource') && output.includes('--file') && output.includes('--if-match')))
+        metric: data-agent-topic-flags
+
+  - description: "Share: create a producer-side share"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-admin/SKILL.md"
+      user_query: "Create a Microsoft Fabric Share item called Partner Sales in workspace $WS"
+    assert:
+      - type: icontains
+        value: "share create"
+      - type: javascript
+        value: "output.includes('context describe share create') || output.includes('--name')"
+
+  - description: "Share subscription: accept an invitation"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-admin/SKILL.md"
+      user_query: "Create a share subscription called Partner Feed from invitation URL https://app.fabric.microsoft.com/share/placeholder"
+    assert:
+      - type: icontains
+        value: "share-subscription create"
+      - type: javascript
+        value: "output.includes('context describe share-subscription create') || output.includes('--invitation-url')"
+
+  - description: "Custom stream connector: create from definition"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-rti-kql/SKILL.md"
+      user_query: "Create a custom stream connector named Orders Stream from connector-definition.json"
+    assert:
+      - type: icontains
+        value: "custom-stream-connector create"
+      - type: javascript
+        value: "output.includes('context describe custom-stream-connector create') || output.includes('--definition-file')"
+
   - description: "Activator: create a rule that alerts on a KQL condition"
     vars:
       user_query: "In my Activator, create a rule named Too Hot that emails ops@contoso.com when the Value column in my KQL database exceeds 20"
@@ -3911,3 +3953,82 @@ tests:
       - type: icontains
         value: "--sql"
         metric: snapshot-query-sql
+  - description: "Data Agent topics: stage-aware Markdown lifecycle"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-app-dev/SKILL.md"
+      user_query: "For data agent AGENT and datasource SOURCE in workspace WS: list and download published guidance.md, format the staging copy without applying it, then show guarded upload and delete previews using ETag ETAG."
+    assert:
+      - type: icontains
+        value: "data-agent list-topics"
+      - type: icontains
+        value: "data-agent download-topic"
+      - type: icontains
+        value: "data-agent format-topic"
+      - type: icontains
+        value: "data-agent upload-topic"
+      - type: icontains
+        value: "data-agent delete-topic"
+      - type: javascript
+        value: "(output.includes('context describe data-agent upload-topic') && output.includes('context describe data-agent delete-topic')) || (output.includes('--if-match') && output.includes('--dry-run'))"
+
+  - description: "Capacity governance: actor auto-detection rule lifecycle"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-admin/SKILL.md"
+      user_query: "Show commands to create an AllWorkspaces actor auto-detection rule on capacity CAP at 25 percent for 24 hours, list and show rule RULE, preview changing it to Indefinite, and preview deleting it."
+    assert:
+      - type: icontains
+        value: "capacity create-actor-auto-detection-rule"
+      - type: icontains
+        value: "capacity list-actor-auto-detection-rules"
+      - type: icontains
+        value: "capacity show-actor-auto-detection-rule"
+      - type: icontains
+        value: "capacity update-actor-auto-detection-rule"
+      - type: icontains
+        value: "capacity delete-actor-auto-detection-rule"
+      - type: contains
+        value: "Indefinite"
+      - type: icontains
+        value: "--dry-run"
+
+  - description: "Environment publishing: retrieve latest Spark driver log"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-data-engineering/SKILL.md"
+      user_query: "Download the latest completed publish driver stdout log for environment ENV in workspace WS."
+    assert:
+      - type: icontains
+        value: "environment get-publish-log"
+      - type: icontains
+        value: "--workspace"
+      - type: icontains
+        value: "--id"
+
+  - description: "Warehouse definitions: create, retrieve, and guarded replacement"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-warehouse-sql/SKILL.md"
+      user_query: "Create warehouse WH in workspace WS from SQL project directory ./Warehouse, retrieve its sqlproj definition, then preview replacing warehouse ID ID from the same directory while applying .platform metadata."
+    assert:
+      - type: icontains
+        value: "warehouse create"
+      - type: icontains
+        value: "warehouse get-definition"
+      - type: icontains
+        value: "warehouse update-definition"
+      - type: javascript
+        value: "output.includes('context describe warehouse create') || output.includes('--definition-dir')"
+      - type: contains
+        value: "sqlproj"
+      - type: javascript
+        value: "output.includes('context describe warehouse update-definition') || (output.includes('--update-metadata') && output.includes('--dry-run'))"
+
+  - description: "Eventstream: add Custom Stream Connector source"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-rti-kql/SKILL.md"
+      user_query: "Preview adding a Custom Stream Connector source named orders to eventstream ES in workspace WS, referencing data connection CONN, connector item ITEM, and runtime configuration api.key=${key}."
+    assert:
+      - type: icontains
+        value: "eventstream add-source"
+      - type: contains
+        value: "CustomStreamConnector"
+      - type: javascript
+        value: "output.includes('context describe eventstream add-source') || (output.includes('--properties') && output.includes('--dry-run'))"

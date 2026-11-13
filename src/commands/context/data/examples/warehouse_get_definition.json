@@ -1,0 +1,29 @@
+{
+  "command": "fabio warehouse get-definition --workspace $WS --id $WAREHOUSE --format sqlproj",
+  "description": "Retrieve a Warehouse public definition as SQL project parts.",
+  "response": {
+    "data": {
+      "definition": {
+        "parts": [
+          {
+            "path": "sqldw.sqlproj",
+            "payload": "<base64>",
+            "payloadType": "InlineBase64"
+          },
+          {
+            "path": "dbo/Tables/Table1.sql",
+            "payload": "<base64>",
+            "payloadType": "InlineBase64"
+          }
+        ]
+      }
+    }
+  },
+  "notes": "Supported formats are dacpac and sqlproj; omission defaults to sqlproj. Add --decode to include decoded payloads. Sensitivity labels are not part of the definition.",
+  "query_examples": [
+    {
+      "query": "definition.parts[].path",
+      "description": "List definition part paths."
+    }
+  ]
+}

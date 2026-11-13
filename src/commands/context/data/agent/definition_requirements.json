@@ -132,6 +132,22 @@
       "optionalParts": [".platform"],
       "note": "environment.metadata.json holds Spark compute + libraries. Publish staging after update: fabio environment publish."
     },
+    "Warehouse": {
+      "requiredOneOf": [["sqldw.dacpac", "sqldw.sqlproj"]],
+      "optionalParts": [".platform", "dbo/**/*.sql", ".sharedqueries/*.sql"],
+      "note": "Public definitions support dacpac (single sqldw.dacpac) and sqlproj (sqldw.sqlproj plus project files); omitted format defaults to sqlproj. Every part requires path, payload, and payloadType. Create definition is mutually exclusive with creationPayload/collation."
+    },
+    "CustomStreamConnector": {
+      "requiredParts": ["connector.json"],
+      "optionalParts": [".platform", "resources/connector.svg", "CustomConnectorPackages/**"],
+      "format": "CustomStreamConnectorDefinitionV1",
+      "note": "Preview connector item; connector package parts are binary InlineBase64, not JSON. Runtime configuration belongs to the Eventstream source."
+    },
+    "Share": {
+      "requiredParts": ["share.json"],
+      "optionalParts": [".platform"],
+      "note": "Producer-side assets, recipients, and policies. Invitation URLs are runtime state, not definition content."
+    },
     "MirroredDatabase": {
       "requiredParts": ["mirroring.json"],
       "optionalParts": [".platform"],

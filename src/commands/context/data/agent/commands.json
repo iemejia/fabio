@@ -1305,12 +1305,12 @@
             "description": "Principal ID (user, group, or service principal object ID)"
           },
           "--principal-type": {
-            "type": "enum",
+            "type": "string",
             "required": true,
             "description": "Principal type: User, Group, `ServicePrincipal`, or `ServicePrincipalProfile`"
           },
           "--role": {
-            "type": "enum",
+            "type": "string",
             "required": true,
             "description": "Role to assign (Admin, Member, Contributor, Viewer)"
           }
@@ -1591,7 +1591,7 @@
             "required": true
           },
           "--tier": {
-            "type": "enum",
+            "type": "string",
             "required": true,
             "description": "Tier: \"Hot\", \"Cool\", or \"Cold\""
           }
@@ -1635,6 +1635,34 @@
         },
         "mutates": true,
         "returns": "void"
+      },
+      "modify-file-soft-delete": {
+        "description": "Modify `OneLake` file soft-delete settings",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--status": {
+            "type": "enum",
+            "values": [
+              "Enabled",
+              "Disabled"
+            ],
+            "required": true,
+            "description": "File soft-delete status"
+          },
+          "--retention-days": {
+            "type": "integer",
+            "description": "Retention period in days (1-365); required when enabled"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true,
+        "examples": [
+          "fabio workspace modify-file-soft-delete --workspace $WS --status Enabled --retention-days 30"
+        ]
       },
       "modify-access-time-tracking": {
         "description": "Enable or disable `OneLake` file access-time tracking",
@@ -1946,7 +1974,7 @@
             "required": true
           },
           "--format": {
-            "type": "enum",
+            "type": "string",
             "required": true,
             "description": "Storage format: \"Small\" or \"Large\""
           }
@@ -3341,12 +3369,12 @@
             "description": "Table name"
           },
           "--mode": {
-            "type": "enum",
+            "type": "string",
             "description": "Load mode: Overwrite or Append",
             "default": "Overwrite"
           },
           "--format": {
-            "type": "enum",
+            "type": "string",
             "description": "File format: Csv, Parquet",
             "default": "Csv"
           },
@@ -3742,7 +3770,7 @@
             "description": "Shortcut path (e.g., Tables or Files)"
           },
           "--target-type": {
-            "type": "enum",
+            "type": "string",
             "required": true,
             "description": "Target type: `OneLake`, `AdlsGen2`, `AmazonS3`, `AzureBlobStorage`, `GoogleCloudStorage`, `S3Compatible`, `Dataverse`, `ExternalDataShare`, `OneDriveSharePoint`"
           },
@@ -4786,7 +4814,7 @@
             "description": "Azure region (e.g., eastus, westeurope)"
           },
           "--sku": {
-            "type": "enum",
+            "type": "string",
             "required": true,
             "description": "SKU name (e.g., F2, F4, F8, F16, F32, F64, F128, F256, F512, F1024, F2048)"
           },
@@ -5187,6 +5215,131 @@
         "destructive": true,
         "examples": [
           "fabio capacity delete-mission-critical-actor --id $CAPACITY --actor-id $ACTOR --dry-run"
+        ]
+      },
+      "create-actor-auto-detection-rule": {
+        "description": "Create an all-workspaces actor auto-detection rule",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          },
+          "--threshold-percentage": {
+            "type": "integer",
+            "required": true,
+            "description": "Per-actor capacity-unit consumption threshold over a rolling 24-hour window (1-100)"
+          },
+          "--block-duration": {
+            "type": "enum",
+            "values": [
+              "Hours",
+              "Indefinite"
+            ],
+            "required": true,
+            "description": "How long automatically blocked actors remain blocked"
+          },
+          "--hours": {
+            "type": "integer",
+            "description": "Block duration in hours; required with `Hours`"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio capacity create-actor-auto-detection-rule --id $CAPACITY --threshold-percentage 80 --block-duration Hours --hours 4"
+        ]
+      },
+      "list-actor-auto-detection-rules": {
+        "description": "List actor auto-detection rules",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio capacity list-actor-auto-detection-rules --id $CAPACITY"
+        ]
+      },
+      "show-actor-auto-detection-rule": {
+        "description": "Show an actor auto-detection rule",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          },
+          "--rule-id": {
+            "type": "string",
+            "required": true,
+            "description": "Actor auto-detection rule ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio capacity show-actor-auto-detection-rule --id $CAPACITY --rule-id $RULE"
+        ]
+      },
+      "update-actor-auto-detection-rule": {
+        "description": "Update an actor auto-detection rule",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          },
+          "--rule-id": {
+            "type": "string",
+            "required": true,
+            "description": "Actor auto-detection rule ID"
+          },
+          "--threshold-percentage": {
+            "type": "integer",
+            "description": "New per-actor capacity-unit consumption threshold (1-100)"
+          },
+          "--block-duration": {
+            "type": "enum",
+            "values": [
+              "Hours",
+              "Indefinite"
+            ],
+            "description": "Replacement block duration"
+          },
+          "--hours": {
+            "type": "integer",
+            "description": "Block duration in hours; required with `Hours`"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio capacity update-actor-auto-detection-rule --id $CAPACITY --rule-id $RULE --threshold-percentage 90"
+        ]
+      },
+      "delete-actor-auto-detection-rule": {
+        "description": "Delete an actor auto-detection rule",
+        "flags": {
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Capacity ID"
+          },
+          "--rule-id": {
+            "type": "string",
+            "required": true,
+            "description": "Actor auto-detection rule ID"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true,
+        "examples": [
+          "fabio capacity delete-actor-auto-detection-rule --id $CAPACITY --rule-id $RULE"
         ]
       }
     }
@@ -5856,12 +6009,32 @@
           "--collation": {
             "type": "string",
             "description": "Collation for the warehouse (create-time only). Values: `Latin1_General_100_BIN2_UTF8` (case-sensitive, default) or `Latin1_General_100_CI_AS_KS_WS_SC_UTF8` (case-insensitive)"
+          },
+          "--definition-file": {
+            "type": "string",
+            "description": "Definition file (`.sqlproj` or `.dacpac`); mutually exclusive with --collation"
+          },
+          "--definition-dir": {
+            "type": "string",
+            "description": "Directory containing SQL project definition parts"
+          },
+          "--definition-content": {
+            "type": "string",
+            "description": "Inline definition content; mutually exclusive with --definition-file and --collation"
+          },
+          "--definition-format": {
+            "type": "enum",
+            "values": [
+              "sqlproj",
+              "dacpac"
+            ],
+            "description": "Definition format (`sqlproj` default, or `dacpac`)"
           }
         },
         "mutates": true,
         "returns": "object",
         "examples": [
-          "fabio warehouse create --workspace $WS --name \"SalesWarehouse\""
+          "fabio warehouse create --workspace $WS --name Sales --definition-file ./Sales.sqlproj --definition-format sqlproj"
         ],
         "output_fields": [
           "id",
@@ -5914,6 +6087,79 @@
         "mutates": true,
         "returns": "void",
         "destructive": true
+      },
+      "get-definition": {
+        "description": "Get the warehouse public definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--format": {
+            "type": "enum",
+            "values": [
+              "sqlproj",
+              "dacpac"
+            ],
+            "description": "Definition format (`sqlproj` default, or `dacpac`)"
+          },
+          "--decode": {
+            "type": "bool",
+            "description": "Decode inline Base64 definition parts"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio warehouse get-definition --workspace $WS --id $WAREHOUSE --format sqlproj"
+        ],
+        "async": true
+      },
+      "update-definition": {
+        "description": "Replace the warehouse public definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--file": {
+            "type": "string"
+          },
+          "--definition-dir": {
+            "type": "string",
+            "description": "Directory containing SQL project definition parts"
+          },
+          "--content": {
+            "type": "string"
+          },
+          "--format": {
+            "type": "enum",
+            "values": [
+              "sqlproj",
+              "dacpac"
+            ],
+            "description": "Definition format (`sqlproj` default, or `dacpac`)"
+          },
+          "--update-metadata": {
+            "type": "bool",
+            "description": "Update warehouse metadata from the supplied definition"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true,
+        "examples": [
+          "fabio warehouse update-definition --workspace $WS --id $WAREHOUSE --file ./Sales.sqlproj --format sqlproj"
+        ],
+        "async": true
       },
       "query": {
         "description": "Execute a SQL query against a warehouse or SQL endpoint",
@@ -8578,6 +8824,297 @@
           "fabio data-agent delete-element -w $WS --id $AGENT --datasource \"SalesLakehouse\" --element-id \"dbo.deprecated_table\""
         ]
       },
+      "list-topics": {
+        "description": "List datasource topic files",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--datasource": {
+            "type": "string",
+            "required": true,
+            "description": "Data source name or ID"
+          },
+          "--stage": {
+            "type": "enum",
+            "values": [
+              "staging",
+              "published"
+            ],
+            "description": "Stage to read: staging or published"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio data-agent list-topics --workspace $WS --id $AGENT --datasource $SOURCE --stage staging"
+        ]
+      },
+      "download-topic": {
+        "description": "Download a datasource topic Markdown file",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--datasource": {
+            "type": "string",
+            "required": true
+          },
+          "--file-name": {
+            "type": "string",
+            "required": true,
+            "description": "Topic file name ending in `.md`"
+          },
+          "--stage": {
+            "type": "enum",
+            "values": [
+              "staging",
+              "published"
+            ],
+            "description": "Stage to read: staging or published"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio data-agent download-topic --workspace $WS --id $AGENT --datasource $SOURCE --file-name guidance.md"
+        ]
+      },
+      "upload-topic": {
+        "description": "Upload or replace a staging datasource topic Markdown file",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--datasource": {
+            "type": "string",
+            "required": true
+          },
+          "--file-name": {
+            "type": "string",
+            "required": true,
+            "description": "Topic file name ending in `.md`"
+          },
+          "--file": {
+            "type": "string",
+            "description": "Markdown file to upload"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Markdown content; omit both flags to read stdin"
+          },
+          "--if-match": {
+            "type": "string",
+            "description": "Quoted `ETag` for optimistic concurrency"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true,
+        "examples": [
+          "fabio data-agent upload-topic --workspace $WS --id $AGENT --datasource $SOURCE --file-name guidance.md --file ./guidance.md"
+        ]
+      },
+      "delete-topic": {
+        "description": "Delete a staging datasource topic file",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--datasource": {
+            "type": "string",
+            "required": true
+          },
+          "--file-name": {
+            "type": "string",
+            "required": true,
+            "description": "Topic file name ending in `.md`"
+          },
+          "--if-match": {
+            "type": "string",
+            "description": "Quoted `ETag`; delete only if the stored version still matches"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true,
+        "examples": [
+          "fabio data-agent delete-topic --workspace $WS --id $AGENT --datasource $SOURCE --file-name guidance.md"
+        ]
+      },
+      "format-topic": {
+        "description": "Format a staging datasource topic without modifying it",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--datasource": {
+            "type": "string",
+            "required": true
+          },
+          "--file-name": {
+            "type": "string",
+            "required": true,
+            "description": "Topic file name ending in `.md`"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio data-agent format-topic --workspace $WS --id $AGENT --datasource $SOURCE --file-name guidance.md"
+        ],
+        "async": true
+      },
+      "query-feedback": {
+        "description": "Search user-shared feedback for a data agent",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--page-size": {
+            "type": "integer",
+            "description": "Results per page (1-9999)"
+          },
+          "--search": {
+            "type": "string"
+          },
+          "--start-submitted-date-time": {
+            "type": "string"
+          },
+          "--end-submitted-date-time": {
+            "type": "string"
+          },
+          "--channels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "--products": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "--platforms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "--feedback-types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "--sort-by": {
+            "type": "enum",
+            "values": [
+              "SubmittedDateTime"
+            ]
+          },
+          "--sort-order": {
+            "type": "enum",
+            "values": [
+              "Ascending",
+              "Descending"
+            ]
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio data-agent query-feedback --workspace $WS --id $AGENT --page-size 100"
+        ]
+      },
+      "show-feedback": {
+        "description": "Show one user-shared feedback record",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--feedback-id": {
+            "type": "string",
+            "required": true
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio data-agent show-feedback --workspace $WS --id $AGENT --feedback-id $FEEDBACK"
+        ]
+      },
+      "download-feedback-attachments": {
+        "description": "Download feedback attachments as a ZIP file",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--feedback-id": {
+            "type": "string",
+            "required": true
+          },
+          "--output-file": {
+            "type": "string",
+            "required": true,
+            "description": "Output ZIP file path"
+          },
+          "--language": {
+            "type": "string",
+            "description": "Attachment language"
+          },
+          "--allow-download-without-sensitivity-label": {
+            "type": "bool",
+            "description": "Allow downloads when the data agent has no sensitivity label"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio data-agent download-feedback-attachments --workspace $WS --id $AGENT --feedback-id $FEEDBACK --output-file ./attachments.zip --allow-download-without-sensitivity-label"
+        ]
+      },
       "get-definition": {
         "description": "Get the definition of a data agent (configuration, data sources, etc.)",
         "flags": {
@@ -9549,6 +10086,26 @@
         "async": true,
         "examples": [
           "fabio environment publish --workspace $WS --id $ENV"
+        ]
+      },
+      "get-publish-log": {
+        "description": "Get the latest completed environment publish driver log",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Environment ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio environment get-publish-log --workspace $WS --id $ENVIRONMENT"
         ]
       },
       "cancel-publish": {
@@ -10586,6 +11143,172 @@
         "returns": "list",
         "examples": [
           "fabio copy-job list-runs --workspace $WS --id $COPY_JOB"
+        ]
+      },
+      "show-run": {
+        "description": "Show an execute job instance",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Copy job ID"
+          },
+          "--job-instance-id": {
+            "type": "string",
+            "required": true,
+            "description": "Execute job instance ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio copy-job show-run --workspace $WS --id $COPY_JOB --job-instance-id $JOB"
+        ]
+      },
+      "list-schedules": {
+        "description": "List execute schedules for a copy job",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Copy job ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio copy-job list-schedules --workspace $WS --id $COPY_JOB"
+        ]
+      },
+      "create-schedule": {
+        "description": "Create an execute schedule",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Copy job ID"
+          },
+          "--enabled": {
+            "type": "enum",
+            "values": [
+              "true",
+              "false"
+            ],
+            "description": "Whether the schedule is enabled"
+          },
+          "--config": {
+            "type": "string",
+            "required": true,
+            "description": "Schedule configuration JSON (`Cron`, `Daily`, `Weekly`, or `Monthly`)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio copy-job create-schedule --workspace $WS --id $COPY_JOB --config @schedule.json"
+        ]
+      },
+      "show-schedule": {
+        "description": "Show an execute schedule",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Copy job ID"
+          },
+          "--schedule-id": {
+            "type": "string",
+            "required": true,
+            "description": "Schedule ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio copy-job show-schedule --workspace $WS --id $COPY_JOB --schedule-id $SCHEDULE"
+        ]
+      },
+      "update-schedule": {
+        "description": "Update an execute schedule",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Copy job ID"
+          },
+          "--schedule-id": {
+            "type": "string",
+            "required": true,
+            "description": "Schedule ID"
+          },
+          "--enabled": {
+            "type": "enum",
+            "values": [
+              "true",
+              "false"
+            ],
+            "description": "Whether the schedule is enabled"
+          },
+          "--config": {
+            "type": "string",
+            "description": "Replacement schedule configuration JSON"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio copy-job update-schedule --workspace $WS --id $COPY_JOB --schedule-id $SCHEDULE --config @schedule.json"
+        ]
+      },
+      "delete-schedule": {
+        "description": "Delete an execute schedule",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Copy job ID"
+          },
+          "--schedule-id": {
+            "type": "string",
+            "required": true,
+            "description": "Schedule ID"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true,
+        "examples": [
+          "fabio copy-job delete-schedule --workspace $WS --id $COPY_JOB --schedule-id $SCHEDULE"
         ]
       }
     }
@@ -15026,7 +15749,7 @@
           "--source-type": {
             "type": "string",
             "required": true,
-            "description": "Source type (for example `CustomEndpoint`, `Cribl`, `FabricCapacityOperationEvents`, `ReferenceLakehouse`, `SAPDatasphere`)"
+            "description": "Source type (for example `CustomEndpoint`, `CustomStreamConnector`, `Cribl`, `FabricCapacityOperationEvents`, `ReferenceLakehouse`, `SAPDatasphere`)"
           },
           "--properties": {
             "type": "string",
@@ -15212,7 +15935,7 @@
         "description": "List available eventstream component types (sources, destinations, operators)",
         "flags": {
           "--category": {
-            "type": "enum",
+            "type": "string",
             "description": "Filter by category: source, destination, operator, all (default: all)"
           }
         },
@@ -15642,7 +16365,7 @@
             "description": "KQL query text to embed in the deeplink"
           },
           "--style": {
-            "type": "enum",
+            "type": "string",
             "description": "Link style: auto (default), fabric, adx"
           },
           "--query-uri": {
@@ -20284,6 +21007,585 @@
         "mutates": false,
         "returns": "object",
         "async": true
+      }
+    }
+  },
+  "custom-stream-connector": {
+    "auth_scope": "fabric",
+    "description": "Manage Custom Stream Connectors",
+    "subcommands": {
+      "list": {
+        "description": "List Custom Stream Connectors in a workspace",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--no-recursive": {
+            "type": "bool",
+            "description": "Only list connectors directly in the root folder"
+          },
+          "--root-folder-id": {
+            "type": "string",
+            "description": "Filter to a specific root folder ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio custom-stream-connector list --workspace $WS"
+        ]
+      },
+      "show": {
+        "description": "Show a Custom Stream Connector",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Custom Stream Connector ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio custom-stream-connector show --workspace $WS --id $ID"
+        ]
+      },
+      "create": {
+        "description": "Create a Custom Stream Connector",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Display name"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Optional description"
+          },
+          "--folder-id": {
+            "type": "string",
+            "description": "Folder ID (defaults to the workspace root)"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID"
+          },
+          "--sensitivity-label-apply-strategy": {
+            "type": "enum",
+            "values": [
+              "ApplyOrFail",
+              "Ignore"
+            ],
+            "description": "Sensitivity label application strategy"
+          },
+          "--definition-file": {
+            "type": "string",
+            "description": "Definition file (raw connector.json or a definition envelope)"
+          },
+          "--definition-content": {
+            "type": "string",
+            "description": "Inline definition content"
+          },
+          "--definition-format": {
+            "type": "string",
+            "description": "Definition format"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio custom-stream-connector create --workspace $WS --name \"Example\""
+        ],
+        "async": true
+      },
+      "update": {
+        "description": "Update Custom Stream Connector properties",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Custom Stream Connector ID"
+          },
+          "--name": {
+            "type": "string",
+            "description": "New display name"
+          },
+          "--description": {
+            "type": "string",
+            "description": "New description"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio custom-stream-connector update --workspace $WS --id $ID --name \"Updated\""
+        ]
+      },
+      "delete": {
+        "description": "Delete a Custom Stream Connector",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Custom Stream Connector ID"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true,
+        "examples": [
+          "fabio custom-stream-connector delete --workspace $WS --id $ID"
+        ]
+      },
+      "get-definition": {
+        "description": "Get a Custom Stream Connector definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Custom Stream Connector ID"
+          },
+          "--format": {
+            "type": "string",
+            "description": "Definition format"
+          },
+          "--decode": {
+            "type": "bool",
+            "description": "Decode base64 payloads inline"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio custom-stream-connector get-definition --workspace $WS --id $ID"
+        ],
+        "async": true
+      },
+      "update-definition": {
+        "description": "Replace a Custom Stream Connector definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Custom Stream Connector ID"
+          },
+          "--file": {
+            "type": "string",
+            "description": "Definition file (raw connector.json or a definition envelope)"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline definition content"
+          },
+          "--format": {
+            "type": "string",
+            "description": "Definition format"
+          },
+          "--update-metadata": {
+            "type": "bool",
+            "description": "Update item metadata from the .platform definition part"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true,
+        "examples": [
+          "fabio custom-stream-connector update-definition --workspace $WS --id $ID --file definition.json"
+        ],
+        "async": true
+      }
+    }
+  },
+  "share": {
+    "auth_scope": "fabric",
+    "description": "Manage producer-side Fabric shares",
+    "subcommands": {
+      "list": {
+        "description": "List shares in a workspace",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--no-recursive": {
+            "type": "bool",
+            "description": "Only list shares directly in the root folder"
+          },
+          "--root-folder-id": {
+            "type": "string",
+            "description": "Filter to a specific root folder ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio share list --workspace $WS"
+        ]
+      },
+      "show": {
+        "description": "Show a share",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio share show --workspace $WS --id $ID"
+        ]
+      },
+      "create": {
+        "description": "Create a share",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Display name"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Optional description"
+          },
+          "--folder-id": {
+            "type": "string",
+            "description": "Folder ID (defaults to the workspace root)"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID"
+          },
+          "--sensitivity-label-apply-strategy": {
+            "type": "enum",
+            "values": [
+              "ApplyOrFail",
+              "Ignore"
+            ],
+            "description": "Sensitivity label application strategy"
+          },
+          "--definition-file": {
+            "type": "string",
+            "description": "Definition file (raw share.json or a definition envelope)"
+          },
+          "--definition-content": {
+            "type": "string",
+            "description": "Inline definition content"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio share create --workspace $WS --name \"Example\""
+        ],
+        "async": true
+      },
+      "update": {
+        "description": "Update share properties",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share ID"
+          },
+          "--name": {
+            "type": "string",
+            "description": "New display name"
+          },
+          "--description": {
+            "type": "string",
+            "description": "New description"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "New sensitivity label ID"
+          },
+          "--sensitivity-label-apply-strategy": {
+            "type": "enum",
+            "values": [
+              "ApplyOrFail",
+              "Ignore"
+            ],
+            "description": "Sensitivity label application strategy"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio share update --workspace $WS --id $ID --name \"Updated\""
+        ]
+      },
+      "delete": {
+        "description": "Delete a share",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share ID"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true,
+        "examples": [
+          "fabio share delete --workspace $WS --id $ID"
+        ]
+      },
+      "get-definition": {
+        "description": "Get a share definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share ID"
+          },
+          "--decode": {
+            "type": "bool",
+            "description": "Decode base64 payloads inline"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio share get-definition --workspace $WS --id $ID"
+        ],
+        "async": true
+      },
+      "update-definition": {
+        "description": "Replace a share definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share ID"
+          },
+          "--file": {
+            "type": "string",
+            "description": "Definition file (raw share.json or a definition envelope)"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline definition content"
+          },
+          "--update-metadata": {
+            "type": "bool",
+            "description": "Update item metadata from the .platform definition part"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true,
+        "examples": [
+          "fabio share update-definition --workspace $WS --id $ID --file definition.json"
+        ],
+        "async": true
+      }
+    }
+  },
+  "share-subscription": {
+    "auth_scope": "fabric",
+    "description": "Manage consumer-side Fabric Share Subscriptions",
+    "subcommands": {
+      "list": {
+        "description": "List Share Subscriptions in a workspace",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--no-recursive": {
+            "type": "bool",
+            "description": "Only list subscriptions directly in the root folder"
+          },
+          "--root-folder-id": {
+            "type": "string",
+            "description": "Filter to a specific root folder ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio share-subscription list --workspace $WS"
+        ]
+      },
+      "show": {
+        "description": "Show a Share Subscription",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share Subscription ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio share-subscription show --workspace $WS --id $ID"
+        ]
+      },
+      "create": {
+        "description": "Create a Share Subscription from an invitation",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Display name"
+          },
+          "--invitation-url": {
+            "type": "string",
+            "required": true,
+            "description": "`IQShare` invitation URL"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Optional description"
+          },
+          "--folder-id": {
+            "type": "string",
+            "description": "Folder ID (defaults to the workspace root)"
+          },
+          "--sensitivity-label": {
+            "type": "string",
+            "description": "Sensitivity label ID"
+          },
+          "--sensitivity-label-apply-strategy": {
+            "type": "enum",
+            "values": [
+              "ApplyOrFail",
+              "Ignore"
+            ],
+            "description": "Sensitivity label application strategy"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio share-subscription create --workspace $WS --name \"Partner Feed\" --invitation-url $INVITATION_URL"
+        ]
+      },
+      "update": {
+        "description": "Update Share Subscription properties",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share Subscription ID"
+          },
+          "--name": {
+            "type": "string",
+            "description": "New display name"
+          },
+          "--description": {
+            "type": "string",
+            "description": "New description"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "examples": [
+          "fabio share-subscription update --workspace $WS --id $ID --name \"Updated\""
+        ]
+      },
+      "delete": {
+        "description": "Delete a Share Subscription",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share Subscription ID"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true,
+        "examples": [
+          "fabio share-subscription delete --workspace $WS --id $ID"
+        ]
       }
     }
   },
@@ -25489,7 +26791,7 @@
             "description": "Principal type (User, Group, `ServicePrincipal`)"
           },
           "--role": {
-            "type": "enum",
+            "type": "string",
             "required": true,
             "description": "Role (Admin, `ConnectionCreator`, `ConnectionCreatorWithResharing`)"
           }
@@ -28020,7 +29322,7 @@
             "description": "Role definition as JSON or path to JSON file (prefix with @)"
           },
           "--conflict-policy": {
-            "type": "enum",
+            "type": "string",
             "description": "Conflict policy when role already exists (Abort or Overwrite)"
           }
         },

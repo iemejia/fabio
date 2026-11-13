@@ -175,8 +175,87 @@ pub enum CopyJobCommand {
         #[arg(long)]
         id: String,
     },
+    /// Show an execute job instance
+    ShowRun {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Copy job ID
+        #[arg(long)]
+        id: String,
+        /// Execute job instance ID
+        #[arg(long)]
+        job_instance_id: String,
+    },
+    /// List execute schedules for a copy job
+    ListSchedules {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Copy job ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Create an execute schedule
+    CreateSchedule {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Copy job ID
+        #[arg(long)]
+        id: String,
+        /// Whether the schedule is enabled
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        enabled: bool,
+        /// Schedule configuration JSON (`Cron`, `Daily`, `Weekly`, or `Monthly`)
+        #[arg(long)]
+        config: String,
+    },
+    /// Show an execute schedule
+    ShowSchedule {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Copy job ID
+        #[arg(long)]
+        id: String,
+        /// Schedule ID
+        #[arg(long)]
+        schedule_id: String,
+    },
+    /// Update an execute schedule
+    UpdateSchedule {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Copy job ID
+        #[arg(long)]
+        id: String,
+        /// Schedule ID
+        #[arg(long)]
+        schedule_id: String,
+        /// Whether the schedule is enabled
+        #[arg(long)]
+        enabled: Option<bool>,
+        /// Replacement schedule configuration JSON
+        #[arg(long)]
+        config: Option<String>,
+    },
+    /// Delete an execute schedule
+    DeleteSchedule {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Copy job ID
+        #[arg(long)]
+        id: String,
+        /// Schedule ID
+        #[arg(long)]
+        schedule_id: String,
+    },
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &CopyJobCommand) -> Result<()> {
     match command {
         CopyJobCommand::List { workspace } => list(cli, client, workspace).await,
@@ -264,6 +343,48 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &CopyJobCommand)
             .await
         }
         CopyJobCommand::ListRuns { workspace, id } => list_runs(cli, client, workspace, id).await,
+        CopyJobCommand::ShowRun {
+            workspace,
+            id,
+            job_instance_id,
+        } => show_run(cli, client, workspace, id, job_instance_id).await,
+        CopyJobCommand::ListSchedules { workspace, id } => {
+            list_schedules(cli, client, workspace, id).await
+        }
+        CopyJobCommand::CreateSchedule {
+            workspace,
+            id,
+            enabled,
+            config,
+        } => create_schedule(cli, client, workspace, id, *enabled, config).await,
+        CopyJobCommand::ShowSchedule {
+            workspace,
+            id,
+            schedule_id,
+        } => show_schedule(cli, client, workspace, id, schedule_id).await,
+        CopyJobCommand::UpdateSchedule {
+            workspace,
+            id,
+            schedule_id,
+            enabled,
+            config,
+        } => {
+            update_schedule(
+                cli,
+                client,
+                workspace,
+                id,
+                schedule_id,
+                *enabled,
+                config.as_deref(),
+            )
+            .await
+        }
+        CopyJobCommand::DeleteSchedule {
+            workspace,
+            id,
+            schedule_id,
+        } => delete_schedule(cli, client, workspace, id, schedule_id).await,
     }
 }
 
@@ -322,6 +443,205 @@ async fn list_runs(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) 
 
 fn execute_instances_path(workspace: &str, id: &str) -> String {
     format!("/workspaces/{workspace}/copyJobs/{id}/jobs/execute/instances")
+}
+
+async fn show_run(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    job_instance_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "{}/{job_instance_id}",
+            execute_instances_path(workspace, id)
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "copy-job show-run", "Viewer"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+fn execute_schedules_path(workspace: &str, id: &str) -> String {
+    format!("/workspaces/{workspace}/copyJobs/{id}/jobs/execute/schedules")
+}
+
+fn schedule_configuration(config: &str) -> Result<Value> {
+    let raw = crate::commands::query_input::resolve_query_input(
+        Some(config),
+        "schedule configuration",
+        "--config",
+        "--config @schedule.json",
+    )?;
+    let value: Value = serde_json::from_str(&raw).map_err(|error| {
+        FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            format!("Invalid --config JSON: {error}"),
+            r#"Example: --config '{"type":"Cron","startDateTime":"2026-01-01T00:00:00","endDateTime":"2026-12-31T23:59:00","localTimeZoneId":"UTC","interval":10}'"#,
+        )
+    })?;
+    let value = value
+        .get("configuration")
+        .filter(|value| value.is_object())
+        .cloned()
+        .unwrap_or(value);
+    if !value.is_object()
+        || !matches!(
+            value.get("type").and_then(Value::as_str),
+            Some("Cron" | "Daily" | "Weekly" | "Monthly")
+        )
+    {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Schedule configuration requires a supported type",
+            "Use type Cron, Daily, Weekly, or Monthly in --config.",
+        )
+        .into());
+    }
+    Ok(value)
+}
+
+async fn list_schedules(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let response = client
+        .get_list(
+            &execute_schedules_path(workspace, id),
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "copy-job list-schedules", "Viewer"))?;
+    output::render_list_with_token(
+        cli,
+        &response.items,
+        &["id", "enabled", "configuration.type", "createdDateTime"],
+        &["ID", "ENABLED", "TYPE", "CREATED"],
+        "id",
+        response.continuation_token.as_deref(),
+    );
+    Ok(())
+}
+
+async fn create_schedule(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    enabled: bool,
+    config: &str,
+) -> Result<()> {
+    crate::client::validate_uuid(workspace, "--workspace")?;
+    crate::client::validate_uuid(id, "--id")?;
+    let body = serde_json::json!({
+        "enabled": enabled,
+        "configuration": schedule_configuration(config)?,
+    });
+    if output::dry_run_guard(cli, "copy-job create-schedule", &body) {
+        return Ok(());
+    }
+    let data = client
+        .post(&execute_schedules_path(workspace, id), &body, false)
+        .await
+        .map_err(|e| enrich_forbidden(e, "copy-job create-schedule", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn show_schedule(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    schedule_id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "{}/{schedule_id}",
+            execute_schedules_path(workspace, id)
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "copy-job show-schedule", "Viewer"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn update_schedule(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    schedule_id: &str,
+    enabled: Option<bool>,
+    config: Option<&str>,
+) -> Result<()> {
+    crate::client::validate_uuid(workspace, "--workspace")?;
+    crate::client::validate_uuid(id, "--id")?;
+    crate::client::validate_uuid(schedule_id, "--schedule-id")?;
+    if enabled.is_none() && config.is_none() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "At least one of --enabled or --config must be provided",
+            "Provide --enabled false and/or a replacement --config JSON object.",
+        )
+        .into());
+    }
+    let mut body = serde_json::json!({});
+    if let Some(value) = enabled {
+        body["enabled"] = Value::Bool(value);
+    }
+    if let Some(value) = config {
+        body["configuration"] = schedule_configuration(value)?;
+    }
+    if output::dry_run_guard(cli, "copy-job update-schedule", &body) {
+        return Ok(());
+    }
+    let data = client
+        .patch(
+            &format!("{}/{schedule_id}", execute_schedules_path(workspace, id)),
+            &body,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "copy-job update-schedule", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+async fn delete_schedule(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    schedule_id: &str,
+) -> Result<()> {
+    crate::client::validate_uuid(workspace, "--workspace")?;
+    crate::client::validate_uuid(id, "--id")?;
+    crate::client::validate_uuid(schedule_id, "--schedule-id")?;
+    if output::dry_run_guard(
+        cli,
+        "copy-job delete-schedule",
+        &serde_json::json!({
+            "workspace": workspace,
+            "id": id,
+            "scheduleId": schedule_id,
+        }),
+    ) {
+        return Ok(());
+    }
+    client
+        .delete(&format!(
+            "{}/{schedule_id}",
+            execute_schedules_path(workspace, id)
+        ))
+        .await
+        .map_err(|e| enrich_forbidden(e, "copy-job delete-schedule", "Contributor"))?;
+    output::render_object(
+        cli,
+        &serde_json::json!({"id": schedule_id, "status": "deleted"}),
+        "status",
+    );
+    Ok(())
 }
 
 // ─── CRUD ────────────────────────────────────────────────────────────────────

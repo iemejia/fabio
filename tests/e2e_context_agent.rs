@@ -123,8 +123,8 @@ fn agent_context_default_is_small() {
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     // Default compact output should be much smaller than full dump
     assert!(
-        stdout.len() < 27_000,
-        "default output should be under 27KB, got {} bytes",
+        stdout.len() < 29_000,
+        "default output should be under 29KB, got {} bytes",
         stdout.len()
     );
 }
@@ -1259,14 +1259,16 @@ fn item_capabilities_single_type_two_axes() {
     assert_eq!(lhj["data"]["supports_definition"], true);
     assert_eq!(lhj["data"]["deployable_from_definition"], false);
 
-    // Warehouse: no definition API at all.
+    // Warehouse: supports public definitions and content-backed deployment.
     let wh = fabio()
         .args(["context", "item-capabilities", "Warehouse"])
         .assert()
         .success();
     let whj: serde_json::Value =
         serde_json::from_str(&String::from_utf8_lossy(&wh.get_output().stdout)).unwrap();
-    assert_eq!(whj["data"]["supports_definition"], false);
+    assert_eq!(whj["data"]["supports_definition"], true);
+    assert_eq!(whj["data"]["deployable_from_definition"], true);
+    assert_eq!(whj["data"]["deploy_strategy"], "content");
 }
 
 #[test]

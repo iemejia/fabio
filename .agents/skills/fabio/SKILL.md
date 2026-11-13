@@ -145,16 +145,24 @@ This root skill covers cross-cutting concerns (install, auth, output envelope, g
 | `fabio-dataflows` | Dataflows Gen2 (Power Query low-code ETL) and datamarts |
 | `fabio-data-science` | ML experiments, models (versions, endpoints, scoring), anomaly detectors |
 | `fabio-mirroring` | Mirror Snowflake / Databricks / Cosmos / SQL into OneLake (real-time replication) |
-| `fabio-rti-kql` | Eventhouse, KQL, Eventstream, Activator (Real-Time Intelligence) |
+| `fabio-rti-kql` | Eventhouse, KQL, Eventstream, Custom Stream Connector items, Activator (Real-Time Intelligence) |
 | `fabio-bi` | Semantic models (datasets), reports, paginated reports, dashboards, DAX, Direct Lake |
 | `fabio-ontology` | Fabric IQ ontologies, graph models/querysets, digital twins, OWL import |
 | `fabio-geospatial` | Fabric maps (geospatial visualizations) |
 | `fabio-deploy-cicd` | Stateless content-hash deploy, Git, deployment pipelines, variable libraries |
-| `fabio-admin` | Workspaces, capacity, tenant governance, domains, gateways, connections, labels |
+| `fabio-admin` | Workspaces, capacity, tenant governance, domains, gateways, connections, labels, Share and Share Subscription items |
 | `fabio-app-dev` | Data agents (NL Q&A), GraphQL APIs, User Data Functions, app backends, Cosmos DB, org apps |
 | `fabio-migration` | Port Synapse / Databricks / HDInsight / ADF to Fabric |
 
 Load only the sub-skill(s) relevant to the task to keep context lean. They are generated from `commands.json` (drift-checked in CI), so they never fall out of sync with the CLI.
+
+New REST surfaces follow the same discovery contract: datasource topics and
+feedback belong to `data-agent`, Copy Job schedules to `copy-job`, publish logs to
+`environment`, and public Warehouse definitions to `warehouse`. For the new
+`share`, `share-subscription`, and `custom-stream-connector` families, load the
+focused skill above and use `context describe` before constructing an invocation.
+The focused command index is not a complete flag reference; discover missing
+flags rather than inventing them. A Share item is not an item external-data-share.
 
 ## Output & Errors
 
