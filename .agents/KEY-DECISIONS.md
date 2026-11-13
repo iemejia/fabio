@@ -1,5 +1,7 @@
 # Fabio CLI — Key Decisions
 
+- **Only one unmerged Fabric API sync at a time**: the specification cursor advances on merge, so checking only today's generated branch allows later runs to reimplement the same pending capabilities. Check all open sync branch heads before fetching/generating, defer while one remains open, and serialize workflow runs without cancelling active work. Keep the date-independent gate and early skip conditions covered by a hermetic workflow contract test.
+
 - **Consolidate November API sync PRs by capability, not by replaying competing implementations**: retain the broad item/schedule/feedback/retention surfaces from #200, the request-level regressions and Warehouse export protection from #191, and #192's JSON validation and stale-enum generation fix. Preserve current main's submission uncertainty and generated safety-policy judgment. New item families reuse shared folder-list/definition helpers; Markdown PUT must not change existing text/plain uploads. API contracts and validation limitations are recorded in `.agents/API-BEHAVIORS-DISCOVERED.md`.
 - **Deployment tiers use named boundaries rather than numeric offsets**: adding a type to the static priority list must not silently move every subsequent type into the wrong dependency tier. Custom Stream Connector definitions precede Eventstream consumers; producer Share definitions follow shareable artifacts. Share Subscriptions remain unsupported for generic deployment because creation requires an invitation payload, not a public definition.
 

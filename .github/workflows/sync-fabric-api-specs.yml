@@ -10,6 +10,10 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: fabric-api-spec-sync
+  cancel-in-progress: false
+
 jobs:
   sync-specs:
     runs-on: ubuntu-latest
@@ -19,7 +23,23 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Defer while another API sync is open
+        id: open-sync
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          EXISTING_PR=$(gh pr list --state open --limit 1000 \
+            --json number,headRefName \
+            --jq '[.[] | select(.headRefName | startswith("sync/fabric-api-specs-"))] | .[0].number // empty')
+          if [ -n "$EXISTING_PR" ]; then
+            echo "API sync PR #$EXISTING_PR is still open; deferring generation."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout fabric-rest-api-specs
+        if: steps.open-sync.outputs.exists != 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: microsoft/fabric-rest-api-specs
@@ -27,6 +47,7 @@ jobs:
           fetch-depth: 0
 
       - name: Check for spec changes since last cursor
+        if: steps.open-sync.outputs.exists != 'true'
         id: check-changes
         run: |
           CURSOR_FILE=".github/fabric-api-specs-cursor"
