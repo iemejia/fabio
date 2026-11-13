@@ -1667,7 +1667,7 @@ fn generate_fabric_parts(
             // Identifiers come from static (non-time-series, non-untyped)
             // properties explicitly marked ont:isIdentifier.
             if prop.is_identifier && !time_series && !untyped {
-                id_parts.push(prop_id.clone());
+                id_parts.push(prop_id);
             }
         }
 

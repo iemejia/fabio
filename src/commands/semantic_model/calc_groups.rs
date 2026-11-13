@@ -676,7 +676,7 @@ fn collect_calc_groups_bim(bim: &str) -> Vec<Value> {
     j.get("model")
         .and_then(|m| m.get("tables"))
         .and_then(Value::as_array)
-        .map(|tables| {
+        .map_or_default(|tables| {
             tables
                 .iter()
                 .filter(|t| t.get("calculationGroup").is_some())
@@ -684,13 +684,12 @@ fn collect_calc_groups_bim(bim: &str) -> Vec<Value> {
                     let items: Vec<String> = t
                         .pointer("/calculationGroup/calculationItems")
                         .and_then(Value::as_array)
-                        .map(|is| {
+                        .map_or_default(|is| {
                             is.iter()
                                 .filter_map(|i| i.get("name").and_then(Value::as_str))
                                 .map(String::from)
                                 .collect()
-                        })
-                        .unwrap_or_default();
+                        });
                     serde_json::json!({
                         "name": t.get("name").and_then(Value::as_str).unwrap_or(""),
                         "itemCount": items.len(),
@@ -699,7 +698,6 @@ fn collect_calc_groups_bim(bim: &str) -> Vec<Value> {
                 })
                 .collect()
         })
-        .unwrap_or_default()
 }
 
 #[cfg(test)]

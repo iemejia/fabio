@@ -558,12 +558,11 @@ async fn resolve_eventhouse_props(
     let database_ids = props
         .and_then(|p| p.get("databasesItemIds"))
         .and_then(Value::as_array)
-        .map(|a| {
+        .map_or_default(|a| {
             a.iter()
                 .filter_map(|v| v.as_str().map(str::to_owned))
                 .collect()
-        })
-        .unwrap_or_default();
+        });
     Ok(EventhouseProps {
         query_uri: str_prop("queryServiceUri"),
         ingestion_uri: str_prop("ingestionServiceUri"),

@@ -126,8 +126,7 @@ fn reshape_entity_type(raw: &Value, include_properties: bool) -> Value {
         let arr = if include_properties {
             raw.get(key)
                 .and_then(Value::as_array)
-                .map(|a| a.iter().map(strip_nulls).collect())
-                .unwrap_or_default()
+                .map_or_default(|a| a.iter().map(strip_nulls).collect())
         } else {
             Vec::new()
         };

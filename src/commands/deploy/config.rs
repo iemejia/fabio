@@ -166,8 +166,7 @@ pub fn parse_config(path: &Path) -> Result<DeployConfig> {
 
     let ext = path
         .extension()
-        .map(|e| e.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
+        .map_or_default(|e| e.to_string_lossy().to_lowercase());
 
     let config: DeployConfig = match ext.as_str() {
         "yml" | "yaml" => serde_yaml::from_str(&content)

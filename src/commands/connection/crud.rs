@@ -241,13 +241,12 @@ fn resolve_creation_method(types: &[Value], connection_type: &str) -> MethodReso
     let methods: Vec<String> = entry
         .get("creationMethods")
         .and_then(Value::as_array)
-        .map(|arr| {
+        .map_or_default(|arr| {
             arr.iter()
                 .filter_map(|m| m.get("name").and_then(Value::as_str))
                 .map(str::to_string)
                 .collect()
-        })
-        .unwrap_or_default();
+        });
 
     match methods.as_slice() {
         [] => MethodResolution::Unknown,

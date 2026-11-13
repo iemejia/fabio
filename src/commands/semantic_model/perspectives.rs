@@ -563,7 +563,7 @@ fn collect_perspectives_bim(bim: &str) -> Vec<Value> {
     j.get("model")
         .and_then(|m| m.get("perspectives"))
         .and_then(Value::as_array)
-        .map(|ps| {
+        .map_or_default(|ps| {
             ps.iter()
                 .map(|p| {
                     let count = p
@@ -577,7 +577,6 @@ fn collect_perspectives_bim(bim: &str) -> Vec<Value> {
                 })
                 .collect()
         })
-        .unwrap_or_default()
 }
 
 #[cfg(test)]

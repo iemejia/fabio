@@ -3767,7 +3767,7 @@ fn lro_failure_message(body: &Value) -> String {
     let details: Vec<String> = error_obj
         .and_then(|e| e.get("moreDetails"))
         .and_then(Value::as_array)
-        .map(|arr| {
+        .map_or_default(|arr| {
             arr.iter()
                 .filter_map(|d| {
                     let dmsg = d.get("message").and_then(Value::as_str)?;
@@ -3778,8 +3778,7 @@ fn lro_failure_message(body: &Value) -> String {
                     })
                 })
                 .collect()
-        })
-        .unwrap_or_default();
+        });
 
     if !details.is_empty() {
         base = format!("{base} ({})", details.join("; "));
@@ -4062,7 +4061,7 @@ mod tests {
         headers.insert("Retry-After", "60".parse().unwrap());
         assert_eq!(
             retry_after_from_headers(&headers),
-            Some(Duration::from_secs(60))
+            Some(Duration::from_mins(1))
         );
 
         headers.insert("Retry-After", "invalid".parse().unwrap());

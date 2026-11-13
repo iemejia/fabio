@@ -78,8 +78,7 @@ fn discover_folders_recursive(
 
     let dir_name = current
         .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
+        .map_or_default(|n| n.to_string_lossy().to_string());
 
     // Skip .children directories (KQL database internal)
     if dir_name == ".children" {

@@ -434,8 +434,7 @@ fn discover_items_recursive(
 
         let dir_name = path
             .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
+            .map_or_default(|n| n.to_string_lossy().to_string());
 
         // Skip hidden directories EXCEPT .children (which contains KQL databases)
         if dir_name.starts_with('.') && dir_name != ".children" {
@@ -488,8 +487,7 @@ fn parse_item_directory(root: &Path, path: &Path) -> Result<SourceItem> {
         // folder is synthesizable before calling us.
         let dir_name = path
             .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
+            .map_or_default(|n| n.to_string_lossy().into_owned());
         synthesize_platform_metadata(path, &dir_name).ok_or_else(|| {
             anyhow::anyhow!(
                 "Cannot determine item type for '{}': no .platform file and the \
@@ -670,8 +668,7 @@ fn read_parts_recursive(
         if path.is_dir() {
             let dir_name = path
                 .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
+                .map_or_default(|n| n.to_string_lossy().to_string());
 
             // Skip .pbi/ directories (local Power BI metadata, not part of definition)
             // Skip .children/ directories (handled as separate items in discovery)
@@ -683,8 +680,7 @@ fn read_parts_recursive(
         } else {
             let file_name = path
                 .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
+                .map_or_default(|n| n.to_string_lossy().to_string());
 
             // Skip creationPayload.json, shortcuts.metadata.json, governance.metadata.json,
             // and schedules.metadata.json (not definition parts — handled separately)

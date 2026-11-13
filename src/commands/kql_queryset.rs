@@ -609,8 +609,7 @@ fn queryset_add_tab(
     let mut data_sources = queryset
         .get_mut("dataSources")
         .and_then(Value::as_array_mut)
-        .map(std::mem::take)
-        .unwrap_or_default();
+        .map_or_default(std::mem::take);
     // Reuse an existing Fabric data source for this KQL database, else add one.
     let existing_ds_id = data_sources
         .iter()
@@ -635,8 +634,7 @@ fn queryset_add_tab(
     let mut tabs = queryset
         .get_mut("tabs")
         .and_then(Value::as_array_mut)
-        .map(std::mem::take)
-        .unwrap_or_default();
+        .map_or_default(std::mem::take);
     tabs.push(serde_json::json!({
         "id": tab_id,
         "title": title,

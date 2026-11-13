@@ -311,14 +311,14 @@ fn collect_roles_bim(bim: &str) -> Vec<Value> {
     j.get("model")
         .and_then(|m| m.get("roles"))
         .and_then(Value::as_array)
-        .map(|roles| {
+        .map_or_default(|roles| {
             roles
                 .iter()
                 .map(|r| {
                     let perms: Vec<Value> = r
                         .get("tablePermissions")
                         .and_then(Value::as_array)
-                        .map(|tps| {
+                        .map_or_default(|tps| {
                             tps.iter()
                                 .map(|tp| {
                                     serde_json::json!({
@@ -327,8 +327,7 @@ fn collect_roles_bim(bim: &str) -> Vec<Value> {
                                     })
                                 })
                                 .collect()
-                        })
-                        .unwrap_or_default();
+                        });
                     serde_json::json!({
                         "name": r.get("name").and_then(Value::as_str).unwrap_or(""),
                         "modelPermission": r.get("modelPermission").and_then(Value::as_str).unwrap_or(""),
@@ -337,7 +336,6 @@ fn collect_roles_bim(bim: &str) -> Vec<Value> {
                 })
                 .collect()
         })
-        .unwrap_or_default()
 }
 
 // ── pure TMDL editors ─────────────────────────────────────────────────────────

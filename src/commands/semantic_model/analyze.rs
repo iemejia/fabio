@@ -250,7 +250,7 @@ pub(super) fn run_rules(
             s(r, "ToColumn")
         );
         let label = if name.is_empty() {
-            rel.clone()
+            rel
         } else {
             name.to_string()
         };
@@ -575,9 +575,8 @@ pub(super) fn parse_measure_refs(
         let table = cap
             .get(1)
             .or_else(|| cap.get(2))
-            .map(|m| m.as_str().trim().to_string())
-            .unwrap_or_default();
-        let col = cap.get(3).map(|m| m.as_str()).unwrap_or_default();
+            .map_or_default(|m| m.as_str().trim().to_string());
+        let col = cap.get(3).map_or_default(|m| m.as_str());
         if !table.is_empty() {
             columns.insert(format!("{table}[{col}]"));
             tables.insert(table);
@@ -588,7 +587,7 @@ pub(super) fn parse_measure_refs(
     let re_b = Regex::new(r"\[([^\]]+)\]").unwrap();
     let mut measures: BTreeSet<String> = BTreeSet::new();
     for cap in re_b.captures_iter(&stripped) {
-        let name = cap.get(1).map(|m| m.as_str()).unwrap_or_default();
+        let name = cap.get(1).map_or_default(|m| m.as_str());
         if measure_names.contains(name) {
             measures.insert(name.to_string());
         } else if column_names.contains(name) {
@@ -665,7 +664,7 @@ pub(super) fn decode_parts(data: &Value) -> Vec<(String, String)> {
     data.get("definition")
         .and_then(|d| d.get("parts"))
         .and_then(Value::as_array)
-        .map(|parts| {
+        .map_or_default(|parts| {
             parts
                 .iter()
                 .filter_map(|p| {
@@ -675,7 +674,6 @@ pub(super) fn decode_parts(data: &Value) -> Vec<(String, String)> {
                 })
                 .collect()
         })
-        .unwrap_or_default()
 }
 
 /// Extract measures + the model's measure/column name sets from the definition
@@ -722,8 +720,7 @@ fn extract_measures_tmdl(
     let table = lines
         .iter()
         .find(|l| l.starts_with("table "))
-        .map(|l| strip_tmdl_name(&l[6..]))
-        .unwrap_or_default();
+        .map_or_default(|l| strip_tmdl_name(&l[6..]));
 
     let mut i = 0;
     while i < lines.len() {
@@ -888,8 +885,7 @@ fn fix_summarize_by_tmdl(
     let table = lines
         .iter()
         .find(|l| l.starts_with("table "))
-        .map(|l| strip_tmdl_name(&l[6..]))
-        .unwrap_or_default();
+        .map_or_default(|l| strip_tmdl_name(&l[6..]));
     let mut out: Vec<String> = Vec::new();
     let mut fixed: Vec<String> = Vec::new();
     let mut i = 0;

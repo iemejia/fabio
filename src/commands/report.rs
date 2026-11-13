@@ -810,8 +810,7 @@ async fn create(
             let first = validation
                 .errors
                 .first()
-                .map(|e| format!("{}: {} ({})", e.file, e.message, e.code))
-                .unwrap_or_default();
+                .map_or_default(|e| format!("{}: {} ({})", e.file, e.message, e.code));
             return Err(FabioError::with_hint(
                 ErrorCode::InvalidInput,
                 format!("Invalid PBIR report definition: {first}"),
