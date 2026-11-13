@@ -1,5 +1,7 @@
 # Fabio CLI — Key Decisions
 
+- **Rust 1.100.0 minimum with stable-channel builds**: align package metadata, source-install/contributor guidance and the devcontainer minimum while preserving the existing latest-stable CI/release-sync policy. The devcontainer MSRV build argument invalidates stale cached compiler installations and asserts the installed stable is new enough; automated MSRV updates maintain it. Adopt the new single-prefix trimming and boolean toggle APIs, plus Clippy's map-or-default/ownership simplifications, without changing validation or stripping semantics. A hermetic metadata/docs/container consistency test prevents drift.
+
 - **Private evaluation configuration is explicitly selected, never sourced as shell code**: `tests/eval/run.py --env-file <PRIVATE_FILE>` reads only the four evaluation variables as literal dotenv data and preserves nonempty process-environment overrides. Never auto-load unrelated credentials or print file values; malformed/duplicate assignments fail closed. Azure CLI discovery reuses an existing compatible deployment without changing local-auth policy, keys, resources or roles. Private bindings and credentials stay outside Git.
 
 - **An observed job status must agree with its scope and error evidence**: conflicting returned IDs or error-bearing Completed bodies cannot mark a receipt terminal. Bound cancellation observation separately without treating a timeout as rejection. A bodyless/binary 202 is accepted, not a completed download, unless an explicit LRO observer establishes the result.

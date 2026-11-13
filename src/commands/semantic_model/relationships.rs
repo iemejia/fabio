@@ -321,7 +321,7 @@ fn parse_column_ref(s: &str) -> Option<(String, String)> {
                     i += 2;
                     continue;
                 }
-                in_quote = !in_quote;
+                in_quote.toggle();
             }
             '.' if !in_quote => {
                 dot = Some(i);
@@ -584,6 +584,10 @@ mod tests {
         assert_eq!(
             parse_column_ref("'Sales Fact'.'Net Amount'"),
             Some(("Sales Fact".into(), "Net Amount".into()))
+        );
+        assert_eq!(
+            parse_column_ref("'O''Brien.Fact'.'Key'"),
+            Some(("O'Brien.Fact".into(), "Key".into()))
         );
     }
 

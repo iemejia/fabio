@@ -325,13 +325,12 @@ fn collect_hierarchies_bim(bim: &str, table: Option<&str>) -> Vec<Value> {
                     let levels: Vec<String> = h
                         .get("levels")
                         .and_then(Value::as_array)
-                        .map(|ls| {
+                        .map_or_default(|ls| {
                             ls.iter()
                                 .filter_map(|l| l.get("name").and_then(Value::as_str))
                                 .map(String::from)
                                 .collect()
-                        })
-                        .unwrap_or_default();
+                        });
                     out.push(serde_json::json!({
                         "table": tname,
                         "name": h.get("name").and_then(Value::as_str).unwrap_or(""),

@@ -185,8 +185,7 @@ pub(super) fn generate_markdown(family_value: &Value, commands: &Value) -> Strin
     let command_groups: Vec<&str> = family_value
         .get("command_groups")
         .and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(Value::as_str).collect())
-        .unwrap_or_default();
+        .map_or_default(|a| a.iter().filter_map(Value::as_str).collect());
 
     let name = subskill_dir_name(family);
 

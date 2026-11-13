@@ -291,7 +291,7 @@ fn assemble_parts_from_dir(folder: &str) -> Result<Value> {
             if path.is_dir() {
                 stack.push(path);
             } else {
-                let rel = path.strip_prefix(root).unwrap_or(&path);
+                let rel = path.trim_prefix(root);
                 let rel_str = rel
                     .components()
                     .map(|c| c.as_os_str().to_string_lossy())

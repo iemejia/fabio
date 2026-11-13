@@ -21,7 +21,7 @@ struct Release {
 pub async fn execute(cli: &Cli, check: bool, version: Option<&str>, force: bool) -> Result<()> {
     let target_version = if let Some(v) = version {
         // Strip leading 'v' if provided
-        v.strip_prefix('v').unwrap_or(v).to_string()
+        v.trim_prefix('v').to_string()
     } else {
         fetch_latest_version().await?
     };

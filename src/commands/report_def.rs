@@ -86,7 +86,7 @@ fn decode_parts(def: &Value) -> Vec<(String, String)> {
     def.get("definition")
         .and_then(|d| d.get("parts"))
         .and_then(Value::as_array)
-        .map(|parts| {
+        .map_or_default(|parts| {
             parts
                 .iter()
                 .filter_map(|p| {
@@ -98,7 +98,6 @@ fn decode_parts(def: &Value) -> Vec<(String, String)> {
                 })
                 .collect()
         })
-        .unwrap_or_default()
 }
 
 /// Push a new set of report definition parts via `updateDefinition` (LRO).
@@ -342,8 +341,7 @@ fn collect_visuals(parts: &[(String, String)], page: Option<&str>) -> Vec<Value>
 fn visual_title(v: &Value) -> String {
     v.pointer("/visual/visualContainerObjects/title/0/properties/text/expr/Literal/Value")
         .and_then(Value::as_str)
-        .map(|s| s.trim_matches('\'').to_string())
-        .unwrap_or_default()
+        .map_or_default(|s| s.trim_matches('\'').to_string())
 }
 
 // ── add-page ──────────────────────────────────────────────────────────────────
@@ -419,12 +417,11 @@ pub(super) fn update_pages_json(
     let mut order: Vec<String> = existing
         .get("pageOrder")
         .and_then(Value::as_array)
-        .map(|a| {
+        .map_or_default(|a| {
             a.iter()
                 .filter_map(|e| e.as_str().map(str::to_owned))
                 .collect()
-        })
-        .unwrap_or_default();
+        });
     // Reconcile with the actual page folders present after the edit.
     let folders = page_folders(parts);
     order.retain(|p| folders.contains(p));
@@ -1145,8 +1142,7 @@ fn visual_measures(v: &Value) -> Vec<String> {
     }
     v.get("measure")
         .and_then(Value::as_str)
-        .map(|m| vec![m.to_string()])
-        .unwrap_or_default()
+        .map_or_default(|m| vec![m.to_string()])
 }
 
 #[allow(clippy::too_many_arguments)]

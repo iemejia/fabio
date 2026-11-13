@@ -72,7 +72,7 @@ jobs:
           # in these curated files, so a targeted replace is safe. Copilot then
           # handles the judgement part (fixing new lints / adopting idioms).
           sed -i "s/^rust-version = \"${OLD_VERSION}\"/rust-version = \"${NEW_VERSION}\"/" Cargo.toml
-          for f in README.md AGENTS.md .github/copilot-instructions.md; do
+          for f in README.md AGENTS.md .github/copilot-instructions.md .devcontainer/Dockerfile; do
             if [ -f "$f" ]; then
               sed -i "s/${OLD_VERSION//./\\.}/${NEW_VERSION}/g" "$f"
             fi

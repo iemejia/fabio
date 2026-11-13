@@ -813,7 +813,7 @@ fn analyze_query(query: &str) -> Option<QueryAdvice> {
 
     // (2) Envelope confusion: the payload IS the value under `data`.
     if q == "data" || q.starts_with("data.") || q.starts_with("data[") {
-        let inner = q.strip_prefix("data").unwrap_or(q).trim_start_matches('.');
+        let inner = q.trim_prefix("data").trim_start_matches('.');
         let corrected = if inner.is_empty() {
             "@".to_string()
         } else {

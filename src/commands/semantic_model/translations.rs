@@ -492,7 +492,7 @@ fn collect_cultures_bim(bim: &str) -> Vec<Value> {
     j.get("model")
         .and_then(|m| m.get("cultures"))
         .and_then(Value::as_array)
-        .map(|cultures| {
+        .map_or_default(|cultures| {
             cultures
                 .iter()
                 .map(|c| {
@@ -520,7 +520,6 @@ fn collect_cultures_bim(bim: &str) -> Vec<Value> {
                 })
                 .collect()
         })
-        .unwrap_or_default()
 }
 
 #[cfg(test)]

@@ -3817,7 +3817,7 @@ fn lro_failure_message(body: &Value) -> String {
     let details: Vec<String> = error_obj
         .and_then(|e| e.get("moreDetails"))
         .and_then(Value::as_array)
-        .map(|arr| {
+        .map_or_default(|arr| {
             arr.iter()
                 .filter_map(|d| {
                     let dmsg = d.get("message").and_then(Value::as_str)?;
@@ -3828,8 +3828,7 @@ fn lro_failure_message(body: &Value) -> String {
                     })
                 })
                 .collect()
-        })
-        .unwrap_or_default();
+        });
 
     if !details.is_empty() {
         base = format!("{base} ({})", details.join("; "));

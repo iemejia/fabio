@@ -200,8 +200,7 @@ pub fn parse_parameters(path: &Path) -> Result<Parameters> {
     // Auto-detect format by extension: .yml/.yaml → YAML, otherwise JSON
     let ext = path
         .extension()
-        .map(|e| e.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
+        .map_or_default(|e| e.to_string_lossy().to_lowercase());
 
     let params: Parameters = match ext.as_str() {
         "yml" | "yaml" => serde_yaml::from_str(&content)

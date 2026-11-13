@@ -312,7 +312,7 @@ fn sse_data_blocks(body: &str) -> Vec<String> {
                 blocks.push(std::mem::take(&mut current));
             }
         } else if let Some(rest) = line.strip_prefix("data:") {
-            let rest = rest.strip_prefix(' ').unwrap_or(rest);
+            let rest = rest.trim_prefix(' ');
             if !current.is_empty() {
                 current.push('\n');
             }
@@ -350,6 +350,13 @@ mod tests {
         let blocks = sse_data_blocks(body);
         assert_eq!(blocks.len(), 1);
         assert!(serde_json::from_str::<Value>(&blocks[0]).is_ok());
+    }
+
+    #[test]
+    fn sse_strips_at_most_one_optional_space_and_preserves_payload_whitespace() {
+        assert_eq!(sse_data_blocks("data:  payload\r\n\r\n"), [" payload"]);
+        assert_eq!(sse_data_blocks("data:payload\n\n"), ["payload"]);
+        assert_eq!(sse_data_blocks("data: data:payload\n\n"), ["data:payload"]);
     }
 
     #[test]

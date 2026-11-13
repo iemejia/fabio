@@ -306,24 +306,21 @@ fn definition_object(parts: &Value) -> Value {
 }
 
 fn definition_summary(parts: &Value) -> Value {
-    let summary = parts
-        .as_array()
-        .map(|parts| {
-            parts
-                .iter()
-                .map(|part| {
-                    serde_json::json!({
-                        "path": part.get("path"),
-                        "payloadType": part.get("payloadType"),
-                        "payloadLength": part
-                            .get("payload")
-                            .and_then(Value::as_str)
-                            .map(str::len),
-                    })
+    let summary = parts.as_array().map_or_default(|parts| {
+        parts
+            .iter()
+            .map(|part| {
+                serde_json::json!({
+                    "path": part.get("path"),
+                    "payloadType": part.get("payloadType"),
+                    "payloadLength": part
+                        .get("payload")
+                        .and_then(Value::as_str)
+                        .map(str::len),
                 })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+            })
+            .collect::<Vec<_>>()
+    });
     serde_json::json!({ "parts": summary })
 }
 

@@ -84,8 +84,7 @@ pub(super) fn execute_describe(cli: &Cli, group: &str, command: &str) {
     let Some((group_key, group_obj)) = find_group(&commands, &group_normalized) else {
         let available: Vec<&str> = commands
             .as_object()
-            .map(|m| m.keys().map(String::as_str).collect())
-            .unwrap_or_default();
+            .map_or_default(|m| m.keys().map(String::as_str).collect());
         let result = serde_json::json!({
             "error": format!("No command group found for '{group}'"),
             "available_groups": available,
@@ -517,8 +516,7 @@ fn execute_compact(cli: &Cli, group_filter: Option<&str>) {
         let subcommand_names: Vec<&str> = group_val
             .get("subcommands")
             .and_then(serde_json::Value::as_object)
-            .map(|m| m.keys().map(String::as_str).collect())
-            .unwrap_or_default();
+            .map_or_default(|m| m.keys().map(String::as_str).collect());
 
         compact.insert(
             group_name.clone(),
@@ -682,8 +680,7 @@ fn execute_budget(cli: &Cli, token_budget: usize) {
                 let subcmd_names: Vec<&str> = group_val
                     .get("subcommands")
                     .and_then(serde_json::Value::as_object)
-                    .map(|m| m.keys().map(String::as_str).collect())
-                    .unwrap_or_default();
+                    .map_or_default(|m| m.keys().map(String::as_str).collect());
                 compact_remainder.insert(
                     (*group_name).to_owned(),
                     serde_json::json!({"description": desc, "subcommands": subcmd_names}),
@@ -719,8 +716,7 @@ fn execute_group(cli: &Cli, group: &str) {
     let Some((group_key, group_val)) = find_group(&commands, &group_normalized) else {
         let available: Vec<&str> = commands
             .as_object()
-            .map(|m| m.keys().map(String::as_str).collect())
-            .unwrap_or_default();
+            .map_or_default(|m| m.keys().map(String::as_str).collect());
         let result = serde_json::json!({
             "error": format!("No command group found for '{group}'"),
             "available_groups": available,

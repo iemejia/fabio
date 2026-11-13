@@ -31,10 +31,13 @@ RUN echo "ubuntu ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/ubuntu \
 USER ubuntu
 ENV PATH="/home/ubuntu/.cargo/bin:${PATH}"
 
+# Changing the minimum invalidates the cached stable-toolchain installation.
+ARG RUST_MSRV=1.100.0
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
     --default-toolchain stable \
     --component rustfmt,clippy \
-    --target x86_64-unknown-linux-musl,aarch64-unknown-linux-musl,x86_64-apple-darwin,aarch64-apple-darwin,x86_64-pc-windows-msvc
+    --target x86_64-unknown-linux-musl,aarch64-unknown-linux-musl,x86_64-apple-darwin,aarch64-apple-darwin,x86_64-pc-windows-msvc \
+    && test "$(printf '%s\n' "$RUST_MSRV" "$(rustc --version | cut -d' ' -f2)" | sort -V | head -n1)" = "$RUST_MSRV"
 
 # Install cargo dev tools (baked in for fast container startup)
 RUN cargo install git-cliff cargo-zigbuild cargo-xwin cargo-audit prek \

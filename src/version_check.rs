@@ -409,9 +409,7 @@ fn notice_value(
 
 /// Detect how the running binary was installed.
 fn detect_install_method() -> InstallMethod {
-    let exe = std::env::current_exe()
-        .map(|p| p.to_string_lossy().to_ascii_lowercase())
-        .unwrap_or_default();
+    let exe = std::env::current_exe().map_or_default(|p| p.to_string_lossy().to_ascii_lowercase());
     classify_install_method(&exe, running_in_docker())
 }
 

@@ -342,19 +342,17 @@ fn collect_functions(parts: &[(String, String)]) -> Vec<Value> {
     if let Some(bim) = part_content(parts, "model.bim") {
         return collect_functions_bim(bim);
     }
-    part_content(parts, FUNCTIONS_PATH)
-        .map(|c| {
-            parse_functions_with_desc(c)
-                .into_iter()
-                .map(|(name, desc)| {
-                    desc.map_or_else(
-                        || serde_json::json!({ "name": name }),
-                        |d| serde_json::json!({ "name": name, "description": d }),
-                    )
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+    part_content(parts, FUNCTIONS_PATH).map_or_default(|c| {
+        parse_functions_with_desc(c)
+            .into_iter()
+            .map(|(name, desc)| {
+                desc.map_or_else(
+                    || serde_json::json!({ "name": name }),
+                    |d| serde_json::json!({ "name": name, "description": d }),
+                )
+            })
+            .collect()
+    })
 }
 
 fn function_exists(parts: &[(String, String)], name: &str) -> bool {
@@ -459,7 +457,7 @@ fn collect_functions_bim(bim: &str) -> Vec<Value> {
     j.get("model")
         .and_then(|m| m.get("functions"))
         .and_then(Value::as_array)
-        .map(|fs| {
+        .map_or_default(|fs| {
             fs.iter()
                 .map(|f| {
                     let name = f.get("name").and_then(Value::as_str).unwrap_or("");
@@ -472,7 +470,6 @@ fn collect_functions_bim(bim: &str) -> Vec<Value> {
                 })
                 .collect()
         })
-        .unwrap_or_default()
 }
 
 #[cfg(test)]

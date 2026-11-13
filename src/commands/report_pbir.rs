@@ -753,11 +753,7 @@ fn gather_recursive(base: &Path, current: &Path, parts: &mut Vec<Value>) -> Resu
             {
                 continue;
             }
-            let rel = path
-                .strip_prefix(base)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
+            let rel = path.trim_prefix(base).to_string_lossy().replace('\\', "/");
             let content = std::fs::read(&path)?;
             parts.push(serde_json::json!({
                 "path": rel,

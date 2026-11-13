@@ -540,8 +540,7 @@ pub(super) fn run_pr_ready_checks(
             if lower.starts_with("valuesets/") && is_json {
                 let stem = Path::new(rel_path)
                     .file_stem()
-                    .map(|s| s.to_string_lossy().to_string())
-                    .unwrap_or_default();
+                    .map_or_default(|s| s.to_string_lossy().to_string());
                 let allowed = allow_value_sets
                     .iter()
                     .any(|a| a.eq_ignore_ascii_case(&stem));

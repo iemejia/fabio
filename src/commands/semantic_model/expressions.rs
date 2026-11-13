@@ -330,16 +330,12 @@ fn collect_expressions(parts: &[(String, String)]) -> Vec<Value> {
     if let Some(bim) = part_content(parts, "model.bim") {
         return collect_expressions_bim(bim);
     }
-    part_content(parts, EXPRESSIONS_PATH)
-        .map(|c| {
-            parse_expressions(c)
-                .into_iter()
-                .map(
-                    |(name, is_param)| serde_json::json!({ "name": name, "isParameter": is_param }),
-                )
-                .collect()
-        })
-        .unwrap_or_default()
+    part_content(parts, EXPRESSIONS_PATH).map_or_default(|c| {
+        parse_expressions(c)
+            .into_iter()
+            .map(|(name, is_param)| serde_json::json!({ "name": name, "isParameter": is_param }))
+            .collect()
+    })
 }
 
 fn expression_exists(parts: &[(String, String)], name: &str) -> bool {
@@ -407,7 +403,7 @@ fn collect_expressions_bim(bim: &str) -> Vec<Value> {
     j.get("model")
         .and_then(|m| m.get("expressions"))
         .and_then(Value::as_array)
-        .map(|es| {
+        .map_or_default(|es| {
             es.iter()
                 .map(|e| {
                     let is_param = e
@@ -421,7 +417,6 @@ fn collect_expressions_bim(bim: &str) -> Vec<Value> {
                 })
                 .collect()
         })
-        .unwrap_or_default()
 }
 
 #[cfg(test)]
