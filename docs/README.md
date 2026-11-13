@@ -10,7 +10,7 @@ The user-facing documentation for [fabio](https://github.com/iemejia/fabio), bui
 
 ## Prerequisites
 
-- Node 22.12+ (CI uses Node 24)
+- Node 22.23.4+ (CI uses Node 24)
 
 ## Commands
 

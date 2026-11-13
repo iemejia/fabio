@@ -4056,3 +4056,5 @@ tests:
         value: "CustomStreamConnector"
       - type: javascript
         value: "output.includes('context describe eventstream add-source') || (output.includes('--properties') && output.includes('--dry-run'))"
+      - type: javascript
+        value: "output.includes('context describe eventstream add-source') || ['dataConnectionId', 'workspaceId', 'itemId', 'configurations', 'api.key', '${key}'].every(key => output.includes(key))"

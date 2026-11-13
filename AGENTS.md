@@ -691,7 +691,7 @@ npm run check:links         # internal link validation only (check-links.mjs)
 npm test                    # node:test unit tests for the generator + link checker
 ```
 
-Requires Node 22.12+ (CI uses Node 24). `npm run build`/`dev`/`check` all run `generate:reference` first, so the reference is always fresh.
+Requires Node 22.23.4+ (CI uses Node 24). `npm run build`/`dev`/`check` all run `generate:reference` first, so the reference is always fresh.
 
 ### Generated vs. authored (critical)
 
@@ -741,8 +741,8 @@ Published to GHCR on every push to `main` and on version tags:
 
 ```
 ghcr.io/iemejia/fabio:latest       # latest stable release
-ghcr.io/iemejia/fabio:0.80.0       # release version
-ghcr.io/iemejia/fabio:0.80         # major.minor
+ghcr.io/iemejia/fabio:0.81.0       # release version
+ghcr.io/iemejia/fabio:0.81         # major.minor
 ```
 
 Multi-arch manifest: `linux/amd64` + `linux/arm64`.
