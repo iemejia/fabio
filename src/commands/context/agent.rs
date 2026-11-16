@@ -1420,6 +1420,11 @@ fn generate_subcommands(
             }
         }
     }
+    if group.get_name() == "kql-dashboard"
+        && let Some(scaffold) = commands.get_mut("scaffold")
+    {
+        scaffold["mutates"] = serde_json::json!(false);
+    }
     if group.get_name() == "lakehouse" {
         for (name, command) in &mut commands {
             if name.starts_with("iceberg-") {

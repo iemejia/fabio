@@ -7,11 +7,19 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
+mod authoring;
+
 #[derive(Debug, Subcommand)]
 #[command(
     after_help = "For step-by-step setup, run: fabio context workflow rti-pipeline\nReturns a complete RTI pipeline recipe with exact command syntax."
 )]
 pub enum KqlDashboardCommand {
+    /// Generate a blank documented dashboard definition offline (no resource creation)
+    Scaffold {
+        /// Dashboard title; this does not rename a Fabric item
+        #[arg(long)]
+        title: String,
+    },
     // ── CRUD ─────────────────────────────────────────────────────────────
     /// List KQL dashboards in a workspace
     #[command(display_order = 1)]
@@ -128,6 +136,7 @@ pub async fn execute(
     command: &KqlDashboardCommand,
 ) -> Result<()> {
     match command {
+        KqlDashboardCommand::Scaffold { title } => authoring::scaffold(cli, title),
         KqlDashboardCommand::List { workspace } => list(cli, client, workspace).await,
         KqlDashboardCommand::Show { workspace, id } => show(cli, client, workspace, id).await,
         KqlDashboardCommand::Create {

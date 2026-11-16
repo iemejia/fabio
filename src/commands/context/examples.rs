@@ -206,6 +206,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     ),
     ("item/list", include_str!("data/examples/item_list.json")),
     (
+        "kql-dashboard/scaffold",
+        include_str!("data/examples/kql_dashboard_scaffold.json"),
+    ),
+    (
         "lakehouse/iceberg-commit-table",
         include_str!("data/examples/lakehouse_iceberg_commit_table.json"),
     ),

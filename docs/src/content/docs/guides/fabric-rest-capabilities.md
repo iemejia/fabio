@@ -124,6 +124,31 @@ Reads can return both `columnName` and `columnId`; writes reject both identifier
 together. Fabio omits resolved IDs from its preservation snapshot and comparison.
 User input, including a reviewed raw GET backup, must use `columnName` only.
 
+## Start a Real-Time Dashboard definition
+
+```bash
+fabio kql-dashboard scaffold --title 'Operations overview' --query definition -o plain > definition.json
+fabio kql-dashboard update-definition --workspace "$WS" --id "$DASHBOARD" --file definition.json --dry-run
+```
+
+Scaffolding is offline: no resource creation, data-source connection or query. The
+canonical `RealTimeDashboard.json` part follows the documented schema-52 blank
+definition with one page/time parameter, no tiles and auto-refresh disabled.
+`scaffoldOnly: true` and `renderingVerified: false` prevent confusing a starter
+with a rendered dashboard. Never replace a populated dashboard with this blank
+definition without a backup and explicit approval.
+
+For **Multi Stat**, return label/value rows and select those columns in the visual
+editor. For **KPI**, define a single metric, units, target, threshold direction and
+no-data/staleness behavior. Lay out headline metrics, trends and details with
+consistent spacing, readable labels and non-color status cues. The generator does
+not invent advanced visual options: author in the target UI and export a verified
+version-matched definition. Preserve newer schema versions and unknown fields.
+
+An accepted REST definition is not proof of query permissions or visual rendering.
+Check both and review wide/narrow layouts in the target UI before enabling refresh.
+See `context best-practices dashboard-authoring` for public contracts and examples.
+
 ## Diagnose cloud connection policy blocks
 
 `DMTS_BlockedByAuthenticationKindPolicies` identifies an authentication allowlist

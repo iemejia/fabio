@@ -85,6 +85,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 - **OneLake table metadata** — read/edit table and column descriptions/tags with `item get-table-metadata` and `item update-table-metadata`; default preservation, explicit full replacement, before/after previews and no-replay safeguards
 - **Native Iceberg catalog writes** — create empty native tables, submit reviewed engine commits with assertions intact, and preview exact-UUID deletion; not a row/manifest writer or virtual Delta editor
 - **Portable Eventstreams** — preserve symbolic variable-library references and verify the reviewed value set before consumer deployment; failed activation/readback halts publication instead of routing through a late post-deploy change
+- **Real-Time Dashboard starter** — `kql-dashboard scaffold --title` generates an offline blank definition; `context best-practices dashboard-authoring` covers Multi Stat/KPI query design and version-safe visual authoring
 - **Connection ownership visibility** — connection lists expose the caller's effective role, including `PendingOwner`, in JSON and table output; tenant-admin connection errors point to the Fabric Administrator role
 - **Connection-policy teaching errors** — recognized authentication/target-tenant allowlist blocks point to tenant-admin review, without credential switching, role escalation or invented policy-management calls
 - **Policy sets** — create tenant- or capacity-scoped governance definitions, manage beta policy rules, and activate them with admin-aware safety guardrails

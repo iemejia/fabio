@@ -105,6 +105,7 @@ Manage KQL dashboards (real-time dashboards)
 | `fabio kql-dashboard delete` | yes | Delete a KQL dashboard |
 | `fabio kql-dashboard get-definition` | no | Get the definition of a KQL dashboard |
 | `fabio kql-dashboard list` | no | List KQL dashboards in a workspace |
+| `fabio kql-dashboard scaffold` | no | Generate a blank documented dashboard definition offline (no resource creation) |
 | `fabio kql-dashboard show` | no | Show details of a KQL dashboard |
 | `fabio kql-dashboard update` | yes | Update KQL dashboard properties (name and/or description) |
 | `fabio kql-dashboard update-definition` | yes | Update the definition of a KQL dashboard |
@@ -244,6 +245,7 @@ Manage Custom Stream Connectors
 - Assuming KQL uses the standard Fabric scope (it uses {kusto_uri}/.default; fabio handles it).
 
 ## Key gotchas
+- Real-Time Dashboards use kql-dashboard, not Power BI report/dashboard. kql-dashboard scaffold --title generates only a blank schema-52 definition offline; renderingVerified:false and autoRefresh disabled. Multi Stat/KPI authoring uses reviewed queries and version-matched exported UI definitions, not guessed visualOptions. Preview update-definition before replacing; REST round-trip does not verify rendering/data access. See dashboard-authoring.
 - Eventstream variable references belong in authored definitions (connectionReference/itemReference and supported tableNameReference/tableNamesReference), not resolved topology. Use literal $(/**/Library/Variable) strings, never mixed resolved IDs. Support is property/connector-specific; CustomEndpoint, Cribl and SAPDatasphere have no reference properties. Eventhouse itemReference targets a KQL database. See eventstream-variables.
 - Eventhouse queries are request/response and always terminate — there is no server-push streaming query. Both `eventhouse query` (cluster scope) and `kql-database query` (single DB) share the same continuous-query model: add `--timeout <s>` (Kusto servertimeout, max 3600) to bound a heavy one-shot query; use `--follow` for CONTINUOUS monitoring — fabio polls on `--interval` (default 5s) and streams NDJSON (one JSON object per cycle), ALWAYS bounded by `--max-duration` (default 60s), the global `--limit`, or Ctrl-C, so it never hangs an agent/CI. `--dedup-column <col>` emits only rows newer than the max seen (incremental tail) vs re-watching the full result each cycle. Server-side 'continuous' constructs (continuous-export, materialized views) are `.create` MANAGEMENT commands, not client-streamed — run them via `... query --kql '.create ...'`.
 - `eventhouse query` needs a database context: it defaults to the eventhouse's sole KQL database (an eventhouse auto-provisions one named after itself), and requires `--database <name>` when the cluster hosts more than one. `eventhouse list-databases` enumerates them; `eventhouse query-uri` / `eventhouse ingestion-uri` print the deterministic cluster query and ingestion endpoints (agents cannot guess them).
@@ -283,6 +285,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 
 | Reference | Covers |
 |---|---|
+| `fabio context best-practices dashboard-authoring` | Generate a blank documented RealTimeDashboard.json definition offline, then author version-matched visuals and validate data, layout, permissions and rendering separately. Multi Stat consumes label/value rows; KPI is a single metric, not Power BI report authoring. |
 | `fabio context best-practices eventstream-variables` | Eventstream ALM definitions preserve symbolic connection/item/table references while runtime topology resolves IDs. Configure the target library first; fabio deploy verifies a reviewed value set before publishing dependent streams, halts on uncertainty and never switches strategy automatically. |
 | `fabio context best-practices throttling` | Fabio bounds known rejection retries and retries safe GET/explicit read-only POST gateway failures. Mutating Fabric POSTs never replay ambiguous 5xx/network failures; accepted/unknown submission evidence and retriable:false forbid automatic resubmission. |
 | `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |

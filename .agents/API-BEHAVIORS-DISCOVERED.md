@@ -1333,6 +1333,7 @@ fabio report get-definition --workspace $WS --id $REPORT_ID
 - **F4+ capacity requirement**: SQL Database TDS connections require F4+ capacity. F2 fails with error 18456 State 240.
 
 ## KQL Dashboard API Behaviors Discovered
+- **Public blank scaffold (November 2026, live):** a canonical `RealTimeDashboard.json` part following the public schema-52 blank definition (one page/time parameter, empty tiles/queries/dataSources, refresh disabled) was accepted via updateDefinition on a disposable dashboard. Get Definition returned the expected page, title, no tiles and disabled refresh. This is definition persistence, not visual rendering or data authorization; new KPI/Multi Stat option serialization is deliberately not inferred from UI labels or mixed schema versions.
 - **Definition file**: Part path is `RealTimeDashboard.json`.
 - **Endpoint pattern**: Standard CRUD at `/workspaces/{ws}/kqlDashboards/{id}`.
 - **Get/Update definition are LRO**: Both use `poll: true` at type-specific endpoints.

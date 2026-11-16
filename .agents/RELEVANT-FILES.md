@@ -1,4 +1,5 @@
 ## Relevant Files
+- `src/commands/kql_dashboard/authoring.rs`, `tests/e2e_dashboard_authoring.rs`: offline canonical blank dashboard scaffold, no-network previews and disposable live definition observation.
 - `src/commands/connection_policy.rs`, `tests/e2e_connection_policy.rs`: narrowly recognized cloud-connection allowlist teaching errors, evidence-preservation tests and read-only live connection smoke test.
 - `src/commands/lakehouse/iceberg_writes.rs`, `tests/e2e_iceberg_writes.rs`: native Iceberg create/commit/delete, bounded request input, exact-scope/UUID guards, no-replay handling and disposable live lifecycle.
 - `src/commands/eventstream/variable_references.rs`, `src/commands/deploy/stream_variables.rs`, `tests/e2e_eventstream_variables.rs`: symbolic-reference contract validation/extraction, scoped verified pre-stream activation and ordering/failure regressions.

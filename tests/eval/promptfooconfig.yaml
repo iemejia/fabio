@@ -44,6 +44,16 @@ defaultTest:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
 tests:
+  - description: "Dashboard authoring: blank scaffold is not rendered multi-KPI readiness"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-rti-kql/SKILL.md"
+      user_query: "Start a Fabric Real-Time Dashboard definition. Can scaffold directly generate every new KPI visual mode, and does an accepted REST upload prove rendering and data permissions?"
+    assert:
+      - type: icontains
+        value: "kql-dashboard scaffold"
+      - type: llm-rubric
+        value: "Routes to kql-dashboard and explains the scaffold is blank/offline, not a generator for all new KPI modes. Recommends version-matched authored/exported visuals and separate rendering/data-permission validation. No invented visualOptions or automatic destructive replacement."
+
   - description: "Connection policies: tenant review instead of identity or enforcement bypass"
     vars:
       skill_content: "file://../../.agents/skills/fabio-admin/SKILL.md"

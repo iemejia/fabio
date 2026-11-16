@@ -1,0 +1,7 @@
+{
+  "command": "fabio kql-dashboard scaffold --title 'Operations overview'",
+  "description": "Offline canonical blank dashboard definition, not an item or rendered visual.",
+  "response": {"data": {"definition": {"parts": [{"path": "RealTimeDashboard.json", "payloadType": "InlineBase64", "payload": "<BASE64_DASHBOARD_JSON>"}]}, "scaffoldOnly": true, "renderingVerified": false, "warnings": ["No queries, data sources or tiles; refresh disabled. Advanced visuals need version-matched authoring and rendering checks."]}},
+  "notes": "Payload is illustrative, not executable Base64. The real payload decodes to the documented schema-52 blank definition with one page/time parameter. No authentication or network request occurs. Save the definition projection privately and preview a separately approved update-definition; replacing a populated dashboard with a blank one is destructive.",
+  "query_examples": ["fabio kql-dashboard scaffold --title 'Operations overview' --query definition -o plain"]
+}

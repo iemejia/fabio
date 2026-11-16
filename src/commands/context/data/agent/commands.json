@@ -17143,6 +17143,18 @@
     "auth_scope": "fabric",
     "description": "Manage KQL dashboards (real-time dashboards)",
     "subcommands": {
+      "scaffold": {
+        "description": "Generate a blank documented dashboard definition offline (no resource creation)",
+        "flags": {
+          "--title": {
+            "type": "string",
+            "required": true,
+            "description": "Dashboard title; this does not rename a Fabric item"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
       "list": {
         "description": "List KQL dashboards in a workspace",
         "flags": {

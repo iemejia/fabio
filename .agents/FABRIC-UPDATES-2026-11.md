@@ -11,7 +11,7 @@ Live output stays private; never record resource identifiers or endpoints here.
 | 4 | Eventstream variable-library references and deployment ordering | Complete |
 | 5 | Native Iceberg catalog writes | Complete |
 | 6 | Connection-policy diagnostics | Complete (live policy-denial induction excluded) |
-| 7 | Real-Time Dashboard authoring (verify public definition first) | Pending |
+| 7 | Real-Time Dashboard authoring (verify public definition first) | Complete for blank scaffold/design guidance; advanced visual generation deferred |
 | 8 | Project Osmos feasibility spike (support-contract decision first) | Pending |
 
 ## Validation contract
@@ -163,3 +163,25 @@ tenant is a blocker/limitation, not a passed acceptance check.
 - Docs checks/13 script tests and focused evaluation (1/1 at 100%) passed.
 - Final format, warning-free test clippy and full suite passed: 3,102 tests,
   zero failed, 1,133 ignored. No mutating feature/flags were added.
+
+## Item 7 acceptance
+
+- Verified the public REST definition envelope and published versioned dashboard,
+  tile and query schemas before implementation. Added non-mutating offline
+  `kql-dashboard scaffold --title`, canonical Base64 part, one page/time range,
+  no sources/queries/tiles and refresh disabled. Introspection explicitly reports
+  mutates:false; scaffoldOnly/renderingVerified distinguish generation from readiness.
+- Unit and CLI e2e tests cover title validation, local ID generation, canonical
+  transport, no-network readonly generation, explicit destructive publication
+  preview and non-mutating introspection.
+- Live create/updateDefinition/readback and ignored observation test passed on a
+  disposable dashboard. No queries or source connections were created; UI rendering
+  is not claimed. Advanced KPI/Multi Stat serialization remains outside this
+  conservative scaffold; design/query/threshold/layout guidance and version-matched
+  UI export are the documented route, not fabricated new visual fields.
+- Focused model evaluation passed 1/1 at 100%; docs check and 13 script tests passed.
+- No new destructive command was added. Existing update-definition remains the
+  separately previewed/approved publication boundary.
+- Final format, warning-free test clippy and full suite passed: 3,107 tests,
+  zero failed, 1,134 ignored. Disposable dashboard deleted and scoped inventory
+  verified absence. New context guidance is retrievable read-only from the CLI.
