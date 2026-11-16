@@ -55,6 +55,26 @@ Add `--update-metadata` only when intentionally applying a supplied `.platform` 
 Workspace exports no longer silently substitute an empty Warehouse shell after
 a failed definition fetch.
 
+## Prepare SQL pools for the unified model
+
+SQL pools configuration is workspace-scoped, not warehouse-scoped. The announced
+transition asks clients to stop relying on `customSQLPoolsEnabled` by mid-December
+2026; January 2027 unification removes the built-in/custom distinction. Unified GET
+responses contain only effective configurations, not previously saved inactive pools.
+Fabio preserves configuration JSON without adding the legacy flag. It rejects
+output envelopes and malformed array/boolean fields before sending a request.
+
+Save a private baseline with `warehouse get-sql-pools-config --workspace "$WS" -o plain`,
+review the target service's rollout contract, and preview the **complete** pool list
+with `warehouse update-sql-pools-config --workspace "$WS" --file pools.json --dry-run`.
+Omitted pools are removed. Do not silently drop a legacy `false` flag to simulate
+disabling pools, or assume an absent flag means disabled.
+
+The announced default for **new** workspaces is one read-optimized pool with access
+to 100% of compute. Existing workspaces retain active configurations. Allocation
+and caching can affect consumption; these settings are not spending limits.
+Final rollout behavior must be verified against the service, not inferred from dates.
+
 ## Inspect and schedule Copy Jobs
 
 ```bash

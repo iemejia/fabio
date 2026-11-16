@@ -1,4 +1,5 @@
 ## Relevant Files
+- `.agents/FABRIC-UPDATES-2026-11.md`: sequential implementation/acceptance ledger for the three-week Fabric blog review; no tenant-specific details.
 - `tests/e2e_yaml_parser.rs`: maintained YAML backend compatibility for scalar types, Unicode, CRLF inputs, serialization round-trips and malformed-input locations
 - `tests/live-api-sync.md`: scoped live acceptance plan, isolation/cleanup requirements, and per-capability acceptance matrix for the consolidated REST changes
 - `tests/e2e_api_sync_workflow.rs`: hermetic concurrency, cross-date open-PR detection, and pre-generation skip contracts for `.github/workflows/sync-fabric-api-specs.yml`

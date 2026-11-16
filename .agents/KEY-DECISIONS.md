@@ -1,5 +1,7 @@
 # Fabio CLI — Key Decisions
 
+- **Unified SQL pool transition (November 2026):** Preserve caller-supplied pool JSON without adding or requiring the retiring mode flag. Validate only stable top-level shapes and reject fabio output envelopes before preview/network; do not silently translate a legacy false toggle into a different unified operation. See `context best-practices custom-sql-pools` for rollout guidance.
+
 - **Release YAML parsing uses the maintained Serde Norway fork**: keep the source-level `serde_yaml` module alias to preserve existing serialization APIs while replacing the deprecated parser and unmaintained unsafe-libyaml backend. The replacement and its backend have compatible MSRVs and permissive licenses; YAML/deployment regressions and the full suite validate the dependency transition without suppressing RustSec advisories.
 
 - **Data Agent create/update must use the shared guarded CRUD handlers**: live acceptance exposed bespoke metadata handlers that ignored `--dry-run`. Delegate both operations to `commands::crud` rather than duplicating their request construction, preserving the existing payload and permission roles while restoring the canonical preview boundary. The regression exercises both ordinary dry-run and readonly dry-run modes and asserts zero requests.

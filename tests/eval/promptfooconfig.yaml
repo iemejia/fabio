@@ -44,6 +44,14 @@ defaultTest:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
 tests:
+  - description: "Unified SQL pools: do not infer disabled from an absent legacy flag"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-warehouse-sql/SKILL.md"
+      user_query: "My warehouse get-sql-pools-config output no longer has customSQLPoolsEnabled. Should I treat it as false and PATCH the old flag back to recover inactive pools?"
+    assert:
+      - type: llm-rubric
+        value: "Does not interpret absence as disabled or recommend restoring the retiring flag. Explains that unified GET returns effective configuration, not stored inactive pools. Recommends inspecting current pools and the rollout contract rather than automatically changing settings."
+
   - description: "Topic concurrency: a client snapshot is not atomic enforcement"
     vars:
       skill_content: "file://../../.agents/skills/fabio-app-dev/SKILL.md"

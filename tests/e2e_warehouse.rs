@@ -368,6 +368,167 @@ fn warehouse_list_returns_json() {
 }
 
 #[test]
+fn warehouse_unified_sql_pools_preserves_payload_and_guards() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let workspace = uuid::Uuid::nil().to_string();
+    let config = serde_json::json!({"customSQLPools": [{
+        "name": "synthetic-pool", "isDefault": true,
+        "maxResourcePercentage": 20, "optimizeForReads": false,
+        "classifier": {"type": "Statement Type", "value": ["SELECT"]}
+    }]});
+    let route = format!("/workspaces/{workspace}/warehouses/sqlPoolsConfiguration");
+    let server = runtime.block_on(async {
+        let server = MockServer::start().await;
+        for verb in ["GET", "PATCH"] {
+            let mut mock = Mock::given(method(verb)).and(path(&route));
+            if verb == "PATCH" {
+                mock = mock.and(body_json(&config));
+            }
+            mock.respond_with(ResponseTemplate::new(200).set_body_json(&config))
+                .expect(1)
+                .mount(&server)
+                .await;
+        }
+        server
+    });
+    let read = common::mock_fabio(&server)
+        .args([
+            "--readonly",
+            "warehouse",
+            "get-sql-pools-config",
+            "--workspace",
+            &workspace,
+        ])
+        .assert()
+        .success();
+    assert_eq!(extract_data(&parse_json(&read)), &config);
+    let content = config.to_string();
+    let args = [
+        "warehouse",
+        "update-sql-pools-config",
+        "--workspace",
+        &workspace,
+        "--content",
+        &content,
+    ];
+    let preview = common::mock_fabio(&server)
+        .env("OPENCODE", "1")
+        .arg("--dry-run")
+        .args(args)
+        .assert()
+        .success();
+    let json = parse_json(&preview);
+    assert_eq!(json["data"]["dry_run"], true);
+    assert_eq!(
+        json["data"]["would_execute"],
+        "warehouse update-sql-pools-config"
+    );
+    assert_eq!(json["data"]["details"]["configuration"], config);
+    assert_eq!(json["data"]["details"]["workspaceId"], workspace);
+    assert_eq!(json["data"]["destructive"], true);
+    assert!(json["data"]["agentNotice"].is_string());
+    let blocked = common::mock_fabio(&server)
+        .arg("--readonly")
+        .args(args)
+        .assert()
+        .failure();
+    let error: serde_json::Value = serde_json::from_slice(&blocked.get_output().stderr).unwrap();
+    assert_eq!(error["error"]["code"], "READONLY_MODE");
+    let update = common::mock_fabio(&server).args(args).assert().success();
+    assert_eq!(extract_data(&parse_json(&update)), &config);
+    assert_eq!(
+        runtime.block_on(server.received_requests()).unwrap().len(),
+        2
+    );
+}
+
+#[test]
+fn warehouse_sql_pools_invalid_input_fails_before_network_even_in_dry_run() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let server = runtime.block_on(MockServer::start());
+    for content in [
+        "[]",
+        r#"{"data":{"customSQLPools":[]}}"#,
+        r#"{"customSQLPools":null}"#,
+    ] {
+        let result = common::mock_fabio(&server)
+            .args([
+                "--dry-run",
+                "warehouse",
+                "update-sql-pools-config",
+                "--workspace",
+                &uuid::Uuid::nil().to_string(),
+                "--content",
+                content,
+            ])
+            .assert()
+            .failure();
+        let error: serde_json::Value = serde_json::from_slice(&result.get_output().stderr).unwrap();
+        assert_eq!(error["error"]["code"], "INVALID_INPUT");
+    }
+    assert_eq!(
+        runtime.block_on(server.received_requests()).unwrap().len(),
+        0
+    );
+    let bad_scope = common::mock_fabio(&server)
+        .args([
+            "--dry-run",
+            "warehouse",
+            "update-sql-pools-config",
+            "--workspace",
+            "../all",
+            "--content",
+            r#"{"customSQLPools":[]}"#,
+        ])
+        .assert()
+        .failure();
+    let error: serde_json::Value = serde_json::from_slice(&bad_scope.get_output().stderr).unwrap();
+    assert_eq!(error["error"]["code"], "INVALID_INPUT");
+    assert_eq!(
+        runtime.block_on(server.received_requests()).unwrap().len(),
+        0
+    );
+}
+
+#[test]
+#[ignore = "requires FABIO_TEST_SQL_POOLS_WORKSPACE (or source workspace) and live credentials; read-only"]
+fn warehouse_sql_pools_live_read_accepts_rollout_shape() {
+    let workspace = std::env::var("FABIO_TEST_SQL_POOLS_WORKSPACE")
+        .or_else(|_| std::env::var("FABIO_TEST_SOURCE_WORKSPACE"))
+        .expect("SQL pools test workspace required");
+    let result = fabio()
+        .args([
+            "--readonly",
+            "--wrap-untrusted",
+            "warehouse",
+            "get-sql-pools-config",
+            "--workspace",
+            &workspace,
+        ])
+        .timeout(std::time::Duration::from_mins(1))
+        .output()
+        .expect("run fabio");
+    // Never print live payloads or tenant-specific errors from a failed assertion.
+    assert!(
+        result.status.success(),
+        "live SQL pools read failed; inspect private log"
+    );
+    let json: serde_json::Value = serde_json::from_slice(&result.stdout).expect("JSON response");
+    let data = extract_data(&json);
+    assert!(data.is_object(), "expected configuration object");
+    assert!(
+        data.get("customSQLPools")
+            .is_some_and(serde_json::Value::is_array),
+        "expected pool list"
+    );
+    assert!(
+        data.get("customSQLPoolsEnabled")
+            .is_none_or(serde_json::Value::is_boolean),
+        "legacy flag must be optional boolean"
+    );
+}
+
+#[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn warehouse_show_returns_details() {
@@ -577,7 +738,7 @@ fn warehouse_sql_pools_accept_statement_type_classifier_dry_run() {
         .success();
     let json = parse_json(&assert);
     assert_eq!(
-        json["data"]["details"]["customSQLPools"][0]["classifier"]["type"],
+        json["data"]["details"]["configuration"]["customSQLPools"][0]["classifier"]["type"],
         "Statement Type"
     );
 }

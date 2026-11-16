@@ -7,9 +7,9 @@
       "customSQLPools": []
     }
   },
-  "notes": "A workspace with no custom pools returns {customSQLPoolsEnabled:false, customSQLPools:[]}. The endpoint is workspace-scoped and no longer requires the former beta=true query parameter (GET/PATCH /workspaces/{ws}/warehouses/sqlPoolsConfiguration). 'customSQLPoolsEnabled' toggles the feature; 'customSQLPools' holds pool definitions. Classifier type accepts the exact values 'Application Name', 'Application Name Regex', and 'Statement Type'. Capture a working configuration with this command, version it, and re-apply it with 'warehouse update-sql-pools-config --file pools.json --dry-run' first. See the 'custom-sql-pools' best-practice.",
+  "notes": "This illustrates the LEGACY response, not a guarantee that customSQLPoolsEnabled is present. The announced unified model returns only effective pools and retires the flag (mid-December 2026 client preparation; January 2027 rollout). Never treat an omitted flag as disabled or expect GET to retain inactive pools. The route is workspace-scoped and needs no beta parameter. Classifier type accepts Application Name, Application Name Regex, and Statement Type. Save raw JSON privately, review the target rollout contract and complete pool list, then preview update-sql-pools-config. Fabio does not add a mode flag. See custom-sql-pools.",
   "query_examples": [
-    "fabio warehouse get-sql-pools-config --workspace <WS> --query customSQLPoolsEnabled -o plain",
+    "fabio warehouse get-sql-pools-config --workspace <WS> --query customSQLPools -o plain",
     "fabio warehouse get-sql-pools-config --workspace <WS> -o plain > pools.json"
   ]
 }

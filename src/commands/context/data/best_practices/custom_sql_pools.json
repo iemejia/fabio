@@ -1,6 +1,6 @@
 {
   "topic": "custom-sql-pools",
-  "title": "Custom SQL Pools for Fabric Data Warehouse (workload governance)",
+  "title": "SQL Pools for Fabric Data Warehouse (unified-model transition)",
   "summary": "Custom SQL Pools cap the maximum share of warehouse compute a workload can consume (application-name, regex, or SQL statement-type classification), for workload ISOLATION and predictable resource usage — NOT a spending limit. Read the config with 'warehouse get-sql-pools-config' and apply one with 'warehouse update-sql-pools-config'. Good candidates: ETL/data-loading, background processing, and Power BI reporting that must not starve other workloads. Under allocation-based billing, capping a bursty workload's peak allocation can indirectly reduce consumption (it runs longer at a lower vNode peak).",
   "what_it_is": "A governance boundary that limits the maximum percentage of warehouse resources a classified workload can access. Its primary purpose is workload isolation (keep a business-critical Power BI dashboard from contending with an aggressive ETL job); with allocation-based billing, governing allocation also affects consumption.",
   "what_it_is_not": [
@@ -21,19 +21,22 @@
   },
   "config_shape": {
     "note": "The endpoint (PATCH/GET /workspaces/{ws}/warehouses/sqlPoolsConfiguration) is workspace-scoped (governs all warehouses in the workspace). It no longer requires the former beta=true query parameter. Classifier type accepts Application Name, Application Name Regex, or Statement Type.",
-    "verified_get_response": {"customSQLPoolsEnabled": false, "customSQLPools": []},
-    "toggle": "customSQLPoolsEnabled (bool) turns the feature on/off; customSQLPools is the array of pool definitions.",
+    "legacy_get_response": {"customSQLPoolsEnabled": false, "customSQLPools": []},
+    "unified_shape": {"customSQLPools": []},
+    "transition": "The November 9, 2026 announcement asks clients to stop relying on customSQLPoolsEnabled by mid-December 2026. Unified GET returns only effective configurations, not saved inactive pools. The flag is scheduled for removal from PATCH; the January 2027 rollout and final contract remain service-controlled. Fabio preserves supplied JSON and never adds the flag.",
     "classifier": {"type": "Statement Type", "value": ["SELECT"]}
   },
   "recommended_workflow": [
     "1. Read the current configuration first; preserve existing pools, or build a configuration using the documented classifier shape and explicit isDefault values. Portal configuration is optional, not a prerequisite.",
     "2. Capture the raw configuration without fabio's JSON data envelope: fabio warehouse get-sql-pools-config --workspace $WS -o plain > pools.json",
-    "3. Version pools.json in git and re-apply it to other workspaces/environments: fabio warehouse update-sql-pools-config --workspace $WS2 --file pools.json (use --dry-run first).",
+    "3. Review the complete pool list and the target environment's rollout contract before re-applying: fabio warehouse update-sql-pools-config --workspace $WS2 --file pools.json --dry-run. Do not copy a legacy mode flag into a unified target or silently drop a false flag to emulate disabling pools. Keep operational snapshots private or sanitize identifiers before committing them.",
     "The GET → version → preview → update pattern keeps the configuration reproducible and auditable without requiring the portal."
   ],
   "gotchas": [
     "The config is WORKSPACE-scoped (sqlPoolsConfiguration lives under /warehouses/, not a single warehouse id) — it governs all warehouses in the workspace.",
     "The former required ?beta=true query parameter was removed when this API graduated from beta.",
+    "Do not branch on customSQLPoolsEnabled, interpret an omitted flag as false, or depend on GET to recover inactive configurations. Preserve an approved baseline separately before the transition.",
+    "The announced January 2027 default applies to NEW workspaces: one read-optimized pool can access 100% of compute. Existing workspaces retain active configurations. Higher allocation can increase consumption; optimizeForReads and allocation percentages are workload decisions, never automatic cost fixes. Configurable cache cooldown was announced as future functionality, not a currently guaranteed flag.",
     "Classifier type is case-sensitive and accepts `Application Name`, `Application Name Regex`, or `Statement Type`; Statement Type values are SQL statement names such as `SELECT`.",
     "Reading and updating SQL pools configuration require workspace Admin.",
     "PATCH customSQLPools replaces the pool list: pools omitted from the request are deleted. Capture the baseline, confirm the workspace, and retain every pool you want to keep. Use -o plain when saving the GET response for --file; default JSON output has a data envelope and is not itself a valid PATCH body.",

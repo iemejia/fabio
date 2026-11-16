@@ -2,6 +2,7 @@
   "description": "Authored safety judgment. The generator and independent clap-surface tests consume this policy; runtime notices continue to consume generated commands.json, so stale metadata cannot be silently repaired at runtime.",
   "destructive_verbs": ["delete", "remove", "vacuum", "prune", "purge", "drop", "truncate", "kill", "cancel", "clear", "reset", "stop", "checkout"],
   "destructive_commands": {
+    "warehouse update-sql-pools-config": "PATCH replaces the workspace-wide pool list, deleting omitted pools and changing workload allocation for every warehouse in the workspace.",
     "deploy apply": "Deployment can replace existing definitions and delete items. The concrete plan still reports whether its selected actions are destructive.",
     "dataflow upgrade-gen1": "Execution always replaces the selected Gen1 items irreversibly. The approval flag gates execution; it does not make an otherwise harmless mode destructive.",
     "data-agent upload-topic": "PUT can permanently replace an existing topic; ETag preconditions prevent concurrent replacement but do not make replacement reversible.",
