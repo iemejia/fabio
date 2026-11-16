@@ -14,6 +14,7 @@ mod definitions;
 mod execution_definitions;
 mod files;
 mod iceberg;
+mod iceberg_writes;
 mod insights;
 mod livy;
 mod maintenance;
@@ -1286,9 +1287,19 @@ pub enum LakehouseCommand {
         table: String,
     },
 
+    /// Create an empty native Iceberg table through the `OneLake` catalog (no row/file writer)
+    #[command(display_order = 80)]
+    IcebergCreateTable(iceberg_writes::CreateArgs),
+    /// Commit an engine-generated Iceberg request without rewriting assertions (destructive)
+    #[command(display_order = 81)]
+    IcebergCommitTable(iceberg_writes::CommitArgs),
+    /// Delete one native Iceberg table and its directory/data (non-atomic identity snapshot guard)
+    #[command(display_order = 82)]
+    IcebergDeleteTable(iceberg_writes::DeleteArgs),
+
     // ── Livy Sessions ────────────────────────────────────────────────────
     /// List Livy sessions for a lakehouse
-    #[command(display_order = 80)]
+    #[command(display_order = 83)]
     ListLivySessions {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
@@ -1299,7 +1310,7 @@ pub enum LakehouseCommand {
         id: String,
     },
     /// Get details of a Livy session for a lakehouse
-    #[command(display_order = 81)]
+    #[command(display_order = 84)]
     GetLivySession {
         /// Workspace ID
         #[arg(short, long, env = "FABIO_WORKSPACE")]
@@ -1322,6 +1333,15 @@ pub enum LakehouseCommand {
 )]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseCommand) -> Result<()> {
     match command {
+        LakehouseCommand::IcebergCreateTable(args) => {
+            iceberg_writes::create(cli, client, args).await
+        }
+        LakehouseCommand::IcebergCommitTable(args) => {
+            iceberg_writes::commit(cli, client, args).await
+        }
+        LakehouseCommand::IcebergDeleteTable(args) => {
+            iceberg_writes::delete(cli, client, args).await
+        }
         LakehouseCommand::List { workspace } => crud::list_lakehouses(cli, client, workspace).await,
         LakehouseCommand::Show { workspace, id } => {
             crud::show_lakehouse(cli, client, workspace, id).await

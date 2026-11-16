@@ -1,0 +1,15 @@
+{
+  "topic": "native-iceberg",
+  "title": "Native Iceberg catalog writes, not a row or manifest writer",
+  "summary": "Create empty native Iceberg tables, submit reviewed engine-generated commits with optimistic requirements intact, and delete an exact native table using storage-authenticated OneLake IRC APIs. Virtual Delta and shortcut targets are not writable native tables.",
+  "contract": [
+    "Use lakehouse iceberg-create-table with --workspace/--id UUIDs, exact --namespace/--table and --file CreateTableRequest JSON (or --content/@file). Requests are bounded to 16 MiB UTF-8. Name must match --table; location and staged creation are not accepted. The catalog allocates an empty native table. Fabio writes no rows, Parquet data files, manifests or manifest lists.",
+    "Use a standard Iceberg engine/client for data-file and manifest production, then iceberg-commit-table for a reviewed CommitTableRequest. It requires exactly one assert-table-uuid matching the observed table; other requirements and updates are preserved, not rebased. An optional identifier must match the selected namespace/table. UUID reassignment and storage relocation are refused.",
+    "Catalog discovery uses the storage audience and must return the exact workspace/item prefix. Commit/delete inspect physical table location and reject virtualized Delta and shortcut targets. Native writes never enable conversion or modify virtual metadata files. Use a Delta-compatible writer for Delta tables.",
+    "Create dry-run is offline. Commit/delete dry-run performs catalog/table GETs to validate native scope and identity, but never mutates. Both commit and delete are destructive and emit confirm-with-user signals for agents.",
+    "A conflict is not permission to drop assertions, change expected UUIDs, overwrite or replay. Preserve outcomes, inspect iceberg-table read-only, coordinate writers, and generate/review a new scoped engine request. Uncertain transport/async acknowledgements retain no-replay evidence.",
+    "Delete requires --expected-table-uuid and removes the table's OneLake directory, data and metadata, not merely its catalog registration. This is a client snapshot check, NOT atomic with DELETE. Quiesce writers and recreation; preview exact scope and obtain approval before deletion. Never replace the expected UUID automatically.",
+    "Success status:acknowledged is distinct from observation.scopeVerified or metadataLocationMatchesAcknowledgement. Observations are point-in-time checks, not a guarantee of query readiness or ongoing writer isolation. Credential-vending config is not included in successful write output. Delete reports catalogAbsent separately from physicalDataRemovalVerified:false."
+  ],
+  "references": ["https://learn.microsoft.com/en-us/fabric/onelake/table-apis/iceberg-table-apis-overview"]
+}

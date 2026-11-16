@@ -206,6 +206,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     ),
     ("item/list", include_str!("data/examples/item_list.json")),
     (
+        "lakehouse/iceberg-commit-table",
+        include_str!("data/examples/lakehouse_iceberg_commit_table.json"),
+    ),
+    (
         "item/update-table-metadata",
         include_str!("data/examples/item_update_table_metadata.json"),
     ),

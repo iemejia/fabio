@@ -53,8 +53,11 @@ Manage lakehouses (tables, files, shortcuts)
 | `fabio lakehouse get-livy-session` | no | Get details of a Livy session for a lakehouse |
 | `fabio lakehouse get-materialized-views-schedule` | no | Show a single materialized lake view refresh schedule by ID |
 | `fabio lakehouse get-shortcut` | no | Get shortcut details |
+| `fabio lakehouse iceberg-commit-table` | yes | Commit an engine-generated Iceberg request without rewriting assertions (destructive) |
 | `fabio lakehouse iceberg-config` | no | Get Iceberg REST Catalog configuration for a lakehouse |
+| `fabio lakehouse iceberg-create-table` | yes | Create an empty native Iceberg table through the `OneLake` catalog (no row/file writer) |
 | `fabio lakehouse iceberg-credentials` | no | Load vended storage credentials scoped to a specific table |
+| `fabio lakehouse iceberg-delete-table` | yes | Delete one native Iceberg table and its directory/data (non-atomic identity snapshot guard) |
 | `fabio lakehouse iceberg-namespace` | no | Get metadata for a specific namespace via the Iceberg REST Catalog |
 | `fabio lakehouse iceberg-namespace-exists` | no | Check if a namespace exists via the Iceberg REST Catalog (lightweight HEAD) |
 | `fabio lakehouse iceberg-namespaces` | no | List table namespaces (schemas) via the Iceberg REST Catalog |
@@ -109,6 +112,7 @@ Manage `OneLake` data access roles (row/column-level security)
 
 ## Must / Prefer / Avoid
 ### MUST
+- On an Iceberg conflict, preserve assertions and expected UUIDs. Inspect read-only, coordinate writers and review a new scoped engine request; never replay, drop assertions or rebase automatically. Preview destructive commits/deletes and confirm approval. Catalog absence is not verified physical purge.
 - For a description-only OneLake metadata edit, preview item update-table-metadata --workspace <WS> --id <ITEM> --table <TABLE> --content '{"description":"..."}' --dry-run. Keep default preservation, never --overwrite. Explain shortcut-target effects and the non-atomic read-modify-write race; inspect verified/verificationError after an approved write rather than replaying.
 - Use PascalCase for --mode (Overwrite/Append) and --format (Csv/Parquet).
 - Upload to Files/ before load-table, or use upload-table for the combined one-step path.
@@ -125,6 +129,7 @@ Manage `OneLake` data access roles (row/column-level security)
 - Deleting Lakehouse/Warehouse/other data-bearing items without explicit user approval.
 
 ## Key gotchas
+- Native Iceberg catalog writes are not a row/manifest writer: iceberg-create-table creates an empty native table; iceberg-commit-table submits a reviewed engine-generated request with exactly one assert-table-uuid and all optimistic requirements intact. Virtual Delta and shortcut targets are refused. iceberg-delete-table removes directory/data and requires --expected-table-uuid; its snapshot identity check is not atomic. See native-iceberg.
 - Use item get-table-metadata/update-table-metadata for OneLake table/column descriptions and key-value tags, not item organizational tags or semantic-model descriptions. Default updates merge by columnName; --overwrite removes omitted metadata and requires explicit approval. Dry-run reads before/after; shortcut writes affect the target table and concurrency is not atomic. See table-metadata.
 - item get-endpoints --workspace <WS_UUID> --id <ITEM_UUID> discovers engines and hosted OneLake MCP connections with storage-scoped auth. It is read-only discovery, not a query or connection health check. Use each returned connection's own audience; do not install returned skills or connect automatically. See endpoint-discovery.
 - Table file listing lists from the root to get real item-id-prefixed paths.
@@ -153,6 +158,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 
 | Reference | Covers |
 |---|---|
+| `fabio context best-practices native-iceberg` | Create empty native Iceberg tables, submit reviewed engine-generated commits with optimistic requirements intact, and delete an exact native table using storage-authenticated OneLake IRC APIs. Virtual Delta and shortcut targets are not writable native tables. |
 | `fabio context best-practices table-metadata` | The common OneLake additional-metadata preview API reads and replaces table/column descriptions and key-value tags. Fabio merges by default, previews before/after, warns about shortcut targets and non-atomic concurrency, and never retries uncertain POSTs. |
 | `fabio context best-practices endpoint-discovery` | Read-only OneLake endpoint discovery returns recommended engines, complete connections, MCP URLs and per-connection token audiences without running queries, granting access, installing skills or opening connections. |
 | `fabio context best-practices throttling` | Fabio bounds known rejection retries and retries safe GET/explicit read-only POST gateway failures. Mutating Fabric POSTs never replay ambiguous 5xx/network failures; accepted/unknown submission evidence and retriable:false forbid automatic resubmission. |

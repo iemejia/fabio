@@ -124,6 +124,33 @@ Reads can return both `columnName` and `columnId`; writes reject both identifier
 together. Fabio omits resolved IDs from its preservation snapshot and comparison.
 User input, including a reviewed raw GET backup, must use `columnName` only.
 
+## Manage native Iceberg catalog writes
+
+```bash
+fabio lakehouse iceberg-create-table --workspace "$WS" --id "$ITEM" --namespace dbo --table native_table --file create-request.json --dry-run
+fabio lakehouse iceberg-commit-table --workspace "$WS" --id "$ITEM" --namespace dbo --table native_table --file engine-commit.json --dry-run
+fabio lakehouse iceberg-delete-table --workspace "$WS" --id "$ITEM" --namespace dbo --table native_table --expected-table-uuid "$TABLE_UUID" --dry-run
+```
+
+Use Iceberg REST Catalog requests, not table rows or raw metadata files. Create
+requires a struct schema with named positive-ID fields; the catalog allocates an
+empty native table. Fabio does **not** produce data files, manifests or rows. Use a
+standard Iceberg engine for those, and preserve its reviewed commit requirements.
+Commit requires exactly one `assert-table-uuid` matching the observed native table;
+UUID reassignment, storage relocation and mismatched identifiers are refused.
+
+These commands use storage authentication and exact workspace/item UUIDs. Writes
+reject virtualized Delta metadata and shortcut targets. A stale/conflicting request
+must be inspected and regenerated with its engine, never rebased or replayed by
+dropping assertions. Create preview is offline; commit/delete previews read native
+scope and identity. Successful acknowledgement is separate from point-in-time
+readback observations and does not prove query readiness.
+
+**DELETE removes the table directory, data and metadata.** Its required UUID check
+is a non-atomic client snapshot, not compare-and-swap. Quiesce writers/recreation,
+retain a backup and obtain approval after reviewing the preview. `catalogAbsent`
+does not prove physical purge (`physicalDataRemovalVerified` remains false).
+
 ## Promote Eventstreams with variable libraries
 
 Authored definitions retain symbolic `connectionReference` and `itemReference`

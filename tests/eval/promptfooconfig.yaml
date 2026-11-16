@@ -44,6 +44,14 @@ defaultTest:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
 tests:
+  - description: "Native Iceberg: preserve commit assertions and distinguish physical deletion"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-lakehouse/SKILL.md"
+      user_query: "An iceberg-commit-table request has stale assertions. Should I remove them and retry? Also, is iceberg-delete-table only unregistering a virtual Delta table, and is --expected-table-uuid an atomic deletion guard?"
+    assert:
+      - type: llm-rubric
+        value: "Rejects assertion removal/automatic replay; recommends read-only inspection and a newly reviewed engine-generated commit. Explains native-only writes reject virtual Delta and shortcut targets. Delete removes directory/data/metadata, not just registration, and the UUID snapshot guard is not atomic. Does not claim fabio writes rows/manifests."
+
   - description: "Eventstream variables: review target set before publication and never bypass failed activation"
     vars:
       skill_content: "file://../../.agents/skills/fabio-deploy-cicd/SKILL.md"

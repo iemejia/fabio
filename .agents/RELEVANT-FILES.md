@@ -1,4 +1,5 @@
 ## Relevant Files
+- `src/commands/lakehouse/iceberg_writes.rs`, `tests/e2e_iceberg_writes.rs`: native Iceberg create/commit/delete, bounded request input, exact-scope/UUID guards, no-replay handling and disposable live lifecycle.
 - `src/commands/eventstream/variable_references.rs`, `src/commands/deploy/stream_variables.rs`, `tests/e2e_eventstream_variables.rs`: symbolic-reference contract validation/extraction, scoped verified pre-stream activation and ordering/failure regressions.
 - `src/commands/item/table_metadata.rs`, `tests/e2e_table_metadata.rs`: OneLake additional metadata validation, merge/replacement, destructive previews, guarded no-replay writes and disposable live round-trip.
 - `src/commands/item/endpoints.rs`, `tests/e2e_item_endpoints.rs`: storage-scoped OneLake engine/endpoint/MCP discovery with scope validation, no-follow guarantees, teaching errors and live-read acceptance.

@@ -4511,7 +4511,8 @@
         "returns": "object",
         "examples": [
           "fabio lakehouse iceberg-config --workspace $WS --id $LH"
-        ]
+        ],
+        "auth_scope": "storage"
       },
       "iceberg-namespaces": {
         "description": "List table namespaces (schemas) via the Iceberg REST Catalog",
@@ -4531,7 +4532,8 @@
         "returns": "object",
         "examples": [
           "fabio lakehouse iceberg-namespaces --workspace $WS --id $LH"
-        ]
+        ],
+        "auth_scope": "storage"
       },
       "iceberg-namespace": {
         "description": "Get metadata for a specific namespace via the Iceberg REST Catalog",
@@ -4553,7 +4555,8 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "auth_scope": "storage"
       },
       "iceberg-tables": {
         "description": "List tables in a namespace via the Iceberg REST Catalog",
@@ -4578,7 +4581,8 @@
         "returns": "object",
         "examples": [
           "fabio lakehouse iceberg-tables --workspace $WS --id $LH --namespace dbo"
-        ]
+        ],
+        "auth_scope": "storage"
       },
       "iceberg-table": {
         "description": "Get table definition (schema, partitions, properties) via the Iceberg REST Catalog",
@@ -4609,7 +4613,8 @@
         "examples": [
           "fabio lakehouse iceberg-table --workspace $WS --id $LH --namespace dbo --table customers",
           "fabio lakehouse iceberg-table --workspace $WS --id $LH --namespace dbo --table sales --query \"metadata.schemas[-1].fields[].{name: name, type: type}\""
-        ]
+        ],
+        "auth_scope": "storage"
       },
       "iceberg-table-exists": {
         "description": "Check if a table exists via the Iceberg REST Catalog (lightweight HEAD)",
@@ -4639,7 +4644,8 @@
         "returns": "object",
         "examples": [
           "fabio lakehouse iceberg-table-exists --workspace $WS --id $LH --namespace dbo --table sales"
-        ]
+        ],
+        "auth_scope": "storage"
       },
       "iceberg-namespace-exists": {
         "description": "Check if a namespace exists via the Iceberg REST Catalog (lightweight HEAD)",
@@ -4661,7 +4667,8 @@
           }
         },
         "mutates": false,
-        "returns": "object"
+        "returns": "object",
+        "auth_scope": "storage"
       },
       "iceberg-credentials": {
         "description": "Load vended storage credentials scoped to a specific table",
@@ -4691,7 +4698,8 @@
         "returns": "object",
         "examples": [
           "fabio lakehouse iceberg-credentials --workspace $WS --id $LH --namespace dbo --table sales"
-        ]
+        ],
+        "auth_scope": "storage"
       },
       "iceberg-stats": {
         "description": "Show table statistics from the latest Iceberg snapshot (record/file counts, size)",
@@ -4721,7 +4729,8 @@
         "returns": "object",
         "examples": [
           "fabio lakehouse iceberg-stats --workspace $WS --id $LH --namespace dbo --table sales"
-        ]
+        ],
+        "auth_scope": "storage"
       },
       "iceberg-snapshots": {
         "description": "Show snapshot history for a table via the Iceberg REST Catalog",
@@ -4751,7 +4760,112 @@
         "returns": "object",
         "examples": [
           "fabio lakehouse iceberg-snapshots --workspace $WS --id $LH --namespace dbo --table sales"
-        ]
+        ],
+        "auth_scope": "storage"
+      },
+      "iceberg-create-table": {
+        "description": "Create an empty native Iceberg table through the `OneLake` catalog (no row/file writer)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace UUID, not a name"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse/data item UUID, not a name"
+          },
+          "--namespace": {
+            "type": "string",
+            "description": "Exact one-level catalog namespace"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Exact table name, not a path or wildcard"
+          },
+          "--content": {
+            "type": "string",
+            "description": "IRC request JSON (or @file); no table rows or hand-authored metadata files"
+          },
+          "--file": {
+            "type": "string",
+            "description": "File containing an IRC request (maximum 16 MiB)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "auth_scope": "storage"
+      },
+      "iceberg-commit-table": {
+        "description": "Commit an engine-generated Iceberg request without rewriting assertions (destructive)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace UUID, not a name"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse/data item UUID, not a name"
+          },
+          "--namespace": {
+            "type": "string",
+            "description": "Exact one-level catalog namespace"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Exact table name, not a path or wildcard"
+          },
+          "--content": {
+            "type": "string",
+            "description": "IRC request JSON (or @file); no table rows or hand-authored metadata files"
+          },
+          "--file": {
+            "type": "string",
+            "description": "File containing an IRC request (maximum 16 MiB)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true,
+        "auth_scope": "storage"
+      },
+      "iceberg-delete-table": {
+        "description": "Delete one native Iceberg table and its directory/data (non-atomic identity snapshot guard)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace UUID, not a name"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse/data item UUID, not a name"
+          },
+          "--namespace": {
+            "type": "string",
+            "description": "Exact one-level catalog namespace"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Exact table name, not a path or wildcard"
+          },
+          "--expected-table-uuid": {
+            "type": "string",
+            "required": true,
+            "description": "UUID observed during review; this client snapshot check is NOT atomic with DELETE"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true,
+        "auth_scope": "storage"
       },
       "list-livy-sessions": {
         "description": "List Livy sessions for a lakehouse",

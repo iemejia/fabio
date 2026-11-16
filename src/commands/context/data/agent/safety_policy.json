@@ -2,6 +2,7 @@
   "description": "Authored safety judgment. The generator and independent clap-surface tests consume this policy; runtime notices continue to consume generated commands.json, so stale metadata cannot be silently repaired at runtime.",
   "destructive_verbs": ["delete", "remove", "vacuum", "prune", "purge", "drop", "truncate", "kill", "cancel", "clear", "reset", "stop", "checkout"],
   "destructive_commands": {
+    "lakehouse iceberg-commit-table": "Catalog commits can remove schemas, snapshots and references or replace metadata. Caller-supplied optimistic assertions must be preserved; no automatic commit replay or rebase is permitted.",
     "item update-table-metadata": "The OneLake POST always replaces a table's complete additional metadata; even a merged client update can overwrite concurrent changes and shortcut writes affect the target table.",
     "warehouse update-sql-pools-config": "PATCH replaces the workspace-wide pool list, deleting omitted pools and changing workload allocation for every warehouse in the workspace.",
     "deploy apply": "Deployment can replace existing definitions and delete items. The concrete plan still reports whether its selected actions are destructive.",

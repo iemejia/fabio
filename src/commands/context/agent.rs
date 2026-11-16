@@ -1420,6 +1420,20 @@ fn generate_subcommands(
             }
         }
     }
+    if group.get_name() == "lakehouse" {
+        for (name, command) in &mut commands {
+            if name.starts_with("iceberg-") {
+                command["auth_scope"] = serde_json::json!("storage");
+            }
+            if matches!(
+                name.as_str(),
+                "iceberg-create-table" | "iceberg-commit-table" | "iceberg-delete-table"
+            ) {
+                command["mutates"] = serde_json::json!(true);
+                command["returns"] = serde_json::json!("object");
+            }
+        }
+    }
     commands
 }
 

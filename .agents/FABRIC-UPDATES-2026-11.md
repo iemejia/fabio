@@ -9,7 +9,7 @@ Live output stays private; never record resource identifiers or endpoints here.
 | 2 | OneLake endpoint discovery and hosted MCP discovery | Complete |
 | 3 | Safe table/column additional metadata | Complete (shortcut backend limitation documented) |
 | 4 | Eventstream variable-library references and deployment ordering | Complete |
-| 5 | Native Iceberg catalog writes | Pending |
+| 5 | Native Iceberg catalog writes | Complete |
 | 6 | Connection-policy diagnostics | Pending |
 | 7 | Real-Time Dashboard authoring (verify public definition first) | Pending |
 | 8 | Project Osmos feasibility spike (support-contract decision first) | Pending |
@@ -123,3 +123,27 @@ tenant is a blocker/limitation, not a passed acceptance check.
   failed, 1,131 ignored. Both destructive runtime audits, docs check and 13 script
   tests passed. Outcome records carry stable workspace/item IDs; duplicate plan
   entries/IDs and library name/ID mismatches cannot activate an unrelated library.
+
+## Item 5 acceptance
+
+- Native catalog create/commit/delete use storage auth, bounded UTF-8 request
+  input, discovered-prefix validation and exact UUID/namespace/table scope.
+  Create allocates an empty table, not data files/manifests/rows. Commit preserves
+  caller assertions and rejects UUID/location reassignment or mismatched identifiers.
+- Unit and CLI e2e tests cover native/virtual/shortcut guards, input limits,
+  prefix mismatches, readonly, canonical destructive previews, exact wire payloads,
+  no credential-config output, uncertain/async submissions and catalog absence.
+- Live create via `cargo run` allocated a format-v2 native table; commit/readback
+  passed. The stale schema assertion failed with CONFLICT/retriable:false and did
+  not apply its property. The ignored lifecycle passed and deleted the table;
+  catalog absence was verified. No physical purge or row-writer validation claimed.
+- Live read-only virtual-Delta deletion probe hit the native-only input guard.
+- Destructive checklist: commit/delete use canonical dry-run guards after pure
+  scope validation and native/identity reads; shared mutation helpers enforce
+  readonly and no replay; generated destructive+mutates metadata; no new bypass
+  flags or protected item types; UUID/exact-path guard and preview e2e coverage.
+  DELETE's identity snapshot is explicitly non-atomic and purge is unverified.
+- Final format, warning-free test clippy, 3,098 tests and both destructive runtime
+  audits passed (1,132 tests ignored). Docs check and 13 script tests passed.
+  Focused evaluation passed 1/1 after regenerating the updated skill; the first
+  attempt used stale generated guidance and failed. No provider/grading errors.

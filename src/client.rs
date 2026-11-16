@@ -893,6 +893,22 @@ impl FabricClient {
             .await
     }
 
+    /// One guarded table-catalog deletion; unexpected async acknowledgements never authorize replay.
+    pub async fn delete_onelake_table_api(&self, path: &str) -> Result<Value> {
+        self.guard_readonly("DELETE", path)?;
+        let url = self.onelake_table_url(path);
+        let token = self.require_storage_auth().await?;
+        let response = self
+            .send_mutation(
+                self.http.delete(url).header(AUTHORIZATION, token),
+                "onelake",
+                path,
+            )
+            .await?;
+        self.mutation_json_expected(response, "onelake", path, &[200, 204])
+            .await
+    }
+
     /// HEAD from the `OneLake` Table API. Returns `true` if 204/200, `false` if 404.
     /// Uses storage-scoped auth. Retries once on 401.
     pub async fn head_onelake_table_api(&self, path: &str) -> Result<bool> {

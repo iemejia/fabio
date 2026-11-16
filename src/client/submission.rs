@@ -456,6 +456,7 @@ mod tests {
     async fn specialized_mutation_guards_precede_auth_and_network() {
         let client = FabricClient::new().with_readonly(true);
         for result in [
+            client.delete_onelake_table_api("/mock").await,
             client.post_onelake_table_api("/mock", &json!({})).await,
             client.post_raw("/mock", "raw").await,
             client.post_octet_stream("/mock", vec![0]).await,

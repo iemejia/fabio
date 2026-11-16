@@ -83,6 +83,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 - **SQL pool transition readiness** — preserve legacy and unified pool configuration shapes without inventing a mode flag; discover rollout and effective-configuration guidance with `context best-practices custom-sql-pools`
 - **OneLake endpoint discovery** — `item get-endpoints` returns an item's query engines, direct connections and hosted MCP servers with their token audiences; read-only discovery never follows links or executes tools
 - **OneLake table metadata** — read/edit table and column descriptions/tags with `item get-table-metadata` and `item update-table-metadata`; default preservation, explicit full replacement, before/after previews and no-replay safeguards
+- **Native Iceberg catalog writes** — create empty native tables, submit reviewed engine commits with assertions intact, and preview exact-UUID deletion; not a row/manifest writer or virtual Delta editor
 - **Portable Eventstreams** — preserve symbolic variable-library references and verify the reviewed value set before consumer deployment; failed activation/readback halts publication instead of routing through a late post-deploy change
 - **Connection ownership visibility** — connection lists expose the caller's effective role, including `PendingOwner`, in JSON and table output; tenant-admin connection errors point to the Fabric Administrator role
 - **Policy sets** — create tenant- or capacity-scoped governance definitions, manage beta policy rules, and activate them with admin-aware safety guardrails

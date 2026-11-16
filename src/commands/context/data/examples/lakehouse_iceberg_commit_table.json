@@ -1,0 +1,12 @@
+{
+  "command": "fabio lakehouse iceberg-commit-table --workspace <WS> --id <ITEM> --namespace dbo --table native_table --file engine-commit.json --dry-run",
+  "description": "Preview an exact native-table commit without changing caller-supplied optimistic requirements. No rows, manifests or data files are written by fabio.",
+  "response": {"data": {"dry_run": true, "would_execute": "lakehouse iceberg-commit-table", "destructive": true, "details": {
+    "scope": {"workspaceId": "<WS>", "itemId": "<ITEM>", "namespace": "dbo", "table": "native_table"},
+    "tableUuid": "<TABLE_UUID>",
+    "request": {"requirements": [{"type": "assert-table-uuid", "uuid": "<TABLE_UUID>"}, {"type": "assert-current-schema-id", "current-schema-id": 0}], "updates": [{"action": "set-properties", "updates": {"reviewed": "true"}}]},
+    "warnings": ["Review all optimistic requirements. Never drop assertions or rebase a stale commit automatically."]
+  }}},
+  "notes": "Commit/delete previews perform read-only scope validation. Execution reports status:acknowledged, destructive:true, retriable:false and an observation with scopeVerified and metadataLocationMatchesAcknowledgement. Neither observation proves event/query readiness or continued isolation. A conflict requires inspection and a newly reviewed engine request, never assertion removal/replay. Delete additionally requires --expected-table-uuid; its snapshot guard is not atomic, and catalog absence does not prove physical purge.",
+  "query_examples": ["fabio lakehouse iceberg-table --workspace <WS> --id <ITEM> --namespace dbo --table native_table --readonly"]
+}
