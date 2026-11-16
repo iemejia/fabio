@@ -44,6 +44,14 @@ defaultTest:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
 tests:
+  - description: "Connection policies: tenant review instead of identity or enforcement bypass"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-admin/SKILL.md"
+      user_query: "My cloud connection returns DMTS_BlockedByAuthenticationKindPolicies. Should I give the user workspace Admin, switch to another credential kind, or disable Restrict to allowlist and retry?"
+    assert:
+      - type: llm-rubric
+        value: "Identifies tenant-admin authentication allowlist review. Does not recommend automatic workspace grants, identity/credential changes, weakening policy or replay. Distinguishes connection policy from workspace permissions; no invented REST management command."
+
   - description: "Native Iceberg: preserve commit assertions and distinguish physical deletion"
     vars:
       skill_content: "file://../../.agents/skills/fabio-lakehouse/SKILL.md"

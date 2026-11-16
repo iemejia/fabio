@@ -7,6 +7,7 @@ pub mod azure_databricks_storage;
 pub mod capacity;
 pub mod catalog;
 pub mod connection;
+mod connection_policy;
 pub mod context;
 pub mod copy_job;
 pub mod cosmos_db_database;
@@ -309,6 +310,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Ok(v) => Ok(v),
         Err(e) => {
             let error = tenant_gate::enrich(&client, &command_path, e).await;
+            let error = connection_policy::enrich(error);
             Err(remediation::enrich_command_error(&cli, error))
         }
     }

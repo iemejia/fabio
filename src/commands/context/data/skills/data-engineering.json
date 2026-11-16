@@ -35,6 +35,7 @@
     "Ignoring cold-start latency on small capacity (first Spark run takes minutes)."
   ],
   "key_gotchas": [
+    "A cloud connection blocked by DMTS_BlockedByAuthenticationKindPolicies or inter-tenant data-loss-prevention needs tenant-admin allowlist review, not a password reset, workspace grant or identity/credential-mode switch. Do not retry or weaken enforcement automatically. See connection-policies.",
     "environment diagnostics --workspace <WS> --id <ENV> inspects publishing/compute and bounded activation history. Select --activation-id for one resource breakdown; do not assume history is newest-first or Succeeded means clusters are currently warm. Staging differences require review, not automatic publishing.",
     "For session-only triage, environment diagnostics accepts --workspace, --item-type, --item-id and --livy-id without --id; this is the supported session-only invocation, not a missing environment ID. CLI item-type values are lower-case notebook|spark-job-definition|lakehouse, not response enum labels such as Notebook. It reads workspace defaults rather than inventing an environment. Supplying both selections proves no attachment or causality. --include-logs returns metadata only, internally selecting driver stderr and Livy metadata. See spark-diagnostics.",
     "Typed --state on environment list-pool-activations is server-side and conflicts with raw --filter. spark list-livy-sessions --state filters the returned page or --all result, so preserve continuationToken. Monitoring uses NotStarted/InProgress/Succeeded/Failed/Cancelled/Unknown, not interactive Livy idle/busy/dead.",
@@ -65,7 +66,7 @@
     "Deleting a notebook/pipeline/SJD removes its definition — confirm with the user.",
     "Scheduling a recurring job commits ongoing capacity consumption — confirm cadence and timezone."
   ],
-  "shared_references": ["throttling", "pagination", "lro", "remediation-hints", "connection-diagnostics", "spark-diagnostics"],
+  "shared_references": ["connection-policies", "throttling", "pagination", "lro", "remediation-hints", "connection-diagnostics", "spark-diagnostics"],
   "see_also": [
     "fabio context persona data-engineer",
     "fabio context workflow lakehouse-etl",

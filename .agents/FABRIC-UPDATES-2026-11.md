@@ -10,7 +10,7 @@ Live output stays private; never record resource identifiers or endpoints here.
 | 3 | Safe table/column additional metadata | Complete (shortcut backend limitation documented) |
 | 4 | Eventstream variable-library references and deployment ordering | Complete |
 | 5 | Native Iceberg catalog writes | Complete |
-| 6 | Connection-policy diagnostics | Pending |
+| 6 | Connection-policy diagnostics | Complete (live policy-denial induction excluded) |
 | 7 | Real-Time Dashboard authoring (verify public definition first) | Pending |
 | 8 | Project Osmos feasibility spike (support-contract decision first) | Pending |
 
@@ -147,3 +147,19 @@ tenant is a blocker/limitation, not a passed acceptance check.
   audits passed (1,132 tests ignored). Docs check and 13 script tests passed.
   Focused evaluation passed 1/1 after regenerating the updated skill; the first
   attempt used stale generated guidance and failed. No provider/grading errors.
+
+## Item 6 acceptance
+
+- Narrow authentication-kind/inter-tenant policy signals now produce tenant-admin
+  review guidance after command-specific enrichment. Service code, nested details,
+  request IDs and submission evidence are preserved; automatic retry is forbidden.
+- Unit tests distinguish documented signals from generic 403/Offline/policy text;
+  CLI e2e verifies nested signals and one-request/no-admin-fallback behavior.
+- Live bounded existing connection metadata read passed, without credential tests,
+  role changes or allowlist changes. Policy-denial paths are mock-tested, not
+  live-induced: tenant-wide mutation to manufacture denial was deliberately avoided.
+- Guidance distinguishes allowlists from workspace outbound rules, feature gates
+  and PolicySet; no unsupported management API or duplicate connection command added.
+- Docs checks/13 script tests and focused evaluation (1/1 at 100%) passed.
+- Final format, warning-free test clippy and full suite passed: 3,102 tests,
+  zero failed, 1,133 ignored. No mutating feature/flags were added.

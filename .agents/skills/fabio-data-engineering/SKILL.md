@@ -262,6 +262,7 @@ Manage Mounted Data Factories (ADF integration)
 - Ignoring cold-start latency on small capacity (first Spark run takes minutes).
 
 ## Key gotchas
+- A cloud connection blocked by DMTS_BlockedByAuthenticationKindPolicies or inter-tenant data-loss-prevention needs tenant-admin allowlist review, not a password reset, workspace grant or identity/credential-mode switch. Do not retry or weaken enforcement automatically. See connection-policies.
 - environment diagnostics --workspace <WS> --id <ENV> inspects publishing/compute and bounded activation history. Select --activation-id for one resource breakdown; do not assume history is newest-first or Succeeded means clusters are currently warm. Staging differences require review, not automatic publishing.
 - For session-only triage, environment diagnostics accepts --workspace, --item-type, --item-id and --livy-id without --id; this is the supported session-only invocation, not a missing environment ID. CLI item-type values are lower-case notebook|spark-job-definition|lakehouse, not response enum labels such as Notebook. It reads workspace defaults rather than inventing an environment. Supplying both selections proves no attachment or causality. --include-logs returns metadata only, internally selecting driver stderr and Livy metadata. See spark-diagnostics.
 - Typed --state on environment list-pool-activations is server-side and conflicts with raw --filter. spark list-livy-sessions --state filters the returned page or --all result, so preserve continuationToken. Monitoring uses NotStarted/InProgress/Succeeded/Failed/Cancelled/Unknown, not interactive Livy idle/busy/dead.
@@ -299,6 +300,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 
 | Reference | Covers |
 |---|---|
+| `fabio context best-practices connection-policies` | Recognize DMTS_BlockedByAuthenticationKindPolicies and inter-tenant data-loss-prevention blocks as tenant-admin cloud connection allowlist issues, not bad passwords, missing workspace roles or workspace outbound rules. Never weaken policy or change authentication automatically. |
 | `fabio context best-practices throttling` | Fabio bounds known rejection retries and retries safe GET/explicit read-only POST gateway failures. Mutating Fabric POSTs never replay ambiguous 5xx/network failures; accepted/unknown submission evidence and retriable:false forbid automatic resubmission. |
 | `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |
 | `fabio context best-practices lro` | Many Fabric operations are async (return 202). fabio polls them automatically. Use --wait for job operations. |

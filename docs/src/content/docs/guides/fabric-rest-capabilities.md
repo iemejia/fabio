@@ -124,6 +124,27 @@ Reads can return both `columnName` and `columnId`; writes reject both identifier
 together. Fabio omits resolved IDs from its preservation snapshot and comparison.
 User input, including a reviewed raw GET backup, must use `columnName` only.
 
+## Diagnose cloud connection policy blocks
+
+`DMTS_BlockedByAuthenticationKindPolicies` identifies an authentication allowlist
+block. The documented inter-tenant data-loss-prevention block points to the target
+tenant allowlist. Fabio adds non-retriable teaching guidance while preserving
+service error and submission evidence. Generic 403, Offline or Policy Evaluation
+Failure alone does not establish which policy or credential failed.
+
+Ask a Fabric **tenant administrator** to review **Admin portal > Data Policies >
+Data connection policies**, using the Authentication allowlist or Tenant allowlist
+tab. These policies cover existing and new cloud connections; approved changes may
+take up to one hour to propagate. Workspace roles and connection ownership cannot
+override them. Do not switch identities/credential kinds/tenants, grant roles,
+weaken enforcement or retry automatically.
+
+This is distinct from workspace outbound networking rules and PolicySet activation.
+The reviewed public documentation describes portal management, not a verified REST
+management contract. No new mutation command is inferred. Read scoped metadata
+with `connection diagnostics --readonly`; it does not test credentials or prove
+allowlist compliance. See `context best-practices connection-policies`.
+
 ## Manage native Iceberg catalog writes
 
 ```bash

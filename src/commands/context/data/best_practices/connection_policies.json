@@ -1,0 +1,14 @@
+{
+  "topic": "connection-policies",
+  "title": "Cloud connection authentication and target-tenant allowlists",
+  "summary": "Recognize DMTS_BlockedByAuthenticationKindPolicies and inter-tenant data-loss-prevention blocks as tenant-admin cloud connection allowlist issues, not bad passwords, missing workspace roles or workspace outbound rules. Never weaken policy or change authentication automatically.",
+  "diagnosis": [
+    "The documented DMTS_BlockedByAuthenticationKindPolicies signal identifies an Authentication allowlist block. The documented 'blocked due to inter-tenant data loss prevention policies' message points to the Tenant allowlist. Fabio retains error code, request and submission metadata and adds non-retriable guidance; it does not read or modify policy.",
+    "Policy Evaluation Failure or Offline alone is not enough to distinguish allowlist, credentials, source availability or gateway problems. Do not classify every 403 or tenant error as policy denial. Inspect scoped connection/item metadata with connection diagnostics --readonly, without testing credentials.",
+    "Ask a Fabric tenant administrator to review Admin portal > Data Policies > Data connection policies > Authentication allowlist or Tenant allowlist for the intended method and target Entra tenant. Workspace roles and connection ownership cannot bypass tenant policy. Do not grant roles, switch identity/method/tenant, refresh secrets, disable enforcement or replay automatically.",
+    "Policies apply tenant-wide to existing and new supported cloud connections at creation and use. Approved changes may take up to one hour to propagate. The tenant allowlist accepts up to 100 raw tenant GUIDs; verify the intended tenant rather than guessing from a friendly name.",
+    "These allowlists are distinct from workspace outbound connection/gateway rules, generic tenant feature switches and PolicySet activation. Existing admin/connection APIs are not evidence of a public management endpoint for these allowlists. The reviewed documentation describes portal management; fabio does not invent an enable-policy REST call.",
+    "Availability labels vary across announcements and the current Learn page (which says preview). Verify the target environment instead of inferring rollout from a date. Live acceptance exercised existing read-only connection metadata; policy-denial branches are hermetically tested, not induced by tenant-wide changes."
+  ],
+  "references": ["https://learn.microsoft.com/en-us/fabric/data-factory/data-connection-policies"]
+}
