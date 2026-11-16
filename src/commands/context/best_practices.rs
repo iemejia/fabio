@@ -72,4 +72,27 @@ mod tests {
             "BEST_PRACTICES should have at least one entry"
         );
     }
+
+    #[test]
+    fn osmos_feasibility_keeps_live_inspection_separate_from_mutation_support() {
+        let value: Value =
+            serde_json::from_str(find_entry(BEST_PRACTICES, "projectosmos").unwrap()).unwrap();
+        assert_eq!(value["decision"]["stage"], "feasibility");
+        assert_eq!(value["decision"]["upstreamTaskInterfaceExists"], true);
+        assert_eq!(value["decision"]["builtinLifecycleImplemented"], false);
+        assert_eq!(value["decision"]["automaticInstall"], false);
+        assert_eq!(value["validation"]["taskMutationsPerformed"], false);
+        assert_eq!(value["validation"]["autonomousExecutionValidated"], false);
+        assert!(
+            value["integration_gates"]
+                .as_array()
+                .is_some_and(|gates| gates.len() >= 5)
+        );
+        let schema: Value = serde_json::from_str(include_str!("data/agent/commands.json")).unwrap();
+        assert_eq!(
+            schema.get("osmos"),
+            None,
+            "revisit feasibility gates before shipping a task lifecycle"
+        );
+    }
 }

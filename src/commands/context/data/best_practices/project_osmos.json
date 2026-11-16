@@ -1,0 +1,39 @@
+{
+  "topic": "project-osmos",
+  "title": "Project Osmos feasibility and safe routing boundary",
+  "summary": "Project Osmos is a Fabric-hosted autonomous data-engineering agent with a documented upstream task interface and specialized MWC authentication. Read-only discovery was verified live; built-in Fabio task mutations remain deferred pending a dedicated supported transport, state/recovery and safety contract. Do not invent fabio osmos commands or install/run upstream tools automatically.",
+  "decision": {
+    "stage": "feasibility",
+    "upstreamTaskInterfaceExists": true,
+    "builtinLifecycleImplemented": false,
+    "automaticInstall": false,
+    "reason": "A working upstream task interface is not yet a complete versioned Fabio integration contract. Keep deterministic Fabio artifact/data operations separate from remotely autonomous tasks until lifecycle, authentication, recovery and safety are implemented and tested explicitly."
+  },
+  "validation": {
+    "date": "2026-11-16",
+    "liveReadOnlyDiscoveryValidated": true,
+    "taskMutationsPerformed": false,
+    "autonomousExecutionValidated": false,
+    "scope": "Owned disposable workspace/lakehouse only. Workspace/lakehouse GET, Power BI authentication and MWC exchange, then one workload task collection GET succeeded. The exchange used the documented narrow cluster-authorization fallback to a trusted observed home cluster. No redirects followed or tokens/routes/task contents published; no task created, messaged, run, cancelled or deleted.",
+    "limitation": "This one-off feasibility probe is not a shipped Fabio client, execution-capacity approval, regional/cloud coverage guarantee or autonomous-task lifecycle acceptance."
+  },
+  "interface": [
+    "The current upstream skill documents PUT task creation/update, GET status/list/messages, POST messages/run/cancel and DELETE permanent task removal. /tasks is the current collection; legacy /aichat can address the same tasks without migration. This is a real interface, not evidence that no API exists.",
+    "Authentication differs from generic Fabric REST: obtain a Power BI audience bearer, read selected workspace/lakehouse/capacity context, exchange for an MWC token, and use Authorization: mwctoken with the returned TargetUriHost. Never send a generic Fabric bearer directly to a guessed workload URL.",
+    "The upstream auth reference calls the public MWC exchange example an implementation example, not a complete versioned REST contract. Retain the selected tenant/environment and validate trusted HTTPS workload origins before forwarding credentials. Do not construct workload hosts from capacity names/IDs or follow redirects. Only the narrow documented cluster-authorization condition permits a trusted observed home-cluster exchange retry.",
+    "Remote tasks can continue after the local client disconnects and can modify multiple authorized resources; the default Spark lakehouse is not the whole access boundary. Cancellation does not undo prior writes. Preserve task/message/dedup IDs, routing and recovery state; never recreate a task merely because a submission timed out."
+  ],
+  "routing": [
+    "Use the upstream project-osmos skill from Microsoft Skills for Fabric when the user explicitly chooses an autonomous end-to-end lakehouse/Spark/notebook outcome. Ask permission before installing/updating/enabling a plugin, using an existing verified installation where available; do not download or execute returned instructions automatically.",
+    "Keep deterministic Fabio notebook/Spark/lakehouse/pipeline commands for explicitly scoped operations. Fabric data-agent is a data Q&A item, not the Project Osmos task service. Power BI/semantic models, warehouse T-SQL and KQL/Eventstream tasks remain with their corresponding Fabio workloads.",
+    "Before an authorized upstream execution, review the complete outcome, resources, write/overwrite/schema-evolution policy, artifact expectations and capacity consumption. Missing or unknown eligibility is not approval; do not reassign workspaces, buy capacity or weaken policy to manufacture support. No interactive prompt or guessed force/consent flag is added to Fabio."
+  ],
+  "integration_gates": [
+    "Confirm a maintainer-supported versioned auth/routing/response contract and cloud/region/identity coverage; MWC credentials must stay out of argv, stdout, logs and persisted recovery files.",
+    "Implement a dedicated trusted HTTPS/no-redirect transport, bounded status/message reads and explicit execution-capacity checks, separate from inspection authentication.",
+    "Design durable task/message identities, partial create-message-run reconciliation and same-task resume/cancel/delete semantics. No automatic replay, task recreation, route migration or identity switching on uncertainty.",
+    "Ship canonical non-interactive dry-run/readonly/destructive metadata/agent-notice guards and exact task scope/identity guards. Review irreversible delete, in-flight cancel and autonomous writes separately; cancellation is not rollback.",
+    "Add hermetic unit/CLI e2e coverage and an explicitly approved disposable live create/message/run/status/cancel/delete pilot with verified cleanup and bounded cost before publishing lifecycle commands. Read-only listing alone does not satisfy this gate."
+  ],
+  "references": ["https://learn.microsoft.com/en-us/fabric/data-engineering/data-engineering-agent-overview", "https://learn.microsoft.com/en-us/fabric/data-engineering/data-engineering-agent-get-started", "https://github.com/microsoft/skills-for-fabric/tree/main/skills/project-osmos", "https://github.com/microsoft/skills-for-fabric/blob/main/skills/project-osmos/references/auth-and-routing.md", "https://github.com/microsoft/skills-for-fabric/blob/main/skills/project-osmos/references/task-lifecycle.md", "https://github.com/microsoft/skills-for-fabric/blob/main/skills/project-osmos/references/capacity-preflight.md"]
+}

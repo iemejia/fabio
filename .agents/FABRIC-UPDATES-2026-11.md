@@ -12,7 +12,7 @@ Live output stays private; never record resource identifiers or endpoints here.
 | 5 | Native Iceberg catalog writes | Complete |
 | 6 | Connection-policy diagnostics | Complete (live policy-denial induction excluded) |
 | 7 | Real-Time Dashboard authoring (verify public definition first) | Complete for blank scaffold/design guidance; advanced visual generation deferred |
-| 8 | Project Osmos feasibility spike (support-contract decision first) | Pending |
+| 8 | Project Osmos feasibility spike (support-contract decision first) | Complete assessment — read-only discovery passed; built-in mutations deferred |
 
 ## Validation contract
 
@@ -185,3 +185,33 @@ tenant is a blocker/limitation, not a passed acceptance check.
 - Final format, warning-free test clippy and full suite passed: 3,107 tests,
   zero failed, 1,134 ignored. Disposable dashboard deleted and scoped inventory
   verified absence. New context guidance is retrievable read-only from the CLI.
+
+## Item 8 acceptance
+
+- Reviewed current Microsoft Learn/upstream skill auth, capacity and task lifecycle
+  references. Upstream task/MWC interfaces exist; built-in Fabio task mutations
+  remain deferred pending a dedicated contract, transport, durable reconciliation,
+  execution-capacity checks and non-interactive safety design. No plugin installed.
+- Live owned-fixture metadata GETs, Power BI-to-MWC exchange and task collection
+  GET passed. The narrow cluster-authorization condition used the trusted observed
+  home-cluster exchange path; redirects were disabled. No tokens, tenant routes or
+  task contents published. No task created/messaged/run/cancelled/deleted; autonomous
+  execution and a complete lifecycle are explicitly not claimed validated.
+- Added discoverable context assessment, integration gates, root/sub-skill routing
+  and Osmos/Cosmos/data-agent disambiguation. Initial e2e caught substring search
+  ranking Cosmos DB above Osmos; the authored alias disambiguation fixes this using
+  existing authoritative-term ranking, without changing generic search behavior.
+- Unit test guards assessment boundaries; CLI e2e verifies offline search/routing
+  with zero network calls. Ignored live core-metadata prerequisite test passed.
+- Focused evaluation first failed 0/1; strengthened explicit MUST guidance on
+  upstream-vs-Fabio capability, approval and same-task timeout recovery, then passed
+  1/1 at 100% with no provider/grading errors. Docs check/13 script tests passed.
+- Shared fixture cleanup initially refused an unexpected item, then verified it
+  was the base lakehouse's own SQL endpoint by exact parent metadata. Deleted only
+  the owned workspace after matching all remaining contents; inventory confirmed
+  absence. Synthetic table/shortcut/files removed; all per-item fixtures were
+  already cleaned. Existing tenant resources and private `.env` were unchanged.
+- No task mutation command, safety-bypass flag, policy change or dependency added.
+- Final format, warning-free test clippy and full suite passed: 3,109 tests,
+  zero failed, 1,135 ignored. Generated sub-skills and evaluation configuration
+  validation are current. All work remains local; no push was requested.

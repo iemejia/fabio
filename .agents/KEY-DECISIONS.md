@@ -1,5 +1,7 @@
 # Fabio CLI — Key Decisions
 
+- **Osmos feasibility proves reachability, not a shipped lifecycle:** upstream task routes and MWC auth are real; the successful read-only probe is recorded in API behavior notes. Defer built-in task mutation commands until a dedicated supported auth/transport, durable partial-submission recovery, execution-capacity and non-interactive safety contract exists. Route explicit autonomous tasks to the reviewed upstream skill with permission; never substitute data-agent Q&A or infer execution consent from listing.
+
 - **Dashboard scaffolding stops at the verified public blank contract:** generate canonical RealTimeDashboard.json from the REST schema-52 example, with refresh disabled and no sources/tiles. Multi Stat/KPI design is guided, not speculative serialization of evolving UI modes. Preserve version-matched exports for advanced visuals; distinguish successful API round-trip from rendering/source readiness.
 
 - **Connection allowlist diagnostics are narrow and non-mutating:** known authentication-kind/inter-tenant policy signals are enriched after command-specific errors so generic permission advice cannot replace them. Preserve service/submission evidence, forbid automatic retry and route to tenant-admin review. Generic 403/Offline signals stay unclassified; do not duplicate connection APIs or invent an allowlist management endpoint.

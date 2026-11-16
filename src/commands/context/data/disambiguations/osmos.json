@@ -1,0 +1,11 @@
+{
+  "term": "osmos",
+  "aliases": ["Project Osmos", "project-osmos", "Fabric data engineering agent"],
+  "summary": "Osmos is the autonomous Fabric data-engineering agent, not Cosmos DB or the Fabric data-agent Q&A item. Its upstream task/MWC interface exists; Fabio lifecycle mutations are deferred. Consult the feasibility boundary before routing to an upstream skill with permission.",
+  "meanings": [
+    {"context": "Autonomous end-to-end lakehouse/Spark/notebook engineering", "artifact": "Project Osmos remote task", "description": "Read context best-practices project-osmos for the integration decision. There is no built-in Fabio task lifecycle. Use the reviewed upstream skill only after installation/execution approval; preserve same-task identity and recovery state.", "command_group": "context", "example_commands": ["fabio context best-practices project-osmos"]},
+    {"context": "Natural-language data Q&A, not autonomous transformation", "artifact": "Fabric Data Agent", "description": "A different item with data-source bindings for questions over data; do not substitute it for an Osmos task.", "command_group": "data-agent"},
+    {"context": "Cosmos DB NoSQL databases/containers/documents", "artifact": "Cosmos DB Database", "description": "A different product whose name contains the substring osmos. Never route an explicit Project Osmos request to Cosmos DB CRUD.", "command_group": "cosmos-db-database"}
+  ],
+  "default_action": "For Osmos/Project Osmos, consult the feasibility guidance and upstream skill with permission. Do not invent fabio osmos commands or create Cosmos DB resources."
+}

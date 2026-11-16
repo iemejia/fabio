@@ -246,6 +246,7 @@ Manage Mounted Data Factories (ADF integration)
 
 ## Must / Prefer / Avoid
 ### MUST
+- For explicit Project Osmos requests, explain that the upstream task interface and MWC authentication exist but Fabio has no osmos create/run lifecycle. Direct the user to the reviewed upstream project-osmos skill only with permission to install/execute it; never substitute Fabric data-agent Q&A or Cosmos DB. Read-only listing is not execution approval: separately review the full outcome, resource scope, capacity/cost and write/schema policies. After a task submission timeout preserve task/message IDs, routing and recovery state; inspect the same task read-only, never recreate or replay automatically.
 - Use --file for notebook source (.py and .ipynb are auto-detected); fabio wraps the format — do NOT hand-build ipynb JSON.
 - Use --wait/--timeout on notebook/pipeline/SJD runs to observe completion.
 - Bind a notebook to its default lakehouse with --lakehouse at create time when it reads/writes lakehouse tables.
@@ -262,6 +263,7 @@ Manage Mounted Data Factories (ADF integration)
 - Ignoring cold-start latency on small capacity (first Spark run takes minutes).
 
 ## Key gotchas
+- Project Osmos is a remote autonomous data-engineering service, not Fabric data-agent Q&A or a Fabio command group. Upstream task/MWC interfaces exist and read-only discovery was verified, but built-in lifecycle mutations are deferred. Route explicit Osmos requests to the reviewed upstream skill only with installation/execution approval; never invent fabio osmos commands, assume the default lakehouse limits scope or recreate a task after uncertainty. See project-osmos.
 - A cloud connection blocked by DMTS_BlockedByAuthenticationKindPolicies or inter-tenant data-loss-prevention needs tenant-admin allowlist review, not a password reset, workspace grant or identity/credential-mode switch. Do not retry or weaken enforcement automatically. See connection-policies.
 - environment diagnostics --workspace <WS> --id <ENV> inspects publishing/compute and bounded activation history. Select --activation-id for one resource breakdown; do not assume history is newest-first or Succeeded means clusters are currently warm. Staging differences require review, not automatic publishing.
 - For session-only triage, environment diagnostics accepts --workspace, --item-type, --item-id and --livy-id without --id; this is the supported session-only invocation, not a missing environment ID. CLI item-type values are lower-case notebook|spark-job-definition|lakehouse, not response enum labels such as Notebook. It reads workspace defaults rather than inventing an environment. Supplying both selections proves no attachment or causality. --include-logs returns metadata only, internally selecting driver stderr and Livy metadata. See spark-diagnostics.
@@ -300,6 +302,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 
 | Reference | Covers |
 |---|---|
+| `fabio context best-practices project-osmos` | Project Osmos is a Fabric-hosted autonomous data-engineering agent with a documented upstream task interface and specialized MWC authentication. Read-only discovery was verified live; built-in Fabio task mutations remain deferred pending a dedicated supported transport, state/recovery and safety contract. Do not invent fabio osmos commands or install/run upstream tools automatically. |
 | `fabio context best-practices connection-policies` | Recognize DMTS_BlockedByAuthenticationKindPolicies and inter-tenant data-loss-prevention blocks as tenant-admin cloud connection allowlist issues, not bad passwords, missing workspace roles or workspace outbound rules. Never weaken policy or change authentication automatically. |
 | `fabio context best-practices throttling` | Fabio bounds known rejection retries and retries safe GET/explicit read-only POST gateway failures. Mutating Fabric POSTs never replay ambiguous 5xx/network failures; accepted/unknown submission evidence and retriable:false forbid automatic resubmission. |
 | `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |

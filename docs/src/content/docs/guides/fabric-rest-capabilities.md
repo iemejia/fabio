@@ -124,6 +124,27 @@ Reads can return both `columnName` and `columnId`; writes reject both identifier
 together. Fabio omits resolved IDs from its preservation snapshot and comparison.
 User input, including a reviewed raw GET backup, must use `columnName` only.
 
+## Understand the Project Osmos integration boundary
+
+`fabio context best-practices project-osmos` records the feasibility decision.
+Project Osmos has an upstream task lifecycle and specialized MWC authentication;
+it is not a Fabric data-agent Q&A item or a generic Fabric bearer-token endpoint.
+Read-only task discovery was verified against the disposable tenant fixture, but
+Fabio does not ship `osmos` create/run/cancel/delete commands.
+
+For an explicitly chosen autonomous outcome, review the upstream Skills for Fabric
+`project-osmos` skill and obtain permission before installing or running it. Remote
+tasks can continue after disconnection and affect resources beyond the default
+Spark-session lakehouse. Review scope, capacity/cost and write/schema policies;
+preserve task/message identities and recovery state after uncertain submissions.
+Do not recreate a task, switch routes/identities or infer execution approval from
+successful listing. Cancellation is not rollback.
+
+Built-in lifecycle support remains deferred until the dedicated auth/routing,
+durable partial-submission recovery, capacity checks and non-interactive safety
+contract are implemented and live-tested. The feasibility probe did not create,
+message, run, cancel or delete any task and does not prove autonomous execution.
+
 ## Start a Real-Time Dashboard definition
 
 ```bash

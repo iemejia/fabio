@@ -19,6 +19,7 @@
     "CI/CD promotion of these items across environments -> use fabio-deploy-cicd."
   ],
   "must": [
+    "For explicit Project Osmos requests, explain that the upstream task interface and MWC authentication exist but Fabio has no osmos create/run lifecycle. Direct the user to the reviewed upstream project-osmos skill only with permission to install/execute it; never substitute Fabric data-agent Q&A or Cosmos DB. Read-only listing is not execution approval: separately review the full outcome, resource scope, capacity/cost and write/schema policies. After a task submission timeout preserve task/message IDs, routing and recovery state; inspect the same task read-only, never recreate or replay automatically.",
     "Use --file for notebook source (.py and .ipynb are auto-detected); fabio wraps the format — do NOT hand-build ipynb JSON.",
     "Use --wait/--timeout on notebook/pipeline/SJD runs to observe completion.",
     "Bind a notebook to its default lakehouse with --lakehouse at create time when it reads/writes lakehouse tables."
@@ -35,6 +36,7 @@
     "Ignoring cold-start latency on small capacity (first Spark run takes minutes)."
   ],
   "key_gotchas": [
+    "Project Osmos is a remote autonomous data-engineering service, not Fabric data-agent Q&A or a Fabio command group. Upstream task/MWC interfaces exist and read-only discovery was verified, but built-in lifecycle mutations are deferred. Route explicit Osmos requests to the reviewed upstream skill only with installation/execution approval; never invent fabio osmos commands, assume the default lakehouse limits scope or recreate a task after uncertainty. See project-osmos.",
     "A cloud connection blocked by DMTS_BlockedByAuthenticationKindPolicies or inter-tenant data-loss-prevention needs tenant-admin allowlist review, not a password reset, workspace grant or identity/credential-mode switch. Do not retry or weaken enforcement automatically. See connection-policies.",
     "environment diagnostics --workspace <WS> --id <ENV> inspects publishing/compute and bounded activation history. Select --activation-id for one resource breakdown; do not assume history is newest-first or Succeeded means clusters are currently warm. Staging differences require review, not automatic publishing.",
     "For session-only triage, environment diagnostics accepts --workspace, --item-type, --item-id and --livy-id without --id; this is the supported session-only invocation, not a missing environment ID. CLI item-type values are lower-case notebook|spark-job-definition|lakehouse, not response enum labels such as Notebook. It reads workspace defaults rather than inventing an environment. Supplying both selections proves no attachment or causality. --include-logs returns metadata only, internally selecting driver stderr and Livy metadata. See spark-diagnostics.",
@@ -66,7 +68,7 @@
     "Deleting a notebook/pipeline/SJD removes its definition — confirm with the user.",
     "Scheduling a recurring job commits ongoing capacity consumption — confirm cadence and timezone."
   ],
-  "shared_references": ["connection-policies", "throttling", "pagination", "lro", "remediation-hints", "connection-diagnostics", "spark-diagnostics"],
+  "shared_references": ["project-osmos", "connection-policies", "throttling", "pagination", "lro", "remediation-hints", "connection-diagnostics", "spark-diagnostics"],
   "see_also": [
     "fabio context persona data-engineer",
     "fabio context workflow lakehouse-etl",
