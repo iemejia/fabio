@@ -244,6 +244,7 @@ Manage Custom Stream Connectors
 - Assuming KQL uses the standard Fabric scope (it uses {kusto_uri}/.default; fabio handles it).
 
 ## Key gotchas
+- Eventstream variable references belong in authored definitions (connectionReference/itemReference and supported tableNameReference/tableNamesReference), not resolved topology. Use literal $(/**/Library/Variable) strings, never mixed resolved IDs. Support is property/connector-specific; CustomEndpoint, Cribl and SAPDatasphere have no reference properties. Eventhouse itemReference targets a KQL database. See eventstream-variables.
 - Eventhouse queries are request/response and always terminate — there is no server-push streaming query. Both `eventhouse query` (cluster scope) and `kql-database query` (single DB) share the same continuous-query model: add `--timeout <s>` (Kusto servertimeout, max 3600) to bound a heavy one-shot query; use `--follow` for CONTINUOUS monitoring — fabio polls on `--interval` (default 5s) and streams NDJSON (one JSON object per cycle), ALWAYS bounded by `--max-duration` (default 60s), the global `--limit`, or Ctrl-C, so it never hangs an agent/CI. `--dedup-column <col>` emits only rows newer than the max seen (incremental tail) vs re-watching the full result each cycle. Server-side 'continuous' constructs (continuous-export, materialized views) are `.create` MANAGEMENT commands, not client-streamed — run them via `... query --kql '.create ...'`.
 - `eventhouse query` needs a database context: it defaults to the eventhouse's sole KQL database (an eventhouse auto-provisions one named after itself), and requires `--database <name>` when the cluster hosts more than one. `eventhouse list-databases` enumerates them; `eventhouse query-uri` / `eventhouse ingestion-uri` print the deterministic cluster query and ingestion endpoints (agents cannot guess them).
 - KQL Queryset definitions use RealTimeQueryset.json (NOT RawQueryset.kql).
@@ -282,6 +283,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 
 | Reference | Covers |
 |---|---|
+| `fabio context best-practices eventstream-variables` | Eventstream ALM definitions preserve symbolic connection/item/table references while runtime topology resolves IDs. Configure the target library first; fabio deploy verifies a reviewed value set before publishing dependent streams, halts on uncertainty and never switches strategy automatically. |
 | `fabio context best-practices throttling` | Fabio bounds known rejection retries and retries safe GET/explicit read-only POST gateway failures. Mutating Fabric POSTs never replay ambiguous 5xx/network failures; accepted/unknown submission evidence and retriable:false forbid automatic resubmission. |
 | `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |
 | `fabio context best-practices lro` | Many Fabric operations are async (return 202). fabio polls them automatically. Use --wait for job operations. |

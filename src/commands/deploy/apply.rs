@@ -29,7 +29,7 @@ pub(super) fn emit_progress(quiet: bool, msg: &str) {
 ///
 /// Items are deployed in dependency order (by type), with parallelism within each type batch.
 /// Deletes happen last, in reverse dependency order.
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 pub async fn execute_changeset(
     cli: &Cli,
     client: &FabricClient,
@@ -38,6 +38,8 @@ pub async fn execute_changeset(
     source: &SourceWorkspace,
     concurrency: usize,
     fail_fast: bool,
+    environment: Option<&str>,
+    stream_references: &super::stream_variables::References,
 ) -> Result<DeployResult> {
     let start = Instant::now();
     let preserve_identities = super::identities::required(changeset);
@@ -132,8 +134,34 @@ pub async fn execute_changeset(
     // DataPipeline and Dataflow need topological ordering and run sequentially.
     let total_changes = creates_updates.len();
     let completed = AtomicUsize::new(0);
+    let mut variables_checked = stream_references.is_empty();
 
     'tiers: for tier_types in &tier_groups {
+        if !variables_checked
+            && !cli.dry_run
+            && tier_types.iter().any(|kind| {
+                super::ordering::deploy_tier(kind) >= super::ordering::deploy_tier("Eventstream")
+            })
+        {
+            let records = super::stream_variables::activate(
+                client,
+                workspace_id,
+                stream_references,
+                environment.ok_or_else(|| {
+                    FabioError::invalid_input("Missing reviewed Eventstream value set")
+                })?,
+                &created_ids,
+                &failed,
+            )
+            .await?;
+            let prerequisite_failed = super::failure::hooks_failed(&records);
+            hook_results.extend(records);
+            variables_checked = true;
+            if prerequisite_failed {
+                halted = true;
+                break;
+            }
+        }
         // Split tier items into parallel (most types) and sequential (pipeline/dataflow)
         let mut parallel_changes: Vec<&Change> = Vec::new();
         let mut sequential_changes: Vec<Vec<&Change>> = Vec::new();
@@ -537,6 +565,22 @@ pub async fn execute_changeset(
                 }
             }
         }
+    }
+
+    if !variables_checked && !halted && !cli.dry_run {
+        let records = super::stream_variables::activate(
+            client,
+            workspace_id,
+            stream_references,
+            environment.ok_or_else(|| {
+                FabioError::invalid_input("Missing reviewed Eventstream value set")
+            })?,
+            &created_ids,
+            &failed,
+        )
+        .await?;
+        halted = super::failure::hooks_failed(&records);
+        hook_results.extend(records);
     }
 
     // Execute deletes in reverse dependency order (always sequential for safety)

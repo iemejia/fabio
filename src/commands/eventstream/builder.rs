@@ -18,10 +18,9 @@ pub(super) async fn fetch_current_definition(
     id: &str,
 ) -> Result<Value> {
     let data = client
-        .post(
+        .post_readonly_with_lro(
             &format!("/workspaces/{workspace}/eventstreams/{id}/getDefinition"),
             &serde_json::json!({}),
-            true,
         )
         .await?;
 
@@ -197,6 +196,8 @@ pub(super) async fn add_destination(
         None => serde_json::json!({}),
     };
 
+    super::variable_references::validate_properties("destination", destination_type, &props)?;
+
     // Validate mode-specific shape for an Eventhouse destination BEFORE any
     // network call (and before the dry-run guard) — an Eventhouse destination
     // with the wrong property set fails SILENTLY server-side (the destination
@@ -246,6 +247,15 @@ pub(super) async fn add_destination(
 }
 
 fn validate_business_events_destination(props: &Value) -> Result<()> {
+    if props.get("itemReference").is_some() {
+        let _ = required_string(
+            props,
+            "businessEventTypeId",
+            "BusinessEvents",
+            "destination",
+        )?;
+        return Ok(());
+    }
     let workspace = required_string(props, "workspaceId", "BusinessEvents", "destination")?;
     let item = required_string(props, "itemId", "BusinessEvents", "destination")?;
     let _ = required_string(
@@ -307,6 +317,11 @@ pub(super) fn validate_eventhouse_destination(props: &Value) -> Result<()> {
     let missing: Vec<&str> = required
         .iter()
         .copied()
+        .filter(|key| {
+            !(props.get("itemReference").is_some()
+                && matches!(*key, "workspaceId" | "itemId" | "databaseName")
+                || props.get("tableNameReference").is_some() && *key == "tableName")
+        })
         .filter(|k| props.get(*k).is_none_or(Value::is_null))
         .collect();
     if !missing.is_empty() {
@@ -343,6 +358,7 @@ pub(super) fn validate_source_properties(source_type: &str, props: &Value) -> Re
         .into());
     }
 
+    super::variable_references::validate_properties("source", source_type, props)?;
     if source_type.eq_ignore_ascii_case("ReferenceLakehouse") {
         validate_reference_lakehouse_source(props)?;
     } else if source_type.eq_ignore_ascii_case("LakehouseChangeFeed") {
@@ -405,10 +421,15 @@ fn validate_custom_stream_connector_source(props: &Value) -> Result<()> {
 }
 
 fn validate_lakehouse_change_feed_source(props: &Value) -> Result<()> {
-    let workspace = required_string(props, "workspaceId", "LakehouseChangeFeed", "source")?;
-    let item = required_string(props, "itemId", "LakehouseChangeFeed", "source")?;
-    validate_uuid(workspace, "LakehouseChangeFeed workspaceId")?;
-    validate_uuid(item, "LakehouseChangeFeed itemId")?;
+    if props.get("itemReference").is_none() {
+        let workspace = required_string(props, "workspaceId", "LakehouseChangeFeed", "source")?;
+        let item = required_string(props, "itemId", "LakehouseChangeFeed", "source")?;
+        validate_uuid(workspace, "LakehouseChangeFeed workspaceId")?;
+        validate_uuid(item, "LakehouseChangeFeed itemId")?;
+    }
+    if props.get("tableNamesReference").is_some() {
+        return Ok(());
+    }
     let table_names = props
         .get("tableNames")
         .and_then(Value::as_array)
@@ -447,12 +468,30 @@ fn required_string<'a>(
 }
 
 fn validate_reference_lakehouse_source(props: &Value) -> Result<()> {
+    let path = required_string(props, "absoluteOneLakePath", "ReferenceLakehouse", "source")?;
+    let url = parse_reference_table_url(path)?;
+    if props.get("itemReference").is_some() {
+        return validate_reference_options(props);
+    }
     let workspace = required_string(props, "workspaceId", "ReferenceLakehouse", "source")?;
     let item = required_string(props, "itemId", "ReferenceLakehouse", "source")?;
-    let path = required_string(props, "absoluteOneLakePath", "ReferenceLakehouse", "source")?;
     validate_uuid(workspace, "ReferenceLakehouse workspaceId")?;
     validate_uuid(item, "ReferenceLakehouse itemId")?;
 
+    let segments: Vec<&str> = url.path_segments().into_iter().flatten().collect();
+    if !segments[0].eq_ignore_ascii_case(workspace) || !segments[1].eq_ignore_ascii_case(item) {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "ReferenceLakehouse workspaceId and itemId must match the first two absoluteOneLakePath segments",
+            "Use the same Lakehouse workspace and item UUIDs in the properties and OneLake URL.",
+        )
+        .into());
+    }
+
+    validate_reference_options(props)
+}
+
+fn parse_reference_table_url(path: &str) -> Result<reqwest::Url> {
     let url = reqwest::Url::parse(path).map_err(|e| {
         FabioError::with_hint(
             ErrorCode::InvalidInput,
@@ -480,15 +519,10 @@ fn validate_reference_lakehouse_source(props: &Value) -> Result<()> {
         )
         .into());
     }
-    if !segments[0].eq_ignore_ascii_case(workspace) || !segments[1].eq_ignore_ascii_case(item) {
-        return Err(FabioError::with_hint(
-            ErrorCode::InvalidInput,
-            "ReferenceLakehouse workspaceId and itemId must match the first two absoluteOneLakePath segments",
-            "Use the same Lakehouse workspace and item UUIDs in the properties and OneLake URL.",
-        )
-        .into());
-    }
+    Ok(url)
+}
 
+fn validate_reference_options(props: &Value) -> Result<()> {
     if let Some(columns) = props.get("referencedColumns")
         && columns
             .as_array()
@@ -1104,6 +1138,16 @@ pub(super) async fn validate(
         }
 
         for dest in dests {
+            if let Some(component) = dest["type"].as_str()
+                && let Some(properties) = dest.get("properties")
+                && let Err(error) = super::variable_references::validate_properties(
+                    "destination",
+                    component,
+                    properties,
+                )
+            {
+                errors.push(error.to_string());
+            }
             if let Some(name) = dest.get("name").and_then(Value::as_str) {
                 if all_names.contains(&name) {
                     duplicates.push(format!("Duplicate node name: '{name}'"));

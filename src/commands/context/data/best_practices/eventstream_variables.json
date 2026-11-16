@@ -1,0 +1,23 @@
+{
+  "topic": "eventstream-variables",
+  "title": "Portable Eventstream definitions with verified pre-stream value-set activation",
+  "summary": "Eventstream ALM definitions preserve symbolic connection/item/table references while runtime topology resolves IDs. Configure the target library first; fabio deploy verifies a reviewed value set before publishing dependent streams, halts on uncertainty and never switches strategy automatically.",
+  "authoring": [
+    "Use properties.connectionReference or properties.itemReference with literal syntax $(/**/LibraryName/VariableName). Some contracts support tableNameReference/tableNamesReference. Do not mix a reference with non-null resolved dataConnectionId, workspaceId/itemId or tableName/tableNames fields.",
+    "Support is connector- and property-specific. CustomEndpoint, Cribl and SAPDatasphere have no reference properties in the published matrix. Eventhouse/Lakehouse/Activator/Notebook/BusinessEvents destinations have itemReference support; Eventhouse also has tableNameReference. Inspect the linked matrix before authoring other contracts.",
+    "An Eventhouse itemReference targets the receiving KQL DATABASE, not its parent Eventhouse. ProcessedIngestion still needs inputSerialization and tableName or tableNameReference. Keep source-specific properties such as consumer groups and serialization.",
+    "Get Definition and Git contain symbolic references. Runtime topology exposes resolved IDs, not the same portable authored representation. Never export topology as a replacement definition or substitute identifiers into symbolic strings.",
+    "ReferenceLakehouse retains absoluteOneLakePath table selection and refresh options; LakehouseChangeFeed retains table selection or tableNamesReference. Fabio does not invent/rewrite paths or selections from a variable. Verify resolved runtime paths and columns against the intended source.",
+    "Variable libraries store pointers to managed resources, not credentials. Keep secrets in connections; never put tokens, passwords or connection strings in source control or text variables."
+  ],
+  "deployment": [
+    "Configure target value-set pointers before consumer publication. Include required VariableLibrary items in the scoped source/plan; unchanged skipped libraries are supported. Fabio does not inventory/select a different library implicitly.",
+    "Item references are static workspace/item pointers, not instructions to discover or construct future IDs. For first-time targets, stage destination/connection creation first and explicitly configure the target value set with those returned IDs. Do not assume one-pass deployment automatically fixes every advanced variable value.",
+    "Reference-bearing stream changes (or library changes affecting source-bundle streams) require reviewed --env <VALUE_SET>, default/sequential strategy and hooks enabled. Bulk cannot activate a library between imports. Do not guess an environment, switch strategy or remove guards automatically; review a staged plan.",
+    "deploy apply --dry-run shows variableLibraryPrerequisites with verified:false and a destructive signal. Execution checks target variable existence and the requested value-set part, activates if necessary, reads back the exact active set, then publishes dependent streams. pre_stream records retain successful/failed activations; uncertainty halts later mutations and forbids batch replay.",
+    "Already-active reviewed sets need no PATCH. Failed library deployment blocks consumers. Verified pre-stream activations are not repeated by the optional final activation hook.",
+    "Value-set changes can affect existing consumers immediately. This is not an atomic cutover and fabio does not pause running streams. Review affected consumers and coordinate operational changes separately.",
+    "Configuration/active-set checks do not prove source credentials, destination authorization, source availability or event delivery. Compare authored definition and resolved topology, then separately approve/send scoped synthetic events and query the intended destination before declaring end-to-end readiness."
+  ],
+  "references": ["https://learn.microsoft.com/en-us/fabric/real-time-intelligence/event-streams/variable-library-support", "https://learn.microsoft.com/en-us/rest/api/fabric/articles/item-management/definitions/variable-library-definition"]
+}

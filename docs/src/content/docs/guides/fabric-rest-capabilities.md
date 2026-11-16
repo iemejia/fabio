@@ -124,6 +124,37 @@ Reads can return both `columnName` and `columnId`; writes reject both identifier
 together. Fabio omits resolved IDs from its preservation snapshot and comparison.
 User input, including a reviewed raw GET backup, must use `columnName` only.
 
+## Promote Eventstreams with variable libraries
+
+Authored definitions retain symbolic `connectionReference` and `itemReference`
+values such as `$(/**/Settings/Target)`. Runtime topology instead exposes resolved
+IDs. Do not mix the two forms or export topology as a replacement definition.
+Reference support is property/connector-specific; CustomEndpoint, Cribl and
+SAPDatasphere do not expose variable properties in the published matrix.
+
+Configure the target value set and include its library in the scoped bundle/plan:
+
+```bash
+fabio deploy apply --source ./bundle --workspace "$TARGET_WS" --env "$VALUE_SET" --dry-run
+fabio eventstream get-definition --workspace "$TARGET_WS" --id "$STREAM" --decode --readonly
+fabio eventstream get-topology --workspace "$TARGET_WS" --id "$STREAM" --readonly
+```
+
+After approval, execute the reviewed apply command without `--dry-run`. Reference
+deployments require an explicit reviewed `--env`, default/sequential strategy and
+hooks enabled. Fabio checks referenced variables and the value-set definition,
+activates it if needed, verifies readback, then publishes dependent streams. Skipped
+unchanged libraries are supported; verified activation is not repeated at the end.
+Failures halt later mutations and retain no-replay guidance. Bulk cannot activate a
+library between imports; do not switch strategy or guess a value set automatically.
+
+Value-set activation can affect existing consumers immediately. There is no atomic
+cutover or automatic pause. Compare resolved destination IDs (a KQL database, not
+its parent Eventhouse), source paths and table selections with the reviewed target.
+Configuration does not prove credentials or event delivery: separately approve a
+scoped synthetic-event test and query the intended destination before declaring it
+ready. See `context workflow eventstream-variables` for the acceptance sequence.
+
 ## Inspect and schedule Copy Jobs
 
 ```bash

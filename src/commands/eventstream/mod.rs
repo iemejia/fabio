@@ -7,6 +7,8 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
+pub(super) mod variable_references;
+
 #[derive(Debug, Subcommand)]
 #[command(
     after_help = "Before using this command, run: fabio context examples eventstream\nAlso available: fabio context schema Eventstream | fabio context workflow rti-pipeline"
@@ -913,10 +915,9 @@ async fn get_definition(
     decode: bool,
 ) -> Result<()> {
     let data = client
-        .post(
+        .post_readonly_with_lro(
             &format!("/workspaces/{workspace}/eventstreams/{id}/getDefinition"),
             &serde_json::json!({}),
-            true,
         )
         .await
         .map_err(|e| enrich_forbidden(e, "eventstream get-definition", "Contributor"))?;

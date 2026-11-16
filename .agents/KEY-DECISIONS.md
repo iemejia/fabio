@@ -1,5 +1,7 @@
 # Fabio CLI — Key Decisions
 
+- **Reference-bearing Eventstreams require a verified pre-publication value-set phase:** preserve authored symbolic references rather than deploying resolved topology. For scoped source-bundle consumers, activate the reviewed --env set only after dependencies exist, verify it before publishing streams, retain per-library outcomes and halt on uncertainty. Bulk/hook-disabled modes fail preflight instead of silently switching strategy; already-active sets do not PATCH and verified activations are not repeated as final hooks. This is not atomic cutover or automatic consumer pausing.
+
 - **Additional table metadata defaults to preservation, never a partial-POST fiction:** `item update-table-metadata` merges descriptions/tags by exact columnName before the service's complete replacement. `--overwrite` is an explicit destructive bypass. Preview exact scope/before/after, warn about shortcut-target effects and the non-atomic writer race, then distinguish acknowledgement from one readback without replay. Storage POST uses the shared submission-evidence boundary, including unexpected async acknowledgements.
 
 - **OneLake endpoint discovery is metadata-only:** `item get-endpoints` uses storage-scoped GET and validates returned workspace/item scope. Preserve extensible engine metadata and complete connections without fetching skills or opening MCP/SQL/Spark connections. Explicit discovery-only/unverified signals prevent a recommended engine being mistaken for authorization or readiness.

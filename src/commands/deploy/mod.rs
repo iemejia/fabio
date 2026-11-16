@@ -12,6 +12,7 @@ pub mod params;
 pub mod plan;
 pub mod platform;
 pub mod rebind;
+mod stream_variables;
 
 use std::path::{Path, PathBuf};
 
@@ -678,6 +679,8 @@ async fn execute_plan(
     )
     .await?;
 
+    let stream_references = stream_variables::selected_references(&source_workspace, &changeset)?;
+
     // Check for errors
     if changeset.has_errors() && !allow_unresolved {
         let error_msg = changeset.errors.join("\n  ");
@@ -708,9 +711,13 @@ async fn execute_plan(
 
     let mut all_warnings = changeset.warnings.clone();
     all_warnings.extend(param_warnings);
+    if !stream_references.is_empty() {
+        all_warnings.push("Eventstream variable references require a reviewed --env value set and verified pre-stream activation. Inspect target bindings; activation can affect existing consumers immediately and is not an atomic cutover.".to_string());
+    }
 
     // Include definition replacement/rename-republication, not just deletes.
-    let destructive = changeset.has_destructive_actions() || force_all;
+    let destructive =
+        changeset.has_destructive_actions() || force_all || !stream_references.is_empty();
     if force_all {
         all_warnings.push(
             "--force-all is active: ALL matched items will be overwritten \
@@ -924,6 +931,10 @@ async fn execute_apply(
             params::apply_parameters(&mut source_workspace, &parsed_params, env_name, &ctx)?;
     }
 
+    let stream_references = stream_variables::selected_references(&source_workspace, &changeset)?;
+    stream_variables::validate_scope(&stream_references, &workspace_id, &changeset)?;
+    stream_variables::validate_mode(&stream_references, env, strategy, no_post_hooks)?;
+
     // Check for errors
     if changeset.has_errors() && !allow_unresolved {
         let error_msg = changeset.errors.join("\n  ");
@@ -962,7 +973,8 @@ async fn execute_apply(
     // Dry-run guard
     if cli.dry_run {
         let summary = changeset.summary();
-        let destructive = changeset.has_destructive_actions() || force_all;
+        let destructive =
+            changeset.has_destructive_actions() || force_all || !stream_references.is_empty();
         let mut warnings: Vec<String> = changeset.warnings.clone();
         if force_all {
             warnings.push(
@@ -984,6 +996,10 @@ async fn execute_apply(
             "destructive": destructive,
             "warnings": warnings,
         });
+        if !stream_references.is_empty() {
+            output_data["variableLibraryPrerequisites"] = json!({"phase":"pre_stream","valueSet":env,
+                "references":stream_references,"verified":false,"activationMayAffectExistingConsumers":true});
+        }
         output::annotate_destructive_preview(&mut output_data, destructive);
         output::render_object(cli, &output_data, "status");
         return Ok(());
@@ -1008,6 +1024,8 @@ async fn execute_apply(
             &source_workspace,
             effective_concurrency,
             fail_fast,
+            env,
+            &stream_references,
         )
         .await?
     };
@@ -1069,7 +1087,18 @@ async fn execute_apply(
             cli,
             client,
             &workspace_id,
-            &result.succeeded,
+            &result
+                .succeeded
+                .iter()
+                .filter(|change| {
+                    !hook_results.iter().any(|hook| {
+                        hook["hook"] == "activate_value_set"
+                            && hook["phase"] == "pre_stream"
+                            && hook["item_name"] == change.name
+                    })
+                })
+                .cloned()
+                .collect::<Vec<_>>(),
             env_name,
         )
         .await;
@@ -1140,7 +1169,7 @@ async fn execute_apply(
         "skipped": result.skipped.len(),
         "duration_ms": result.duration_ms,
         "failures": result.failed,
-        "destructive":changeset.has_destructive_actions() || force_all,
+        "destructive":changeset.has_destructive_actions() || force_all || !stream_references.is_empty(),
     });
     if result.halted {
         output_data["halted"] = json!(true);

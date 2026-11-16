@@ -44,6 +44,14 @@ defaultTest:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
 tests:
+  - description: "Eventstream variables: review target set before publication and never bypass failed activation"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-deploy-cicd/SKILL.md"
+      user_query: "Deploy a source bundle with Eventstream variable references. The pre_stream value-set activation failed. Should I replay it with --force or switch to bulk and let the library activate after the stream? Explain the safe next step and whether changing value sets is an atomic cutover."
+    assert:
+      - type: llm-rubric
+        value: "Rejects automatic replay, --force escalation and switching to bulk to bypass failed activation. Explains reviewed value-set activation/readback must precede publication; inspect/reconcile current outcomes and review a new scoped plan. States value-set changes may affect existing consumers and are not an atomic cutover."
+
   - description: "Table metadata: preserve unrelated metadata and shortcut targets"
     vars:
       skill_content: "file://../../.agents/skills/fabio-lakehouse/SKILL.md"

@@ -134,6 +134,7 @@ Manage variable libraries (shared variables)
 - --delete-orphans on protected data types without --allow-delete-types and explicit user approval.
 
 ## Key gotchas
+- Reference-bearing Eventstream deploys require reviewed --env, default/sequential strategy, hooks enabled and referenced libraries in the scoped bundle/plan (skipped unchanged libraries work). Fabio verifies pre_stream activation before publication, halts on uncertainty and never repeats it as a final hook. Never guess a value set, switch strategy or replay a failed batch automatically. Changes can affect existing consumers immediately; no atomic cutover/automatic pause is claimed. See eventstream-variables.
 - Deploy is STATELESS — content-hash diffing against the live workspace, no state file. --workspace accepts a display name or GUID.
 - The .platform part IS sent (enables metadata propagation) but is EXCLUDED from the content hash, so idempotent skip still works.
 - --strategy: default (per-item, content-hash skip) | bulk (fast initial deploy to an empty, non-Git workspace) | sequential (debugging).
@@ -177,6 +178,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 
 | Reference | Covers |
 |---|---|
+| `fabio context best-practices eventstream-variables` | Eventstream ALM definitions preserve symbolic connection/item/table references while runtime topology resolves IDs. Configure the target library first; fabio deploy verifies a reviewed value set before publishing dependent streams, halts on uncertainty and never switches strategy automatically. |
 | `fabio context best-practices cicd-lifecycle` | End-to-end CI/CD lifecycle for Microsoft Fabric solutions: Git integration, feature workspaces, variable libraries, deployment strategies, auto-binding, data orchestration, and release processes. Covers single-workspace and multi-workspace solutions. |
 | `fabio context best-practices deployment-plans` | Distinguish Fabio's diff preview from Fabric deployment-plan artifacts and native job orchestration. Covers offline validation, logical IDs, execution backends, value-set preparation, permissions, partial failures, and retry safety. |
 | `fabio context best-practices deploy-parameters` | Deploy parameters enable environment-specific value injection (dev/staging/prod) via find-replace, JSONPath key-value, Spark pool, and semantic model binding rules. Values support dynamic variables including $ENV:VAR_NAME for CI/CD secrets injection. |

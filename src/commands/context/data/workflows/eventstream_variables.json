@@ -1,0 +1,14 @@
+{
+  "name": "eventstream-variables",
+  "description": "Prepare target value sets, preserve Eventstream ALM references, verify activation before publication and validate resolved runtime bindings without confusing configuration with event-delivery readiness.",
+  "steps": [
+    {"step_number":1,"command":"fabio variable-library get-definition --workspace <TARGET_WS> --id <LIBRARY> --decode --readonly","description":"Inspect target defaults/value sets and intended resource pointers. Keep exports private; never store credentials in variables."},
+    {"step_number":2,"command":"fabio variable-library update-definition --workspace <TARGET_WS> --id <LIBRARY> --file library-definition.json --dry-run","description":"Preview the complete reviewed definition, including settings.json/valueSets parts. Apply only after approval; replacement can affect existing consumers."},
+    {"step_number":3,"command":"fabio deploy plan --source ./bundle --workspace <TARGET_WS>","description":"Include required libraries and dependencies. Authored JSON uses symbols, not runtime IDs. Confirm destination item types and target-specific values."},
+    {"step_number":4,"command":"fabio deploy apply --source ./bundle --workspace <TARGET_WS> --env <VALUE_SET> --dry-run","description":"Review variableLibraryPrerequisites and the destructive preview. The target set is not verified by an offline preview; do not guess --env or switch strategy automatically."},
+    {"step_number":5,"command":"fabio deploy apply --source ./bundle --workspace <TARGET_WS> --env <VALUE_SET>","description":"After explicit approval, execute the reviewed default-strategy plan. Inspect pre_stream records; failed/uncertain activation halts consumers. Do not replay a failed batch."},
+    {"step_number":6,"command":"fabio eventstream get-definition --workspace <TARGET_WS> --id <STREAM> --decode --readonly","description":"Verify that the authored definition still contains symbolic references."},
+    {"step_number":7,"command":"fabio eventstream get-topology --workspace <TARGET_WS> --id <STREAM> --readonly","description":"Compare resolved IDs/paths with intended resources. Separately approve/send test events and query the destination; activation alone is not business readiness."}
+  ],
+  "safety": ["No atomic cutover or automatic pause is provided.","Runtime topology is not a portable authored definition.","Discovery/preview never changes credentials, tenant settings or identity grants."]
+}

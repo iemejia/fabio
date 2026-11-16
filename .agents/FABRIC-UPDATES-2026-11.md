@@ -8,7 +8,7 @@ Live output stays private; never record resource identifiers or endpoints here.
 | 1 | Unified SQL pool compatibility and guidance | Complete |
 | 2 | OneLake endpoint discovery and hosted MCP discovery | Complete |
 | 3 | Safe table/column additional metadata | Complete (shortcut backend limitation documented) |
-| 4 | Eventstream variable-library references and deployment ordering | Pending |
+| 4 | Eventstream variable-library references and deployment ordering | Complete |
 | 5 | Native Iceberg catalog writes | Pending |
 | 6 | Connection-policy diagnostics | Pending |
 | 7 | Real-Time Dashboard authoring (verify public definition first) | Pending |
@@ -93,3 +93,33 @@ tenant is a blocker/limitation, not a passed acceptance check.
   docs check and 13 script tests passed. Live combined round-trip/restoration and
   the read-only shortcut teaching-error probe passed. Earlier overlapping suite
   runs interfered with existing profile tests; the final run was not overlapped.
+
+## Item 4 acceptance
+
+- Added connector/property-scoped symbolic reference validation and extraction;
+  preserved authored references instead of exporting resolved topology. Existing
+  Eventstream definition reads now support readonly LRO transport.
+- Scoped plan/UUID guards and explicit reviewed --env/default-or-sequential/hooks
+  requirements precede mutation. Referenced libraries activate and verify before
+  consumer publication, including skipped libraries. Uncertain/failed activation
+  halts later mutations; per-library outcome records survive partial failures and final
+  hooks do not repeat verified activation. Activation is not an atomic cutover.
+- Unit and CLI e2e tests cover syntax/matrix/conflicts, no-op/deleted consumers,
+  missing scopes/value sets, previews, readonly reads, creation ordering,
+  skipped-library activation, single activation, forbidden/uncertain PATCH and
+  failed readback with no consumer writes.
+- Live scoped update verified pre_stream activation, symbolic authored metadata
+  without non-null resolved IDs and runtime routing to the alternate lakehouse.
+  The separate ignored live read test passed. No events were sent, so event
+  delivery and source/destination data authorization are not claimed verified.
+- Deleted the isolated stream, library and alternate lakehouse; scoped inventory
+  verified absence. The shared base fixture remains for subsequent items.
+- Focused model evaluation passed 1/1 with zero provider/grading errors at 100%.
+- Destructive checklist: existing deploy apply guard covers all added mutations;
+  previews expose unverified prerequisites and conservative destructive/agent
+  signals; client PATCH enforces readonly; source scope/UUID guards fail before
+  writes; no bypass flag/protected type added; ordering/failure/dry-run tests pass.
+- Final format and warning-free test clippy passed; 3,085 tests passed, zero
+  failed, 1,131 ignored. Both destructive runtime audits, docs check and 13 script
+  tests passed. Outcome records carry stable workspace/item IDs; duplicate plan
+  entries/IDs and library name/ID mismatches cannot activate an unrelated library.

@@ -23,7 +23,7 @@
     "Active value set is a workspace-level setting, NOT part of the definition",
     "Value sets in definition contain only overrides (variables differing from default)",
     "Naming convention: name value sets to match deploy --env values (dev, test, prod)",
-    "fabio deploy auto-activates the value set matching --env after deployment",
+    "fabio deploy verifies activation BEFORE reference-bearing Eventstream publication; other optional activations remain post-deploy hooks. Reference-bearing streams require reviewed --env, scoped libraries, default/sequential strategy and hooks enabled. See context best-practices eventstream-variables.",
     "Supports variable types: String, Number, Integer, DateTime, GUID, Connection reference, Item reference",
     "Connection reference variables parameterize data source connections",
     "Item reference variables manage cross-workspace item dependencies",

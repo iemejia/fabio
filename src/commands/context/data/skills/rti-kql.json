@@ -31,6 +31,7 @@
     "'materialized view' in a lakehouse context -> that is a Materialized Lake View (fabio-lakehouse), not a KQL materialized view — see 'fabio context disambiguate materialized-view'."
   ],
   "key_gotchas": [
+    "Eventstream variable references belong in authored definitions (connectionReference/itemReference and supported tableNameReference/tableNamesReference), not resolved topology. Use literal $(/**/Library/Variable) strings, never mixed resolved IDs. Support is property/connector-specific; CustomEndpoint, Cribl and SAPDatasphere have no reference properties. Eventhouse itemReference targets a KQL database. See eventstream-variables.",
     "Eventhouse queries are request/response and always terminate — there is no server-push streaming query. Both `eventhouse query` (cluster scope) and `kql-database query` (single DB) share the same continuous-query model: add `--timeout <s>` (Kusto servertimeout, max 3600) to bound a heavy one-shot query; use `--follow` for CONTINUOUS monitoring — fabio polls on `--interval` (default 5s) and streams NDJSON (one JSON object per cycle), ALWAYS bounded by `--max-duration` (default 60s), the global `--limit`, or Ctrl-C, so it never hangs an agent/CI. `--dedup-column <col>` emits only rows newer than the max seen (incremental tail) vs re-watching the full result each cycle. Server-side 'continuous' constructs (continuous-export, materialized views) are `.create` MANAGEMENT commands, not client-streamed — run them via `... query --kql '.create ...'`.",
     "`eventhouse query` needs a database context: it defaults to the eventhouse's sole KQL database (an eventhouse auto-provisions one named after itself), and requires `--database <name>` when the cluster hosts more than one. `eventhouse list-databases` enumerates them; `eventhouse query-uri` / `eventhouse ingestion-uri` print the deterministic cluster query and ingestion endpoints (agents cannot guess them).",
     "KQL Queryset definitions use RealTimeQueryset.json (NOT RawQueryset.kql).",
@@ -93,6 +94,7 @@
     }
   ],
   "shared_references": [
+    "eventstream-variables",
     "throttling",
     "pagination",
     "lro",

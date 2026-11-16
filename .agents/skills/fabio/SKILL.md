@@ -529,7 +529,7 @@ fabio kql-database queries-completed --workspace $WS --id $KDB   # .show queries
 fabio eventstream create --workspace $WS --name "Ingestion"
 fabio eventstream add-source --workspace $WS --id $ES --name "src" --source-type CustomEndpoint
 fabio eventstream add-destination --workspace $WS --id $ES --name "dest" --destination-type Eventhouse \
-  --eventhouse-id $EH --database $DB --table Events --input-stream "src-stream"
+  --input-node "src-stream" --properties '{"workspaceId":"<WS>","itemId":"<KQL_DATABASE_ID>","databaseName":"<DB_NAME>","tableName":"Events","dataIngestionMode":"ProcessedIngestion","inputSerialization":{"type":"Json","properties":{"encoding":"UTF8"}}}'
 fabio eventstream get-source-connection --workspace $WS --id $ES --source-name "src"  # Event Hub connection string
 # Natural language to KQL
 fabio rti nl-to-kql --workspace $WS --item-id $KDB --cluster-url $URI --database $DB --question "how many events?"

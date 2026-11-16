@@ -26,7 +26,7 @@
   },
   "deploy_integration": {
     "ordering": "Variable libraries are ALWAYS deployed first (before all other item types), ensuring values are available when dependent items are created.",
-    "auto_activation": "When deploying with --env <name>, fabio automatically activates the value set matching the environment name as a post-deploy hook.",
+    "auto_activation": "Reference-bearing Eventstreams require a reviewed --env set and scoped libraries; fabio verifies activation before publishing consumers (default/sequential, hooks enabled). Other activations remain optional final hooks. See eventstream-variables. This is not an atomic cutover; existing consumers can be affected immediately.",
     "workflow": [
       "1. fabio deploy export --workspace dev-ws --dir ./workspace",
       "2. Edit variable library definition to add value sets for test/prod",

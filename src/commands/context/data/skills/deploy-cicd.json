@@ -20,6 +20,7 @@
     "One-off item CRUD -> use the specific workload skill (fabio-lakehouse, fabio-rti-kql, etc.)."
   ],
   "key_gotchas": [
+    "Reference-bearing Eventstream deploys require reviewed --env, default/sequential strategy, hooks enabled and referenced libraries in the scoped bundle/plan (skipped unchanged libraries work). Fabio verifies pre_stream activation before publication, halts on uncertainty and never repeats it as a final hook. Never guess a value set, switch strategy or replay a failed batch automatically. Changes can affect existing consumers immediately; no atomic cutover/automatic pause is claimed. See eventstream-variables.",
     "Deploy is STATELESS — content-hash diffing against the live workspace, no state file. --workspace accepts a display name or GUID.",
     "The .platform part IS sent (enables metadata propagation) but is EXCLUDED from the content hash, so idempotent skip still works.",
     "--strategy: default (per-item, content-hash skip) | bulk (fast initial deploy to an empty, non-Git workspace) | sequential (debugging).",
@@ -72,7 +73,7 @@
     {"symptom": "PR to dev blocked / feature workspace GUIDs leaked into the shared branch", "fix": "Run 'deploy rebind --from-env <feature> --to-env dev' to restore dev IDs, delete any feature value-set files, then confirm with 'deploy validate --pr-ready --expect-env dev --allow-value-set Test,Prod'."},
     {"symptom": "Semantic model / notebook in a branched-out workspace still points at the dev lakehouse", "fix": "'deploy apply' cannot target a Git-synced Branch-out workspace (causes drift). Rewrite the local files instead: 'deploy rebind --from-env dev --to-env <feature>', commit, then sync via 'git pull' (Update from Git)."}
   ],
-  "shared_references": ["cicd-lifecycle", "deployment-plans", "deploy-parameters", "variable-libraries", "item-tracking-categories", "hotfix-rollback", "fabric-cicd-migration", "lro", "submission-retries"],
+  "shared_references": ["eventstream-variables", "cicd-lifecycle", "deployment-plans", "deploy-parameters", "variable-libraries", "item-tracking-categories", "hotfix-rollback", "fabric-cicd-migration", "lro", "submission-retries"],
   "see_also": [
     "fabio context persona migration-engineer",
     "fabio context workflow cicd-deploy",
