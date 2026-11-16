@@ -14,6 +14,7 @@ mod crud;
 mod definitions;
 mod endorsement;
 mod endpoints;
+mod table_metadata;
 mod tags;
 
 #[derive(Debug, Subcommand)]
@@ -64,6 +65,25 @@ pub enum ItemCommand {
         /// Item UUID, not a portal URL or display name
         #[arg(long)]
         id: String,
+    },
+    /// Read table and column descriptions/tags through `OneLake` (preview)
+    GetTableMetadata {
+        #[command(flatten)]
+        target: table_metadata::Target,
+    },
+    /// Edit table/column metadata, preserving unrelated values by default (preview)
+    UpdateTableMetadata {
+        #[command(flatten)]
+        target: table_metadata::Target,
+        /// JSON metadata patch; mutually exclusive with --file
+        #[arg(long, conflicts_with = "file", required_unless_present = "file")]
+        content: Option<String>,
+        /// Path to a JSON metadata patch
+        #[arg(long)]
+        file: Option<String>,
+        /// Replace all metadata; omitted descriptions, tags and columns are removed
+        #[arg(long)]
+        overwrite: bool,
     },
     /// Get the definition (source code/content) of an item
     #[command(display_order = 3)]
@@ -645,6 +665,23 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
         ItemCommand::Show { workspace, id } => crud::show(cli, client, workspace, id).await,
         ItemCommand::GetEndpoints { workspace, id } => {
             endpoints::get(cli, client, workspace, id).await
+        }
+        ItemCommand::GetTableMetadata { target } => table_metadata::get(cli, client, target).await,
+        ItemCommand::UpdateTableMetadata {
+            target,
+            content,
+            file,
+            overwrite,
+        } => {
+            table_metadata::update(
+                cli,
+                client,
+                target,
+                file.as_deref(),
+                content.as_deref(),
+                *overwrite,
+            )
+            .await
         }
         ItemCommand::GetDefinition {
             workspace,

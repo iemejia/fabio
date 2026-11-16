@@ -82,6 +82,7 @@ Microsoft Fabric has two official tools: [Fabric CLI](https://github.com/microso
 - **Capacity governance** — inspect/configure surge protection and overage thresholds, and manage blocked actors, mission-critical actors, and actor auto-detection rules with structured dry-run previews and capacity-scoped permission guidance
 - **SQL pool transition readiness** — preserve legacy and unified pool configuration shapes without inventing a mode flag; discover rollout and effective-configuration guidance with `context best-practices custom-sql-pools`
 - **OneLake endpoint discovery** — `item get-endpoints` returns an item's query engines, direct connections and hosted MCP servers with their token audiences; read-only discovery never follows links or executes tools
+- **OneLake table metadata** — read/edit table and column descriptions/tags with `item get-table-metadata` and `item update-table-metadata`; default preservation, explicit full replacement, before/after previews and no-replay safeguards
 - **Connection ownership visibility** — connection lists expose the caller's effective role, including `PendingOwner`, in JSON and table output; tenant-admin connection errors point to the Fabric Administrator role
 - **Policy sets** — create tenant- or capacity-scoped governance definitions, manage beta policy rules, and activate them with admin-aware safety guardrails
 - **Git branch governance** — control whether members and contributors may change the connected branch, at connect time or through connection settings

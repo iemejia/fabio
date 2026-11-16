@@ -1,0 +1,12 @@
+{
+  "command": "fabio item update-table-metadata --workspace <WS> --id <ITEM> --schema dbo --table sales --content '{\"description\":\"Sales transactions\"}' --dry-run",
+  "description": "Read-only before/after preview of an additional-metadata replacement. Default merge preserves unrelated tags and column metadata; --overwrite requests full replacement.",
+  "response": {"data": {"dry_run": true, "would_execute": "item update-table-metadata", "destructive": true, "details": {
+    "workspaceId": "<WS>", "itemId": "<ITEM>", "schema": "dbo", "table": "sales", "overwrite": false,
+    "before": {"description": "Before", "tags": {"owner": "example"}},
+    "after": {"description": "Sales transactions", "tags": {"owner": "example"}},
+    "warnings": ["Updates through shortcuts affect the target table. Read-modify-write is not atomic."]
+  }}},
+  "notes": "Dry-run reads metadata but never posts. The real POST replaces all additional metadata, even in client merge mode; coordinate writers. Real execution returns status:acknowledged, destructive:true, verified (writable-metadata equality after omitting resolved columnId fields), metadata, readback, verificationError and retriable:false. A failed/mismatched readback does not authorize replay. --overwrite removes fields omitted from the supplied object and is a safety-bypass requiring explicit approval. Metadata is not table rows, item organizational tags or semantic-model descriptions.",
+  "query_examples": ["fabio item get-table-metadata --workspace <WS> --id <ITEM> --schema dbo --table sales --query columns --readonly"]
+}

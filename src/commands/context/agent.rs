@@ -1405,11 +1405,20 @@ fn generate_subcommands(
     existing_group: Option<&serde_json::Value>,
 ) -> serde_json::Map<String, serde_json::Value> {
     let mut commands = generate_subcommands_at(group, existing_group, group.get_name());
-    // Item discovery is served by OneLake, not the group's default Fabric API.
-    if group.get_name() == "item"
-        && let Some(discovery) = commands.get_mut("get-endpoints")
-    {
-        discovery["auth_scope"] = serde_json::json!("storage");
+    // These item operations use OneLake, not the group's default Fabric API.
+    if group.get_name() == "item" {
+        for name in [
+            "get-endpoints",
+            "get-table-metadata",
+            "update-table-metadata",
+        ] {
+            if let Some(command) = commands.get_mut(name) {
+                command["auth_scope"] = serde_json::json!("storage");
+                if name == "update-table-metadata" {
+                    command["returns"] = serde_json::json!("object");
+                }
+            }
+        }
     }
     commands
 }

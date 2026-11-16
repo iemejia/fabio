@@ -1,4 +1,5 @@
 ## Relevant Files
+- `src/commands/item/table_metadata.rs`, `tests/e2e_table_metadata.rs`: OneLake additional metadata validation, merge/replacement, destructive previews, guarded no-replay writes and disposable live round-trip.
 - `src/commands/item/endpoints.rs`, `tests/e2e_item_endpoints.rs`: storage-scoped OneLake engine/endpoint/MCP discovery with scope validation, no-follow guarantees, teaching errors and live-read acceptance.
 - `.agents/FABRIC-UPDATES-2026-11.md`: sequential implementation/acceptance ledger for the three-week Fabric blog review; no tenant-specific details.
 - `tests/e2e_yaml_parser.rs`: maintained YAML backend compatibility for scalar types, Unicode, CRLF inputs, serialization round-trips and malformed-input locations

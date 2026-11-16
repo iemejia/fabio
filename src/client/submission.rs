@@ -68,6 +68,18 @@ impl FabricClient {
         service: &'static str,
         path: &str,
     ) -> Result<Value> {
+        self.mutation_json_expected(response, service, path, &[])
+            .await
+    }
+
+    /// Validate synchronous acknowledgements inside the no-replay evidence boundary.
+    pub(super) async fn mutation_json_expected(
+        &self,
+        response: Response,
+        service: &'static str,
+        path: &str,
+        expected_statuses: &[u16],
+    ) -> Result<Value> {
         let context = evidence(
             PostSemantics::Mutation,
             service,
@@ -75,7 +87,15 @@ impl FabricClient {
             Some(response.status()),
             response.headers(),
         );
-        finish(super::handle_response(response).await, context)
+        let result = if response.status().is_success()
+            && !expected_statuses.is_empty()
+            && !expected_statuses.contains(&response.status().as_u16())
+        {
+            Err(FabioError::api_error("Unexpected mutation acknowledgement; completion is unverified. Observe the target read-only and do not replay the request.").into())
+        } else {
+            super::handle_response(response).await
+        };
+        finish(result, context)
     }
 
     pub(super) async fn mutation_bytes(
@@ -436,6 +456,7 @@ mod tests {
     async fn specialized_mutation_guards_precede_auth_and_network() {
         let client = FabricClient::new().with_readonly(true);
         for result in [
+            client.post_onelake_table_api("/mock", &json!({})).await,
             client.post_raw("/mock", "raw").await,
             client.post_octet_stream("/mock", vec![0]).await,
             client
@@ -453,6 +474,38 @@ mod tests {
                     .code,
                 ErrorCode::ReadonlyMode
             );
+        }
+    }
+
+    #[tokio::test]
+    async fn synchronous_json_acknowledgements_keep_evidence_on_async_or_malformed_success() {
+        for (status, body) in [(202, "{}"), (200, "not-json")] {
+            let server = wiremock::MockServer::start().await;
+            wiremock::Mock::given(wiremock::matchers::method("POST"))
+                .respond_with(wiremock::ResponseTemplate::new(status).set_body_string(body))
+                .expect(1)
+                .mount(&server)
+                .await;
+            let client = FabricClient::new();
+            let response = client
+                .send_mutation(client.http.post(server.uri()), "onelake", "/common/v1/mock")
+                .await
+                .unwrap();
+            let error = client
+                .mutation_json_expected(response, "onelake", "/common/v1/mock", &[200])
+                .await
+                .unwrap_err();
+            let error = error.downcast_ref::<FabioError>().unwrap();
+            assert_eq!(error.retriable, Some(false));
+            assert_eq!(
+                error.submission.as_ref().unwrap().state,
+                if status == 202 {
+                    "accepted"
+                } else {
+                    "acknowledged"
+                }
+            );
+            assert_eq!(server.received_requests().await.unwrap().len(), 1);
         }
     }
 

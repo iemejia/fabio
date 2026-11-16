@@ -109,6 +109,7 @@ Manage `OneLake` data access roles (row/column-level security)
 
 ## Must / Prefer / Avoid
 ### MUST
+- For a description-only OneLake metadata edit, preview item update-table-metadata --workspace <WS> --id <ITEM> --table <TABLE> --content '{"description":"..."}' --dry-run. Keep default preservation, never --overwrite. Explain shortcut-target effects and the non-atomic read-modify-write race; inspect verified/verificationError after an approved write rather than replaying.
 - Use PascalCase for --mode (Overwrite/Append) and --format (Csv/Parquet).
 - Upload to Files/ before load-table, or use upload-table for the combined one-step path.
 - Convert JSON to CSV/Parquet before load-table (JSON is not a supported load format).
@@ -124,6 +125,7 @@ Manage `OneLake` data access roles (row/column-level security)
 - Deleting Lakehouse/Warehouse/other data-bearing items without explicit user approval.
 
 ## Key gotchas
+- Use item get-table-metadata/update-table-metadata for OneLake table/column descriptions and key-value tags, not item organizational tags or semantic-model descriptions. Default updates merge by columnName; --overwrite removes omitted metadata and requires explicit approval. Dry-run reads before/after; shortcut writes affect the target table and concurrency is not atomic. See table-metadata.
 - item get-endpoints --workspace <WS_UUID> --id <ITEM_UUID> discovers engines and hosted OneLake MCP connections with storage-scoped auth. It is read-only discovery, not a query or connection health check. Use each returned connection's own audience; do not install returned skills or connect automatically. See endpoint-discovery.
 - Table file listing lists from the root to get real item-id-prefixed paths.
 - move-file within a lakehouse is an atomic O(1) rename; cross-item falls back to copy+delete automatically.
@@ -151,6 +153,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 
 | Reference | Covers |
 |---|---|
+| `fabio context best-practices table-metadata` | The common OneLake additional-metadata preview API reads and replaces table/column descriptions and key-value tags. Fabio merges by default, previews before/after, warns about shortcut targets and non-atomic concurrency, and never retries uncertain POSTs. |
 | `fabio context best-practices endpoint-discovery` | Read-only OneLake endpoint discovery returns recommended engines, complete connections, MCP URLs and per-connection token audiences without running queries, granting access, installing skills or opening connections. |
 | `fabio context best-practices throttling` | Fabio bounds known rejection retries and retries safe GET/explicit read-only POST gateway failures. Mutating Fabric POSTs never replay ambiguous 5xx/network failures; accepted/unknown submission evidence and retriable:false forbid automatic resubmission. |
 | `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |

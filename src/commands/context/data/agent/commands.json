@@ -2126,6 +2126,73 @@
         "returns": "object",
         "auth_scope": "storage"
       },
+      "get-table-metadata": {
+        "description": "Read table and column descriptions/tags through `OneLake` (preview)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace UUID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Data item UUID (including a shortcut's containing item)"
+          },
+          "--schema": {
+            "type": "string",
+            "description": "Table schema"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Exact table name, not a path or wildcard"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "auth_scope": "storage"
+      },
+      "update-table-metadata": {
+        "description": "Edit table/column metadata, preserving unrelated values by default (preview)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace UUID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Data item UUID (including a shortcut's containing item)"
+          },
+          "--schema": {
+            "type": "string",
+            "description": "Table schema"
+          },
+          "--table": {
+            "type": "string",
+            "required": true,
+            "description": "Exact table name, not a path or wildcard"
+          },
+          "--content": {
+            "type": "string",
+            "description": "JSON metadata patch; mutually exclusive with --file"
+          },
+          "--file": {
+            "type": "string",
+            "description": "Path to a JSON metadata patch"
+          },
+          "--overwrite": {
+            "type": "bool",
+            "description": "Replace all metadata; omitted descriptions, tags and columns are removed"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true,
+        "auth_scope": "storage"
+      },
       "get-definition": {
         "description": "Get the definition (source code/content) of an item",
         "flags": {

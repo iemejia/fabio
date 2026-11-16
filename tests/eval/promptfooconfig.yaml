@@ -44,6 +44,18 @@ defaultTest:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
 tests:
+  - description: "Table metadata: preserve unrelated metadata and shortcut targets"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-lakehouse/SKILL.md"
+      user_query: "Change only the description of table sales in item $ITEM, workspace $WS. Preserve its tags and column descriptions. The table might be an internal shortcut. Preview it first and do not replace all metadata. Explain which table is affected and whether this protects against concurrent metadata writers."
+    assert:
+      - type: icontains
+        value: "item update-table-metadata"
+      - type: icontains
+        value: "--dry-run"
+      - type: llm-rubric
+        value: "Uses default preservation rather than --overwrite. Explains that an internal shortcut update affects the target table and the read-modify-write is not an atomic concurrency guarantee. Does not execute a write."
+
   - description: "Endpoint discovery: no automatic connection or audience reuse"
     vars:
       user_query: "Discover which engines and hosted OneLake MCP connection are available for the Fabric item $ITEM in workspace $WS. Do not execute anything through them. Can I reuse my Fabric-only token for all the returned connections?"

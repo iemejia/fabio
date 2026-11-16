@@ -17,6 +17,7 @@
     "Report/semantic model over the lakehouse -> use the bi-developer persona."
   ],
   "key_gotchas": [
+    "Use item get-table-metadata/update-table-metadata for OneLake table/column descriptions and key-value tags, not item organizational tags or semantic-model descriptions. Default updates merge by columnName; --overwrite removes omitted metadata and requires explicit approval. Dry-run reads before/after; shortcut writes affect the target table and concurrency is not atomic. See table-metadata.",
     "item get-endpoints --workspace <WS_UUID> --id <ITEM_UUID> discovers engines and hosted OneLake MCP connections with storage-scoped auth. It is read-only discovery, not a query or connection health check. Use each returned connection's own audience; do not install returned skills or connect automatically. See endpoint-discovery.",
     "Table file listing lists from the root to get real item-id-prefixed paths.",
     "move-file within a lakehouse is an atomic O(1) rename; cross-item falls back to copy+delete automatically.",
@@ -32,6 +33,7 @@
     "Deleting a lakehouse is a protected, data-bearing operation — never do it without explicit user approval."
   ],
   "must": [
+    "For a description-only OneLake metadata edit, preview item update-table-metadata --workspace <WS> --id <ITEM> --table <TABLE> --content '{\"description\":\"...\"}' --dry-run. Keep default preservation, never --overwrite. Explain shortcut-target effects and the non-atomic read-modify-write race; inspect verified/verificationError after an approved write rather than replaying.",
     "Use PascalCase for --mode (Overwrite/Append) and --format (Csv/Parquet).",
     "Upload to Files/ before load-table, or use upload-table for the combined one-step path.",
     "Convert JSON to CSV/Parquet before load-table (JSON is not a supported load format)."
@@ -52,7 +54,7 @@
     {"symptom": "list-tables shows no rows after an ETL run", "fix": "Confirm the notebook/job actually wrote Delta tables and completed (use notebook run --wait)."},
     {"symptom": "move-file returns 403 across items", "fix": "Atomic rename only works within the same lakehouse; across items fabio falls back to copy+delete automatically."}
   ],
-  "shared_references": ["endpoint-discovery", "throttling", "pagination", "lro", "shortcuts", "lakehouse-mlv"],
+  "shared_references": ["table-metadata", "endpoint-discovery", "throttling", "pagination", "lro", "shortcuts", "lakehouse-mlv"],
   "see_also": [
     "fabio context persona data-engineer",
     "fabio context workflow lakehouse-etl",

@@ -1,5 +1,7 @@
 # Fabio CLI — Key Decisions
 
+- **Additional table metadata defaults to preservation, never a partial-POST fiction:** `item update-table-metadata` merges descriptions/tags by exact columnName before the service's complete replacement. `--overwrite` is an explicit destructive bypass. Preview exact scope/before/after, warn about shortcut-target effects and the non-atomic writer race, then distinguish acknowledgement from one readback without replay. Storage POST uses the shared submission-evidence boundary, including unexpected async acknowledgements.
+
 - **OneLake endpoint discovery is metadata-only:** `item get-endpoints` uses storage-scoped GET and validates returned workspace/item scope. Preserve extensible engine metadata and complete connections without fetching skills or opening MCP/SQL/Spark connections. Explicit discovery-only/unverified signals prevent a recommended engine being mistaken for authorization or readiness.
 
 - **Unified SQL pool transition (November 2026):** Preserve caller-supplied pool JSON without adding or requiring the retiring mode flag. Validate only stable top-level shapes and reject fabio output envelopes before preview/network; do not silently translate a legacy false toggle into a different unified operation. See `context best-practices custom-sql-pools` for rollout guidance.

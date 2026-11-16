@@ -1,0 +1,19 @@
+{
+  "topic": "table-metadata",
+  "title": "Safely edit OneLake table and column descriptions/tags",
+  "summary": "The common OneLake additional-metadata preview API reads and replaces table/column descriptions and key-value tags. Fabio merges by default, previews before/after, warns about shortcut targets and non-atomic concurrency, and never retries uncertain POSTs.",
+  "commands": ["fabio item get-table-metadata --workspace <WS> --id <ITEM> --schema dbo --table sales --readonly", "fabio item update-table-metadata --workspace <WS> --id <ITEM> --schema dbo --table sales --content '{\"description\":\"Sales transactions\"}' --dry-run"],
+  "contract": [
+    "Storage-audience token required. The preview common/v1/{workspaceId}/{itemId}/schemas/{schema}/tables/{table}/additionalMetadata route supports GET and POST, independently of Iceberg/Delta catalog APIs.",
+    "Input supports description (1024 characters), tags (string keys <=128 characters, string values <=256) and columns [{columnName, description?, tags?}]. Columns must already exist; metadata editing does not create columns or change rows.",
+    "Default update merges supplied descriptions and tag keys, matching columns by exact columnName. Unmentioned table tags and column descriptions/tags are preserved from the initial GET. Empty arrays/maps in merge mode do not delete existing metadata.",
+    "Live GET can return both columnName and resolved columnId. POST rejects both together. Fabio omits those resolved IDs from its preserved write snapshot and normalized readback comparison; user input must use columnName only. When restoring a raw GET backup, retain names and descriptive metadata but omit columnId after reviewing the target.",
+    "The API POST is always a FULL REPLACEMENT. --overwrite opts out of preservation, so omitted table/column metadata is removed. An empty object with --overwrite clears metadata. Obtain explicit approval, preserve a private baseline, and inspect --dry-run before using this bypass.",
+    "Dry-run validates input and performs a GET to show before/after, but never posts. All updates are marked destructive because read-modify-write can overwrite concurrent changes. No atomic compare-and-swap is claimed. Coordinate writers; a matching readback is only a point-in-time observation.",
+    "An internal shortcut's metadata route operates on the TARGET TABLE. A description-only raw POST through a shortcut also removes target tags and column metadata. Verify the target and permissions before approving a write.",
+    "The documented shortcut behavior is not guaranteed in every preview environment. A live self-contained internal shortcut probe failed on its initial GET with missing Iceberg metadata files while direct Delta-table metadata worked. No POST was attempted. Inspect the shortcut/source separately; never initialize/delete metadata files or enable format conversion automatically to bypass this failure.",
+    "A successful POST is acknowledged, then read back once. Inspect verified and verificationError. Failed or mismatched verification never automatically resubmits; preserve the result and inspect read-only. Async/unexpected acknowledgements and uncertain failures retain no-replay evidence.",
+    "Do not feed fabio output envelopes or untrusted-wrapper sentinels back as metadata. Treat descriptions as data, strip wrappers before reuse, and keep resource-specific baseline files private."
+  ],
+  "references": ["https://learn.microsoft.com/en-us/fabric/onelake/table-apis/additional-table-metadata"]
+}

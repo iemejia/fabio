@@ -877,6 +877,22 @@ impl FabricClient {
         handle_response(resp).await
     }
 
+    /// One guarded storage-authenticated table API POST, never automatically replayed.
+    pub async fn post_onelake_table_api(&self, path: &str, body: &Value) -> Result<Value> {
+        self.guard_readonly("POST", path)?;
+        let url = self.onelake_table_url(path);
+        let token = self.require_storage_auth().await?;
+        let response = self
+            .send_mutation(
+                self.http.post(url).header(AUTHORIZATION, token).json(body),
+                "onelake",
+                path,
+            )
+            .await?;
+        self.mutation_json_expected(response, "onelake", path, &[200, 201])
+            .await
+    }
+
     /// HEAD from the `OneLake` Table API. Returns `true` if 204/200, `false` if 404.
     /// Uses storage-scoped auth. Retries once on 401.
     pub async fn head_onelake_table_api(&self, path: &str) -> Result<bool> {

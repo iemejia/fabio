@@ -7,7 +7,7 @@ Live output stays private; never record resource identifiers or endpoints here.
 |---|---|---|
 | 1 | Unified SQL pool compatibility and guidance | Complete |
 | 2 | OneLake endpoint discovery and hosted MCP discovery | Complete |
-| 3 | Safe table/column additional metadata | Pending |
+| 3 | Safe table/column additional metadata | Complete (shortcut backend limitation documented) |
 | 4 | Eventstream variable-library references and deployment ordering | Pending |
 | 5 | Native Iceberg catalog writes | Pending |
 | 6 | Connection-policy diagnostics | Pending |
@@ -61,3 +61,35 @@ tenant is a blocker/limitation, not a passed acceptance check.
 - Final format and test clippy passed with no warnings. Full suite: 3,057 passed,
   zero failed, 1,128 ignored. Docs check and 13 script tests passed; generated
   schema/sub-skills and evaluation configuration validation are current.
+
+## Item 3 acceptance
+
+- Added storage-scoped table/column metadata reads and default-preserving edits,
+  explicit full replacement, exact-scope validation and destructive before/after
+  previews. No atomic-concurrency guarantee is made.
+- Unit and CLI e2e coverage includes merge preservation, resolved column-ID
+  normalization, invalid fields/limits/scope, overwrite removals and warnings,
+  readonly enforcement, unknown/async submissions, failed readback and unresolved
+  shortcut failures without repair or POST.
+- Created an isolated shared validation workspace/lakehouse with a two-row
+  synthetic table. Direct metadata read, description/tag/column writes, combined
+  update/readback and restoration passed live. Fixture cleanup state is private;
+  these fixtures remain in use for the subsequent items in this same task.
+- Initial live testing exposed the documented-in-code columnName/columnId
+  conflict; fixed preservation and readback normalization before acceptance.
+- An internal shortcut probe failed on its initial GET because the backend
+  reported missing Iceberg metadata files. No POST was attempted through it.
+  Documented target-table effects are not claimed live-validated; the teaching
+  error tells agents to inspect, not synthesize files or change conversion.
+- Focused evaluation initially failed 0/1. Strengthened MUST guidance and made the
+  concurrency question explicit without weakening assertions; then passed 1/1
+  with zero provider/grading errors at the 100% gate.
+- Destructive checklist: canonical scope/before/after preview; shared guarded
+  storage POST with retained no-replay evidence; generated mutates/destructive
+  metadata; UUID/exact-table blast-radius guards; existing --overwrite dangerous
+  flag with explicit warning; no new protected types; preview/guard regressions.
+- Final serialized validation: format and warning-free test clippy passed;
+  3,071 tests passed, zero failed, 1,130 ignored. Both destructive runtime audits,
+  docs check and 13 script tests passed. Live combined round-trip/restoration and
+  the read-only shortcut teaching-error probe passed. Earlier overlapping suite
+  runs interfered with existing profile tests; the final run was not overlapped.

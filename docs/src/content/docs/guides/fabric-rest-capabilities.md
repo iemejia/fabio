@@ -96,6 +96,34 @@ tool schemas before use. A semantic model without OneLake integration may return
 404 here even though its Fabric metadata is visible; do not enable settings or
 infer that the model is missing from this result alone.
 
+## Edit table and column metadata safely
+
+```bash
+fabio item get-table-metadata --workspace "$WS" --id "$ITEM" --table sales --readonly
+fabio item update-table-metadata --workspace "$WS" --id "$ITEM" --table sales --content '{"description":"Sales transactions"}' --dry-run
+fabio item update-table-metadata --workspace "$WS" --id "$ITEM" --table sales --file metadata-changes.json --dry-run
+```
+
+This storage-authenticated preview API edits table/column descriptions and
+key-value tags, not rows, item tags or semantic models. The default merges the
+supplied changes with a fresh metadata snapshot, matching columns by `columnName`.
+It preserves unrelated descriptions and tags. `--schema` defaults to `dbo`.
+
+**Every POST replaces all additional metadata.** Client-side merging is not atomic;
+coordinate writers. `--overwrite` explicitly disables preservation: omitted fields
+are removed, and an empty object clears metadata. Preserve a private baseline and
+review the destructive preview before approving that bypass. Dry-run performs a
+read to show before/after but never posts.
+
+Writes through an internal shortcut affect the **target table's** metadata. Check
+the target before writing. Success output distinguishes acknowledgement from
+readback verification: inspect `verified` and `verificationError`. A failed or
+mismatched readback never authorizes replay. Descriptions allow 1,024 characters;
+tag keys allow 128 and string values 256. New column names must already exist.
+Reads can return both `columnName` and `columnId`; writes reject both identifiers
+together. Fabio omits resolved IDs from its preservation snapshot and comparison.
+User input, including a reviewed raw GET backup, must use `columnName` only.
+
 ## Inspect and schedule Copy Jobs
 
 ```bash
