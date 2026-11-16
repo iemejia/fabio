@@ -1,0 +1,15 @@
+{
+  "command": "fabio item get-endpoints --workspace <WS> --id <ITEM>",
+  "description": "Discover item-scoped query engines, direct endpoints and hosted MCP connections with their authentication audiences. No returned connection is followed.",
+  "response": {"data": {
+    "workspace": {"id": "00000000-0000-0000-0000-000000000001"},
+    "items": [{"id": "00000000-0000-0000-0000-000000000002", "platformType": "Lakehouse", "engines": [{
+      "name": "OneLake", "recommended": false,
+      "mcpServers": [{"name": "microsoft.fabric.oneLake", "url": "https://<returned-onelake-host>/<returned-item-mcp-path>", "auth": {"audience": "https://storage.azure.com/"}, "tags": ["read", "write"]}]
+    }]}],
+    "discoveryOnly": true, "connectionsVerified": false,
+    "discoveryWarnings": ["Connection metadata is not proof of authorization or availability; validate each selected destination/audience before connecting."]
+  }},
+  "notes": "Illustrative connection only, never executable placeholders. Discovery uses a storage-audience token. Engines and unknown response fields are preserved. Use each complete returned connection and its own audience; no skill is fetched or MCP session opened. A semantic-model discovery 404 can mean OneLake integration is unavailable, not that the Fabric item is absent.",
+  "query_examples": ["fabio item get-endpoints --workspace <WS> --id <ITEM> --query 'items[].engines'", "fabio item get-endpoints --workspace <WS> --id <ITEM> --query 'items[].engines[].mcpServers[]'"]
+}

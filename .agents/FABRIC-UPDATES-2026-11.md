@@ -6,7 +6,7 @@ Live output stays private; never record resource identifiers or endpoints here.
 | Item | Scope | Status |
 |---|---|---|
 | 1 | Unified SQL pool compatibility and guidance | Complete |
-| 2 | OneLake endpoint discovery and hosted MCP discovery | Pending |
+| 2 | OneLake endpoint discovery and hosted MCP discovery | Complete |
 | 3 | Safe table/column additional metadata | Pending |
 | 4 | Eventstream variable-library references and deployment ordering | Pending |
 | 5 | Native Iceberg catalog writes | Pending |
@@ -45,3 +45,19 @@ tenant is a blocker/limitation, not a passed acceptance check.
   replacement warning; client PATCH enforces readonly; safety policy generates
   destructive+mutates metadata; UUID validation protects scope; no bypass flags
   or protected item types were added; preview/invalid-scope e2e tests are present.
+
+## Item 2 acceptance
+
+- `item get-endpoints` uses storage-authenticated GET and validates UUID input and
+  exact response scope. It preserves unknown engine fields, marks connections
+  unverified and never fetches a skill or opens a returned connection.
+- Unit tests cover path injection, scope mismatch/duplication, unknown metadata
+  and empty engine lists. CLI e2e tests verify storage auth, no-follow request
+  counts, invalid input, 404 teaching guidance, scope rejection and introspection.
+- Live tests and `cargo run` succeeded for Warehouse and Lakehouse discovery.
+  The lakehouse returned hosted OneLake MCP connection metadata. No tools were
+  invoked, settings changed or resources created.
+- Focused model evaluation passed 1/1 with zero provider/grading errors (100% gate).
+- Final format and test clippy passed with no warnings. Full suite: 3,057 passed,
+  zero failed, 1,128 ignored. Docs check and 13 script tests passed; generated
+  schema/sub-skills and evaluation configuration validation are current.

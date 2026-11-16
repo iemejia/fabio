@@ -1,5 +1,7 @@
 # Fabio CLI — Key Decisions
 
+- **OneLake endpoint discovery is metadata-only:** `item get-endpoints` uses storage-scoped GET and validates returned workspace/item scope. Preserve extensible engine metadata and complete connections without fetching skills or opening MCP/SQL/Spark connections. Explicit discovery-only/unverified signals prevent a recommended engine being mistaken for authorization or readiness.
+
 - **Unified SQL pool transition (November 2026):** Preserve caller-supplied pool JSON without adding or requiring the retiring mode flag. Validate only stable top-level shapes and reject fabio output envelopes before preview/network; do not silently translate a legacy false toggle into a different unified operation. See `context best-practices custom-sql-pools` for rollout guidance.
 
 - **Release YAML parsing uses the maintained Serde Norway fork**: keep the source-level `serde_yaml` module alias to preserve existing serialization APIs while replacing the deprecated parser and unmaintained unsafe-libyaml backend. The replacement and its backend have compatible MSRVs and permissive licenses; YAML/deployment regressions and the full suite validate the dependency transition without suppressing RustSec advisories.

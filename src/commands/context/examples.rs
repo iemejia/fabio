@@ -206,6 +206,10 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     ),
     ("item/list", include_str!("data/examples/item_list.json")),
     (
+        "item/get-endpoints",
+        include_str!("data/examples/item_get_endpoints.json"),
+    ),
+    (
         "deploy/plan",
         include_str!("data/examples/deploy_plan.json"),
     ),

@@ -44,6 +44,15 @@ defaultTest:
     skill_content: "file://../../.agents/skills/fabio/SKILL.md"
 
 tests:
+  - description: "Endpoint discovery: no automatic connection or audience reuse"
+    vars:
+      user_query: "Discover which engines and hosted OneLake MCP connection are available for the Fabric item $ITEM in workspace $WS. Do not execute anything through them. Can I reuse my Fabric-only token for all the returned connections?"
+    assert:
+      - type: icontains
+        value: "item get-endpoints"
+      - type: llm-rubric
+        value: "Uses workspace and item scope for discovery without connecting or fetching returned skills. Explains that discovery requires the storage audience and each returned connection has its own audience, so a Fabric-only token cannot be reused for all connections."
+
   - description: "Unified SQL pools: do not infer disabled from an absent legacy flag"
     vars:
       skill_content: "file://../../.agents/skills/fabio-warehouse-sql/SKILL.md"

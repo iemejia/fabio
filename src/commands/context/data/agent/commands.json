@@ -2108,6 +2108,24 @@
           "workspaceId"
         ]
       },
+      "get-endpoints": {
+        "description": "Discover an item's engines, endpoints, MCP servers and token audiences (preview; no connection or query)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace UUID (names and mixed addressing are not accepted)"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Item UUID, not a portal URL or display name"
+          }
+        },
+        "mutates": false,
+        "returns": "object",
+        "auth_scope": "storage"
+      },
       "get-definition": {
         "description": "Get the definition (source code/content) of an item",
         "flags": {

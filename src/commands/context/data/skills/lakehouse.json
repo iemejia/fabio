@@ -17,6 +17,7 @@
     "Report/semantic model over the lakehouse -> use the bi-developer persona."
   ],
   "key_gotchas": [
+    "item get-endpoints --workspace <WS_UUID> --id <ITEM_UUID> discovers engines and hosted OneLake MCP connections with storage-scoped auth. It is read-only discovery, not a query or connection health check. Use each returned connection's own audience; do not install returned skills or connect automatically. See endpoint-discovery.",
     "Table file listing lists from the root to get real item-id-prefixed paths.",
     "move-file within a lakehouse is an atomic O(1) rename; cross-item falls back to copy+delete automatically.",
     "list-shortcuts hides DW-managed internal shortcuts (OneLake->OneLake under Tables/) by default — pass --include-managed to see them.",
@@ -51,7 +52,7 @@
     {"symptom": "list-tables shows no rows after an ETL run", "fix": "Confirm the notebook/job actually wrote Delta tables and completed (use notebook run --wait)."},
     {"symptom": "move-file returns 403 across items", "fix": "Atomic rename only works within the same lakehouse; across items fabio falls back to copy+delete automatically."}
   ],
-  "shared_references": ["throttling", "pagination", "lro", "shortcuts", "lakehouse-mlv"],
+  "shared_references": ["endpoint-discovery", "throttling", "pagination", "lro", "shortcuts", "lakehouse-mlv"],
   "see_also": [
     "fabio context persona data-engineer",
     "fabio context workflow lakehouse-etl",

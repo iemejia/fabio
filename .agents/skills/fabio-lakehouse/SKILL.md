@@ -124,6 +124,7 @@ Manage `OneLake` data access roles (row/column-level security)
 - Deleting Lakehouse/Warehouse/other data-bearing items without explicit user approval.
 
 ## Key gotchas
+- item get-endpoints --workspace <WS_UUID> --id <ITEM_UUID> discovers engines and hosted OneLake MCP connections with storage-scoped auth. It is read-only discovery, not a query or connection health check. Use each returned connection's own audience; do not install returned skills or connect automatically. See endpoint-discovery.
 - Table file listing lists from the root to get real item-id-prefixed paths.
 - move-file within a lakehouse is an atomic O(1) rename; cross-item falls back to copy+delete automatically.
 - list-shortcuts hides DW-managed internal shortcuts (OneLake->OneLake under Tables/) by default — pass --include-managed to see them.
@@ -150,6 +151,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 
 | Reference | Covers |
 |---|---|
+| `fabio context best-practices endpoint-discovery` | Read-only OneLake endpoint discovery returns recommended engines, complete connections, MCP URLs and per-connection token audiences without running queries, granting access, installing skills or opening connections. |
 | `fabio context best-practices throttling` | Fabio bounds known rejection retries and retries safe GET/explicit read-only POST gateway failures. Mutating Fabric POSTs never replay ambiguous 5xx/network failures; accepted/unknown submission evidence and retriable:false forbid automatic resubmission. |
 | `fabio context best-practices pagination` | fabio handles pagination via --all (auto-fetch all pages), --continuation-token (resume), and --limit (truncate). Agents rarely need to paginate manually. |
 | `fabio context best-practices lro` | Many Fabric operations are async (return 202). fabio polls them automatically. Use --wait for job operations. |

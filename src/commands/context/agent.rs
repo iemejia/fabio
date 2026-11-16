@@ -1404,7 +1404,14 @@ fn generate_subcommands(
     group: &clap::Command,
     existing_group: Option<&serde_json::Value>,
 ) -> serde_json::Map<String, serde_json::Value> {
-    generate_subcommands_at(group, existing_group, group.get_name())
+    let mut commands = generate_subcommands_at(group, existing_group, group.get_name());
+    // Item discovery is served by OneLake, not the group's default Fabric API.
+    if group.get_name() == "item"
+        && let Some(discovery) = commands.get_mut("get-endpoints")
+    {
+        discovery["auth_scope"] = serde_json::json!("storage");
+    }
+    commands
 }
 
 #[cfg(test)]
@@ -1457,6 +1464,7 @@ fn generate_subcommands_at(
                 "notes",
                 "output_fields",
                 "aliases",
+                "auth_scope",
             ] {
                 if let Some(val) = existing.get(key) {
                     sc_obj.insert(key.to_owned(), val.clone());

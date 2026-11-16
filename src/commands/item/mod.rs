@@ -13,6 +13,7 @@ mod copy_move;
 mod crud;
 mod definitions;
 mod endorsement;
+mod endpoints;
 mod tags;
 
 #[derive(Debug, Subcommand)]
@@ -52,6 +53,15 @@ pub enum ItemCommand {
         workspace: String,
 
         /// Item ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Discover an item's engines, endpoints, MCP servers and token audiences (preview; no connection or query)
+    GetEndpoints {
+        /// Workspace UUID (names and mixed addressing are not accepted)
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Item UUID, not a portal URL or display name
         #[arg(long)]
         id: String,
     },
@@ -633,6 +643,9 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &ItemCommand) ->
             .await
         }
         ItemCommand::Show { workspace, id } => crud::show(cli, client, workspace, id).await,
+        ItemCommand::GetEndpoints { workspace, id } => {
+            endpoints::get(cli, client, workspace, id).await
+        }
         ItemCommand::GetDefinition {
             workspace,
             id,
