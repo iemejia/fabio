@@ -22724,7 +22724,7 @@
           },
           "--token-budget": {
             "type": "integer",
-            "description": "Maximum total token count of returned summaries"
+            "description": "Maximum total token count of summaries (1 to 2,147,483,647; default 2048)"
           }
         },
         "mutates": false,

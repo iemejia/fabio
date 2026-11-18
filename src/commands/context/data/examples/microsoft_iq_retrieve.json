@@ -4,22 +4,36 @@
   "response": {
     "data": [
       {
+        "identifier": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "rank": 0,
         "score": 0.94,
+        "lexicalMatch": null,
         "type": "application/agent-instructions",
         "tokenCount": 84,
         "data": {
-          "summary": "Quarterly sales risk summary"
+          "summary": "Synthetic quarterly sales risk summary",
+          "uri": {
+            "$type": "MicrosoftIQSkillReference",
+            "url": "https://api.fabric.microsoft.com/v1/workspaces/00000000-0000-0000-0000-000000000001/playbooks/00000000-0000-0000-0000-000000000002/sections/Handbook/Section/_context/Group/guide.md?resource=content"
+          }
         }
       }
     ],
     "count": 1
   },
-  "notes": "Results are tenant-wide, permission-filtered, capped at 50, and not paginated.",
+  "notes": "Synthetic representative result, not live tenant content. Results are tenant-wide, permission-filtered, capped at 50, and unpaged. Score/lexicalMatch may be null; scores are relative to one query. identifier is a stable correlation digest, not permission to fetch content. data.uri may be null or an open typed pointer discriminated by $type (not the result's media type). Unknown pointer fields/types are preserved; no pointer is fetched automatically. Empty context is a valid result, unlike malformed/error-bearing responses.",
   "query_examples": [
     {
       "query": "[].data.summary",
       "description": "Extract visible context summaries."
+    },
+    {
+      "query": "[].{rank:rank,score:score,id:identifier,summary:data.summary}",
+      "description": "Project query-local relevance, stable identity and summary without following pointers."
+    },
+    {
+      "query": "[].{id:identifier,referenceType:data.uri.\"$type\",pointer:data.uri}",
+      "description": "Inspect open typed pointers as data; quote the $type JMESPath identifier."
     }
   ]
 }
