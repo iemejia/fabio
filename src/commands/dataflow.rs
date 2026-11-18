@@ -175,7 +175,7 @@ pub enum DataflowCommand {
         #[arg(long)]
         id: String,
     },
-    /// List Gen1 dataflow upgrade readiness results for a workspace (Preview)
+    /// List Gen1 dataflow upgrade readiness results for a workspace
     #[command(name = "list-upgrade-readiness", display_order = 10)]
     ListUpgradeReadiness {
         /// Workspace ID
@@ -210,7 +210,7 @@ pub enum DataflowCommand {
         #[arg(long)]
         strict: bool,
     },
-    /// Upgrade 1-50 Gen1 dataflows to Gen2 in place (Preview)
+    /// Upgrade 1-50 Gen1 dataflows to Gen2 in place
     #[command(name = "upgrade-gen1", display_order = 11)]
     UpgradeGen1 {
         /// Workspace ID containing every Gen1 dataflow

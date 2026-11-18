@@ -302,13 +302,25 @@ Manage producer-side Fabric shares
 
 | Command | Mutates | Description |
 |---|---|---|
+| `fabio share bulk-add-assets` | yes | Add assets to a share |
+| `fabio share bulk-add-policies` | yes | Add policies to a share |
+| `fabio share bulk-add-recipients` | yes | Add recipients to a share |
+| `fabio share bulk-remove-assets` | yes | Remove assets from a share |
+| `fabio share bulk-remove-policies` | yes | Remove policies from a share |
+| `fabio share bulk-remove-recipients` | yes | Remove recipients from a share |
 | `fabio share create` | yes | Create a share |
 | `fabio share delete` | yes | Delete a share |
 | `fabio share get-definition` | no | Get a share definition |
+| `fabio share initialize` | yes | Initialize a share with assets, recipients, and optional policies |
 | `fabio share list` | no | List shares in a workspace |
+| `fabio share list-assets` | no | List assets in a share |
+| `fabio share list-policies` | no | List policies attached to a share |
+| `fabio share list-recipients` | no | List recipients of a share |
+| `fabio share preview` | yes | Preview a producer share before accepting it |
 | `fabio share show` | no | Show a share |
 | `fabio share update` | yes | Update share properties |
 | `fabio share update-definition` | yes | Replace a share definition |
+| `fabio share update-policy` | yes | Replace the mutable fields of a share policy |
 
 ### fabio share-subscription
 Manage consumer-side Fabric Share Subscriptions
@@ -318,7 +330,10 @@ Manage consumer-side Fabric Share Subscriptions
 | `fabio share-subscription create` | yes | Create a Share Subscription from an invitation |
 | `fabio share-subscription delete` | yes | Delete a Share Subscription |
 | `fabio share-subscription list` | no | List Share Subscriptions in a workspace |
+| `fabio share-subscription list-assets` | no | List assets provisioned by a Share Subscription |
+| `fabio share-subscription list-policies` | no | List policies provisioned by a Share Subscription |
 | `fabio share-subscription show` | no | Show a Share Subscription |
+| `fabio share-subscription synchronize` | yes | Synchronize a Share Subscription with its producer |
 | `fabio share-subscription update` | yes | Update Share Subscription properties |
 
 ## Must / Prefer / Avoid

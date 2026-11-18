@@ -4376,6 +4376,45 @@
           "fabio lakehouse delete-execution-definition --workspace $WS --id $LAKEHOUSE_ID --execution-definition-id $DEF_ID"
         ]
       },
+      "list-semantic-views": {
+        "description": "List semantic views authored in a lakehouse (beta)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "publish-semantic-view": {
+        "description": "Publish a semantic view as a governed Direct Lake semantic model (beta)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Lakehouse ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Authored semantic view name"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
       "run-table-maintenance": {
         "description": "Run table maintenance on a lakehouse",
         "flags": {
@@ -7744,6 +7783,159 @@
       }
     }
   },
+  "postgresql-database": {
+    "auth_scope": "fabric",
+    "description": "Manage PostgreSQL databases",
+    "subcommands": {
+      "list": {
+        "description": "List PostgreSQL databases in a workspace",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--no-recursive": {
+            "type": "bool"
+          },
+          "--root-folder-id": {
+            "type": "string"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "show": {
+        "description": "Show a PostgreSQL database",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "create": {
+        "description": "Create a PostgreSQL database",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Display name (maximum 63 characters)"
+          },
+          "--description": {
+            "type": "string"
+          },
+          "--folder-id": {
+            "type": "string"
+          },
+          "--originating-product": {
+            "type": "string",
+            "description": "Caller-declared product that initiated provisioning"
+          },
+          "--null-creation-payload": {
+            "type": "bool",
+            "description": "Explicitly send a null creation payload"
+          },
+          "--definition": {
+            "type": "string",
+            "description": "PostgreSQL schema definition content (inline or @file)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "update": {
+        "description": "Update PostgreSQL database metadata",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--name": {
+            "type": "string"
+          },
+          "--description": {
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "returns": "void"
+      },
+      "delete": {
+        "description": "Permanently delete a PostgreSQL database",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "get-definition": {
+        "description": "Get a PostgreSQL database definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--decode": {
+            "type": "bool"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "update-definition": {
+        "description": "Replace a PostgreSQL database definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--file": {
+            "type": "string"
+          },
+          "--content": {
+            "type": "string"
+          },
+          "--allow-table-rebuild": {
+            "type": "bool",
+            "description": "Consent to schema changes that may rebuild objects and lose data"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      }
+    }
+  },
   "sql-endpoint": {
     "auth_scope": "fabric",
     "description": "Manage SQL endpoints (analytics endpoints for lakehouses)",
@@ -7964,6 +8156,58 @@
           "fabio sql-endpoint refresh-metadata --workspace $WS --id $EP --tables '[{\"schema\":\"dbo\",\"tableNames\":[\"Orders\",\"OrderDetails\"]}]'",
           "fabio sql-endpoint refresh-metadata --workspace $WS --id $EP --recreate-tables --tables @tables.json --timeout '{\"value\":10,\"timeUnit\":\"Minutes\"}' --dry-run"
         ]
+      },
+      "metadata-sync-migration-status": {
+        "description": "Get the endpoint's metadata sync architecture and latest migration status",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "SQL endpoint ID"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "preflight-metadata-sync-upgrade": {
+        "description": "Assess metadata sync upgrade readiness without converting tables (LRO)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "SQL endpoint ID"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "upgrade-metadata-sync": {
+        "description": "Upgrade metadata sync from V1 regular tables to V2 external tables (LRO)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "SQL endpoint ID"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
       },
       "get-audit-settings": {
         "description": "Get SQL audit settings for the endpoint",
@@ -10086,6 +10330,163 @@
         "mutates": true,
         "returns": "void",
         "destructive": true
+      },
+      "list-versions": {
+        "description": "List saved ontology versions (beta)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Ontology ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "show-version": {
+        "description": "Show metadata for a saved ontology version (beta)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Ontology ID"
+          },
+          "--version-id": {
+            "type": "string",
+            "required": true,
+            "description": "Version ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "create-version": {
+        "description": "Capture the current ontology definition as a version (beta)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Ontology ID"
+          },
+          "--name": {
+            "type": "string",
+            "required": true,
+            "description": "Version display name (maximum 100 characters)"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Version description (maximum 500 characters)"
+          },
+          "--creation-source": {
+            "type": "enum",
+            "values": [
+              "Manual",
+              "Automatic"
+            ],
+            "description": "Source creating the version"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "update-version": {
+        "description": "Update a saved ontology version's metadata (beta)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Ontology ID"
+          },
+          "--version-id": {
+            "type": "string",
+            "required": true,
+            "description": "Version ID"
+          },
+          "--name": {
+            "type": "string",
+            "description": "New version display name"
+          },
+          "--description": {
+            "type": "string",
+            "description": "New version description"
+          }
+        },
+        "mutates": true,
+        "returns": "void"
+      },
+      "delete-version": {
+        "description": "Permanently delete a saved ontology version (beta)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Ontology ID"
+          },
+          "--version-id": {
+            "type": "string",
+            "required": true,
+            "description": "Version ID"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "restore-version": {
+        "description": "Restore the ontology definition from a saved version (beta)",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Ontology ID"
+          },
+          "--version-id": {
+            "type": "string",
+            "required": true,
+            "description": "Version ID"
+          },
+          "--file": {
+            "type": "string",
+            "description": "Path to a JSON object containing item-type-defined restore options"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline JSON object containing item-type-defined restore options"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
       }
     }
   },
@@ -10719,6 +11120,140 @@
         "examples": [
           "fabio environment show-pool-activation --workspace $WS --id $ENV --activation-id $ACTIVATION"
         ]
+      },
+      "run-custom-live-pool": {
+        "description": "Run the environment's custom live pool on demand",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Environment ID"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "list-custom-live-pool-schedules": {
+        "description": "List custom live-pool schedules",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Environment ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "show-custom-live-pool-schedule": {
+        "description": "Show a custom live-pool schedule",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Environment ID"
+          },
+          "--schedule-id": {
+            "type": "string",
+            "required": true,
+            "description": "Schedule ID"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "create-custom-live-pool-schedule": {
+        "description": "Create a recurring custom live-pool schedule",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Environment ID"
+          },
+          "--file": {
+            "type": "string",
+            "description": "Path to the schedule request JSON"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline schedule request JSON"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "update-custom-live-pool-schedule": {
+        "description": "Update a custom live-pool schedule",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Environment ID"
+          },
+          "--schedule-id": {
+            "type": "string",
+            "required": true,
+            "description": "Schedule ID"
+          },
+          "--file": {
+            "type": "string",
+            "description": "Path to the schedule request JSON"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline schedule request JSON"
+          }
+        },
+        "mutates": true,
+        "returns": "void"
+      },
+      "delete-custom-live-pool-schedule": {
+        "description": "Delete a custom live-pool schedule",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Environment ID"
+          },
+          "--schedule-id": {
+            "type": "string",
+            "required": true,
+            "description": "Schedule ID"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
       }
     }
   },
@@ -11730,7 +12265,7 @@
         "returns": "object"
       },
       "list-upgrade-readiness": {
-        "description": "List Gen1 dataflow upgrade readiness results for a workspace (Preview)",
+        "description": "List Gen1 dataflow upgrade readiness results for a workspace",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -11790,7 +12325,7 @@
         "returns": "object"
       },
       "upgrade-gen1": {
-        "description": "Upgrade 1-50 Gen1 dataflows to Gen2 in place (Preview)",
+        "description": "Upgrade 1-50 Gen1 dataflows to Gen2 in place",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -21655,6 +22190,288 @@
         "examples": [
           "fabio share update-definition --workspace $WS --id $ID --file definition.json"
         ]
+      },
+      "initialize": {
+        "description": "Initialize a share with assets, recipients, and optional policies",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share ID"
+          },
+          "--file": {
+            "type": "string",
+            "description": "JSON request file"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline JSON request content"
+          }
+        },
+        "mutates": true,
+        "returns": "void"
+      },
+      "list-assets": {
+        "description": "List assets in a share",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "bulk-add-assets": {
+        "description": "Add assets to a share",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share ID"
+          },
+          "--file": {
+            "type": "string",
+            "description": "JSON request file"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline JSON request content"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "bulk-remove-assets": {
+        "description": "Remove assets from a share",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share ID"
+          },
+          "--file": {
+            "type": "string",
+            "description": "JSON request file"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline JSON request content"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "list-recipients": {
+        "description": "List recipients of a share",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "bulk-add-recipients": {
+        "description": "Add recipients to a share",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share ID"
+          },
+          "--file": {
+            "type": "string",
+            "description": "JSON request file"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline JSON request content"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "bulk-remove-recipients": {
+        "description": "Remove recipients from a share",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share ID"
+          },
+          "--file": {
+            "type": "string",
+            "description": "JSON request file"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline JSON request content"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "list-policies": {
+        "description": "List policies attached to a share",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "bulk-add-policies": {
+        "description": "Add policies to a share",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share ID"
+          },
+          "--file": {
+            "type": "string",
+            "description": "JSON request file"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline JSON request content"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "update-policy": {
+        "description": "Replace the mutable fields of a share policy",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share ID"
+          },
+          "--policy-id": {
+            "type": "string",
+            "required": true,
+            "description": "Share policy ID"
+          },
+          "--file": {
+            "type": "string",
+            "description": "JSON request file"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline JSON request content"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "bulk-remove-policies": {
+        "description": "Remove policies from a share",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share ID"
+          },
+          "--file": {
+            "type": "string",
+            "description": "JSON request file"
+          },
+          "--content": {
+            "type": "string",
+            "description": "Inline JSON request content"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "preview": {
+        "description": "Preview a producer share before accepting it",
+        "flags": {
+          "--producer-tenant": {
+            "type": "string",
+            "required": true,
+            "description": "Producer tenant ID"
+          },
+          "--producer-workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Producer workspace ID"
+          },
+          "--producer-share": {
+            "type": "string",
+            "required": true,
+            "description": "Producer share ID"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
       }
     }
   },
@@ -21798,6 +22615,684 @@
         "examples": [
           "fabio share-subscription delete --workspace $WS --id $ID"
         ]
+      },
+      "synchronize": {
+        "description": "Synchronize a Share Subscription with its producer",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share Subscription ID"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "list-assets": {
+        "description": "List assets provisioned by a Share Subscription",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share Subscription ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "list-policies": {
+        "description": "List policies provisioned by a Share Subscription",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Share Subscription ID"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      }
+    }
+  },
+  "microsoft-iq": {
+    "auth_scope": "fabric",
+    "description": "Retrieve organizational knowledge through Microsoft IQ",
+    "subcommands": {
+      "retrieve": {
+        "description": "Retrieve relevance-ranked organizational context",
+        "flags": {
+          "--text": {
+            "type": "string",
+            "required": true,
+            "description": "Non-empty natural-language query"
+          },
+          "--token-budget": {
+            "type": "integer",
+            "description": "Maximum total token count of returned summaries"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio microsoft-iq retrieve --text \"quarterly sales risks\" --token-budget 2048"
+        ]
+      },
+      "am-i-in-scope": {
+        "description": "Check whether the caller can see any Microsoft IQ context",
+        "mutates": false,
+        "returns": "object",
+        "examples": [
+          "fabio microsoft-iq am-i-in-scope"
+        ]
+      }
+    }
+  },
+  "playbook": {
+    "auth_scope": "fabric",
+    "description": "Manage Fabric Playbooks",
+    "subcommands": {
+      "list": {
+        "description": "List Playbooks in a workspace",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "show": {
+        "description": "Show a Playbook",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "create": {
+        "description": "Create a Playbook",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--name": {
+            "type": "string",
+            "required": true
+          },
+          "--description": {
+            "type": "string"
+          },
+          "--folder-id": {
+            "type": "string"
+          },
+          "--sensitivity-label": {
+            "type": "string"
+          },
+          "--definition": {
+            "type": "string",
+            "description": "`PlaybookV1` definition content (inline or @file)"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "update": {
+        "description": "Update Playbook metadata",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--name": {
+            "type": "string"
+          },
+          "--description": {
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "returns": "void"
+      },
+      "delete": {
+        "description": "Delete a Playbook",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "get-definition": {
+        "description": "Get a Playbook definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--decode": {
+            "type": "bool"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "update-definition": {
+        "description": "Replace a Playbook definition",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--file": {
+            "type": "string"
+          },
+          "--content": {
+            "type": "string"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "put-section": {
+        "description": "Create, update, or rename a section",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--path": {
+            "type": "string",
+            "required": true,
+            "description": "Complete logical resource path rooted at the Playbook display name"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Description; omission resets it to an empty string"
+          },
+          "--rename-source": {
+            "type": "string",
+            "description": "Existing logical path when renaming"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "get-section": {
+        "description": "Get a section",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--path": {
+            "type": "string",
+            "required": true,
+            "description": "Complete logical resource path rooted at the Playbook display name"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "delete-section": {
+        "description": "Delete a section",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--path": {
+            "type": "string",
+            "required": true,
+            "description": "Complete logical resource path rooted at the Playbook display name"
+          },
+          "--recursive": {
+            "type": "bool",
+            "description": "Delete all descendants"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "list-groups": {
+        "description": "List groups in a section context root",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--path": {
+            "type": "string",
+            "required": true,
+            "description": "Complete logical resource path rooted at the Playbook display name"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "put-group": {
+        "description": "Create, update, or rename a group",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--path": {
+            "type": "string",
+            "required": true,
+            "description": "Complete logical resource path rooted at the Playbook display name"
+          },
+          "--description": {
+            "type": "string",
+            "description": "Description; omission resets it to an empty string"
+          },
+          "--rename-source": {
+            "type": "string",
+            "description": "Existing logical path when renaming"
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "get-group": {
+        "description": "Get a group",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--path": {
+            "type": "string",
+            "required": true,
+            "description": "Complete logical resource path rooted at the Playbook display name"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "delete-group": {
+        "description": "Delete a group",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--path": {
+            "type": "string",
+            "required": true,
+            "description": "Complete logical resource path rooted at the Playbook display name"
+          },
+          "--recursive": {
+            "type": "bool",
+            "description": "Delete all descendants"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "list-section-role-assignments": {
+        "description": "List direct section role assignments",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--path": {
+            "type": "string",
+            "required": true,
+            "description": "Complete logical resource path rooted at the Playbook display name"
+          }
+        },
+        "mutates": false,
+        "returns": "list"
+      },
+      "add-section-role-assignment": {
+        "description": "Add a direct section role assignment",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--path": {
+            "type": "string",
+            "required": true,
+            "description": "Complete logical resource path rooted at the Playbook display name"
+          },
+          "--principal-id": {
+            "type": "string",
+            "required": true
+          },
+          "--principal-type": {
+            "type": "enum",
+            "values": [
+              "User",
+              "Group",
+              "ServicePrincipal"
+            ],
+            "required": true
+          },
+          "--role": {
+            "type": "enum",
+            "values": [
+              "user",
+              "curator"
+            ],
+            "required": true
+          }
+        },
+        "mutates": true,
+        "returns": "object"
+      },
+      "update-section-role-assignment": {
+        "description": "Update a direct section role assignment",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--path": {
+            "type": "string",
+            "required": true,
+            "description": "Complete logical resource path rooted at the Playbook display name"
+          },
+          "--principal-id": {
+            "type": "string",
+            "required": true
+          },
+          "--role": {
+            "type": "enum",
+            "values": [
+              "user",
+              "curator"
+            ],
+            "required": true
+          }
+        },
+        "mutates": true,
+        "returns": "void"
+      },
+      "delete-section-role-assignment": {
+        "description": "Delete a direct section role assignment",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--path": {
+            "type": "string",
+            "required": true,
+            "description": "Complete logical resource path rooted at the Playbook display name"
+          },
+          "--principal-id": {
+            "type": "string",
+            "required": true
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "put-context": {
+        "description": "Create or replace a context",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--path": {
+            "type": "string",
+            "required": true,
+            "description": "Complete logical resource path rooted at the Playbook display name"
+          },
+          "--summary": {
+            "type": "string",
+            "required": true,
+            "description": "Non-empty summary, maximum 2,048 UTF-8 bytes"
+          },
+          "--content-type": {
+            "type": "enum",
+            "values": [
+              "application/zip",
+              "text/markdown",
+              "text/plain"
+            ]
+          },
+          "--data": {
+            "type": "string",
+            "description": "Base64-encoded content"
+          },
+          "--reference": {
+            "type": "string",
+            "description": "Polymorphic `ContextReference` JSON (inline or @file)"
+          }
+        },
+        "mutates": true,
+        "returns": "object",
+        "destructive": true
+      },
+      "get-context": {
+        "description": "Get a context",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--path": {
+            "type": "string",
+            "required": true,
+            "description": "Complete logical resource path rooted at the Playbook display name"
+          },
+          "--include-content": {
+            "type": "bool"
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "update-context": {
+        "description": "Update only a context summary",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--path": {
+            "type": "string",
+            "required": true,
+            "description": "Complete logical resource path rooted at the Playbook display name"
+          },
+          "--summary": {
+            "type": "string",
+            "required": true
+          }
+        },
+        "mutates": true,
+        "returns": "void"
+      },
+      "delete-context": {
+        "description": "Delete a context",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--path": {
+            "type": "string",
+            "required": true,
+            "description": "Complete logical resource path rooted at the Playbook display name"
+          }
+        },
+        "mutates": true,
+        "returns": "void",
+        "destructive": true
+      },
+      "get-context-content": {
+        "description": "Download a context's stored ZIP package",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--path": {
+            "type": "string",
+            "required": true,
+            "description": "Complete logical resource path rooted at the Playbook display name"
+          },
+          "--output-file": {
+            "type": "string",
+            "required": true
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "get-user-preference": {
+        "description": "Get the calling identity's Playbook preference",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          }
+        },
+        "mutates": false,
+        "returns": "object"
+      },
+      "update-user-preference": {
+        "description": "Update the calling identity's Playbook preference",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true
+          },
+          "--id": {
+            "type": "string",
+            "required": true
+          },
+          "--active": {
+            "type": "enum",
+            "values": [
+              "true",
+              "false"
+            ],
+            "required": true
+          }
+        },
+        "mutates": true,
+        "returns": "void"
       }
     }
   },

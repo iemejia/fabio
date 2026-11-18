@@ -62,6 +62,7 @@ const GROUP_ALIASES: &[(&str, &str)] = &[
         "MirroredGoogleLakehouseRuntimeCatalog",
         "mirrored-google-lakehouse-catalog",
     ),
+    ("MirroredOneLake", "item"),
 ];
 
 /// Normalize a name for case/-/_-insensitive matching.

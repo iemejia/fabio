@@ -71,6 +71,7 @@ Manage lakehouses (tables, files, shortcuts)
 | `fabio lakehouse list-files` | no | List files in a lakehouse |
 | `fabio lakehouse list-livy-sessions` | no | List Livy sessions for a lakehouse |
 | `fabio lakehouse list-materialized-views-schedules` | no | List materialized lake view refresh schedules (named schedules for this lakehouse) |
+| `fabio lakehouse list-semantic-views` | no | List semantic views authored in a lakehouse (beta) |
 | `fabio lakehouse list-shortcuts` | no | List shortcuts in an item (hides DW-managed shortcuts by default) |
 | `fabio lakehouse list-tables` | no | List tables in a lakehouse |
 | `fabio lakehouse load-table` | yes | Load a file (already in the lakehouse) into a Delta table |
@@ -79,6 +80,7 @@ Manage lakehouses (tables, files, shortcuts)
 | `fabio lakehouse optimize-table` | yes | Optimize a Delta table (V-Order compaction + optional Z-Order) |
 | `fabio lakehouse plan` | no | Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query |
 | `fabio lakehouse pool-insights` | no | Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`) |
+| `fabio lakehouse publish-semantic-view` | yes | Publish a semantic view as a governed Direct Lake semantic model (beta) |
 | `fabio lakehouse queries-frequent` | no | List frequently-run queries (from `queryinsights.frequently_run_queries`) |
 | `fabio lakehouse queries-history` | no | List completed query history (from `queryinsights.exec_requests_history`) |
 | `fabio lakehouse queries-long-running` | no | List long-running queries (from `queryinsights.long_running_queries`) |

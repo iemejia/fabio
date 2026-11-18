@@ -1784,6 +1784,7 @@ const PROTECTED_DELETE_TYPES: &[&str] = &[
     "SQLDatabase",
     "Eventhouse",
     "KQLDatabase",
+    "PostgreSQLDatabase",
 ];
 
 /// Check if a delete action is allowed for the given item type.
@@ -1967,6 +1968,7 @@ mod tests {
             "SQLDatabase",
             "Eventhouse",
             "KQLDatabase",
+            "PostgreSQLDatabase",
         ];
         for t in &expected {
             assert!(

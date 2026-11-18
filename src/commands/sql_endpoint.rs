@@ -153,6 +153,39 @@ pub enum SqlEndpointCommand {
         #[arg(long)]
         tables: Option<String>,
     },
+    /// Get the endpoint's metadata sync architecture and latest migration status
+    #[command(display_order = 13)]
+    MetadataSyncMigrationStatus {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL endpoint ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Assess metadata sync upgrade readiness without converting tables (LRO)
+    #[command(display_order = 14)]
+    PreflightMetadataSyncUpgrade {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL endpoint ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Upgrade metadata sync from V1 regular tables to V2 external tables (LRO)
+    #[command(display_order = 15)]
+    UpgradeMetadataSync {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// SQL endpoint ID
+        #[arg(long)]
+        id: String,
+    },
     /// Get SQL audit settings for the endpoint
     #[command(display_order = 10)]
     GetAuditSettings {
@@ -353,6 +386,15 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &SqlEndpointComm
                 tables.as_deref(),
             )
             .await
+        }
+        SqlEndpointCommand::MetadataSyncMigrationStatus { workspace, id } => {
+            metadata_sync_migration_status(cli, client, workspace, id).await
+        }
+        SqlEndpointCommand::PreflightMetadataSyncUpgrade { workspace, id } => {
+            preflight_metadata_sync_upgrade(cli, client, workspace, id).await
+        }
+        SqlEndpointCommand::UpgradeMetadataSync { workspace, id } => {
+            upgrade_metadata_sync(cli, client, workspace, id).await
         }
         SqlEndpointCommand::GetAuditSettings { workspace, id } => {
             get_audit_settings(cli, client, workspace, id).await
@@ -649,6 +691,81 @@ struct RefreshMetadataRequest {
     tables: Option<Vec<TableDefinition>>,
 }
 
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct MetadataSyncError {
+    error_code: String,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    related_resource: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parameters: Option<Vec<Value>>,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct MetadataSyncTableFailure {
+    schema: String,
+    table_name: String,
+    error: MetadataSyncError,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct MetadataSyncMigrationAttempt {
+    source_sync_architecture_version: String,
+    target_sync_architecture_version: String,
+    item_migration_status: String,
+    completed_date_time: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct MetadataSyncMigrationStatus {
+    sync_architecture_version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    item_migration_direction: Option<String>,
+    table_failures: Vec<MetadataSyncTableFailure>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_migration_attempt: Option<MetadataSyncMigrationAttempt>,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct MetadataSyncMigrationBlocker {
+    schema: String,
+    table_name: String,
+    corrective_action: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct MetadataSyncMigrationPreflightResult {
+    evaluated_table_count: i32,
+    eligible_table_count: i32,
+    blockers: Vec<MetadataSyncMigrationBlocker>,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct MetadataSyncTableMigrationStatus {
+    schema: String,
+    table_name: String,
+    sync_architecture_version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_successful_sync_date_time: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<MetadataSyncError>,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct MetadataSyncMigrationResult {
+    sync_architecture_version: String,
+    item_migration_status: String,
+    table_statuses: Vec<MetadataSyncTableMigrationStatus>,
+}
+
 #[allow(clippy::trivially_copy_pass_by_ref)]
 const fn is_false(value: &bool) -> bool {
     !*value
@@ -833,9 +950,17 @@ async fn refresh_metadata(
                 "status",
                 "startDateTime",
                 "endDateTime",
+                "syncArchitectureVersion",
                 "lastSuccessfulSyncDateTime",
             ],
-            &["TABLE", "STATUS", "START", "END", "LAST SUCCESSFUL SYNC"],
+            &[
+                "TABLE",
+                "STATUS",
+                "START",
+                "END",
+                "SYNC ARCHITECTURE",
+                "LAST SUCCESSFUL SYNC",
+            ],
             "tableName",
         );
     } else if data.is_null() || data.as_object().is_some_and(serde_json::Map::is_empty) {
@@ -844,6 +969,90 @@ async fn refresh_metadata(
     } else {
         output::render_object(cli, &data, "id");
     }
+    Ok(())
+}
+
+async fn metadata_sync_migration_status(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let data = client
+        .get(&format!(
+            "/workspaces/{workspace}/sqlEndpoints/{id}/metadataSyncMigrationStatus"
+        ))
+        .await
+        .map_err(|e| {
+            enrich_forbidden(e, "sql-endpoint metadata-sync-migration-status", "Viewer")
+        })?;
+    let response: MetadataSyncMigrationStatus = serde_json::from_value(data)?;
+    output::render_object(
+        cli,
+        &serde_json::to_value(response)?,
+        "syncArchitectureVersion",
+    );
+    Ok(())
+}
+
+async fn preflight_metadata_sync_upgrade(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let path = format!("/workspaces/{workspace}/sqlEndpoints/{id}/preflightMetadataSyncUpgrade");
+    let preview =
+        serde_json::json!({"workspace": workspace, "id": id, "method": "POST", "path": path});
+    if output::dry_run_guard(
+        cli,
+        "sql-endpoint preflight-metadata-sync-upgrade",
+        &preview,
+    ) {
+        return Ok(());
+    }
+    let data = client.post_empty(&path, true).await.map_err(|e| {
+        enrich_forbidden(
+            e,
+            "sql-endpoint preflight-metadata-sync-upgrade",
+            "Contributor",
+        )
+    })?;
+    let response: MetadataSyncMigrationPreflightResult = serde_json::from_value(data)?;
+    output::render_object(cli, &serde_json::to_value(response)?, "eligibleTableCount");
+    Ok(())
+}
+
+async fn upgrade_metadata_sync(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+) -> Result<()> {
+    let path = format!("/workspaces/{workspace}/sqlEndpoints/{id}/upgradeMetadataSync");
+    let warning = "This irreversibly converts eligible V1 regular-table metadata to V2 external-table metadata. Repeated calls retry only tables that have not reached V2.";
+    let preview = serde_json::json!({
+        "workspace": workspace, "id": id, "method": "POST", "path": path,
+        "sourceSyncArchitectureVersion": "V1", "targetSyncArchitectureVersion": "V2",
+        "warning": warning
+    });
+    if output::dry_run_guard_maybe_destructive(
+        cli,
+        "sql-endpoint upgrade-metadata-sync",
+        &preview,
+        true,
+    ) {
+        return Ok(());
+    }
+    let data = client
+        .post_empty(&path, true)
+        .await
+        .map_err(|e| enrich_forbidden(e, "sql-endpoint upgrade-metadata-sync", "Contributor"))?;
+    let response: MetadataSyncMigrationResult = serde_json::from_value(data)?;
+    let mut rendered = serde_json::to_value(response)?;
+    rendered["destructive"] = Value::Bool(true);
+    rendered["warning"] = Value::from(warning);
+    output::render_object(cli, &rendered, "itemMigrationStatus");
     Ok(())
 }
 
@@ -1076,8 +1285,9 @@ async fn insights_pool(
 #[cfg(test)]
 mod tests {
     use super::{
-        DurationDefinition, RefreshMetadataRequest, TableDefinition, parse_table_definitions,
-        parse_timeout, validate_table_definitions,
+        DurationDefinition, MetadataSyncMigrationPreflightResult, MetadataSyncMigrationResult,
+        MetadataSyncMigrationStatus, RefreshMetadataRequest, TableDefinition,
+        parse_table_definitions, parse_timeout, validate_table_definitions,
     };
 
     #[test]
@@ -1200,5 +1410,57 @@ mod tests {
                 .to_string()
                 .contains("reserved system schema")
         );
+    }
+
+    #[test]
+    fn migration_response_schemas_match_spec_examples() {
+        let status: MetadataSyncMigrationStatus = serde_json::from_value(serde_json::json!({
+            "syncArchitectureVersion": "V2",
+            "itemMigrationDirection": "MigratingToV2",
+            "tableFailures": [{
+                "schema": "dbo", "tableName": "OrderDetails",
+                "error": {"errorCode": "DeltaTableNotFound", "message": "Delta table was not found."}
+            }],
+            "lastMigrationAttempt": {
+                "sourceSyncArchitectureVersion": "V1",
+                "targetSyncArchitectureVersion": "V2",
+                "itemMigrationStatus": "PartiallySucceeded",
+                "completedDateTime": "2026-06-09T14:31:25Z"
+            }
+        }))
+        .unwrap();
+        assert_eq!(status.sync_architecture_version, "V2");
+        assert_eq!(
+            status.table_failures[0].error.error_code,
+            "DeltaTableNotFound"
+        );
+
+        let preflight: MetadataSyncMigrationPreflightResult =
+            serde_json::from_value(serde_json::json!({
+                "evaluatedTableCount": 1250,
+                "eligibleTableCount": 1248,
+                "blockers": [{
+                    "schema": "dbo", "tableName": "LegacyAudit",
+                    "correctiveAction": "Remove the unsupported column type."
+                }]
+            }))
+            .unwrap();
+        assert_eq!(preflight.evaluated_table_count, 1250);
+        assert_eq!(preflight.blockers[0].table_name, "LegacyAudit");
+
+        let upgrade: MetadataSyncMigrationResult = serde_json::from_value(serde_json::json!({
+            "syncArchitectureVersion": "V2",
+            "itemMigrationStatus": "PartiallySucceeded",
+            "tableStatuses": [{
+                "schema": "dbo", "tableName": "Orders", "syncArchitectureVersion": "V2",
+                "lastSuccessfulSyncDateTime": "2026-06-09T14:31:25Z"
+            }, {
+                "schema": "dbo", "tableName": "OrderDetails", "syncArchitectureVersion": "V1",
+                "error": {"errorCode": "DeltaTableNotFound", "message": "Delta table was not found."}
+            }]
+        }))
+        .unwrap();
+        assert_eq!(upgrade.item_migration_status, "PartiallySucceeded");
+        assert_eq!(upgrade.table_statuses[1].sync_architecture_version, "V1");
     }
 }

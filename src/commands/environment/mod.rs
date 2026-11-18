@@ -6,6 +6,7 @@ use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
+mod custom_live_pool;
 mod diagnostics;
 mod pool_activations;
 mod spark_compute;
@@ -457,6 +458,81 @@ pub enum EnvironmentCommand {
         #[arg(long,value_parser=clap::value_parser!(u64).range(1..=3600))]
         max_duration: Option<u64>,
     },
+    /// Run the environment's custom live pool on demand
+    RunCustomLivePool {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+    },
+    /// List custom live-pool schedules
+    ListCustomLivePoolSchedules {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Show a custom live-pool schedule
+    ShowCustomLivePoolSchedule {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+        /// Schedule ID
+        #[arg(long)]
+        schedule_id: String,
+    },
+    /// Create a recurring custom live-pool schedule
+    CreateCustomLivePoolSchedule {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+        /// Path to the schedule request JSON
+        #[arg(long, conflicts_with = "content")]
+        file: Option<String>,
+        /// Inline schedule request JSON
+        #[arg(long, conflicts_with = "file")]
+        content: Option<String>,
+    },
+    /// Update a custom live-pool schedule
+    UpdateCustomLivePoolSchedule {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+        /// Schedule ID
+        #[arg(long)]
+        schedule_id: String,
+        /// Path to the schedule request JSON
+        #[arg(long, conflicts_with = "content")]
+        file: Option<String>,
+        /// Inline schedule request JSON
+        #[arg(long, conflicts_with = "file")]
+        content: Option<String>,
+    },
+    /// Delete a custom live-pool schedule
+    DeleteCustomLivePoolSchedule {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Environment ID
+        #[arg(long)]
+        id: String,
+        /// Schedule ID
+        #[arg(long)]
+        schedule_id: String,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -684,6 +760,56 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EnvironmentComm
             )
             .await
         }
+        EnvironmentCommand::RunCustomLivePool { workspace, id } => {
+            custom_live_pool::run(cli, client, workspace, id).await
+        }
+        EnvironmentCommand::ListCustomLivePoolSchedules { workspace, id } => {
+            custom_live_pool::list_schedules(cli, client, workspace, id).await
+        }
+        EnvironmentCommand::ShowCustomLivePoolSchedule {
+            workspace,
+            id,
+            schedule_id,
+        } => custom_live_pool::show_schedule(cli, client, workspace, id, schedule_id).await,
+        EnvironmentCommand::CreateCustomLivePoolSchedule {
+            workspace,
+            id,
+            file,
+            content,
+        } => {
+            custom_live_pool::create_schedule(
+                cli,
+                client,
+                workspace,
+                id,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        EnvironmentCommand::UpdateCustomLivePoolSchedule {
+            workspace,
+            id,
+            schedule_id,
+            file,
+            content,
+        } => {
+            custom_live_pool::update_schedule(
+                cli,
+                client,
+                workspace,
+                id,
+                schedule_id,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
+        EnvironmentCommand::DeleteCustomLivePoolSchedule {
+            workspace,
+            id,
+            schedule_id,
+        } => custom_live_pool::delete_schedule(cli, client, workspace, id, schedule_id).await,
     }
 }
 

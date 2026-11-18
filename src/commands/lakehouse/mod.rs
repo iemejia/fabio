@@ -18,6 +18,7 @@ mod iceberg_writes;
 mod insights;
 mod livy;
 mod maintenance;
+mod semantic_views;
 mod shortcuts;
 mod sync;
 mod tables;
@@ -1024,6 +1025,30 @@ pub enum LakehouseCommand {
         #[arg(long)]
         execution_definition_id: String,
     },
+    /// List semantic views authored in a lakehouse (beta)
+    ListSemanticViews {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+    },
+    /// Publish a semantic view as a governed Direct Lake semantic model (beta)
+    PublishSemanticView {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Lakehouse ID
+        #[arg(long, visible_alias = "lakehouse")]
+        id: String,
+
+        /// Authored semantic view name
+        #[arg(long)]
+        name: String,
+    },
 
     // ── Table Maintenance ────────────────────────────────────────────────
     /// Run table maintenance on a lakehouse
@@ -1884,6 +1909,14 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &LakehouseComman
             )
             .await
         }
+        LakehouseCommand::ListSemanticViews { workspace, id } => {
+            semantic_views::list(cli, client, workspace, id).await
+        }
+        LakehouseCommand::PublishSemanticView {
+            workspace,
+            id,
+            name,
+        } => semantic_views::publish(cli, client, workspace, id, name).await,
         LakehouseCommand::RunTableMaintenance {
             workspace,
             id,

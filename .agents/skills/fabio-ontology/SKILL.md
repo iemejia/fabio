@@ -41,10 +41,12 @@ Manage ontologies (entity types, data bindings)
 | `fabio ontology add-report-link` | yes | Add a Power BI report link (`ResourceLink`) to an entity type |
 | `fabio ontology bind` | yes | Bind an existing ontology's types to data sources (no OWL re-import) |
 | `fabio ontology create` | yes | Create an ontology |
+| `fabio ontology create-version` | yes | Capture the current ontology definition as a version (beta) |
 | `fabio ontology delete` | yes | Delete an ontology |
 | `fabio ontology delete-entity-type` | yes | Delete an entity type (cascades relationship types referencing it) |
 | `fabio ontology delete-relationship-type` | yes | Delete a relationship type |
 | `fabio ontology delete-report-link` | yes | Delete a report link from an entity type |
+| `fabio ontology delete-version` | yes | Permanently delete a saved ontology version (beta) |
 | `fabio ontology export` | no | Export a Fabric Ontology to OWL format (RDF/XML or JSON-LD) |
 | `fabio ontology generate` | yes | Generate an ontology from a semantic model or lakehouse (entity types, properties, relationships) |
 | `fabio ontology get-definition` | no | Get the ontology definition (entity types, bindings) |
@@ -52,12 +54,55 @@ Manage ontologies (entity types, data bindings)
 | `fabio ontology list` | no | List ontologies in a workspace |
 | `fabio ontology list-entity-types` | no | List the ontology's entity types and their properties (schema exploration) |
 | `fabio ontology list-report-links` | no | List report (resource) links on an ontology's entity types |
+| `fabio ontology list-versions` | no | List saved ontology versions (beta) |
 | `fabio ontology mcp-url` | no | Print the Model Context Protocol (MCP) server URL for consuming this ontology |
 | `fabio ontology rename-entity-type` | yes | Rename an entity type (relationship/binding references use the stable id, so they are unaffected) |
+| `fabio ontology restore-version` | yes | Restore the ontology definition from a saved version (beta) |
 | `fabio ontology search` | no | Ask a natural-language question over the ontology's data (MCP `search_ontology` tool) |
 | `fabio ontology show` | no | Show details of an ontology |
+| `fabio ontology show-version` | no | Show metadata for a saved ontology version (beta) |
 | `fabio ontology update` | yes | Update ontology properties (name and/or description) |
 | `fabio ontology update-definition` | yes | Update the ontology definition (replaces current definition) |
+| `fabio ontology update-version` | yes | Update a saved ontology version's metadata (beta) |
+
+### fabio microsoft-iq
+Retrieve organizational knowledge through Microsoft IQ
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio microsoft-iq am-i-in-scope` | no | Check whether the caller can see any Microsoft IQ context |
+| `fabio microsoft-iq retrieve` | no | Retrieve relevance-ranked organizational context |
+
+### fabio playbook
+Manage Fabric Playbooks
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio playbook add-section-role-assignment` | yes | Add a direct section role assignment |
+| `fabio playbook create` | yes | Create a Playbook |
+| `fabio playbook delete` | yes | Delete a Playbook |
+| `fabio playbook delete-context` | yes | Delete a context |
+| `fabio playbook delete-group` | yes | Delete a group |
+| `fabio playbook delete-section` | yes | Delete a section |
+| `fabio playbook delete-section-role-assignment` | yes | Delete a direct section role assignment |
+| `fabio playbook get-context` | no | Get a context |
+| `fabio playbook get-context-content` | no | Download a context's stored ZIP package |
+| `fabio playbook get-definition` | no | Get a Playbook definition |
+| `fabio playbook get-group` | no | Get a group |
+| `fabio playbook get-section` | no | Get a section |
+| `fabio playbook get-user-preference` | no | Get the calling identity's Playbook preference |
+| `fabio playbook list` | no | List Playbooks in a workspace |
+| `fabio playbook list-groups` | no | List groups in a section context root |
+| `fabio playbook list-section-role-assignments` | no | List direct section role assignments |
+| `fabio playbook put-context` | yes | Create or replace a context |
+| `fabio playbook put-group` | yes | Create, update, or rename a group |
+| `fabio playbook put-section` | yes | Create, update, or rename a section |
+| `fabio playbook show` | no | Show a Playbook |
+| `fabio playbook update` | yes | Update Playbook metadata |
+| `fabio playbook update-context` | yes | Update only a context summary |
+| `fabio playbook update-definition` | yes | Replace a Playbook definition |
+| `fabio playbook update-section-role-assignment` | yes | Update a direct section role assignment |
+| `fabio playbook update-user-preference` | yes | Update the calling identity's Playbook preference |
 
 ### fabio graph-model
 Manage graph models (knowledge graph)

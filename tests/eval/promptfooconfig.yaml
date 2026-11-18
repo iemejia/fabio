@@ -4129,3 +4129,33 @@ tests:
         value: "output.includes('context describe eventstream add-source') || (output.includes('--properties') && output.includes('--dry-run'))"
       - type: javascript
         value: "output.includes('context describe eventstream add-source') || ['dataConnectionId', 'workspaceId', 'itemId', 'configurations', 'api.key', '${key}'].every(key => output.includes(key))"
+
+  - description: "Playbook: add Markdown context"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-ontology/SKILL.md"
+      user_query: "Add Markdown context with a summary under the Sales section of Playbook PB in workspace WS"
+    assert:
+      - type: icontains
+        value: "playbook put-context"
+      - type: javascript
+        value: "output.includes('context describe playbook put-context') || (output.includes('--path') && output.includes('--summary') && output.includes('--content-type'))"
+
+  - description: "PostgreSQL database: create from schema definition"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-warehouse-sql/SKILL.md"
+      user_query: "Create a Fabric PostgreSQL database named Orders from definition.pgschema in workspace WS"
+    assert:
+      - type: icontains
+        value: "postgresql-database create"
+      - type: javascript
+        value: "output.includes('context describe postgresql-database create') || output.includes('--definition')"
+
+  - description: "Microsoft IQ: retrieve organizational context"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-ontology/SKILL.md"
+      user_query: "Retrieve Microsoft IQ organizational context relevant to quarterly sales risks"
+    assert:
+      - type: icontains
+        value: "microsoft-iq retrieve"
+      - type: icontains
+        value: "--text"

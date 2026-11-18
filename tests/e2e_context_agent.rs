@@ -105,7 +105,7 @@ fn agent_context_default_returns_compact_index() {
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
 
     let commands = json["data"]["commands"].as_object().unwrap();
-    // Should have all 74 groups
+    // Should have all command groups
     assert!(commands.len() >= 70, "default should list all groups");
     // Each group should have description + subcommands array
     let lakehouse = &commands["lakehouse"];
@@ -123,8 +123,8 @@ fn agent_context_default_is_small() {
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     // Default compact output should be much smaller than full dump
     assert!(
-        stdout.len() < 29_000,
-        "default output should be under 29KB, got {} bytes",
+        stdout.len() < 31_000,
+        "default output should be under 31KB, got {} bytes",
         stdout.len()
     );
 }

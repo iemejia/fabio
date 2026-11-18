@@ -32,6 +32,7 @@ pub const DEPLOY_ORDER: &[&str] = &[
     "AzureDatabricksStorage",                // fabio-only (storage family)
     "Lakehouse",                             // fabric-cicd 4
     "SQLDatabase",                           // fabric-cicd 5
+    "PostgreSQLDatabase",                    // fabio-only (database family)
     "CosmosDbDatabase",                      // fabio-only (database family)
     "SnowflakeDatabase",                     // fabio-only (database family)
     "CustomStreamConnector",                 // fabio-only (before Eventstream consumers)
@@ -61,6 +62,7 @@ pub const DEPLOY_ORDER: &[&str] = &[
     "Monitoring",                            // fabio-only (workspace observability)
     "AnomalyDetector",                       // fabio-only (RTI)
     "Ontology",                              // fabric-cicd 26
+    "Playbook",                              // fabio-only (Microsoft IQ context)
     "GraphModel",                            // fabio-only (after Ontology; a DataAgent data source)
     "GraphQuerySet",                         // fabio-only
     "DigitalTwinBuilder",                    // fabio-only
@@ -421,8 +423,8 @@ mod tests {
         // Guard against accidental additions/removals — update this if DEPLOY_ORDER changes
         assert_eq!(
             DEPLOY_ORDER.len(),
-            53,
-            "DEPLOY_ORDER should have 53 entries; update this test if intentionally changed"
+            55,
+            "DEPLOY_ORDER should have 55 entries; update this test if intentionally changed"
         );
     }
 

@@ -2193,6 +2193,47 @@ impl FabricClient {
         self.mutation_json(resp, "fabric", path).await
     }
 
+    /// PUT request with one caller-supplied header and an optional JSON body.
+    pub async fn put_with_header(
+        &self,
+        path: &str,
+        body: Option<&Value>,
+        header_name: &'static str,
+        header_value: &str,
+    ) -> Result<Value> {
+        self.guard_readonly("PUT", path)?;
+        let token = self.require_auth().await?;
+        let url = self.fabric_url(path);
+        let request = self
+            .http
+            .put(&url)
+            .header(AUTHORIZATION, &token)
+            .header(header_name, header_value);
+        let request = match body {
+            Some(value) => request.json(value),
+            None => request,
+        };
+        let resp = self.send_mutation(request, "fabric", path).await?;
+        if resp.status() == StatusCode::UNAUTHORIZED
+            && submission::can_retry_rejection(PostSemantics::Mutation, resp.headers())
+        {
+            self.invalidate_fabric_token().await;
+            let token = self.require_auth().await?;
+            let request = self
+                .http
+                .put(&url)
+                .header(AUTHORIZATION, &token)
+                .header(header_name, header_value);
+            let request = match body {
+                Some(value) => request.json(value),
+                None => request,
+            };
+            let resp = self.send_mutation(request, "fabric", path).await?;
+            return self.mutation_json(resp, "fabric", path).await;
+        }
+        self.mutation_json(resp, "fabric", path).await
+    }
+
     /// PUT request with raw text body (e.g., for file uploads requiring text/plain).
     pub async fn put_raw(&self, path: &str, content: &str) -> Result<Value> {
         self.put_raw_with_if_match(path, content, "text/plain", None)

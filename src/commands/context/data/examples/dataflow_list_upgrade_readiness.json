@@ -24,7 +24,7 @@
     "count": 2,
     "continuationToken": "LDEsMTAwMDAwLDA%3D"
   },
-  "notes": "Preview API. It always evaluates all Gen1 dataflows in the workspace; Gen2 dataflows are excluded. Status is Unknown, ReadyToMigrate, NeedsAttention, or UpgradeUnavailable. Reasons are omitted for ReadyToMigrate.",
+  "notes": "It always evaluates all Gen1 dataflows in the workspace; Gen2 dataflows are excluded. Status is Unknown, ReadyToMigrate, NeedsAttention, or UpgradeUnavailable. Reasons are omitted for ReadyToMigrate.",
   "query_examples": [
     {"query": "[?status!='ReadyToMigrate'].{name:displayName,status:status,reasons:reasons}", "description": "Show dataflows that need review."},
     {"query": "[?status=='ReadyToMigrate'].id", "description": "Extract IDs ready for upgrade."}

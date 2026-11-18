@@ -16,6 +16,7 @@ mod generate;
 pub mod import;
 mod mcp;
 mod search;
+mod versions;
 
 #[derive(Debug, Subcommand)]
 #[command(
@@ -508,6 +509,110 @@ pub enum OntologyCommand {
         #[arg(long)]
         report: String,
     },
+    /// List saved ontology versions (beta)
+    ListVersions {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Ontology ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Show metadata for a saved ontology version (beta)
+    ShowVersion {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Ontology ID
+        #[arg(long)]
+        id: String,
+
+        /// Version ID
+        #[arg(long)]
+        version_id: String,
+    },
+    /// Capture the current ontology definition as a version (beta)
+    CreateVersion {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Ontology ID
+        #[arg(long)]
+        id: String,
+
+        /// Version display name (maximum 100 characters)
+        #[arg(long)]
+        name: String,
+
+        /// Version description (maximum 500 characters)
+        #[arg(long)]
+        description: Option<String>,
+
+        /// Source creating the version
+        #[arg(long, value_enum)]
+        creation_source: Option<versions::CreationSource>,
+    },
+    /// Update a saved ontology version's metadata (beta)
+    UpdateVersion {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Ontology ID
+        #[arg(long)]
+        id: String,
+
+        /// Version ID
+        #[arg(long)]
+        version_id: String,
+
+        /// New version display name
+        #[arg(long)]
+        name: Option<String>,
+
+        /// New version description
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// Permanently delete a saved ontology version (beta)
+    DeleteVersion {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Ontology ID
+        #[arg(long)]
+        id: String,
+
+        /// Version ID
+        #[arg(long)]
+        version_id: String,
+    },
+    /// Restore the ontology definition from a saved version (beta)
+    RestoreVersion {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+
+        /// Ontology ID
+        #[arg(long)]
+        id: String,
+
+        /// Version ID
+        #[arg(long)]
+        version_id: String,
+
+        /// Path to a JSON object containing item-type-defined restore options
+        #[arg(long, conflicts_with = "content")]
+        file: Option<String>,
+
+        /// Inline JSON object containing item-type-defined restore options
+        #[arg(long, conflicts_with = "file")]
+        content: Option<String>,
+    },
 }
 
 #[allow(clippy::too_many_lines)]
@@ -772,6 +877,73 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &OntologyCommand
         } => elements::delete_report_link(cli, client, workspace, id, entity, report)
             .await
             .map_err(|e| enrich_forbidden(e, "ontology delete-report-link", "Contributor")),
+        OntologyCommand::ListVersions { workspace, id } => {
+            versions::list(cli, client, workspace, id).await
+        }
+        OntologyCommand::ShowVersion {
+            workspace,
+            id,
+            version_id,
+        } => versions::show(cli, client, workspace, id, version_id).await,
+        OntologyCommand::CreateVersion {
+            workspace,
+            id,
+            name,
+            description,
+            creation_source,
+        } => {
+            versions::create(
+                cli,
+                client,
+                workspace,
+                id,
+                name,
+                description.as_deref(),
+                *creation_source,
+            )
+            .await
+        }
+        OntologyCommand::UpdateVersion {
+            workspace,
+            id,
+            version_id,
+            name,
+            description,
+        } => {
+            versions::update(
+                cli,
+                client,
+                workspace,
+                id,
+                version_id,
+                name.as_deref(),
+                description.as_deref(),
+            )
+            .await
+        }
+        OntologyCommand::DeleteVersion {
+            workspace,
+            id,
+            version_id,
+        } => versions::delete(cli, client, workspace, id, version_id).await,
+        OntologyCommand::RestoreVersion {
+            workspace,
+            id,
+            version_id,
+            file,
+            content,
+        } => {
+            versions::restore(
+                cli,
+                client,
+                workspace,
+                id,
+                version_id,
+                file.as_deref(),
+                content.as_deref(),
+            )
+            .await
+        }
     }
 }
 

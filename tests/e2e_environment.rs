@@ -10,6 +10,97 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 const MOCK_WORKSPACE: &str = "aaaaaaaa-1111-2222-3333-444444444444";
 const MOCK_ENVIRONMENT: &str = "bbbbbbbb-1111-2222-3333-444444444444";
 const MOCK_ACTIVATION: &str = "cccccccc-1111-2222-3333-444444444444";
+const MOCK_SCHEDULE: &str = "dddddddd-1111-2222-3333-444444444444";
+
+#[test]
+fn test_run_custom_live_pool_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "environment",
+            "run-custom-live-pool",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&output)).clone();
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["environmentId"], MOCK_ENVIRONMENT);
+}
+
+#[test]
+fn test_create_custom_live_pool_schedule_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "environment",
+            "create-custom-live-pool-schedule",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+            "--content",
+            r#"{"enabled":true,"configuration":{"type":"Cron","startDateTime":"2026-10-01T00:00:00Z","endDateTime":"2027-10-01T00:00:00Z","localTimeZoneId":"Central Standard Time","interval":1440}}"#,
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&output)).clone();
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["request"]["enabled"], true);
+    assert_eq!(
+        data["details"]["request"]["configuration"]["interval"],
+        1440
+    );
+}
+
+#[test]
+fn test_update_custom_live_pool_schedule_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "environment",
+            "update-custom-live-pool-schedule",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+            "--schedule-id",
+            MOCK_SCHEDULE,
+            "--content",
+            r#"{"enabled":false,"configuration":{"type":"Cron","startDateTime":"2026-10-01T00:00:00Z","endDateTime":"2027-10-01T00:00:00Z","localTimeZoneId":"Central Standard Time","interval":720}}"#,
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&output)).clone();
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["scheduleId"], MOCK_SCHEDULE);
+    assert_eq!(data["details"]["request"]["enabled"], false);
+}
+
+#[test]
+fn test_delete_custom_live_pool_schedule_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "environment",
+            "delete-custom-live-pool-schedule",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+            "--schedule-id",
+            MOCK_SCHEDULE,
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&output)).clone();
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["destructive"], true);
+    assert_eq!(data["details"]["scheduleId"], MOCK_SCHEDULE);
+}
 
 #[test]
 #[serial]

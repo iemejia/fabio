@@ -178,6 +178,11 @@ const ITEM_SCHEMAS: &[(&str, &str)] = &[
         include_str!("data/schemas/custom_stream_connector.json"),
     ),
     ("Share", include_str!("data/schemas/share.json")),
+    ("Playbook", include_str!("data/schemas/playbook.json")),
+    (
+        "PostgreSQLDatabase",
+        include_str!("data/schemas/postgresql_database.json"),
+    ),
     (
         "ShareSubscription",
         include_str!("data/schemas/share_subscription.json"),

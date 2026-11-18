@@ -1,4 +1,7 @@
 ## Relevant Files
+- `src/commands/{microsoft_iq,playbook,postgresql_database}.rs`, `tests/e2e_{microsoft_iq,playbook,postgresql_database}.rs`: Microsoft IQ retrieval, Playbook hierarchy/context lifecycle, and PostgreSQL item/pgschema definition support.
+- `src/commands/environment/custom_live_pool.rs`, `src/commands/lakehouse/semantic_views.rs`, `src/commands/ontology/versions.rs`: custom live-pool scheduling, lakehouse semantic views, and ontology version APIs.
+- `src/commands/{share,share_subscription,sql_endpoint}.rs`: bulk Share management, provisioned Share Subscription resources, and SQL endpoint metadata-sync migration.
 - `src/commands/context/data/best_practices/project_osmos.json`, `src/commands/context/data/disambiguations/osmos.json`, `tests/e2e_osmos_feasibility.rs`: dated upstream-interface assessment, integration gates, Osmos-vs-Cosmos routing, offline discovery and owned-fixture metadata checks; no shipped task mutation client.
 - `src/commands/kql_dashboard/authoring.rs`, `tests/e2e_dashboard_authoring.rs`: offline canonical blank dashboard scaffold, no-network previews and disposable live definition observation.
 - `src/commands/connection_policy.rs`, `tests/e2e_connection_policy.rs`: narrowly recognized cloud-connection allowlist teaching errors, evidence-preservation tests and read-only live connection smoke test.

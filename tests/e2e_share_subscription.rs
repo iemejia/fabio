@@ -46,3 +46,27 @@ fn test_share_subscription_delete_dry_run() {
     assert_eq!(data["would_execute"], "share-subscription delete");
     assert_eq!(data["dry_run"], true);
 }
+
+#[test]
+fn test_share_subscription_synchronize_dry_run() {
+    let assert = fabio()
+        .args([
+            "share-subscription",
+            "synchronize",
+            "--workspace",
+            "00000000-0000-0000-0000-000000000001",
+            "--id",
+            "00000000-0000-0000-0000-000000000010",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    let data = extract_data(&json);
+    assert_eq!(data["would_execute"], "share-subscription synchronize");
+    assert_eq!(
+        data["details"]["id"],
+        "00000000-0000-0000-0000-000000000010"
+    );
+    assert_eq!(data["destructive"], true);
+}

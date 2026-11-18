@@ -105,6 +105,19 @@ Manage SQL databases (Fabric-native transactional databases)
 | `fabio sql-database update-audit-settings` | yes | Update SQL audit settings for the database |
 | `fabio sql-database update-definition` | yes | Update the definition of a SQL database |
 
+### fabio postgresql-database
+Manage PostgreSQL databases
+
+| Command | Mutates | Description |
+|---|---|---|
+| `fabio postgresql-database create` | yes | Create a PostgreSQL database |
+| `fabio postgresql-database delete` | yes | Permanently delete a PostgreSQL database |
+| `fabio postgresql-database get-definition` | no | Get a PostgreSQL database definition |
+| `fabio postgresql-database list` | no | List PostgreSQL databases in a workspace |
+| `fabio postgresql-database show` | no | Show a PostgreSQL database |
+| `fabio postgresql-database update` | yes | Update PostgreSQL database metadata |
+| `fabio postgresql-database update-definition` | yes | Replace a PostgreSQL database definition |
+
 ### fabio sql-endpoint
 Manage SQL endpoints (analytics endpoints for lakehouses)
 
@@ -116,8 +129,10 @@ Manage SQL endpoints (analytics endpoints for lakehouses)
 | `fabio sql-endpoint list` | no | List SQL endpoints in a workspace |
 | `fabio sql-endpoint list-tables` | no | List tables and views in a SQL endpoint (from `INFORMATION_SCHEMA.TABLES`) |
 | `fabio sql-endpoint mcp-url` | no | Print the remote Fabric Data Warehouse MCP server URLs (item-scoped + global) for agent consumption |
+| `fabio sql-endpoint metadata-sync-migration-status` | yes | Get the endpoint's metadata sync architecture and latest migration status |
 | `fabio sql-endpoint plan` | no | Capture the estimated execution plan (`SHOWPLAN_XML`) without executing the query |
 | `fabio sql-endpoint pool-insights` | no | Report SQL pool state changes and sustained pressure events (from `queryinsights.sql_pool_insights`) |
+| `fabio sql-endpoint preflight-metadata-sync-upgrade` | yes | Assess metadata sync upgrade readiness without converting tables (LRO) |
 | `fabio sql-endpoint queries-frequent` | no | List frequently-run queries (from `queryinsights.frequently_run_queries`) |
 | `fabio sql-endpoint queries-history` | no | List completed query history (from `queryinsights.exec_requests_history`) |
 | `fabio sql-endpoint queries-long-running` | no | List long-running queries (from `queryinsights.long_running_queries`) |
@@ -127,6 +142,7 @@ Manage SQL endpoints (analytics endpoints for lakehouses)
 | `fabio sql-endpoint set-audit-actions` | yes | Set audit actions and groups for the endpoint |
 | `fabio sql-endpoint show` | no | Show details of a SQL endpoint |
 | `fabio sql-endpoint update-audit-settings` | yes | Update SQL audit settings for the endpoint |
+| `fabio sql-endpoint upgrade-metadata-sync` | yes | Upgrade metadata sync from V1 regular tables to V2 external tables (LRO) |
 
 ### fabio warehouse-snapshot
 Manage warehouse snapshots

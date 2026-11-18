@@ -68,6 +68,259 @@ fn sql_endpoint_dry_run_refresh_metadata() {
 }
 
 #[test]
+fn test_preflight_metadata_sync_upgrade_dry_run() {
+    let workspace = "00000000-0000-0000-0000-000000000001";
+    let id = "00000000-0000-0000-0000-000000000002";
+    let assert = fabio()
+        .args([
+            "sql-endpoint",
+            "preflight-metadata-sync-upgrade",
+            "--workspace",
+            workspace,
+            "--id",
+            id,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let data = extract_data(&parse_json(&assert)).clone();
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(
+        data["would_execute"],
+        "sql-endpoint preflight-metadata-sync-upgrade"
+    );
+    assert_eq!(data["details"]["workspace"], workspace);
+    assert_eq!(data["details"]["id"], id);
+    assert_eq!(data["details"]["method"], "POST");
+    assert_eq!(
+        data["details"]["path"],
+        format!("/workspaces/{workspace}/sqlEndpoints/{id}/preflightMetadataSyncUpgrade")
+    );
+    assert!(data.get("destructive").is_none());
+}
+
+#[test]
+fn test_upgrade_metadata_sync_dry_run_is_destructive() {
+    let workspace = "00000000-0000-0000-0000-000000000001";
+    let id = "00000000-0000-0000-0000-000000000002";
+    let assert = fabio()
+        .args([
+            "sql-endpoint",
+            "upgrade-metadata-sync",
+            "--workspace",
+            workspace,
+            "--id",
+            id,
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+
+    let data = extract_data(&parse_json(&assert)).clone();
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "sql-endpoint upgrade-metadata-sync");
+    assert_eq!(data["destructive"], true);
+    assert_eq!(data["details"]["sourceSyncArchitectureVersion"], "V1");
+    assert_eq!(data["details"]["targetSyncArchitectureVersion"], "V2");
+    assert_eq!(
+        data["details"]["path"],
+        format!("/workspaces/{workspace}/sqlEndpoints/{id}/upgradeMetadataSync")
+    );
+    assert!(
+        data["details"]["warning"]
+            .as_str()
+            .is_some_and(|warning| warning.contains("irreversibly"))
+    );
+}
+
+#[test]
+fn test_metadata_sync_migration_endpoints_mocked() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let workspace = "00000000-0000-0000-0000-000000000001";
+    let id = "00000000-0000-0000-0000-000000000002";
+    let (server_uri, _server) = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/workspaces/{workspace}/sqlEndpoints/{id}/metadataSyncMigrationStatus"
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "syncArchitectureVersion": "V2",
+                "itemMigrationDirection": "MigratingToV2",
+                "tableFailures": [{
+                    "schema": "dbo", "tableName": "OrderDetails",
+                    "error": {"errorCode": "DeltaTableNotFound", "message": "Not found"}
+                }],
+                "lastMigrationAttempt": {
+                    "sourceSyncArchitectureVersion": "V1",
+                    "targetSyncArchitectureVersion": "V2",
+                    "itemMigrationStatus": "PartiallySucceeded",
+                    "completedDateTime": "2026-06-09T14:31:25Z"
+                }
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/workspaces/{workspace}/sqlEndpoints/{id}/preflightMetadataSyncUpgrade"
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "evaluatedTableCount": 2,
+                "eligibleTableCount": 1,
+                "blockers": [{
+                    "schema": "dbo", "tableName": "LegacyAudit",
+                    "correctiveAction": "Remove the unsupported column type."
+                }]
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/workspaces/{workspace}/sqlEndpoints/{id}/upgradeMetadataSync"
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "syncArchitectureVersion": "V2",
+                "itemMigrationStatus": "Succeeded",
+                "tableStatuses": [{
+                    "schema": "dbo", "tableName": "Orders",
+                    "syncArchitectureVersion": "V2",
+                    "lastSuccessfulSyncDateTime": "2026-06-09T14:31:25Z"
+                }]
+            })))
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let run = |subcommand: &str| {
+        fabio()
+            .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+            .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+            .args([
+                "sql-endpoint",
+                subcommand,
+                "--workspace",
+                workspace,
+                "--id",
+                id,
+            ])
+            .assert()
+            .success()
+    };
+
+    let status = extract_data(&parse_json(&run("metadata-sync-migration-status"))).clone();
+    assert_eq!(status["syncArchitectureVersion"], "V2");
+    assert_eq!(
+        status["tableFailures"][0]["error"]["errorCode"],
+        "DeltaTableNotFound"
+    );
+    assert_eq!(
+        status["lastMigrationAttempt"]["itemMigrationStatus"],
+        "PartiallySucceeded"
+    );
+
+    let preflight = extract_data(&parse_json(&run("preflight-metadata-sync-upgrade"))).clone();
+    assert_eq!(preflight["evaluatedTableCount"], 2);
+    assert_eq!(preflight["eligibleTableCount"], 1);
+    assert_eq!(preflight["blockers"][0]["tableName"], "LegacyAudit");
+
+    let upgrade = extract_data(&parse_json(&run("upgrade-metadata-sync"))).clone();
+    assert_eq!(upgrade["syncArchitectureVersion"], "V2");
+    assert_eq!(upgrade["itemMigrationStatus"], "Succeeded");
+    assert_eq!(upgrade["tableStatuses"][0]["syncArchitectureVersion"], "V2");
+    assert_eq!(upgrade["destructive"], true);
+}
+
+#[test]
+fn test_refresh_metadata_sync_version_and_lock_conflict() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let workspace = "00000000-0000-0000-0000-000000000001";
+    let ready_id = "00000000-0000-0000-0000-000000000002";
+    let locked_id = "00000000-0000-0000-0000-000000000003";
+    let (server_uri, _server) = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/workspaces/{workspace}/sqlEndpoints/{ready_id}/refreshMetadata"
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [{
+                    "tableName": "dbo.Orders",
+                    "startDateTime": "2026-06-09T14:31:22Z",
+                    "endDateTime": "2026-06-09T14:31:25Z",
+                    "status": "Success",
+                    "lastSuccessfulSyncDateTime": "2026-06-09T14:31:25Z",
+                    "syncArchitectureVersion": "V2"
+                }]
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/workspaces/{workspace}/sqlEndpoints/{locked_id}/refreshMetadata"
+            )))
+            .respond_with(ResponseTemplate::new(409).set_body_json(serde_json::json!({
+                "errorCode": "LockConflict",
+                "message": "The SQL analytics endpoint is busy with another lock-holding operation."
+            })))
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let ready = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "sql-endpoint",
+            "refresh-metadata",
+            "--workspace",
+            workspace,
+            "--id",
+            ready_id,
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&ready)).clone();
+    assert_eq!(data[0]["syncArchitectureVersion"], "V2");
+
+    let locked = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "sql-endpoint",
+            "refresh-metadata",
+            "--workspace",
+            workspace,
+            "--id",
+            locked_id,
+        ])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&locked.get_output().stderr);
+    let error: serde_json::Value = serde_json::from_str(
+        stderr
+            .lines()
+            .find(|line| line.starts_with('{'))
+            .expect("JSON error"),
+    )
+    .unwrap();
+    assert_eq!(error["error"]["code"], "CONFLICT");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("lock-holding operation"))
+    );
+}
+
+#[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
 fn sql_endpoint_refresh_metadata_rejects_too_many_tables() {

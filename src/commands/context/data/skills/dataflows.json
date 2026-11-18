@@ -39,7 +39,7 @@
     "plan-upgrade reviewPlan ALWAYS remains readyToApply:false/applied:false with approval blockers; it does not execute. Separately reviewed upgrade-gen1 sends once, retains a local receipt before POST and preserves acknowledgement on success-body failure. follow-upgrade --receipt-id <LOCAL_RECEIPT_ID> uses GET-only exact-scope observation, never latest history or a trace ID. Per-item partial/unknown results return non-zero without authorizing retries. See gen1-upgrade-execution.",
     "A Dataflow Gen2 definition combines a Power Query mashup with queryMetadata; both are required.",
     "Refresh is asynchronous — poll or use the run/wait semantics.",
-    "Gen1 upgrade is Preview and in place: successful rows preserve item IDs, a 1-50 item batch may partially succeed, only the owner or a workspace Admin can upgrade each row, and cancellation is unsupported."
+    "Gen1 upgrade is in place: successful rows preserve item IDs, a 1-50 item batch may partially succeed, only the owner or a workspace Admin can upgrade each row, and cancellation is unsupported."
   ],
   "troubleshooting": [
     {"symptom": "Unsure whether to use a dataflow or a pipeline", "fix": "Transform data -> dataflow; sequence activities -> data-pipeline. Run 'fabio context disambiguate dataflow'."},

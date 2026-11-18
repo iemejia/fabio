@@ -9,6 +9,109 @@ use common::{TestConfig, extract_count, extract_data, fabio, parse_json, unique_
 use serde_json::Value;
 use serial_test::serial;
 
+const MOCK_WORKSPACE: &str = "aaaaaaaa-1111-2222-3333-444444444444";
+const MOCK_ONTOLOGY: &str = "bbbbbbbb-1111-2222-3333-444444444444";
+const MOCK_VERSION: &str = "cccccccc-1111-2222-3333-444444444444";
+
+#[test]
+fn test_create_version_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "ontology",
+            "create-version",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ONTOLOGY,
+            "--name",
+            "v1.0",
+            "--description",
+            "Initial snapshot",
+            "--creation-source",
+            "Manual",
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&output)).clone();
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["request"]["displayName"], "v1.0");
+    assert_eq!(data["details"]["request"]["creationSource"], "Manual");
+}
+
+#[test]
+fn test_update_version_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "ontology",
+            "update-version",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ONTOLOGY,
+            "--version-id",
+            MOCK_VERSION,
+            "--name",
+            "v1.1",
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&output)).clone();
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["versionId"], MOCK_VERSION);
+    assert_eq!(data["details"]["request"]["displayName"], "v1.1");
+}
+
+#[test]
+fn test_delete_version_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "ontology",
+            "delete-version",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ONTOLOGY,
+            "--version-id",
+            MOCK_VERSION,
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&output)).clone();
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["destructive"], true);
+    assert_eq!(data["details"]["versionId"], MOCK_VERSION);
+}
+
+#[test]
+fn test_restore_version_dry_run() {
+    let output = fabio()
+        .args([
+            "--dry-run",
+            "ontology",
+            "restore-version",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ONTOLOGY,
+            "--version-id",
+            MOCK_VERSION,
+            "--content",
+            r#"{"allowOverrideItems":true}"#,
+        ])
+        .assert()
+        .success();
+    let data = extract_data(&parse_json(&output)).clone();
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["destructive"], true);
+    assert_eq!(
+        data["details"]["request"]["options"]["allowOverrideItems"],
+        true
+    );
+}
+
 // ---------------------------------------------------------------------------
 // List
 // ---------------------------------------------------------------------------

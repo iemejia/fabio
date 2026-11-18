@@ -1,0 +1,25 @@
+{
+  "command": "fabio microsoft-iq retrieve --text \"quarterly sales risks\"",
+  "description": "Relevance-ranked Microsoft IQ context visible to the caller.",
+  "response": {
+    "data": [
+      {
+        "rank": 0,
+        "score": 0.94,
+        "type": "application/agent-instructions",
+        "tokenCount": 84,
+        "data": {
+          "summary": "Quarterly sales risk summary"
+        }
+      }
+    ],
+    "count": 1
+  },
+  "notes": "Results are tenant-wide, permission-filtered, capped at 50, and not paginated.",
+  "query_examples": [
+    {
+      "query": "[].data.summary",
+      "description": "Extract visible context summaries."
+    }
+  ]
+}

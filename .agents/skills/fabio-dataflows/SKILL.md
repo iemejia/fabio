@@ -38,13 +38,13 @@ Manage dataflows (Power BI data transformation)
 | `fabio dataflow follow-upgrade` | no | Observe an existing Gen1 upgrade receipt with GET-only exact-scope result checks; never submit or cancel |
 | `fabio dataflow get-definition` | no | Get the definition of a dataflow |
 | `fabio dataflow list` | no | List dataflows in a workspace |
-| `fabio dataflow list-upgrade-readiness` | no | List Gen1 dataflow upgrade readiness results for a workspace (Preview) |
+| `fabio dataflow list-upgrade-readiness` | no | List Gen1 dataflow upgrade readiness results for a workspace |
 | `fabio dataflow plan-upgrade` | no | Plan an explicitly selected Gen1 batch from bounded workspace assessment reads; never execute upgrades |
 | `fabio dataflow run` | yes | Run a dataflow on demand |
 | `fabio dataflow show` | no | Show details of a dataflow |
 | `fabio dataflow update` | yes | Update dataflow properties (name and/or description) |
 | `fabio dataflow update-definition` | yes | Update the definition of a dataflow |
-| `fabio dataflow upgrade-gen1` | yes | Upgrade 1-50 Gen1 dataflows to Gen2 in place (Preview) |
+| `fabio dataflow upgrade-gen1` | yes | Upgrade 1-50 Gen1 dataflows to Gen2 in place |
 
 ### fabio datamart
 Manage datamarts (Power BI)
@@ -79,7 +79,7 @@ Manage datamarts (Power BI)
 - plan-upgrade reviewPlan ALWAYS remains readyToApply:false/applied:false with approval blockers; it does not execute. Separately reviewed upgrade-gen1 sends once, retains a local receipt before POST and preserves acknowledgement on success-body failure. follow-upgrade --receipt-id <LOCAL_RECEIPT_ID> uses GET-only exact-scope observation, never latest history or a trace ID. Per-item partial/unknown results return non-zero without authorizing retries. See gen1-upgrade-execution.
 - A Dataflow Gen2 definition combines a Power Query mashup with queryMetadata; both are required.
 - Refresh is asynchronous — poll or use the run/wait semantics.
-- Gen1 upgrade is Preview and in place: successful rows preserve item IDs, a 1-50 item batch may partially succeed, only the owner or a workspace Admin can upgrade each row, and cancellation is unsupported.
+- Gen1 upgrade is in place: successful rows preserve item IDs, a 1-50 item batch may partially succeed, only the owner or a workspace Admin can upgrade each row, and cancellation is unsupported.
 
 ## Troubleshooting
 | Symptom | Fix |

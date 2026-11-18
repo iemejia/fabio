@@ -1,0 +1,34 @@
+{
+  "type": "PostgreSQLDatabase",
+  "description": "Fabric PostgreSQL database with a public pgschema definition.",
+  "create_command": "fabio postgresql-database create --workspace <WS> --name <NAME> --definition @definition.pgschema",
+  "definition_format": "pgschema",
+  "definition_parts": [
+    {
+      "path": "definition.pgschema",
+      "description": "PostgreSQL schema definition."
+    },
+    {
+      "path": ".platform",
+      "description": "Optional Fabric item metadata."
+    }
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}",
+    "definition": {
+      "format": "pgschema",
+      "parts": [
+        {
+          "path": "definition.pgschema",
+          "payload": "{{base64_definition}}",
+          "payloadType": "InlineBase64"
+        }
+      ]
+    }
+  },
+  "notes": [
+    "Create accepts either a public definition or a creationPayload, not both.",
+    "Deletion is immediate and permanent.",
+    "update-definition --allow-table-rebuild may rebuild schema objects and lose affected data."
+  ]
+}

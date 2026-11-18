@@ -5,6 +5,7 @@
   "command_groups": [
     "warehouse",
     "sql-database",
+    "postgresql-database",
     "sql-endpoint",
     "warehouse-snapshot"
   ],

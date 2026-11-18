@@ -7,13 +7,14 @@ use crate::commands::{
     deployment_pipeline, deployment_plan, digital_twin_builder, digital_twin_builder_flow, domain,
     environment, event_schema_set, eventhouse, eventstream, feedback, gateway, git, graph_model,
     graph_query_set, graphql_api, item, job_scheduler, jobs, kql_dashboard, kql_database,
-    kql_queryset, label, lakehouse, lro, managed_private_endpoint, map, mirrored_catalog,
-    mirrored_database, mirrored_databricks_catalog, mirrored_google_lakehouse_catalog,
-    mirrored_warehouse, ml_experiment, ml_model, monitoring, mounted_data_factory, notebook,
-    onelake_security, ontology, operations_agent, org_app, org_app_audience, paginated_report,
-    plan, policy_set, profile, reflex, report, rest, rti, scorecard, semantic_model, share,
-    share_subscription, snowflake_database, spark, spark_job_definition, sql_database,
-    sql_endpoint, user_data_function, variable_library, warehouse, warehouse_snapshot, workspace,
+    kql_queryset, label, lakehouse, lro, managed_private_endpoint, map, microsoft_iq,
+    mirrored_catalog, mirrored_database, mirrored_databricks_catalog,
+    mirrored_google_lakehouse_catalog, mirrored_warehouse, ml_experiment, ml_model, monitoring,
+    mounted_data_factory, notebook, onelake_security, ontology, operations_agent, org_app,
+    org_app_audience, paginated_report, plan, playbook, policy_set, postgresql_database, profile,
+    reflex, report, rest, rti, scorecard, semantic_model, share, share_subscription,
+    snowflake_database, spark, spark_job_definition, sql_database, sql_endpoint,
+    user_data_function, variable_library, warehouse, warehouse_snapshot, workspace,
 };
 
 /// Agent-native CLI for managing Microsoft Fabric artifacts and data.
@@ -308,6 +309,12 @@ pub enum Command {
         #[command(subcommand)]
         command: sql_database::SqlDatabaseCommand,
     },
+    /// Manage PostgreSQL databases
+    #[command(name = "postgresql-database", display_order = 13)]
+    PostgreSqlDatabase {
+        #[command(subcommand)]
+        command: postgresql_database::PostgreSqlDatabaseCommand,
+    },
     /// Manage SQL endpoints (analytics endpoints for lakehouses)
     #[command(display_order = 13)]
     SqlEndpoint {
@@ -497,6 +504,18 @@ pub enum Command {
     ShareSubscription {
         #[command(subcommand)]
         command: share_subscription::ShareSubscriptionCommand,
+    },
+    /// Retrieve organizational knowledge through Microsoft IQ
+    #[command(name = "microsoft-iq", display_order = 38)]
+    MicrosoftIq {
+        #[command(subcommand)]
+        command: microsoft_iq::MicrosoftIqCommand,
+    },
+    /// Manage Fabric Playbooks
+    #[command(display_order = 38)]
+    Playbook {
+        #[command(subcommand)]
+        command: playbook::PlaybookCommand,
     },
     /// Manage Mounted Data Factories (ADF integration)
     #[command(display_order = 38)]

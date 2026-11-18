@@ -43,6 +43,7 @@ const DANGEROUS_FLAGS: &[&str] = &[
     "--allow-override",
     "--allow-purge-data",
     "--allow-replace",
+    "--allow-table-rebuild",
     "--allow-unresolved",
     "--cancel-on-timeout",
     "--delete-orphans",

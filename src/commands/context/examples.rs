@@ -97,6 +97,10 @@ pub(super) const fn example_entries() -> &'static [(&'static str, &'static str)]
 
 const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
+        "microsoft-iq/retrieve",
+        include_str!("data/examples/microsoft_iq_retrieve.json"),
+    ),
+    (
         "jobs/import",
         include_str!("data/examples/jobs_import.json"),
     ),

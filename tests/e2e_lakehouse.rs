@@ -949,6 +949,28 @@ fn lakehouse_delete_hard_delete_dry_run() {
     assert_eq!(data["details"]["hardDelete"], true);
 }
 
+#[test]
+fn test_publish_semantic_view_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "lakehouse",
+            "publish-semantic-view",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--name",
+            "sales_overview",
+        ])
+        .assert()
+        .success();
+
+    let data = extract_data(&parse_json(&assert)).clone();
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["details"]["semanticViewName"], "sales_overview");
+}
+
 // ─── Materialized Lake View Execution Definitions ───────────────────────────
 
 #[test]

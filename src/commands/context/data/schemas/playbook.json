@@ -1,0 +1,34 @@
+{
+  "type": "Playbook",
+  "description": "Preview Microsoft IQ Playbook containing sections, groups, context, and role assignments.",
+  "create_command": "fabio playbook create --workspace <WS> --name <NAME> --definition @playbook.json",
+  "definition_format": "PlaybookV1",
+  "definition_parts": [
+    {
+      "path": "PlaybookV1.json",
+      "description": "Complete section hierarchy."
+    },
+    {
+      "path": ".platform",
+      "description": "Optional Fabric item metadata."
+    }
+  ],
+  "creation_body_template": {
+    "displayName": "{{name}}",
+    "definition": {
+      "format": "PlaybookV1",
+      "parts": [
+        {
+          "path": "PlaybookV1.json",
+          "payload": "{{base64_definition}}",
+          "payloadType": "InlineBase64"
+        }
+      ]
+    }
+  },
+  "notes": [
+    "Exactly one PlaybookV1.json part is required when a definition is supplied.",
+    "Logical section paths preserve literal slash separators and percent-encode each segment.",
+    "Replacing the definition replaces the complete section hierarchy."
+  ]
+}

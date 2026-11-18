@@ -52,6 +52,7 @@ pub mod lro;
 pub mod managed_private_endpoint;
 pub mod map;
 pub mod mcp;
+pub mod microsoft_iq;
 pub mod mirrored_catalog;
 pub mod mirrored_database;
 pub mod mirrored_databricks_catalog;
@@ -69,7 +70,9 @@ pub mod org_app;
 pub mod org_app_audience;
 pub mod paginated_report;
 pub mod plan;
+pub mod playbook;
 pub mod policy_set;
+pub mod postgresql_database;
 pub mod powerbi_export;
 pub mod powerbi_mcp;
 pub mod profile;
@@ -160,6 +163,9 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Notebook { command } => notebook::execute(&cli, &client, command).await,
         Command::Warehouse { command } => warehouse::execute(&cli, &client, command).await,
         Command::SqlDatabase { command } => sql_database::execute(&cli, &client, command).await,
+        Command::PostgreSqlDatabase { command } => {
+            postgresql_database::execute(&cli, &client, command).await
+        }
         Command::SqlEndpoint { command } => sql_endpoint::execute(&cli, &client, command).await,
         Command::DataAgent { command } => dataagent::execute(&cli, &client, command).await,
         Command::Ontology { command } => ontology::execute(&cli, &client, command).await,
@@ -210,6 +216,8 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::ShareSubscription { command } => {
             share_subscription::execute(&cli, &client, command).await
         }
+        Command::MicrosoftIq { command } => microsoft_iq::execute(&cli, &client, command).await,
+        Command::Playbook { command } => playbook::execute(&cli, &client, command).await,
         Command::MountedDataFactory { command } => {
             mounted_data_factory::execute(&cli, &client, command).await
         }
@@ -460,6 +468,7 @@ fn extract_command_path(cli: &Cli) -> String {
         Command::Notebook { .. } => "notebook",
         Command::Warehouse { .. } => "warehouse",
         Command::SqlDatabase { .. } => "sql-database",
+        Command::PostgreSqlDatabase { .. } => "postgresql-database",
         Command::SqlEndpoint { .. } => "sql-endpoint",
         Command::DataAgent { .. } => "data-agent",
         Command::Ontology { .. } => "ontology",
@@ -520,6 +529,8 @@ fn extract_command_path(cli: &Cli) -> String {
         Command::CustomStreamConnector { .. } => "custom-stream-connector",
         Command::Share { .. } => "share",
         Command::ShareSubscription { .. } => "share-subscription",
+        Command::MicrosoftIq { .. } => "microsoft-iq",
+        Command::Playbook { .. } => "playbook",
         Command::MountedDataFactory { .. } => "mounted-data-factory",
         Command::PaginatedReport { .. } => "paginated-report",
         Command::Dashboard { .. } => "dashboard",

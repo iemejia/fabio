@@ -104,7 +104,9 @@ Manage environments (Spark compute, libraries, publish)
 |---|---|---|
 | `fabio environment cancel-publish` | yes | Cancel a pending publish operation |
 | `fabio environment create` | yes | Create a new environment |
+| `fabio environment create-custom-live-pool-schedule` | yes | Create a recurring custom live-pool schedule |
 | `fabio environment delete` | yes | Delete an environment |
+| `fabio environment delete-custom-live-pool-schedule` | yes | Delete a custom live-pool schedule |
 | `fabio environment delete-staging-library` | yes | Delete a staging library by name |
 | `fabio environment diagnostics` | no | Diagnose environment publishing, pool activation history, and an explicitly selected monitoring session |
 | `fabio environment export-libraries` | no | Export external libraries configuration (published) |
@@ -115,14 +117,18 @@ Manage environments (Spark compute, libraries, publish)
 | `fabio environment get-staging-spark-settings` | no | Get the staging (draft) Spark settings |
 | `fabio environment import-staging-libraries` | yes | Import external libraries configuration into staging |
 | `fabio environment list` | no | List environments in a workspace |
+| `fabio environment list-custom-live-pool-schedules` | no | List custom live-pool schedules |
 | `fabio environment list-libraries` | no | List published libraries of an environment |
 | `fabio environment list-pool-activations` | no | List custom live-pool activations and job history |
 | `fabio environment list-staging-libraries` | no | List staging libraries of an environment |
 | `fabio environment publish` | yes | Publish staged changes to an environment |
 | `fabio environment remove-staging-library` | yes | Remove an external library from staging |
+| `fabio environment run-custom-live-pool` | yes | Run the environment's custom live pool on demand |
 | `fabio environment show` | no | Show details of an environment |
+| `fabio environment show-custom-live-pool-schedule` | no | Show a custom live-pool schedule |
 | `fabio environment show-pool-activation` | no | Show detailed diagnostics for a pool activation |
 | `fabio environment update` | yes | Update environment properties (name and/or description) |
+| `fabio environment update-custom-live-pool-schedule` | yes | Update a custom live-pool schedule |
 | `fabio environment update-definition` | yes | Update the definition of an environment |
 | `fabio environment update-staging-spark-compute` | yes | Update staging Spark compute configuration |
 | `fabio environment upload-staging-library` | yes | Upload a custom library file into staging |

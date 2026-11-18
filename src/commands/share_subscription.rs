@@ -87,8 +87,36 @@ pub enum ShareSubscriptionCommand {
         #[arg(long)]
         id: String,
     },
+    /// Synchronize a Share Subscription with its producer
+    Synchronize {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Share Subscription ID
+        #[arg(long)]
+        id: String,
+    },
+    /// List assets provisioned by a Share Subscription
+    ListAssets {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Share Subscription ID
+        #[arg(long)]
+        id: String,
+    },
+    /// List policies provisioned by a Share Subscription
+    ListPolicies {
+        /// Workspace ID
+        #[arg(short, long, env = "FABIO_WORKSPACE")]
+        workspace: String,
+        /// Share Subscription ID
+        #[arg(long)]
+        id: String,
+    },
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn execute(
     cli: &Cli,
     client: &FabricClient,
@@ -99,12 +127,18 @@ pub async fn execute(
         | ShareSubscriptionCommand::Show { workspace, .. }
         | ShareSubscriptionCommand::Create { workspace, .. }
         | ShareSubscriptionCommand::Update { workspace, .. }
-        | ShareSubscriptionCommand::Delete { workspace, .. } => workspace,
+        | ShareSubscriptionCommand::Delete { workspace, .. }
+        | ShareSubscriptionCommand::Synchronize { workspace, .. }
+        | ShareSubscriptionCommand::ListAssets { workspace, .. }
+        | ShareSubscriptionCommand::ListPolicies { workspace, .. } => workspace,
     };
     validate_uuid(workspace, "--workspace")?;
     if let ShareSubscriptionCommand::Show { id, .. }
     | ShareSubscriptionCommand::Update { id, .. }
-    | ShareSubscriptionCommand::Delete { id, .. } = command
+    | ShareSubscriptionCommand::Delete { id, .. }
+    | ShareSubscriptionCommand::Synchronize { id, .. }
+    | ShareSubscriptionCommand::ListAssets { id, .. }
+    | ShareSubscriptionCommand::ListPolicies { id, .. } = command
     {
         validate_uuid(id, "--id")?;
     }
@@ -167,6 +201,35 @@ pub async fn execute(
         }
         ShareSubscriptionCommand::Delete { workspace, id } => {
             delete(cli, client, workspace, id).await
+        }
+        ShareSubscriptionCommand::Synchronize { workspace, id } => {
+            synchronize(cli, client, workspace, id).await
+        }
+        ShareSubscriptionCommand::ListAssets { workspace, id } => {
+            list_provisioned(
+                cli,
+                client,
+                workspace,
+                id,
+                "assets",
+                &["displayName", "item.itemId", "itemType", "addedDateTime"],
+                &["NAME", "ITEM ID", "ITEM TYPE", "ADDED"],
+                "item.itemId",
+            )
+            .await
+        }
+        ShareSubscriptionCommand::ListPolicies { workspace, id } => {
+            list_provisioned(
+                cli,
+                client,
+                workspace,
+                id,
+                "sharePolicies",
+                &["id", "type", "expirationDateTime"],
+                &["ID", "TYPE", "EXPIRATION"],
+                "id",
+            )
+            .await
         }
     }
 }
@@ -264,6 +327,59 @@ async fn delete(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> 
         false,
     )
     .await
+}
+
+async fn synchronize(cli: &Cli, client: &FabricClient, workspace: &str, id: &str) -> Result<()> {
+    let details = json!({ "workspace": workspace, "id": id });
+    if output::dry_run_guard_maybe_destructive(
+        cli,
+        "share-subscription synchronize",
+        &details,
+        true,
+    ) {
+        return Ok(());
+    }
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/{COLLECTION}/{id}/synchronize?beta=true"),
+            &json!({}),
+            true,
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "share-subscription synchronize", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn list_provisioned(
+    cli: &Cli,
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    resource: &str,
+    columns: &[&str],
+    headers: &[&str],
+    plain_key: &str,
+) -> Result<()> {
+    let response = client
+        .get_list(
+            &format!("/workspaces/{workspace}/{COLLECTION}/{id}/{resource}?beta=true"),
+            "value",
+            cli.all,
+            cli.continuation_token.as_deref(),
+        )
+        .await
+        .map_err(|e| enrich_forbidden(e, "share-subscription list content", "Viewer"))?;
+    output::render_list_with_token(
+        cli,
+        &response.items,
+        columns,
+        headers,
+        plain_key,
+        response.continuation_token.as_deref(),
+    );
+    Ok(())
 }
 
 #[cfg(test)]
