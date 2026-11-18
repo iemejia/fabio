@@ -1,0 +1,18 @@
+{
+  "command": "fabio environment update-staging-spark-compute --workspace <WS> --id <ENV> --compute-api release --spark-property spark.sql.shuffle.partitions=2 --custom-live-pool-support Disabled",
+  "description": "Representative release Spark compute response with array properties and disabled hydration; configuration is not pool execution.",
+  "response": {"data": {
+    "instancePool": {"id":"00000000-0000-0000-0000-000000000003","maxClustersToHydrateLimit":6},
+    "runtimeVersion":"2.0",
+    "driverCores":4,
+    "executorCores":4,
+    "sparkProperties":[{"key":"spark.sql.shuffle.partitions","value":"2"}],
+    "customLivePoolSupport":"Disabled",
+    "customLivePoolSettings":{"maxClustersToHydrate":1,"clusterIdleTimeout":"PT20M","customLivePoolLifespan":"PT30M"}
+  }},
+  "notes": "The complete response can contain additional compute fields. The default CLI contract remains beta/dictionary; explicitly selected release uses beta=false and arrays. Read-merge-write preserves other values/fields but is not atomic. maxClustersToHydrateLimit is read-only and never echoed in PATCH. No publish, hydration or fallback occurs automatically.",
+  "query_examples": [
+    {"query":"sparkProperties[?key=='spark.sql.shuffle.partitions'].value | [0]","description":"Extract one release property value from the array."},
+    {"query":"customLivePoolSupport","description":"Inspect per-environment configuration, not tenant availability or warm-cluster readiness."}
+  ]
+}

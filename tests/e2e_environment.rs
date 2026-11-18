@@ -12,6 +12,486 @@ const MOCK_ENVIRONMENT: &str = "bbbbbbbb-1111-2222-3333-444444444444";
 const MOCK_ACTIVATION: &str = "cccccccc-1111-2222-3333-444444444444";
 const MOCK_SCHEDULE: &str = "dddddddd-1111-2222-3333-444444444444";
 
+#[test]
+#[ignore = "creates only an owned environment/custom pool in a disposable workspace; hydration stays disabled"]
+#[allow(clippy::too_many_lines)]
+fn release_spark_compute_configuration_lifecycle_live() {
+    fn assert_property(data: &serde_json::Value, key: &str, expected: &str) {
+        let property = data["sparkProperties"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|property| property["key"] == key)
+            .expect("expected configured Spark property");
+        assert_eq!(property["value"], expected);
+    }
+    let fixture = common::ScopedTestItem::create("environment", "release_compute");
+    let pool = fabio()
+        .args([
+            "--wrap-untrusted",
+            "spark",
+            "create-pool",
+            "--workspace",
+            &fixture.workspace,
+            "--name",
+            &common::unique_name("release_pool"),
+            "--node-size",
+            "Small",
+            "--min-node-count",
+            "1",
+            "--max-node-count",
+            "2",
+            "--min-executors",
+            "1",
+            "--max-executors",
+            "1",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .assert()
+        .success();
+    let pool = parse_json(&pool)["data"].clone();
+    let pool_id = pool["id"].as_str().unwrap();
+    let pool_name = pool["name"]
+        .as_str()
+        .unwrap()
+        .trim_prefix("<<<UNTRUSTED>>>")
+        .trim_suffix("<<<END_UNTRUSTED>>>");
+    let body = serde_json::json!({"instancePool":{"id":pool_id,"name":pool_name,"type":"Workspace"},
+        "driverCores":4,"driverMemory":"28g","executorCores":4,"executorMemory":"28g",
+        "dynamicExecutorAllocation":{"enabled":true,"minExecutors":1,"maxExecutors":1},
+        "sparkProperties":[{"key":"spark.sql.shuffle.partitions","value":"4"}]});
+    fixture
+        .command("update-staging-spark-compute")
+        .args(["--compute-api", "release", "--content", &body.to_string()])
+        .assert()
+        .success();
+    let output = fixture
+        .command("update-staging-spark-compute")
+        .args([
+            "--compute-api",
+            "release",
+            "--spark-property",
+            "spark.sql.shuffle.partitions=2",
+            "--spark-property",
+            "spark.sql.adaptive.enabled=true",
+            "--custom-live-pool-support",
+            "Disabled",
+            "--max-clusters-to-hydrate",
+            "1",
+            "--cluster-idle-timeout",
+            "PT20M",
+            "--custom-live-pool-lifespan",
+            "PT30M",
+        ])
+        .assert()
+        .success();
+    let data = parse_json(&output)["data"].clone();
+    assert_property(&data, "spark.sql.shuffle.partitions", "2");
+    assert_property(&data, "spark.sql.adaptive.enabled", "true");
+    assert_eq!(data["customLivePoolSupport"], "Disabled");
+    assert_eq!(data["customLivePoolSettings"]["maxClustersToHydrate"], 1);
+    assert_eq!(data["driverCores"], 4);
+    fixture
+        .command("update-staging-spark-compute")
+        .args([
+            "--compute-api",
+            "release",
+            "--spark-property",
+            "spark.sql.shuffle.partitions=3",
+        ])
+        .assert()
+        .success();
+    let output = fixture
+        .command("get-staging-spark-settings")
+        .args(["--compute-api", "release", "--readonly"])
+        .assert()
+        .success();
+    let data = parse_json(&output)["data"].clone();
+    assert_property(&data, "spark.sql.shuffle.partitions", "3");
+    assert_property(&data, "spark.sql.adaptive.enabled", "true");
+    assert_eq!(data["customLivePoolSettings"]["maxClustersToHydrate"], 1);
+    let legacy = fixture
+        .command("get-staging-spark-settings")
+        .arg("--readonly")
+        .assert()
+        .success();
+    assert!(parse_json(&legacy)["data"]["sparkProperties"].is_object());
+    fixture.command("publish").assert().success();
+    let published = fixture
+        .command("get-spark-settings")
+        .args(["--compute-api", "release", "--readonly"])
+        .assert()
+        .success();
+    let data = parse_json(&published)["data"].clone();
+    assert_property(&data, "spark.sql.shuffle.partitions", "3");
+    assert_property(&data, "spark.sql.adaptive.enabled", "true");
+    assert_eq!(data["customLivePoolSupport"], "Disabled");
+    assert_eq!(data["instancePool"]["id"], pool_id);
+    let activations = fixture
+        .command("list-pool-activations")
+        .arg("--readonly")
+        .assert()
+        .success();
+    assert_eq!(parse_json(&activations)["data"], serde_json::json!([]));
+    let workspace = fixture.workspace.clone();
+    fixture.cleanup();
+    fabio()
+        .args([
+            "--wrap-untrusted",
+            "spark",
+            "delete-pool",
+            "--workspace",
+            &workspace,
+            "--pool-id",
+            pool_id,
+        ])
+        .assert()
+        .success();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn release_spark_compute_error_bearing_success_never_renders_or_mutates_settings() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({"errorCode":"Denied","message":"Failed"})),
+        )
+        .expect(2)
+        .mount(&server)
+        .await;
+    for (command, extra) in [
+        ("get-staging-spark-settings", vec!["--readonly"]),
+        (
+            "update-staging-spark-compute",
+            vec!["--runtime-version", "2.0"],
+        ),
+    ] {
+        let output = mock_fabio(&server)
+            .args([
+                "environment",
+                command,
+                "--workspace",
+                MOCK_WORKSPACE,
+                "--id",
+                MOCK_ENVIRONMENT,
+                "--compute-api",
+                "release",
+            ])
+            .args(extra)
+            .assert()
+            .failure();
+        assert_eq!(common::parse_error(&output)["error"]["code"], "API_ERROR");
+        assert_eq!(output.get_output().stdout.len(), 0);
+    }
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn release_spark_compute_reads_request_only_the_explicit_release_contract() {
+    let server = MockServer::start().await;
+    for (command, stage) in [
+        ("get-staging-spark-settings", "staging/"),
+        ("get-spark-settings", ""),
+    ] {
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/{stage}sparkcompute"
+            )))
+            .and(query_param("beta", "false"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"sparkProperties":[]})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let output = mock_fabio(&server)
+            .args([
+                "--readonly",
+                "environment",
+                command,
+                "--workspace",
+                MOCK_WORKSPACE,
+                "--id",
+                MOCK_ENVIRONMENT,
+                "--compute-api",
+                "release",
+            ])
+            .assert()
+            .success();
+        assert_eq!(
+            parse_json(&output)["data"]["sparkProperties"],
+            serde_json::json!([])
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn release_spark_compute_typed_merge_preserves_properties_and_future_fields() {
+    let server = MockServer::start().await;
+    let url = format!(
+        "/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/staging/sparkcompute"
+    );
+    let current = serde_json::json!({"runtimeVersion":"2.0","futureField":{"retain":true},
+        "instancePool":{"id":MOCK_SCHEDULE,"maxClustersToHydrateLimit":6},
+        "sparkProperties":[{"key":"keep","value":"one","extra":42},{"key":"replace","value":"old"}]});
+    let expected = serde_json::json!({"runtimeVersion":"2.0","futureField":{"retain":true},
+        "instancePool":{"id":MOCK_SCHEDULE},"customLivePoolSupport":"Disabled",
+        "sparkProperties":[{"key":"keep","value":"one","extra":42},{"key":"replace","value":"new"},{"key":"add","value":"a=b"}]});
+    Mock::given(method("GET"))
+        .and(path(&url))
+        .and(query_param("beta", "false"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(current))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("PATCH"))
+        .and(path(&url))
+        .and(query_param("beta", "false"))
+        .and(body_json(&expected))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&expected))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let output = mock_fabio(&server)
+        .args([
+            "environment",
+            "update-staging-spark-compute",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+            "--compute-api",
+            "release",
+            "--spark-property",
+            "replace=new",
+            "--spark-property",
+            "add=a=b",
+            "--custom-live-pool-support",
+            "Disabled",
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&output)["data"], expected);
+    let example = fabio()
+        .args([
+            "context",
+            "examples",
+            "environment",
+            "update-staging-spark-compute",
+            "--query",
+            "response.data.sparkProperties[?key=='spark.sql.shuffle.partitions'].value | [0]",
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&example)["data"], "2");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn release_spark_compute_rejects_mismatched_shapes_before_dry_run_or_network() {
+    let server = MockServer::start().await;
+    for (api, content) in [
+        ("release", r#"{"sparkProperties":{"k":"v"}}"#),
+        (
+            "release",
+            r#"{"sparkProperties":[{"key":"k","value":false}]}"#,
+        ),
+        (
+            "release",
+            r#"{"sparkProperties":[{"key":"k","value":"1"},{"key":"k","value":"2"}]}"#,
+        ),
+        ("beta", r#"{"sparkProperties":[]}"#),
+        ("beta", r#"{"customLivePoolSettings":null}"#),
+    ] {
+        let output = mock_fabio(&server)
+            .args([
+                "environment",
+                "update-staging-spark-compute",
+                "--workspace",
+                MOCK_WORKSPACE,
+                "--id",
+                MOCK_ENVIRONMENT,
+                "--compute-api",
+                api,
+                "--content",
+                content,
+                "--dry-run",
+            ])
+            .assert()
+            .failure();
+        assert_eq!(
+            common::parse_error(&output)["error"]["code"],
+            "INVALID_INPUT"
+        );
+    }
+    let output = mock_fabio(&server)
+        .args([
+            "environment",
+            "update-staging-spark-compute",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+            "--custom-live-pool-support",
+            "Enabled",
+            "--dry-run",
+        ])
+        .assert()
+        .failure();
+    assert_eq!(
+        common::parse_error(&output)["error"]["code"],
+        "INVALID_INPUT"
+    );
+    let output = mock_fabio(&server)
+        .args([
+            "environment",
+            "update-staging-spark-compute",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+            "--compute-api",
+            "release",
+            "--custom-live-pool-support",
+            "Disabled",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&output)["data"]["details"]["computeApi"],
+        "release"
+    );
+    mock_fabio(&server)
+        .args([
+            "environment",
+            "update-staging-spark-compute",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+            "--compute-api",
+            "release",
+            "--file",
+            "must-not-be-read.json",
+            "--content",
+            "{}",
+            "--dry-run",
+        ])
+        .assert()
+        .failure()
+        .code(2);
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn release_spark_compute_never_falls_back_or_replays_a_failed_write() {
+    let server = MockServer::start().await;
+    let url = format!(
+        "/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/staging/sparkcompute"
+    );
+    Mock::given(method("GET"))
+        .and(path(&url))
+        .and(query_param("beta", "false"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(
+            serde_json::json!({"errorCode":"EntityNotFound","message":"Not available"}),
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    mock_fabio(&server)
+        .args([
+            "--readonly",
+            "environment",
+            "get-staging-spark-settings",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+            "--compute-api",
+            "release",
+        ])
+        .assert()
+        .failure()
+        .code(5);
+    Mock::given(method("PATCH"))
+        .and(path(&url))
+        .and(query_param("beta", "false"))
+        .respond_with(ResponseTemplate::new(503).set_body_json(
+            serde_json::json!({"errorCode":"Unavailable","message":"Unknown outcome"}),
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let output = mock_fabio(&server)
+        .args([
+            "environment",
+            "update-staging-spark-compute",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+            "--compute-api",
+            "release",
+            "--content",
+            r#"{"sparkProperties":[]}"#,
+        ])
+        .assert()
+        .failure();
+    assert_eq!(common::parse_error(&output)["error"]["retriable"], false);
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn release_spark_compute_readonly_blocks_raw_writes_and_bad_server_shapes_never_patch() {
+    let server = MockServer::start().await;
+    let output = mock_fabio(&server)
+        .args([
+            "--readonly",
+            "environment",
+            "update-staging-spark-compute",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+            "--compute-api",
+            "release",
+            "--content",
+            r#"{"sparkProperties":[]}"#,
+        ])
+        .assert()
+        .failure();
+    assert_eq!(
+        common::parse_error(&output)["error"]["code"],
+        "READONLY_MODE"
+    );
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
+    Mock::given(method("GET"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"sparkProperties":{}})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let output = mock_fabio(&server)
+        .args([
+            "environment",
+            "update-staging-spark-compute",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+            "--compute-api",
+            "release",
+            "--spark-property",
+            "k=v",
+        ])
+        .assert()
+        .failure();
+    assert_eq!(common::parse_error(&output)["error"]["code"], "API_ERROR");
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}
+
 fn hydration_command(server: &MockServer, home: &tempfile::TempDir) -> assert_cmd::Command {
     let mut command = mock_fabio(server);
     command
@@ -1235,6 +1715,8 @@ fn environment_update_staging_spark_compute_live_pool_dry_run() {
             "bbbbbbbb-1111-2222-3333-444444444444",
             "--custom-live-pool-support",
             "Enabled",
+            "--compute-api",
+            "release",
             "--max-clusters-to-hydrate",
             "4",
             "--cluster-idle-timeout",
@@ -1274,6 +1756,8 @@ fn environment_update_staging_spark_compute_clear_live_pool_dry_run() {
             "--id",
             "bbbbbbbb-1111-2222-3333-444444444444",
             "--clear-custom-live-pool-settings",
+            "--compute-api",
+            "release",
         ])
         .assert()
         .success();
@@ -1449,6 +1933,8 @@ fn environment_staging_spark_compute_runtime_and_properties_lifecycle() {
             &env_id,
             "--custom-live-pool-support",
             "Enabled",
+            "--compute-api",
+            "release",
             "--max-clusters-to-hydrate",
             "1",
             "--cluster-idle-timeout",
@@ -1486,6 +1972,8 @@ fn environment_staging_spark_compute_runtime_and_properties_lifecycle() {
             &cfg.source_workspace,
             "--id",
             &env_id,
+            "--compute-api",
+            "release",
         ])
         .assert()
         .success();
@@ -1505,6 +1993,8 @@ fn environment_staging_spark_compute_runtime_and_properties_lifecycle() {
             &env_id,
             "--custom-live-pool-support",
             "Disabled",
+            "--compute-api",
+            "release",
             "--clear-custom-live-pool-settings",
         ])
         .timeout(std::time::Duration::from_mins(2))

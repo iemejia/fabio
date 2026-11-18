@@ -97,6 +97,10 @@ pub(super) const fn example_entries() -> &'static [(&'static str, &'static str)]
 
 const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
+        "environment/update-staging-spark-compute",
+        include_str!("data/examples/environment_release_compute.json"),
+    ),
+    (
         "environment/run-custom-live-pool",
         include_str!("data/examples/environment_run_custom_live_pool.json"),
     ),

@@ -1,12 +1,14 @@
+use std::collections::HashMap;
+
 use anyhow::Result;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
-use super::CustomLivePoolSupport;
+use super::{CustomLivePoolSupport, SparkComputeApi};
 
 const ONE_HOUR_SECONDS: u128 = 60 * 60;
 const ONE_MINUTE_SECONDS: u128 = 60;
@@ -28,6 +30,104 @@ const SUBSECOND_SCALES: [u128; 10] = [
 const TWENTY_MINUTES_SECONDS: u128 = 20 * ONE_MINUTE_SECONDS;
 const THIRTY_MINUTES_SECONDS: u128 = 30 * ONE_MINUTE_SECONDS;
 const TWENTY_FOUR_HOURS_SECONDS: u128 = ONE_DAY_SECONDS;
+
+pub(super) fn compute_path(
+    workspace: &str,
+    environment: &str,
+    staging: bool,
+    api: SparkComputeApi,
+) -> Result<String> {
+    crate::client::validate_uuid(workspace, "--workspace")?;
+    crate::client::validate_uuid(environment, "--id")?;
+    let stage = if staging { "staging/" } else { "" };
+    Ok(format!(
+        "/workspaces/{workspace}/environments/{environment}/{stage}sparkcompute?beta={}",
+        api.beta_parameter()
+    ))
+}
+
+pub(super) fn validate_compute_response(response: &Value) -> Result<()> {
+    if !response.is_object() || crate::commands::diagnostics::has_error(response) {
+        return Err(FabioError::api_error("Spark compute returned a malformed or error-bearing success response. Inspect the selected API; no configuration write is authorized by this response.").into());
+    }
+    Ok(())
+}
+
+fn validate_compute_body(body: &Value, api: SparkComputeApi) -> Result<()> {
+    if !body.is_object() {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Spark compute configuration must be a JSON object",
+            "Provide the complete request object for the explicitly selected --compute-api.",
+        )
+        .into());
+    }
+    if api == SparkComputeApi::Beta
+        && (body.get("customLivePoolSupport").is_some()
+            || body.get("customLivePoolSettings").is_some())
+    {
+        return Err(FabioError::with_hint(ErrorCode::InvalidInput,
+            "Custom live-pool settings require the release Spark compute contract",
+            "Review --compute-api release (beta=false, array sparkProperties). No API fallback or conversion is performed automatically.").into());
+    }
+    if let Some(properties) = body.get("sparkProperties") {
+        match api {
+            SparkComputeApi::Beta if properties.is_object() => {}
+            SparkComputeApi::Release if properties.is_array() => {
+                release_property_indices(properties.as_array().expect("checked array"))?;
+            }
+            _ => return Err(FabioError::with_hint(ErrorCode::InvalidInput,
+                "sparkProperties does not match the selected Spark compute contract",
+                "--compute-api beta expects a dictionary object; --compute-api release expects an array of {key,value} objects. Choose explicitly and preserve that shape; no conversion is automatic.").into()),
+        }
+    }
+    Ok(())
+}
+
+fn release_property_indices(properties: &[Value]) -> Result<HashMap<String, usize>> {
+    let mut indices = HashMap::new();
+    for (index, property) in properties.iter().enumerate() {
+        let Some(key) = property["key"]
+            .as_str()
+            .filter(|key| !key.trim().is_empty())
+        else {
+            return Err(FabioError::with_hint(
+                ErrorCode::InvalidInput,
+                "A release Spark property is missing its non-empty string key",
+                "Use sparkProperties: [{\"key\":\"spark.example\",\"value\":\"text\"}].",
+            )
+            .into());
+        };
+        if !property["value"].is_string() || indices.insert(key.to_string(), index).is_some() {
+            return Err(FabioError::with_hint(ErrorCode::InvalidInput, "Release Spark properties require string values and unique keys", "Resolve malformed or duplicate entries before submitting; the CLI will not discard or convert them.").into());
+        }
+    }
+    Ok(indices)
+}
+
+fn merge_release_properties(mut current: Value, overrides: &[(String, String)]) -> Result<Value> {
+    validate_compute_response(&current)?;
+    validate_compute_body(&current, SparkComputeApi::Release).map_err(|_| {
+        FabioError::api_error("The release Spark compute response has malformed or duplicate properties. Inspect that exact API; no PATCH was sent.")
+    })?;
+    let properties = current
+        .as_object_mut()
+        .expect("validated object")
+        .entry("sparkProperties")
+        .or_insert_with(|| json!([]))
+        .as_array_mut()
+        .expect("validated array");
+    let mut indices = release_property_indices(properties)?;
+    for (key, value) in overrides {
+        if let Some(index) = indices.get(key) {
+            properties[*index]["value"] = Value::from(value.as_str());
+        } else {
+            indices.insert(key.clone(), properties.len());
+            properties.push(json!({"key": key, "value": value}));
+        }
+    }
+    Ok(current)
+}
 
 // ─── Staging Spark Compute ───────────────────────────────────────────────────
 
@@ -382,6 +482,7 @@ pub(super) async fn update_staging_spark_compute(
     client: &FabricClient,
     workspace: &str,
     id: &str,
+    api: SparkComputeApi,
     file: Option<&str>,
     content: Option<&str>,
     runtime_version: Option<&str>,
@@ -392,7 +493,7 @@ pub(super) async fn update_staging_spark_compute(
     custom_live_pool_lifespan: Option<&str>,
     clear_custom_live_pool_settings: bool,
 ) -> Result<()> {
-    let path = format!("/workspaces/{workspace}/environments/{id}/staging/sparkcompute?beta=true");
+    let path = compute_path(workspace, id, true, api)?;
 
     // Two mutually-exclusive modes:
     //   (a) raw JSON body via --file/--content (full replace of the compute body)
@@ -429,6 +530,21 @@ pub(super) async fn update_staging_spark_compute(
         (None, None) => None,
     };
 
+    if let Some((body, _)) = &raw_body {
+        validate_compute_body(body, api)?;
+    }
+    if api == SparkComputeApi::Beta
+        && (custom_live_pool_support.is_some()
+            || max_clusters_to_hydrate.is_some()
+            || cluster_idle_timeout.is_some()
+            || custom_live_pool_lifespan.is_some()
+            || clear_custom_live_pool_settings)
+    {
+        return Err(FabioError::with_hint(ErrorCode::InvalidInput,
+            "Custom live-pool flags require an explicitly selected release compute contract",
+            "Review --compute-api release before re-running. It uses beta=false and array Spark properties; beta behavior is preserved by default.").into());
+    }
+
     let typed_props: Option<Vec<(String, String)>> = if raw_body.is_none()
         && (runtime_version.is_some()
             || !spark_property.is_empty()
@@ -457,7 +573,7 @@ pub(super) async fn update_staging_spark_compute(
     }
 
     // Build a dry-run preview from the inputs (no network call for the typed path).
-    let preview = if let Some((_, len)) = &raw_body {
+    let mut preview = if let Some((_, len)) = &raw_body {
         serde_json::json!({ "workspace": workspace, "id": id, "contentLength": len })
     } else {
         let mut preview = serde_json::json!({
@@ -499,6 +615,7 @@ pub(super) async fn update_staging_spark_compute(
         }
         preview
     };
+    preview["computeApi"] = Value::from(api.as_str());
 
     if output::dry_run_guard(cli, "environment update-staging-spark-compute", &preview) {
         return Ok(());
@@ -508,13 +625,22 @@ pub(super) async fn update_staging_spark_compute(
         v
     } else {
         // read-merge-write: fetch current staging compute, apply overrides.
-        let current = client.get(&path).await.map_err(|e| {
+        let mut current = client.get(&path).await.map_err(|e| {
             enrich_forbidden(e, "environment update-staging-spark-compute", "Contributor")
         })?;
+        validate_compute_response(&current)?;
+        let props = typed_props.unwrap_or_default();
+        if api == SparkComputeApi::Release && !props.is_empty() {
+            current = merge_release_properties(current, &props)?;
+        }
         apply_spark_compute_overrides(
             current,
             runtime_version,
-            &typed_props.unwrap_or_default(),
+            if api == SparkComputeApi::Release {
+                &[]
+            } else {
+                &props
+            },
             custom_live_pool_support,
             max_clusters_to_hydrate,
             cluster_idle_timeout,
@@ -523,6 +649,7 @@ pub(super) async fn update_staging_spark_compute(
         )
     };
     sanitize_staging_spark_compute_body(&mut body);
+    validate_compute_body(&body, api)?;
 
     let data = client.patch(&path, &body).await.map_err(|e| {
         enrich_forbidden(e, "environment update-staging-spark-compute", "Contributor")
@@ -542,6 +669,120 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    #[test]
+    fn error_bearing_success_never_becomes_a_compute_configuration() {
+        for response in [
+            json!([]),
+            json!(null),
+            json!({"error":{"message":"failed"}}),
+            json!({"errorCode":"Denied","message":"failed"}),
+        ] {
+            assert!(validate_compute_response(&response).is_err());
+        }
+        assert!(validate_compute_response(&json!({"sparkProperties":[]})).is_ok());
+    }
+
+    #[test]
+    fn compute_paths_select_an_explicit_contract_and_validate_scope() {
+        let id = "00000000-0000-0000-0000-000000000001";
+        assert_eq!(
+            compute_path(id, id, true, SparkComputeApi::Beta).unwrap(),
+            format!("/workspaces/{id}/environments/{id}/staging/sparkcompute?beta=true")
+        );
+        assert_eq!(
+            compute_path(id, id, true, SparkComputeApi::Release).unwrap(),
+            format!("/workspaces/{id}/environments/{id}/staging/sparkcompute?beta=false")
+        );
+        assert_eq!(
+            compute_path(id, id, false, SparkComputeApi::Release).unwrap(),
+            format!("/workspaces/{id}/environments/{id}/sparkcompute?beta=false")
+        );
+        assert!(compute_path(id, "../item", false, SparkComputeApi::Release).is_err());
+        assert!(compute_path("", id, true, SparkComputeApi::Beta).is_err());
+    }
+
+    #[test]
+    fn raw_compute_shapes_are_not_silently_converted_between_contracts() {
+        assert!(
+            validate_compute_body(&json!({"sparkProperties":{"k":"v"}}), SparkComputeApi::Beta)
+                .is_ok()
+        );
+        assert!(
+            validate_compute_body(
+                &json!({"sparkProperties":[{"key":"k","value":"v"}]}),
+                SparkComputeApi::Release
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_compute_body(
+                &json!({"customLivePoolSupport":"Disabled","customLivePoolSettings":null}),
+                SparkComputeApi::Release
+            )
+            .is_ok()
+        );
+        for body in [
+            json!([]),
+            json!(null),
+            json!({"sparkProperties":{}}),
+            json!({"sparkProperties":null}),
+            json!({"sparkProperties":[{"key":"k"}]}),
+            json!({"sparkProperties":[{"key":"k","value":"1"},{"key":"k","value":"2"}]}),
+        ] {
+            assert!(validate_compute_body(&body, SparkComputeApi::Release).is_err());
+        }
+        assert!(
+            validate_compute_body(&json!({"sparkProperties":[]}), SparkComputeApi::Beta).is_err()
+        );
+        assert!(
+            validate_compute_body(
+                &json!({"customLivePoolSupport":"Enabled"}),
+                SparkComputeApi::Beta
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn release_property_merge_preserves_order_unknown_fields_and_unrelated_settings() {
+        let current = json!({"runtimeVersion":"2.0","futureTop":{"retain":true},"sparkProperties":[
+            {"key":"keep","value":"1","future":42},
+            {"key":"replace","value":"old","metadata":"keep"}
+        ]});
+        let overrides = [
+            ("replace".to_string(), "new".to_string()),
+            ("add".to_string(), "a=b".to_string()),
+            ("add".to_string(), "last".to_string()),
+        ];
+        let merged = merge_release_properties(current, &overrides).unwrap();
+        assert_eq!(merged["runtimeVersion"], "2.0");
+        assert_eq!(merged["futureTop"]["retain"], true);
+        assert_eq!(
+            merged["sparkProperties"],
+            json!([
+                {"key":"keep","value":"1","future":42},
+                {"key":"replace","value":"new","metadata":"keep"},
+                {"key":"add","value":"last"}
+            ])
+        );
+    }
+
+    #[test]
+    fn release_merge_creates_missing_properties_but_refuses_malformed_server_data() {
+        let overrides = [("k".to_string(), "v".to_string())];
+        assert_eq!(
+            merge_release_properties(json!({"runtimeVersion":"2.0"}), &overrides).unwrap()["sparkProperties"],
+            json!([{"key":"k","value":"v"}])
+        );
+        for current in [
+            json!([]),
+            json!({"sparkProperties":{"k":"v"}}),
+            json!({"sparkProperties":[{"key":"k","value":1}]}),
+            json!({"sparkProperties":[{"key":"","value":"v"}]}),
+        ] {
+            assert!(merge_release_properties(current, &overrides).is_err());
+        }
+    }
     #[test]
     fn parse_spark_property_splits_key_value() {
         let (k, v) = parse_spark_property("spark.native.enabled=true").unwrap();

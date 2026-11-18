@@ -5,7 +5,7 @@
     {
       "step": "Inspect explicit prerequisites and obtain compute approval",
       "commands": ["fabio environment show --workspace <WS> --id <ENV> --readonly", "fabio environment list-pool-activations --workspace <WS> --id <ENV> --readonly"],
-      "notes": "Use an owned or explicitly approved published Environment backed by a custom Spark pool (not a starter pool) on active paid capacity. Live-pool support and hydration limits must already be configured. Minimum idle timeout is PT20M and lifespan PT30M. The job runner never configures/publishes resources or changes tenant settings. Release Spark compute uses beta=false and array Spark properties; legacy beta=true uses dictionary properties and does not define the new live-pool fields. Preserve the selected contract; never switch it automatically after a failure."
+      "notes": "Use an owned or explicitly approved published Environment backed by a custom Spark pool (not a starter pool) on active paid capacity. Live-pool support and hydration limits must already be configured. Minimum idle timeout is PT20M and lifespan PT30M. The job runner never configures/publishes resources or changes tenant settings. Choose --compute-api release explicitly for release settings reads/updates (beta=false, array Spark properties and hydration fields); default beta retains the legacy dictionary contract. Preserve the selected contract; never switch it automatically after a failure."
     },
     {
       "step": "Preview the new submission and intended waiting behavior",

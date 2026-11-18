@@ -88,11 +88,29 @@ hydration because observation or cancellation failed.
 
 The release Spark compute API explicitly uses `beta=false`, a `sparkProperties`
 array, and live-pool fields. The older `beta=true` contract uses dictionary Spark
-properties and does not define those fields. Preserve the chosen contract and
-request shape; do not silently fall back between them. The current typed compute
-configuration command retains its beta contract, so prepare this prerequisite
-through the reviewed release API or the Fabric UI. This job runner does not
-configure, publish, convert, or enable environments automatically.
+properties and does not define those fields. The CLI preserves **beta as the
+default** for existing callers; choose `--compute-api release` explicitly on
+settings reads and updates. There is no automatic fallback between contracts.
+
+```bash
+fabio --wrap-untrusted environment get-staging-spark-settings --workspace "$WS" --id "$ENVIRONMENT" --compute-api release --readonly
+fabio --wrap-untrusted environment update-staging-spark-compute --workspace "$WS" --id "$ENVIRONMENT" --compute-api release --spark-property spark.sql.shuffle.partitions=2 --custom-live-pool-support Disabled --max-clusters-to-hydrate 1 --cluster-idle-timeout PT20M --custom-live-pool-lifespan PT30M --dry-run
+fabio --wrap-untrusted environment get-spark-settings --workspace "$WS" --id "$ENVIRONMENT" --compute-api release --readonly
+```
+
+Typed property overrides merge by key in the selected shape. Release updates
+retain other entries, order and unknown fields; duplicate or malformed entries
+are rejected rather than discarded. Raw `--file`/`--content` requests must match
+the selected API: dictionary properties for beta, `{key,value}` arrays for
+release. Hydration flags require explicit release selection, including in
+dry-run. A format mismatch fails before submission; it is not permission to
+convert a saved request or silently change its contract.
+
+The preview validates inputs without reading current settings. Execution reads,
+merges and patches; this is **not atomic compare-and-swap**, so coordinate
+concurrent writers. Raw requests remain explicitly authored full bodies. First
+select a compatible custom pool through reviewed configuration or the UI; the
+runner does not choose a pool, configure, publish or enable environments for you.
 
 Discover the recipe with `fabio context workflow custom-live-pool-job` and the
 response contract with `fabio context examples environment run-custom-live-pool`.

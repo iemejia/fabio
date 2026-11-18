@@ -29,6 +29,30 @@ impl CustomLivePoolSupport {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum SparkComputeApi {
+    /// Legacy beta contract with dictionary Spark properties
+    Beta,
+    /// Release contract with array Spark properties and live-pool settings
+    Release,
+}
+
+impl SparkComputeApi {
+    const fn beta_parameter(self) -> &'static str {
+        match self {
+            Self::Beta => "true",
+            Self::Release => "false",
+        }
+    }
+
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Beta => "beta",
+            Self::Release => "release",
+        }
+    }
+}
+
 #[derive(Debug, Subcommand)]
 #[command(
     after_help = "Before creating items, run: fabio context schema Environment\nReturns the definition template with required fields and format."
@@ -188,6 +212,9 @@ pub enum EnvironmentCommand {
         /// Environment ID
         #[arg(long)]
         id: String,
+        /// Explicit compute contract; no fallback between beta and release
+        #[arg(long, value_enum, default_value = "beta")]
+        compute_api: SparkComputeApi,
     },
     /// Get the staging (draft) Spark settings
     #[command(display_order = 13)]
@@ -199,6 +226,9 @@ pub enum EnvironmentCommand {
         /// Environment ID
         #[arg(long)]
         id: String,
+        /// Explicit compute contract; no fallback between beta and release
+        #[arg(long, value_enum, default_value = "beta")]
+        compute_api: SparkComputeApi,
     },
 
     // ── Definitions ──────────────────────────────────────────────────────
@@ -368,17 +398,20 @@ pub enum EnvironmentCommand {
         /// Environment ID
         #[arg(long)]
         id: String,
+        /// Explicit contract; release is required for custom live-pool settings
+        #[arg(long, value_enum, default_value = "beta")]
+        compute_api: SparkComputeApi,
 
         /// Path to JSON file with Spark compute config (full body; conflicts with typed compute flags)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "content")]
         file: Option<String>,
 
         /// Inline JSON content with Spark compute config (full body; conflicts with typed compute flags)
         #[arg(long)]
         content: Option<String>,
 
-        /// Spark runtime version to set (e.g. "1.3" for Spark 3.5 [current default], "2.0" for
-        /// Spark 4.1 / Delta 4.2 — GA but opt-in until it becomes the default ~late Sep 2026).
+        /// Explicit Spark runtime version (e.g. "2.0" for Spark 4.1 / Delta 4.2,
+        /// or supported legacy "1.3" for Spark 3.5). Omit to preserve the current runtime.
         /// Merged into the existing staging compute (other fields preserved).
         #[arg(long, conflicts_with_all = ["file", "content"])]
         runtime_version: Option<String>,
@@ -625,12 +658,16 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EnvironmentComm
         EnvironmentCommand::CancelPublish { workspace, id } => {
             cancel_publish(cli, client, workspace, id).await
         }
-        EnvironmentCommand::GetSparkSettings { workspace, id } => {
-            get_spark_settings(cli, client, workspace, id).await
-        }
-        EnvironmentCommand::GetStagingSparkSettings { workspace, id } => {
-            get_staging_spark_settings(cli, client, workspace, id).await
-        }
+        EnvironmentCommand::GetSparkSettings {
+            workspace,
+            id,
+            compute_api,
+        } => get_spark_settings(cli, client, workspace, id, *compute_api).await,
+        EnvironmentCommand::GetStagingSparkSettings {
+            workspace,
+            id,
+            compute_api,
+        } => get_staging_spark_settings(cli, client, workspace, id, *compute_api).await,
         EnvironmentCommand::GetDefinition {
             workspace,
             id,
@@ -704,6 +741,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EnvironmentComm
         EnvironmentCommand::UpdateStagingSparkCompute {
             workspace,
             id,
+            compute_api,
             file,
             content,
             runtime_version,
@@ -719,6 +757,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EnvironmentComm
                 client,
                 workspace,
                 id,
+                *compute_api,
                 file.as_deref(),
                 content.as_deref(),
                 runtime_version.as_deref(),
@@ -999,12 +1038,12 @@ async fn get_spark_settings(
     client: &FabricClient,
     workspace: &str,
     id: &str,
+    api: SparkComputeApi,
 ) -> Result<()> {
     let data = client
-        .get(&format!(
-            "/workspaces/{workspace}/environments/{id}/sparkcompute?beta=true"
-        ))
+        .get(&spark_compute::compute_path(workspace, id, false, api)?)
         .await?;
+    spark_compute::validate_compute_response(&data)?;
     output::render_object(cli, &data, "instancePool");
     Ok(())
 }
@@ -1014,12 +1053,12 @@ async fn get_staging_spark_settings(
     client: &FabricClient,
     workspace: &str,
     id: &str,
+    api: SparkComputeApi,
 ) -> Result<()> {
     let data = client
-        .get(&format!(
-            "/workspaces/{workspace}/environments/{id}/staging/sparkcompute?beta=true"
-        ))
+        .get(&spark_compute::compute_path(workspace, id, true, api)?)
         .await?;
+    spark_compute::validate_compute_response(&data)?;
     output::render_object(cli, &data, "instancePool");
     Ok(())
 }

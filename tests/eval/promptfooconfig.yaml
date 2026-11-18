@@ -4207,3 +4207,25 @@ tests:
         value: "--cancel-on-timeout"
       - type: icontains
         value: "--dry-run"
+
+  - description: "Spark compute contract: release configuration preview is explicit"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-data-engineering/SKILL.md"
+      user_query: "Preview custom live-pool settings on environment ENV in workspace WS using the release Spark compute contract: keep support Disabled, allow one cluster, idle timeout PT20M and lifespan PT30M. Do not execute or publish."
+    assert:
+      - type: icontains
+        value: "environment update-staging-spark-compute"
+      - type: icontains
+        value: "--compute-api release"
+      - type: contains
+        value: "Disabled"
+      - type: icontains
+        value: "--dry-run"
+
+  - description: "Spark compute contract: no implicit fallback or request conversion"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-data-engineering/SKILL.md"
+      user_query: "A beta Spark compute request with dictionary sparkProperties failed. Should I automatically retry the same mutation against release, or silently change its properties into an array? Explain safe recovery."
+    assert:
+      - type: llm-rubric
+        value: "Does not authorize automatic mutation replay, silent API fallback or automatic payload conversion. Explains that beta uses dictionary properties and release uses key/value arrays, and requires inspection/review of the selected contract and failure evidence before any explicitly approved corrected submission."
