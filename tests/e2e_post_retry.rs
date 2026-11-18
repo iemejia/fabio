@@ -389,13 +389,15 @@ async fn disconnect_after_request_arrival_is_unknown_not_retry_safe() {
         loop {
             match listener.accept() {
                 Ok((mut stream, _)) => {
+                    // Windows can inherit the listener's nonblocking mode. The
+                    // bounded read below must wait for actual request bytes.
+                    stream.set_nonblocking(false).unwrap();
                     stream
                         .set_read_timeout(Some(std::time::Duration::from_secs(3)))
                         .unwrap();
-                    let mut bytes = [0; 4096];
-                    let read = stream.read(&mut bytes).unwrap();
-                    assert!(read > 0);
-                    assert!(bytes[..read].starts_with(b"POST "));
+                    let mut prefix = [0; 5];
+                    stream.read_exact(&mut prefix).unwrap();
+                    assert_eq!(&prefix, b"POST ");
                     stream.shutdown(std::net::Shutdown::Both).unwrap();
                     return;
                 }
