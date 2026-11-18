@@ -82,6 +82,19 @@ pub struct FabricSubmissionResponse {
     pub error: Option<anyhow::Error>,
 }
 
+#[derive(Clone, Copy)]
+enum JsonPostCompletion {
+    Immediate,
+    Poll,
+    RequireTrackedCompletion,
+}
+
+impl JsonPostCompletion {
+    const fn from_poll(poll: bool) -> Self {
+        if poll { Self::Poll } else { Self::Immediate }
+    }
+}
+
 // ── Base URL defaults (overridable via environment variables) ─────────────
 //
 // All four API base endpoints can be overridden via environment variables for
@@ -1598,8 +1611,25 @@ impl FabricClient {
     /// Retries bounded known auth/throttle rejections, never ambiguous gateway errors.
     pub async fn post(&self, path: &str, body: &Value, poll: bool) -> Result<Value> {
         self.guard_readonly("POST", path)?;
-        self.post_impl(path, Some(body), poll, PostSemantics::Mutation)
-            .await
+        self.post_impl(
+            path,
+            Some(body),
+            JsonPostCompletion::from_poll(poll),
+            PostSemantics::Mutation,
+        )
+        .await
+    }
+
+    /// Require an accepted mutation to have LRO tracking before reporting completion.
+    pub async fn post_completed(&self, path: &str, body: &Value) -> Result<Value> {
+        self.guard_readonly("POST", path)?;
+        self.post_impl(
+            path,
+            Some(body),
+            JsonPostCompletion::RequireTrackedCompletion,
+            PostSemantics::Mutation,
+        )
+        .await
     }
 
     /// Exactly ONE guarded Fabric POST, including on 401/429/5xx. The deadline
@@ -1651,33 +1681,53 @@ impl FabricClient {
     /// POST request to Fabric REST API without a request body.
     pub async fn post_empty(&self, path: &str, poll: bool) -> Result<Value> {
         self.guard_readonly("POST", path)?;
-        self.post_impl(path, None, poll, PostSemantics::Mutation)
-            .await
+        self.post_impl(
+            path,
+            None,
+            JsonPostCompletion::from_poll(poll),
+            PostSemantics::Mutation,
+        )
+        .await
     }
 
     /// Semantically read-only POST request without a request body.
     pub async fn post_readonly_empty(&self, path: &str) -> Result<Value> {
-        self.post_impl(path, None, false, PostSemantics::ReadOnly)
-            .await
+        self.post_impl(
+            path,
+            None,
+            JsonPostCompletion::Immediate,
+            PostSemantics::ReadOnly,
+        )
+        .await
     }
 
     /// POST request for a semantically read-only API such as query execution.
     pub async fn post_readonly(&self, path: &str, body: &Value) -> Result<Value> {
-        self.post_impl(path, Some(body), false, PostSemantics::ReadOnly)
-            .await
+        self.post_impl(
+            path,
+            Some(body),
+            JsonPostCompletion::Immediate,
+            PostSemantics::ReadOnly,
+        )
+        .await
     }
 
     /// Explicit read-only retrieval with LRO support (e.g. getDefinition).
     pub async fn post_readonly_with_lro(&self, path: &str, body: &Value) -> Result<Value> {
-        self.post_impl(path, Some(body), true, PostSemantics::ReadOnly)
-            .await
+        self.post_impl(
+            path,
+            Some(body),
+            JsonPostCompletion::Poll,
+            PostSemantics::ReadOnly,
+        )
+        .await
     }
 
     async fn post_impl(
         &self,
         path: &str,
         body: Option<&Value>,
-        poll: bool,
+        completion: JsonPostCompletion,
         semantics: PostSemantics,
     ) -> Result<Value> {
         const MAX_RATE_LIMIT_RETRIES: u32 = 3;
@@ -1698,7 +1748,9 @@ impl FabricClient {
                 let resp = self
                     .send_json_post(&url, path, body, semantics, "fabric")
                     .await?;
-                return self.finish_json_post(resp, path, semantics, poll).await;
+                return self
+                    .finish_json_post(resp, path, semantics, completion)
+                    .await;
             }
 
             // Retry on rate-limit (429) or Spark capacity throttle (430)
@@ -1738,7 +1790,9 @@ impl FabricClient {
                 continue;
             }
 
-            return self.finish_json_post(resp, path, semantics, poll).await;
+            return self
+                .finish_json_post(resp, path, semantics, completion)
+                .await;
         }
     }
 
@@ -1747,7 +1801,7 @@ impl FabricClient {
         resp: Response,
         path: &str,
         semantics: PostSemantics,
-        poll: bool,
+        completion: JsonPostCompletion,
     ) -> Result<Value> {
         let evidence = submission::evidence(
             semantics,
@@ -1756,8 +1810,16 @@ impl FabricClient {
             Some(resp.status()),
             resp.headers(),
         );
-        let result = if poll && resp.status() == StatusCode::ACCEPTED {
-            self.poll_lro(resp).await
+        let result = if !matches!(completion, JsonPostCompletion::Immediate)
+            && resp.status() == StatusCode::ACCEPTED
+        {
+            let has_tracking = resp.headers().get("location").is_some()
+                || resp.headers().get("x-ms-operation-id").is_some();
+            if matches!(completion, JsonPostCompletion::RequireTrackedCompletion) && !has_tracking {
+                Err(FabioError::api_error("The operation was accepted without LRO tracking; completion is unverified. Inspect the selected resource read-only; do not resubmit the mutation.").into())
+            } else {
+                self.poll_lro(resp).await
+            }
         } else {
             handle_response(resp).await
         };

@@ -14,6 +14,449 @@ const MOCK_ONTOLOGY: &str = "bbbbbbbb-1111-2222-3333-444444444444";
 const MOCK_VERSION: &str = "cccccccc-1111-2222-3333-444444444444";
 
 #[test]
+#[ignore = "restores a changed model only in an owned ontology; use a disposable workspace"]
+#[allow(clippy::too_many_lines)]
+fn ontology_snapshot_restores_changed_model_live() {
+    fn authored_parts(
+        output: &assert_cmd::assert::Assert,
+    ) -> std::collections::BTreeMap<String, Value> {
+        use base64::Engine;
+        parse_json(output)["data"]["definition"]["parts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|part| {
+                let path = part["path"].as_str().unwrap();
+                if !std::path::Path::new(path)
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("tmdl"))
+                {
+                    return None;
+                }
+                let bytes = base64::engine::general_purpose::STANDARD
+                    .decode(part["payload"].as_str().unwrap())
+                    .unwrap();
+                let text = String::from_utf8(bytes).unwrap();
+                Some((
+                    path.to_string(),
+                    Value::from(text.lines().collect::<Vec<_>>().join("\n")),
+                ))
+            })
+            .collect()
+    }
+    fn add_namespace(fixture: &common::ScopedTestItem, name: &str) {
+        use base64::Engine;
+        use std::fmt::Write as _;
+        let output = fixture
+            .command("get-definition")
+            .arg("--readonly")
+            .assert()
+            .success();
+        let mut definition = parse_json(&output)["data"]["definition"].clone();
+        let parts = definition["parts"].as_array_mut().unwrap();
+        let model = parts
+            .iter_mut()
+            .find(|part| part["path"] == "model.tmdl")
+            .unwrap();
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(model["payload"].as_str().unwrap())
+            .unwrap();
+        let mut text = String::from_utf8(bytes).unwrap();
+        writeln!(text, "\nref namespace {name}").unwrap();
+        model["payload"] = Value::from(base64::engine::general_purpose::STANDARD.encode(text));
+        parts.push(serde_json::json!({"path": format!("namespaces/{name}.tmdl"), "payload": base64::engine::general_purpose::STANDARD.encode(format!("namespace {name}\n")), "payloadType": "InlineBase64"}));
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("definition.json");
+        std::fs::write(&file, serde_json::to_vec(&definition).unwrap()).unwrap();
+        fixture
+            .command("update-definition")
+            .args(["--definition", file.to_str().unwrap()])
+            .assert()
+            .success();
+    }
+    let fixture = common::ScopedTestItem::create("ontology", "snapshot_model");
+    add_namespace(&fixture, "Baseline");
+    let original = fixture
+        .command("get-definition")
+        .arg("--readonly")
+        .assert()
+        .success();
+    let baseline = authored_parts(&original);
+    assert!(baseline.contains_key("namespaces/Baseline.tmdl"));
+    let snapshot = fixture
+        .command("create-version")
+        .args(["--name", "Before change", "--creation-source", "Manual"])
+        .assert()
+        .success();
+    let snapshot = parse_json(&snapshot);
+    let version = snapshot["data"]["id"].as_str().unwrap();
+    add_namespace(&fixture, "Transient");
+    let changed = fixture
+        .command("get-definition")
+        .arg("--readonly")
+        .assert()
+        .success();
+    assert_ne!(authored_parts(&changed), baseline);
+    let preview = fixture
+        .command("restore-version")
+        .env("CLAUDECODE", "1")
+        .args(["--version-id", version, "--dry-run"])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&preview)["data"]["destructive"], true);
+    assert_eq!(
+        parse_json(&preview)["data"]["details"]["request"],
+        serde_json::json!({})
+    );
+    let restored = fixture
+        .command("restore-version")
+        .args(["--version-id", version])
+        .assert()
+        .success();
+    let result = parse_json(&restored);
+    assert_eq!(result["data"]["status"], "restored");
+    assert_eq!(result["data"]["versionId"], version);
+    assert_eq!(result["data"]["definitionVerified"], false);
+    assert_eq!(result["data"]["dependentItemsVerified"], false);
+    let observed = fixture
+        .command("get-definition")
+        .arg("--readonly")
+        .assert()
+        .success();
+    assert_eq!(authored_parts(&observed), baseline);
+    let legacy_edit = fixture
+        .command("add-entity-type")
+        .args([
+            "--name",
+            "MustNotBeWritten",
+            "--property",
+            "Id:String",
+            "--dry-run",
+        ])
+        .assert()
+        .failure();
+    assert_eq!(
+        common::parse_error(&legacy_edit)["error"]["code"],
+        "INVALID_INPUT"
+    );
+    let metadata = fixture
+        .command("show-version")
+        .args(["--version-id", version, "--readonly"])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&metadata)["data"]["id"], version);
+    fixture
+        .command("delete-version")
+        .args(["--version-id", version])
+        .assert()
+        .success();
+    fixture.cleanup();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ontology_readonly_definition_scope_cannot_select_another_post_route() {
+    let server = wiremock::MockServer::start().await;
+    for (command, extra) in [
+        ("get-definition", vec![]),
+        ("list-entity-types", vec![]),
+        (
+            "add-entity-type",
+            vec!["--name", "Product", "--property", "Id:String", "--dry-run"],
+        ),
+    ] {
+        let output = common::mock_fabio(&server)
+            .args([
+                "--readonly",
+                "ontology",
+                command,
+                "--workspace",
+                MOCK_WORKSPACE,
+                "--id",
+                "../item/refresh?injected=",
+            ])
+            .args(extra)
+            .assert()
+            .failure();
+        assert_eq!(
+            common::parse_error(&output)["error"]["code"],
+            "INVALID_INPUT"
+        );
+    }
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ontology_restore_example_matches_the_bodyless_output_contract() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let example = fabio()
+        .args(["context", "examples", "ontology", "restore-version"])
+        .assert()
+        .success();
+    let expected = parse_json(&example)["data"]["response"].clone();
+    let workspace = expected["data"]["workspaceId"].as_str().unwrap();
+    let ontology = expected["data"]["ontologyId"].as_str().unwrap();
+    let version = expected["data"]["versionId"].as_str().unwrap();
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(format!(
+            "/workspaces/{workspace}/ontologies/{ontology}/versions/{version}/restore"
+        )))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let output = common::mock_fabio(&server)
+        .args([
+            "ontology",
+            "restore-version",
+            "--workspace",
+            workspace,
+            "--id",
+            ontology,
+            "--version-id",
+            version,
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&output), expected);
+    let workflow = fabio()
+        .args(["context", "workflow", "ontology-version-recovery"])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&workflow)["data"]["name"],
+        "ontology-version-recovery"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ontology_tmdl_is_never_reported_as_empty_json_entities_or_edited_as_json() {
+    use serde_json::json;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(format!("/workspaces/{MOCK_WORKSPACE}/ontologies/{MOCK_ONTOLOGY}/getDefinition")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"definition": {"parts": [{"path": "model.tmdl", "payload": "bW9kZWwgTW9kZWw=", "payloadType": "InlineBase64"}]}})))
+        .expect(2).mount(&server).await;
+    for (command, extra) in [
+        ("list-entity-types", vec!["--readonly"]),
+        (
+            "add-entity-type",
+            vec!["--name", "Product", "--property", "Id:String", "--dry-run"],
+        ),
+    ] {
+        let output = common::mock_fabio(&server)
+            .args([
+                "ontology",
+                command,
+                "--workspace",
+                MOCK_WORKSPACE,
+                "--id",
+                MOCK_ONTOLOGY,
+            ])
+            .args(extra)
+            .assert()
+            .failure();
+        assert_eq!(
+            common::parse_error(&output)["error"]["code"],
+            "INVALID_INPUT"
+        );
+        assert_eq!(output.get_output().stdout.len(), 0);
+    }
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ontology_restore_bodyless_success_is_scoped_and_can_be_verified_readonly() {
+    use serde_json::json;
+    use wiremock::matchers::{body_json, method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(format!("/workspaces/{MOCK_WORKSPACE}/ontologies/{MOCK_ONTOLOGY}/versions/{MOCK_VERSION}/restore")))
+        .and(query_param("beta", "true")).and(body_json(json!({})))
+        .respond_with(ResponseTemplate::new(200)).expect(1).mount(&server).await;
+    let output = common::mock_fabio(&server)
+        .args([
+            "ontology",
+            "restore-version",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ONTOLOGY,
+            "--version-id",
+            MOCK_VERSION,
+        ])
+        .assert()
+        .success();
+    let result = parse_json(&output);
+    assert_eq!(result["data"]["status"], "restored");
+    assert_eq!(result["data"]["workspaceId"], MOCK_WORKSPACE);
+    assert_eq!(result["data"]["ontologyId"], MOCK_ONTOLOGY);
+    assert_eq!(result["data"]["versionId"], MOCK_VERSION);
+    assert_eq!(result["data"]["destructive"], true);
+    assert_eq!(result["data"]["definitionVerified"], false);
+    assert_eq!(result["data"]["dependentItemsVerified"], false);
+    let response = json!({"definition": {"parts": []}});
+    Mock::given(method("POST"))
+        .and(path(format!(
+            "/workspaces/{MOCK_WORKSPACE}/ontologies/{MOCK_ONTOLOGY}/getDefinition"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&response))
+        .expect(2)
+        .mount(&server)
+        .await;
+    let output = common::mock_fabio(&server)
+        .args([
+            "--readonly",
+            "ontology",
+            "get-definition",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ONTOLOGY,
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&output)["data"], response);
+    common::mock_fabio(&server)
+        .args([
+            "--readonly",
+            "ontology",
+            "list-entity-types",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ONTOLOGY,
+        ])
+        .assert()
+        .success();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ontology_restore_accepted_without_tracking_never_claims_completion() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(format!("/workspaces/{MOCK_WORKSPACE}/ontologies/{MOCK_ONTOLOGY}/versions/{MOCK_VERSION}/restore")))
+        .respond_with(ResponseTemplate::new(202))
+        .expect(1).mount(&server).await;
+    let output = common::mock_fabio(&server)
+        .args([
+            "ontology",
+            "restore-version",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ONTOLOGY,
+            "--version-id",
+            MOCK_VERSION,
+        ])
+        .assert()
+        .failure();
+    let error = common::parse_error(&output);
+    assert_eq!(error["error"]["submission"]["state"], "accepted");
+    assert_eq!(error["error"]["retriable"], false);
+    assert_eq!(output.get_output().stdout.len(), 0);
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ontology_restore_tracks_completion_once_and_preserves_service_result() {
+    use serde_json::json;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    let operation = "dddddddd-1111-2222-3333-444444444444";
+    Mock::given(method("POST"))
+        .and(path(format!("/workspaces/{MOCK_WORKSPACE}/ontologies/{MOCK_ONTOLOGY}/versions/{MOCK_VERSION}/restore")))
+        .respond_with(ResponseTemplate::new(202).insert_header("x-ms-operation-id", operation).insert_header("Retry-After", "0"))
+        .expect(1).mount(&server).await;
+    let response = json!({"status": "Succeeded", "futureField": 42});
+    Mock::given(method("GET"))
+        .and(path(format!("/operations/{operation}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&response))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let output = common::mock_fabio(&server)
+        .args([
+            "ontology",
+            "restore-version",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ONTOLOGY,
+            "--version-id",
+            MOCK_VERSION,
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&output)["data"]["status"], "restored");
+    assert_eq!(parse_json(&output)["data"]["serviceResponse"], response);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ontology_restore_failure_is_not_replayed_or_replaced_with_success() {
+    use serde_json::json;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(format!("/workspaces/{MOCK_WORKSPACE}/ontologies/{MOCK_ONTOLOGY}/versions/{MOCK_VERSION}/restore")))
+        .respond_with(ResponseTemplate::new(500).set_body_json(json!({"errorCode": "UnknownError", "message": "Backend failed"})))
+        .expect(1).mount(&server).await;
+    let output = common::mock_fabio(&server)
+        .args([
+            "ontology",
+            "restore-version",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ONTOLOGY,
+            "--version-id",
+            MOCK_VERSION,
+        ])
+        .assert()
+        .failure();
+    let error = common::parse_error(&output);
+    assert_eq!(error["error"]["retriable"], false);
+    assert_eq!(error["error"]["submission"]["state"], "unknown");
+    assert_eq!(output.get_output().stdout.len(), 0);
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ontology_version_invalid_scope_fails_before_dry_run_and_network() {
+    let server = wiremock::MockServer::start().await;
+    for command in ["show-version", "delete-version", "restore-version"] {
+        let output = common::mock_fabio(&server)
+            .args([
+                "ontology",
+                command,
+                "--workspace",
+                MOCK_WORKSPACE,
+                "--id",
+                MOCK_ONTOLOGY,
+                "--version-id",
+                "../versions",
+                "--dry-run",
+            ])
+            .assert()
+            .failure();
+        assert_eq!(
+            common::parse_error(&output)["error"]["code"],
+            "INVALID_INPUT"
+        );
+    }
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
+}
+
+#[test]
 #[ignore = "creates an owned ontology and restores only that fixture in FABIO_TEST_SOURCE_WORKSPACE"]
 fn ontology_version_lifecycle_live() {
     let fixture = common::ScopedTestItem::create("ontology", "version_test");

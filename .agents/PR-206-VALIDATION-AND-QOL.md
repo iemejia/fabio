@@ -17,7 +17,7 @@ acceptance boundary for this review.
 | --- | --- | --- |
 | Environment custom live pools | Environment creation; disabled schedule create/show/update/delete; list before/after; new ignored lifecycle test passed | Actual pool hydration was not submitted. Requires an explicitly configured/published environment and bounded compute/cleanup approval. |
 | Lakehouse semantic views | Owned lakehouse creation and successful empty semantic-view list | No authored semantic-view fixture; publish is mock/dry-run covered, not live accepted. |
-| Ontology versions | Create/list/show/update/restore/delete on an owned ontology; populated and empty lists; new ignored lifecycle test passed | Fixture had no authored model content. Restoring a changed, populated ontology and dependent items remains unverified. Restore returned an empty/null success payload. |
+| Ontology versions | Initial lifecycle passed; QoL follow-up additionally restored deliberate generation-2 TMDL namespace changes and compared full model-part readback to the baseline | Bound data and dependent-item readiness remain unverified. See the execution ledger for completion/output/format safeguards and validation. |
 | Microsoft IQ | Read-only `am-i-in-scope` and `retrieve`; empty permitted retrieval accepted; both ignored live tests passed | No permitted ranked-context fixture was available. Nonempty retrieval, permission filtering across principals, and content dereferencing are not live verified. No returned URI was followed. |
 | Playbook | Workspace list succeeded with no Playbooks | Create returned HTTP 500 `MiqArtifactLifecycleForwardingFailed`, with unknown submission state and `retriable:false`. No automatic replay. Subsequent read-only reconciliation found no Playbook. Hierarchy/context/roles/definition lifecycle is mock covered; the ignored live lifecycle remains blocked. |
 | PostgreSQL Database | Workspace list succeeded | Create returned a feature-disabled forbidden error. No setting was changed. Database creation, `pgschema` round-trip, and rebuild behavior remain live blocked. |
@@ -87,7 +87,8 @@ reconciled, not blindly retried.
 ## Prioritized quality-of-life roadmap
 
 These are proposed follow-ups, **not additional features implemented by this
-validation**. Ship small, independently testable increments.
+initial validation**. Execution progress is tracked below. Ship small,
+independently testable increments and commit only after local and scoped live acceptance.
 
 ### P0 — finish acceptance and protect users
 
@@ -166,3 +167,11 @@ as live-validated until their acceptance evidence exists.
 - Tenant-detail review found no inspected tenant/resource identifiers in the
   outgoing diff. No tenant settings were changed, sharing invitations sent,
   actual pools hydrated, or existing SQL endpoints upgraded.
+
+## QoL execution ledger
+
+| Increment | Status | Acceptance / boundary |
+| --- | --- | --- |
+| Ontology selected-version recovery | Completed | Authored baseline TMDL namespace, snapshot, deliberate second namespace, restore without import overrides, independent full TMDL readback equality, stable version ID and legacy-editor rejection all passed. Explicit output leaves readiness unverified. Format, zero-warning Clippy, full tests (3,218 passed / 0 failed / 1,141 ignored), docs checks and both focused evals passed (100%); disposable-workspace cleanup verified. Dependencies/data readiness remain outside this fixture's claim. |
+| Custom live-pool execution | Approved for isolated live validation; not implemented yet | Operator separately approved one bounded hydration job on the existing active capacity, using only an owned Environment. No tenant-setting or existing-environment change is authorized. |
+| Tenant/admin-gated families | Blocked as recorded above | No consent to enable tenant switches, send invitations, or upgrade existing SQL endpoints is inferred. |

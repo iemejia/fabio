@@ -8,7 +8,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::Value;
 
 use crate::cli::Cli;
-use crate::client::FabricClient;
+use crate::client::{FabricClient, validate_uuid};
 use crate::errors::{ErrorCode, FabioError};
 use crate::output;
 
@@ -22,12 +22,7 @@ pub(super) async fn get_definition(
     format: Option<&str>,
     decode: bool,
 ) -> Result<()> {
-    let path = format.map_or_else(
-        || format!("/workspaces/{workspace}/ontologies/{id}/getDefinition"),
-        |f| format!("/workspaces/{workspace}/ontologies/{id}/getDefinition?format={f}"),
-    );
-
-    let data = client.post(&path, &serde_json::json!({}), true).await?;
+    let data = fetch_definition(client, workspace, id, format).await?;
 
     if decode {
         let decoded = decode_definition_parts(data);
@@ -36,6 +31,52 @@ pub(super) async fn get_definition(
         output::render_object(cli, &data, "definition");
     }
     Ok(())
+}
+
+/// Share the scoped, readonly definition transport across inspection and editors.
+pub(super) async fn fetch_definition(
+    client: &FabricClient,
+    workspace: &str,
+    id: &str,
+    format: Option<&str>,
+) -> Result<Value> {
+    validate_uuid(workspace, "--workspace")?;
+    validate_uuid(id, "--id")?;
+    let path = format.map_or_else(
+        || format!("/workspaces/{workspace}/ontologies/{id}/getDefinition"),
+        |f| {
+            format!(
+                "/workspaces/{workspace}/ontologies/{id}/getDefinition?format={}",
+                urlencoding::encode(f)
+            )
+        },
+    );
+
+    client
+        .post_readonly_with_lro(&path, &serde_json::json!({}))
+        .await
+}
+
+/// JSON entity editors must not silently ignore a generation-2 TMDL model.
+pub(super) fn legacy_definition_parts(data: &Value) -> Result<&[Value]> {
+    let parts = data["definition"]["parts"].as_array().ok_or_else(|| {
+        FabioError::api_error("Ontology definition response is missing its parts array")
+    })?;
+    if parts.iter().any(|part| {
+        part["path"].as_str().is_some_and(|path| {
+            Path::new(path)
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("tmdl"))
+        })
+    }) {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "This JSON entity editor does not support TMDL (generation 2) ontologies",
+            "Inspect the actual definition with fabio ontology get-definition --workspace <WS> --id <ID> --decode --readonly. Preserve and explicitly author its TMDL parts; do not mix legacy EntityTypes JSON into this model or switch generations automatically.",
+        ).into());
+    }
+    Ok(parts)
 }
 
 /// Decode base64 payloads in definition parts to readable JSON/text.
@@ -532,6 +573,25 @@ fn is_valid_uuid(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_editor_refuses_tmdl_and_malformed_definition_responses() {
+        for data in [
+            serde_json::json!({}),
+            serde_json::json!({"definition": {"parts": null}}),
+            serde_json::json!({"definition": {"parts": [{"path": "model.tmdl"}]}}),
+            serde_json::json!({"definition": {"parts": [{"path": "MODEL.TMDL"}]}}),
+        ] {
+            assert!(legacy_definition_parts(&data).is_err());
+        }
+        assert_eq!(
+            legacy_definition_parts(&serde_json::json!({"definition": {"parts": []}}))
+                .unwrap()
+                .len(),
+            0
+        );
+        assert_eq!(legacy_definition_parts(&serde_json::json!({"definition": {"parts": [{"path": "EntityTypes/1/definition.json"}]}})).unwrap().len(), 1);
+    }
 
     #[test]
     fn build_definition_from_rdf_ttl() {

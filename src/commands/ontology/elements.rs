@@ -259,19 +259,8 @@ fn entity_type_names(parts: &[Value]) -> Vec<String> {
 
 /// Fetch the ontology's definition parts (each `{path, payload, payloadType}`).
 async fn fetch_parts(client: &FabricClient, workspace: &str, id: &str) -> Result<Vec<Value>> {
-    let data = client
-        .post(
-            &format!("/workspaces/{workspace}/ontologies/{id}/getDefinition"),
-            &json!({}),
-            true,
-        )
-        .await?;
-    Ok(data
-        .get("definition")
-        .and_then(|d| d.get("parts"))
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default())
+    let data = super::definitions::fetch_definition(client, workspace, id, None).await?;
+    Ok(super::definitions::legacy_definition_parts(&data)?.to_vec())
 }
 
 /// Push a full set of parts back via `updateDefinition` (LRO).

@@ -34,14 +34,9 @@ pub(super) async fn list_entity_types(
     entity_name: Option<&str>,
     include_properties: bool,
 ) -> Result<()> {
-    let data = client
-        .post(
-            &format!("/workspaces/{workspace}/ontologies/{id}/getDefinition"),
-            &json!({}),
-            true,
-        )
-        .await?;
+    let data = super::definitions::fetch_definition(client, workspace, id, None).await?;
 
+    super::definitions::legacy_definition_parts(&data)?;
     let values = build_entity_type_values(&data, entity_name, include_properties);
     output::render_object(cli, &json!({ "values": values }), "values");
     Ok(())

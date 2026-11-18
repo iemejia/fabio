@@ -1,0 +1,40 @@
+{
+  "name": "ontology-version-recovery",
+  "description": "Snapshot an ontology, preserve private definition backups, preview a selected-version restore, and independently compare restored model content without claiming dependent-item readiness.",
+  "steps": [
+    {
+      "step": "Inspect scope and preserve a private current-definition backup",
+      "commands": [
+        "fabio ontology get-definition --workspace <WS> --id <ONTOLOGY> --readonly --query definition -o plain",
+        "fabio ontology list-versions --workspace <WS> --id <ONTOLOGY> --readonly"
+      ],
+      "notes": "Save the raw definition payload privately using a NEW file path, not --decode output or a redirected existing file. Version list/show returns metadata only, not snapshot content. Bare create currently produces generation 2 TMDL; preserve the actual format and parts, including .platform, rather than substituting legacy JSON. Record the selected workspace/ontology and expected authored model parts with the backup. Do not fetch a different item or restore merely to inspect a snapshot."
+    },
+    {
+      "step": "Create a snapshot before an independently approved definition change",
+      "commands": [
+        "fabio ontology create-version --workspace <WS> --id <ONTOLOGY> --name before-change --creation-source Manual --dry-run",
+        "fabio ontology create-version --workspace <WS> --id <ONTOLOGY> --name before-change --creation-source Manual"
+      ],
+      "notes": "Capture the returned version ID, not its name or latest position. Each submission creates a distinct snapshot even for identical names/content; the service limits an ontology to 50 versions. Never replay an accepted or uncertain create to recover an ID. Retention deletion requires separate approval. This recipe does not authorize the subsequent model edit."
+    },
+    {
+      "step": "Back up the current state and preview the exact selected restore",
+      "commands": [
+        "fabio ontology get-definition --workspace <WS> --id <ONTOLOGY> --readonly --query definition -o plain",
+        "fabio ontology show-version --workspace <WS> --id <ONTOLOGY> --version-id <VERSION> --readonly",
+        "fabio ontology restore-version --workspace <WS> --id <ONTOLOGY> --version-id <VERSION> --dry-run"
+      ],
+      "notes": "Preserve a separate private pre-restore backup before overwriting current state. Confirm workspace, ontology, version and destructive preview with the user. Defaults do not opt into import overrides. RequiredOptionsMissing is a request for review, not permission to set allowOverrideItems or any other option automatically."
+    },
+    {
+      "step": "Restore only after explicit approval and verify the definition separately",
+      "commands": [
+        "fabio ontology restore-version --workspace <WS> --id <ONTOLOGY> --version-id <VERSION>",
+        "fabio ontology get-definition --workspace <WS> --id <ONTOLOGY> --decode --readonly"
+      ],
+      "notes": "status:restored reports a successful restore call, not definition comparison or data readiness. definitionVerified/dependentItemsVerified remain false. Compare decoded authored model parts by path against the saved baseline, ignoring part order and separately reviewing service-managed metadata. Generation 2 uses TMDL namespaces/entities/rules; legacy list-entity-types and JSON editors refuse TMDL rather than reporting an empty model or mixing formats. Verify bindings, data permissions and dependent artifacts in separately scoped read-only steps. Never replay restore after a timeout/server error; reconcile the selected item first."
+    }
+  ],
+  "see_also": ["fabio context examples ontology restore-version", "fabio context best-practices submission-retries", "fabio context skill ontology"]
+}

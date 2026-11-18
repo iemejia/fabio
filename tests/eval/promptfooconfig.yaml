@@ -4159,3 +4159,23 @@ tests:
         value: "microsoft-iq retrieve"
       - type: icontains
         value: "--text"
+
+  - description: "Ontology recovery: bodyless restore is not verified readiness"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-ontology/SKILL.md"
+      user_query: "Ontology restore-version returned status restored, serviceResponse null, definitionVerified false and dependentItemsVerified false for ontology ONT in workspace WS. Is it safe to call this model and its data dependencies verified? Show the next inspection command, without restoring again."
+    assert:
+      - type: icontains
+        value: "ontology get-definition"
+      - type: icontains
+        value: "--readonly"
+      - type: llm-rubric
+        value: "States that restore success is not definition or dependent-data verification. Recommends inspecting/comparing the definition against the saved baseline; does not execute or recommend replaying restore as verification."
+
+  - description: "Ontology recovery: TMDL is not an empty legacy model"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-ontology/SKILL.md"
+      user_query: "My new ontology export contains model.tmdl and namespaces/default.tmdl. The JSON entity editor says it does not support TMDL generation 2. Should I add EntityTypes JSON files or create a different generation automatically? Explain the safe next step."
+    assert:
+      - type: llm-rubric
+        value: "Preserves the current TMDL generation and recommends inspecting its actual definition or explicitly authoring TMDL. Does not mix legacy EntityTypes JSON into TMDL, automatically recreate/switch generations, or infer an empty ontology from the legacy editor's inability to parse it."

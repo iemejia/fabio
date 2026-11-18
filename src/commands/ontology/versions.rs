@@ -3,7 +3,7 @@ use clap::ValueEnum;
 use serde_json::{Map, Value, json};
 
 use crate::cli::Cli;
-use crate::client::FabricClient;
+use crate::client::{FabricClient, validate_uuid};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
@@ -127,12 +127,38 @@ fn restore_body(file: Option<&str>, content: Option<&str>) -> Result<Value> {
     Ok(options.map_or_else(|| json!({}), |options| json!({"options": options})))
 }
 
+fn validate_scope(workspace: &str, ontology: &str, version: Option<&str>) -> Result<()> {
+    validate_uuid(workspace, "--workspace")?;
+    validate_uuid(ontology, "--id")?;
+    if let Some(version) = version {
+        validate_uuid(version, "--version-id")?;
+    }
+    Ok(())
+}
+
+fn restore_result(workspace: &str, ontology: &str, version: &str, response: &Value) -> Value {
+    json!({
+        "status": "restored",
+        "id": version,
+        "workspaceId": workspace,
+        "ontologyId": ontology,
+        "versionId": version,
+        "destructive": true,
+        "definitionVerified": false,
+        "dependentItemsVerified": false,
+        "serviceResponse": response,
+        "verifyAfter": format!("fabio ontology get-definition --workspace {workspace} --id {ontology} --decode --readonly"),
+        "warning": "The selected snapshot replaced the current ontology definition. Inspect the restored definition; this response does not verify dependent items or data readiness."
+    })
+}
+
 pub(super) async fn list(
     cli: &Cli,
     client: &FabricClient,
     workspace: &str,
     ontology: &str,
 ) -> Result<()> {
+    validate_scope(workspace, ontology, None)?;
     let response = client
         .get_list(
             &versions_path(workspace, ontology),
@@ -166,6 +192,7 @@ pub(super) async fn show(
     ontology: &str,
     version: &str,
 ) -> Result<()> {
+    validate_scope(workspace, ontology, Some(version))?;
     let data = client
         .get(&version_path(workspace, ontology, version))
         .await
@@ -184,6 +211,7 @@ pub(super) async fn create(
     description: Option<&str>,
     creation_source: Option<CreationSource>,
 ) -> Result<()> {
+    validate_scope(workspace, ontology, None)?;
     let body = create_body(name, description, creation_source)?;
     let preview = json!({"workspaceId": workspace, "ontologyId": ontology, "request": body});
     if output::dry_run_guard(cli, "ontology create-version", &preview) {
@@ -208,6 +236,7 @@ pub(super) async fn update(
     name: Option<&str>,
     description: Option<&str>,
 ) -> Result<()> {
+    validate_scope(workspace, ontology, Some(version))?;
     let body = update_body(name, description)?;
     let preview = json!({
         "workspaceId": workspace,
@@ -234,6 +263,7 @@ pub(super) async fn delete(
     ontology: &str,
     version: &str,
 ) -> Result<()> {
+    validate_scope(workspace, ontology, Some(version))?;
     let preview = json!({"workspaceId": workspace, "ontologyId": ontology, "versionId": version});
     if output::dry_run_guard_maybe_destructive(cli, "ontology delete-version", &preview, true) {
         return Ok(());
@@ -257,6 +287,7 @@ pub(super) async fn restore(
     file: Option<&str>,
     content: Option<&str>,
 ) -> Result<()> {
+    validate_scope(workspace, ontology, Some(version))?;
     let body = restore_body(file, content)?;
     let preview = json!({
         "workspaceId": workspace,
@@ -269,10 +300,14 @@ pub(super) async fn restore(
     }
 
     let data = client
-        .post(&restore_path(workspace, ontology, version), &body, true)
+        .post_completed(&restore_path(workspace, ontology, version), &body)
         .await
         .map_err(|error| enrich_forbidden(error, "ontology restore-version", "Contributor"))?;
-    output::render_object(cli, &data, "id");
+    output::render_object(
+        cli,
+        &restore_result(workspace, ontology, version, &data),
+        "status",
+    );
     Ok(())
 }
 
@@ -346,5 +381,42 @@ mod tests {
         assert!(restore_body(Some(path.to_str().unwrap()), Some(content)).is_err());
         assert!(restore_body(None, Some("{")).is_err());
         assert!(restore_body(None, Some("null")).is_err());
+    }
+
+    #[test]
+    fn restore_result_is_scoped_and_explicit_without_claiming_readiness() {
+        let output = restore_result("workspace", "ontology", "version", &Value::Null);
+        assert_eq!(output["status"], "restored");
+        assert_eq!(output["workspaceId"], "workspace");
+        assert_eq!(output["ontologyId"], "ontology");
+        assert_eq!(output["id"], "version");
+        assert_eq!(output["versionId"], "version");
+        assert_eq!(output["destructive"], true);
+        assert_eq!(output["definitionVerified"], false);
+        assert_eq!(output["dependentItemsVerified"], false);
+        assert_eq!(output["serviceResponse"], Value::Null);
+        assert_eq!(
+            output["verifyAfter"],
+            "fabio ontology get-definition --workspace workspace --id ontology --decode --readonly"
+        );
+    }
+
+    #[test]
+    fn restore_result_preserves_future_service_fields() {
+        let response = json!({"status": "Succeeded", "futureField": {"revision": 2}});
+        let output = restore_result("workspace", "ontology", "version", &response);
+        assert_eq!(output["serviceResponse"], response);
+    }
+
+    #[test]
+    fn version_scope_rejects_malformed_identifiers() {
+        let valid = "00000000-0000-0000-0000-000000000001";
+        assert!(validate_scope(valid, valid, Some(valid)).is_ok());
+        assert!(validate_scope(valid, valid, None).is_ok());
+        for invalid in ["", "../versions", "version?beta=false"] {
+            assert!(validate_scope(invalid, valid, Some(valid)).is_err());
+            assert!(validate_scope(valid, invalid, Some(valid)).is_err());
+            assert!(validate_scope(valid, valid, Some(invalid)).is_err());
+        }
     }
 }

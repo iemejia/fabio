@@ -1,0 +1,24 @@
+{
+  "command": "fabio ontology restore-version --workspace <WS> --id <ONTOLOGY> --version-id <VERSION>",
+  "description": "Explicit selected-version restore status, including bodyless success and unverified model/dependency readiness.",
+  "response": {
+    "data": {
+      "status": "restored",
+      "id": "00000000-0000-0000-0000-000000000003",
+      "workspaceId": "00000000-0000-0000-0000-000000000001",
+      "ontologyId": "00000000-0000-0000-0000-000000000002",
+      "versionId": "00000000-0000-0000-0000-000000000003",
+      "destructive": true,
+      "definitionVerified": false,
+      "dependentItemsVerified": false,
+      "serviceResponse": null,
+      "verifyAfter": "fabio ontology get-definition --workspace 00000000-0000-0000-0000-000000000001 --id 00000000-0000-0000-0000-000000000002 --decode --readonly",
+      "warning": "The selected snapshot replaced the current ontology definition. Inspect the restored definition; this response does not verify dependent items or data readiness."
+    }
+  },
+  "notes": "The IDs identify the requested scope. The service response is preserved without treating its fields as readiness evidence. Use the ontology-version-recovery workflow to preserve private backups, preview the destructive operation, and independently compare authored model parts. No import override is implicit.",
+  "query_examples": [
+    {"query": "{status:status,version:versionId,verified:definitionVerified}", "description": "Inspect restore outcome separately from independent definition verification."},
+    {"query": "verifyAfter", "description": "Get the read-only definition inspection command; no verification was executed automatically."}
+  ]
+}

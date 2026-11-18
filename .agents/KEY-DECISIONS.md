@@ -1,5 +1,7 @@
 # Fabio CLI — Key Decisions
 
+- **Ontology recovery keeps completion separate from verification:** normalize successful selected-version restores (including bodyless 200) into scoped output with `definitionVerified:false`/`dependentItemsVerified:false`, preserve the original service response, and require tracking before calling an accepted restore completed. Inspection is an explicit read-only follow-up, not a hidden extra read or a reason to replay. Preserve the observed generation; legacy JSON editors fail closed on TMDL rather than attempting an implicit conversion. See the ontology API behavior section for the live format boundary.
+
 - **Playbook paths preserve route hierarchy:** encode each logical path segment independently and retain literal slash separators; rename uses a guarded header-aware PUT with no body. This follows the published route contract and avoids collapsing the hierarchy into one encoded segment.
 
 - **Osmos feasibility proves reachability, not a shipped lifecycle:** upstream task routes and MWC auth are real; the successful read-only probe is recorded in API behavior notes. Defer built-in task mutation commands until a dedicated supported auth/transport, durable partial-submission recovery, execution-capacity and non-interactive safety contract exists. Route explicit autonomous tasks to the reviewed upstream skill with permission; never substitute data-agent Q&A or infer execution consent from listing.

@@ -1,4 +1,5 @@
 ## Relevant Files
+- `src/commands/context/data/workflows/ontology_version_recovery.json`, `src/commands/context/data/examples/ontology_restore_version.json`, `docs/src/content/docs/guides/ontology-versions.md`: selected-snapshot recovery recipe, explicit scoped restore output and private-backup/generation-aware verification guidance; implemented in `ontology/versions.rs` with tracked-completion transport and JSON/TMDL editing guards.
 - `.agents/PR-206-VALIDATION-AND-QOL.md`: tenant-redacted live acceptance matrix, precise blocked/deferred boundaries, exact opt-in test commands, and prioritized QoL roadmap for the November 18 API additions.
 - `tests/common/mod.rs`: `ScopedTestItem` owns only fixtures it creates, asserts explicit cleanup and provides a panic fallback; `parse_error` separates structured errors from stderr diagnostics.
 - `src/commands/{microsoft_iq,playbook,postgresql_database}.rs`, `tests/e2e_{microsoft_iq,playbook,postgresql_database}.rs`: Microsoft IQ retrieval, Playbook hierarchy/context lifecycle, and PostgreSQL item/pgschema definition support.

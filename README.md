@@ -126,6 +126,7 @@ fabio deploy apply --source ./export --workspace "Production (empty)" --env prod
 - **Context-aware** -- `fabio context tenant` builds a workspace relationship graph for agent memory; exports as OWL RDF/XML or JSON-LD for Fabric Ontology import
 - **Ontology round-trip** -- `fabio ontology import/export` converts between OWL (RDF/XML, JSON-LD) and Fabric format; compatible with [Ontology Playground](https://github.com/microsoft/Ontology-Playground)
 - **Microsoft IQ & Playbooks** -- retrieve permission-filtered organizational context, manage Playbook hierarchies, contexts, roles, preferences, and versioned ontologies
+- **Ontology recovery** -- capture exact snapshot IDs, preserve private definition backups, and inspect explicit restore outcomes without confusing successful restoration with data readiness. See [ontology version recovery](https://ismaelmejia.com/fabio/guides/ontology-versions/).
 - **PostgreSQL databases** -- full item and `pgschema` definition lifecycle, including guarded table-rebuild updates
 - **Feature availability** -- New Fabric REST surfaces can be tenant- or backend-gated even when list commands succeed. Treat empty IQ context as a valid result, preserve uncertain mutation failures without replay, and never enable tenant settings automatically. See [REST capability guidance](https://ismaelmejia.com/fabio/guides/fabric-rest-capabilities/).
 - **Throttling-aware** -- Bulk/batch APIs preferred; parallel execution with rate-limit retry

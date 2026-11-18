@@ -97,6 +97,10 @@ pub(super) const fn example_entries() -> &'static [(&'static str, &'static str)]
 
 const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
+        "ontology/restore-version",
+        include_str!("data/examples/ontology_restore_version.json"),
+    ),
+    (
         "microsoft-iq/retrieve",
         include_str!("data/examples/microsoft_iq_retrieve.json"),
     ),
