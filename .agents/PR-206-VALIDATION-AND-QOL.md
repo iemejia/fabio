@@ -15,7 +15,7 @@ acceptance boundary for this review.
 
 | Family | Verified live | Remaining boundary |
 | --- | --- | --- |
-| Environment custom live pools | Environment creation; disabled schedule create/show/update/delete; list before/after; new ignored lifecycle test passed | Actual pool hydration was not submitted. Requires an explicitly configured/published environment and bounded compute/cleanup approval. |
+| Environment custom live pools | Disabled schedule lifecycle passed; QoL follow-up submitted one approved job, exercised bounded timeout/scoped cancellation, retained its receipt and independently observed `Cancelled` | Fully hydrated/currently warm capacity was not verified. Release compute configuration was prepared explicitly, not through an implicit fallback. See execution ledger. |
 | Lakehouse semantic views | Owned lakehouse creation and successful empty semantic-view list | No authored semantic-view fixture; publish is mock/dry-run covered, not live accepted. |
 | Ontology versions | Initial lifecycle passed; QoL follow-up additionally restored deliberate generation-2 TMDL namespace changes and compared full model-part readback to the baseline | Bound data and dependent-item readiness remain unverified. See the execution ledger for completion/output/format safeguards and validation. |
 | Microsoft IQ | Read-only `am-i-in-scope` and `retrieve`; empty permitted retrieval accepted; both ignored live tests passed | No permitted ranked-context fixture was available. Nonempty retrieval, permission filtering across principals, and content dereferencing are not live verified. No returned URI was followed. |
@@ -151,7 +151,7 @@ Run format, zero-warning Clippy, full tests and docs checks. Cross-target lint i
 required before pushing. No release or merge should describe blocked rows above
 as live-validated until their acceptance evidence exists.
 
-## Validation notes
+## Initial validation notes
 
 - Final `cargo fmt -- --check` and `cargo clippy --tests -- -D warnings`
   passed. Full `cargo test` passed: **3,206 passed, 0 failed, 1,140 ignored**.
@@ -172,6 +172,7 @@ as live-validated until their acceptance evidence exists.
 
 | Increment | Status | Acceptance / boundary |
 | --- | --- | --- |
-| Ontology selected-version recovery | Completed | Authored baseline TMDL namespace, snapshot, deliberate second namespace, restore without import overrides, independent full TMDL readback equality, stable version ID and legacy-editor rejection all passed. Explicit output leaves readiness unverified. Format, zero-warning Clippy, full tests (3,218 passed / 0 failed / 1,141 ignored), docs checks and both focused evals passed (100%); disposable-workspace cleanup verified. Dependencies/data readiness remain outside this fixture's claim. |
-| Custom live-pool execution | Approved for isolated live validation; not implemented yet | Operator separately approved one bounded hydration job on the existing active capacity, using only an owned Environment. No tenant-setting or existing-environment change is authorized. |
+| Ontology selected-version recovery | Completed (`73e940f`) | Authored baseline TMDL namespace, snapshot, deliberate second namespace, restore without import overrides, independent full TMDL readback equality, stable version ID and legacy-editor rejection all passed. Explicit output leaves readiness unverified. Format, zero-warning Clippy, full tests (3,218 passed / 0 failed / 1,141 ignored), docs checks and both focused evals passed (100%); disposable-workspace cleanup verified. Dependencies/data readiness remain outside this fixture's claim. |
+| Custom live-pool job observation/cancellation | Completed | One approved job on an owned published Environment/custom Spark pool; timeout retained the exact receipt, cancellation targeted that job, and an independent read confirmed `Cancelled`. Format, zero-warning Clippy, full tests (3,225 passed / 0 failed / 1,142 ignored), docs checks and both focused evals passed (100%); workspace cleanup verified. No replay, tenant-setting change or existing-environment mutation. Warm readiness is not claimed. |
+| Explicit release Spark compute selection | Next prerequisite improvement | Current typed configuration retains the beta/dictionary contract while hydration fields belong to release/array settings. Add explicit selection and safe shape-aware typed merging without automatic fallback; live-validate settings/publishing without a second hydration submission. |
 | Tenant/admin-gated families | Blocked as recorded above | No consent to enable tenant switches, send invitations, or upgrade existing SQL endpoints is inferred. |

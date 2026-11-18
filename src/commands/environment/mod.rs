@@ -466,6 +466,15 @@ pub enum EnvironmentCommand {
         /// Environment ID
         #[arg(long)]
         id: String,
+        /// Observe this exact job until it reaches a terminal state
+        #[arg(long)]
+        wait: bool,
+        /// Maximum seconds to observe the accepted job (not the pool lifespan)
+        #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u64).range(1..=3600))]
+        timeout: u64,
+        /// Request cancellation of this job when local observation times out
+        #[arg(long, requires = "wait")]
+        cancel_on_timeout: bool,
     },
     /// List custom live-pool schedules
     ListCustomLivePoolSchedules {
@@ -760,8 +769,23 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &EnvironmentComm
             )
             .await
         }
-        EnvironmentCommand::RunCustomLivePool { workspace, id } => {
-            custom_live_pool::run(cli, client, workspace, id).await
+        EnvironmentCommand::RunCustomLivePool {
+            workspace,
+            id,
+            wait,
+            timeout,
+            cancel_on_timeout,
+        } => {
+            custom_live_pool::run(
+                cli,
+                client,
+                workspace,
+                id,
+                *wait,
+                *timeout,
+                *cancel_on_timeout,
+            )
+            .await
         }
         EnvironmentCommand::ListCustomLivePoolSchedules { workspace, id } => {
             custom_live_pool::list_schedules(cli, client, workspace, id).await

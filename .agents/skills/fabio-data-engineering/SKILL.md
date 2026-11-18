@@ -252,12 +252,14 @@ Manage Mounted Data Factories (ADF integration)
 
 ## Must / Prefer / Avoid
 ### MUST
+- For a requested live-pool preview, include --dry-run in the command itself; labelling an unguarded submission 'do not execute' is not a dry-run preview. Inspect an already accepted job with --readonly and its exact receipt scope, never by submitting it again.
 - For explicit Project Osmos requests, explain that the upstream task interface and MWC authentication exist but Fabio has no osmos create/run lifecycle. Direct the user to the reviewed upstream project-osmos skill only with permission to install/execute it; never substitute Fabric data-agent Q&A or Cosmos DB. Read-only listing is not execution approval: separately review the full outcome, resource scope, capacity/cost and write/schema policies. After a task submission timeout preserve task/message IDs, routing and recovery state; inspect the same task read-only, never recreate or replay automatically.
 - Use --file for notebook source (.py and .ipynb are auto-detected); fabio wraps the format — do NOT hand-build ipynb JSON.
 - Use --wait/--timeout on notebook/pipeline/SJD runs to observe completion.
 - Bind a notebook to its default lakehouse with --lakehouse at create time when it reads/writes lakehouse tables.
 
 ### PREFER
+- Existing live-pool job inspection: fabio job-scheduler get-instance --workspace <WS> --id <ENV> --job-instance-id <JOB> --readonly. New hydration preview with explicitly requested timeout cancellation: fabio environment run-custom-live-pool --workspace <WS> --id <ENV> --wait --timeout <SECONDS> --cancel-on-timeout --dry-run. Omit cancellation unless the user requested it; do not strip dry-run without execution approval.
 - --file (a written code file) over --content, which is only for small inline snippets.
 - job-scheduler create-schedule for recurring runs over external cron.
 - Spark environments to manage libraries once instead of per-notebook installs.
@@ -269,6 +271,8 @@ Manage Mounted Data Factories (ADF integration)
 - Ignoring cold-start latency on small capacity (first Spark run takes minutes).
 
 ## Key gotchas
+- environment run-custom-live-pool now shares receipt-aware job execution: --wait observes only the accepted job, --timeout 1-3600 bounds observation (default 300), and --cancel-on-timeout requires --wait plus explicit approval. Retain jobInstanceId/jobReceipt; receiptPersisted:false, timeout and cancel_requested never authorize replay or prove released capacity. A pool job can run for its configured lifespan, so Completed is not a warm-readiness check. See custom-live-pool-job.
+- Custom live pools need a custom Spark pool and a published enabled Environment. The release Spark compute API uses beta=false, array sparkProperties and hydration fields; legacy beta=true uses dictionary properties and does not define those fields. The current typed configuration command remains beta-based. Prepare prerequisites explicitly via the reviewed release API or UI; do not silently switch contracts or use starter pools as an automatic fallback.
 - Custom live-pool schedule CRUD uses environment jobs/runCustomLivePool/schedules. Keep test schedules disabled; schedule creation does not prove a pool was hydrated. run-custom-live-pool submits compute work and returns its job identity; do not replay an accepted or uncertain submission to obtain status.
 - Project Osmos is a remote autonomous data-engineering service, not Fabric data-agent Q&A or a Fabio command group. Upstream task/MWC interfaces exist and read-only discovery was verified, but built-in lifecycle mutations are deferred. Route explicit Osmos requests to the reviewed upstream skill only with installation/execution approval; never invent fabio osmos commands, assume the default lakehouse limits scope or recreate a task after uncertainty. See project-osmos.
 - A cloud connection blocked by DMTS_BlockedByAuthenticationKindPolicies or inter-tenant data-loss-prevention needs tenant-admin allowlist review, not a password reset, workspace grant or identity/credential-mode switch. Do not retry or weaken enforcement automatically. See connection-policies.
@@ -319,6 +323,7 @@ Cross-cutting operational guidance (the "common" layer) — consult the relevant
 | `fabio context best-practices spark-diagnostics` | GET-only environment diagnostics connects publishing, published/staging compute, bounded pool activation history, resource breakdown, and an explicitly selected monitoring session/application. Telemetry is application-scoped and not attempt-pinned; raw logs, causal claims, automatic restarts/publishing, and invented IDs are excluded. Typed state filters and bounded activation follow distinguish lifecycle completion from success. |
 
 ## See also
+- fabio context workflow custom-live-pool-job
 - fabio context persona data-engineer
 - fabio context workflow lakehouse-etl
 - fabio context workflow rti-pipeline

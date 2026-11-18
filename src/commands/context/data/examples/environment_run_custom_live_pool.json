@@ -1,0 +1,29 @@
+{
+  "command": "fabio environment run-custom-live-pool --workspace <WS> --id <ENV>",
+  "description": "One accepted live-pool hydration job with exact private recovery receipt; no claim of completion or currently warm capacity.",
+  "response": {
+    "data": {
+      "itemId": "00000000-0000-0000-0000-000000000002",
+      "jobInstanceId": "00000000-0000-0000-0000-000000000003",
+      "status": "started",
+      "message": "Custom live-pool hydration started",
+      "jobReceipt": {
+        "id": "00000000-0000-0000-0000-000000000003",
+        "kind": "environment run-custom-live-pool",
+        "status": "running",
+        "workspace": "00000000-0000-0000-0000-000000000001",
+        "item_id": "00000000-0000-0000-0000-000000000002",
+        "started_at": "2026-11-18T12:00:00Z",
+        "submission_state": "accepted",
+        "fabric_endpoint": "https://api.fabric.microsoft.com/v1"
+      },
+      "receiptPersisted": true,
+      "retryAllowed": false
+    }
+  },
+  "notes": "--wait observes this new job, never a previous submission. --timeout bounds observation, not pool lifespan. Local timeout/receipt errors never authorize replay; cancel_requested is not terminal cancellation. Use job-scheduler get-instance with the same scope, then separately correlated activation telemetry for readiness. Receipt/resource details must stay private.",
+  "query_examples": [
+    {"query": "jobInstanceId", "description": "Keep the accepted job identity without resubmitting."},
+    {"query": "{status:status,persisted:receiptPersisted,retryAllowed:retryAllowed}", "description": "Separate acknowledgement, local persistence and retry permission."}
+  ]
+}

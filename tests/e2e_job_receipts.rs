@@ -17,10 +17,10 @@ fn command(server: &MockServer, home: &tempfile::TempDir, group: &str) -> assert
         .env("FABIO_NO_VERSION_CHECK", "1");
     command.args([
         group,
-        if group == "job-scheduler" {
-            "run-on-demand"
-        } else {
-            "run"
+        match group {
+            "job-scheduler" => "run-on-demand",
+            "environment" => "run-custom-live-pool",
+            _ => "run",
         },
         "--workspace",
         WS,
@@ -56,6 +56,7 @@ async fn every_runner_preserves_acknowledgement_when_local_storage_is_unavailabl
         "copy-job",
         "data-pipeline",
         "spark-job-definition",
+        "environment",
     ] {
         let server = MockServer::start().await;
         let home = tempfile::TempDir::new().unwrap();

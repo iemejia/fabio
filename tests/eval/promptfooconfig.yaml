@@ -4179,3 +4179,31 @@ tests:
     assert:
       - type: llm-rubric
         value: "Preserves the current TMDL generation and recommends inspecting its actual definition or explicitly authoring TMDL. Does not mix legacy EntityTypes JSON into TMDL, automatically recreate/switch generations, or infer an empty ontology from the legacy editor's inability to parse it."
+
+  - description: "Live pool jobs: timeout does not authorize hydration replay"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-data-engineering/SKILL.md"
+      user_query: "environment run-custom-live-pool --wait timed out for environment ENV in workspace WS, but returned jobInstanceId JOB, an accepted jobReceipt and retryAllowed false. Give the next inspection command. Should I run the hydration command again to wait longer?"
+    assert:
+      - type: icontains
+        value: "job-scheduler get-instance"
+      - type: icontains
+        value: "--readonly"
+      - type: llm-rubric
+        value: "Inspects the original job with its workspace/environment/job ID and does not recommend resubmitting hydration. Distinguishes local timeout from remote completion or warm readiness."
+
+  - description: "Live pool jobs: cancellation preview is explicit"
+    vars:
+      skill_content: "file://../../.agents/skills/fabio-data-engineering/SKILL.md"
+      user_query: "Preview one new custom live-pool hydration in environment ENV in workspace WS, wait up to 60 seconds and request cancellation only if it times out. Do not execute it."
+    assert:
+      - type: icontains
+        value: "environment run-custom-live-pool"
+      - type: icontains
+        value: "--wait"
+      - type: icontains
+        value: "--timeout 60"
+      - type: icontains
+        value: "--cancel-on-timeout"
+      - type: icontains
+        value: "--dry-run"

@@ -97,6 +97,10 @@ pub(super) const fn example_entries() -> &'static [(&'static str, &'static str)]
 
 const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
     (
+        "environment/run-custom-live-pool",
+        include_str!("data/examples/environment_run_custom_live_pool.json"),
+    ),
+    (
         "ontology/restore-version",
         include_str!("data/examples/ontology_restore_version.json"),
     ),

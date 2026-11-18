@@ -11133,10 +11133,26 @@
             "type": "string",
             "required": true,
             "description": "Environment ID"
+          },
+          "--wait": {
+            "type": "bool",
+            "description": "Observe this exact job until it reaches a terminal state"
+          },
+          "--timeout": {
+            "type": "integer",
+            "description": "Maximum seconds to observe the accepted job (not the pool lifespan)"
+          },
+          "--cancel-on-timeout": {
+            "type": "bool",
+            "description": "Request cancellation of this job when local observation times out"
           }
         },
         "mutates": true,
-        "returns": "object"
+        "returns": "object",
+        "async": true,
+        "destructive_flags": [
+          "--cancel-on-timeout"
+        ]
       },
       "list-custom-live-pool-schedules": {
         "description": "List custom live-pool schedules",

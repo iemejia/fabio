@@ -1,0 +1,27 @@
+{
+  "name": "custom-live-pool-job",
+  "description": "Submit an approved custom live-pool job once, retain its exact receipt and use bounded observation or explicitly approved cancellation without claiming warm-capacity readiness.",
+  "steps": [
+    {
+      "step": "Inspect explicit prerequisites and obtain compute approval",
+      "commands": ["fabio environment show --workspace <WS> --id <ENV> --readonly", "fabio environment list-pool-activations --workspace <WS> --id <ENV> --readonly"],
+      "notes": "Use an owned or explicitly approved published Environment backed by a custom Spark pool (not a starter pool) on active paid capacity. Live-pool support and hydration limits must already be configured. Minimum idle timeout is PT20M and lifespan PT30M. The job runner never configures/publishes resources or changes tenant settings. Release Spark compute uses beta=false and array Spark properties; legacy beta=true uses dictionary properties and does not define the new live-pool fields. Preserve the selected contract; never switch it automatically after a failure."
+    },
+    {
+      "step": "Preview the new submission and intended waiting behavior",
+      "commands": ["fabio environment run-custom-live-pool --workspace <WS> --id <ENV> --wait --timeout 300 --dry-run"],
+      "notes": "Review the scope and capacity consumption before running without dry-run. Timeout is a bounded local observation deadline after acceptance, not the server-side pool lifespan or a guarantee of warm capacity. Adding --cancel-on-timeout is a separately approved destructive choice and requires --wait."
+    },
+    {
+      "step": "Submit once after approval and preserve acknowledgement",
+      "commands": ["fabio environment run-custom-live-pool --workspace <WS> --id <ENV> --wait --timeout 300"],
+      "notes": "Keep jobInstanceId and the exact jobReceipt privately. Honor retryAllowed:false even on local storage/observation errors. A local timeout without explicit cancellation does not stop the job. Do not rerun this submission to wait longer; completion and hydration availability are different observations."
+    },
+    {
+      "step": "Observe the existing exact job instead of replaying hydration",
+      "commands": ["fabio job-scheduler get-instance --workspace <WS> --id <ENV> --job-instance-id <JOB> --readonly"],
+      "notes": "Cancellation acknowledgement is not terminal cancellation. Confirm the same job's state and inspect separately correlated activation telemetry. Do not infer the latest activation is this job, or that historical success means resources are currently warm. Clean up only owned fixtures and verify cleanup independently."
+    }
+  ],
+  "see_also": ["fabio context best-practices submission-retries", "fabio context best-practices spark-diagnostics", "fabio context describe environment run-custom-live-pool"]
+}

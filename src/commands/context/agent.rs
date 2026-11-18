@@ -1597,6 +1597,7 @@ fn apply_spec_sync_metadata(
                     | "download-feedback-attachments"
             )
             | ("warehouse", "get-definition" | "update-definition")
+            | ("environment", "run-custom-live-pool")
     ) {
         metadata.insert("returns".to_owned(), serde_json::json!("object"));
     }
@@ -1610,6 +1611,7 @@ fn apply_spec_sync_metadata(
             "create" | "get-definition" | "update-definition"
         ) | ("warehouse", "get-definition" | "update-definition")
             | ("data-agent", "format-topic")
+            | ("environment", "run-custom-live-pool")
     ) {
         metadata.insert("async".to_owned(), serde_json::json!(true));
     }
@@ -2010,6 +2012,7 @@ mod tests {
             ("data-agent", "query-feedback", "list", false),
             ("data-agent", "format-topic", "object", true),
             ("warehouse", "update-definition", "object", true),
+            ("environment", "run-custom-live-pool", "object", true),
         ] {
             let cli = clap::Command::new(group).subcommand(clap::Command::new(command));
             let mut existing = serde_json::json!({"subcommands": {}});

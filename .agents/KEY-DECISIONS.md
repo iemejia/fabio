@@ -1,5 +1,7 @@
 # Fabio CLI — Key Decisions
 
+- **Live-pool execution reuses the shared job runner:** `environment run-custom-live-pool` delegates to `item_job::run_and_wait` using its dedicated trigger route. Existing job identity is retained while bounded observation, persistence failure, timeout and scoped cancellation use the same receipt/no-replay contract as other item jobs. Lifecycle completion is not warm-capacity readiness. Configuration remains an explicit prerequisite, not a hidden mutation or API-mode fallback in the runner.
+
 - **Ontology recovery keeps completion separate from verification:** normalize successful selected-version restores (including bodyless 200) into scoped output with `definitionVerified:false`/`dependentItemsVerified:false`, preserve the original service response, and require tracking before calling an accepted restore completed. Inspection is an explicit read-only follow-up, not a hidden extra read or a reason to replay. Preserve the observed generation; legacy JSON editors fail closed on TMDL rather than attempting an implicit conversion. See the ontology API behavior section for the live format boundary.
 
 - **Playbook paths preserve route hierarchy:** encode each logical path segment independently and retain literal slash separators; rename uses a guarded header-aware PUT with no body. This follows the published route contract and avoids collapsing the hierarchy into one encoded segment.

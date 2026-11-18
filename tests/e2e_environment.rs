@@ -12,6 +12,239 @@ const MOCK_ENVIRONMENT: &str = "bbbbbbbb-1111-2222-3333-444444444444";
 const MOCK_ACTIVATION: &str = "cccccccc-1111-2222-3333-444444444444";
 const MOCK_SCHEDULE: &str = "dddddddd-1111-2222-3333-444444444444";
 
+fn hydration_command(server: &MockServer, home: &tempfile::TempDir) -> assert_cmd::Command {
+    let mut command = mock_fabio(server);
+    command
+        .env("HOME", home.path())
+        .env("USERPROFILE", home.path())
+        .env("FABIO_NO_VERSION_CHECK", "1");
+    command.args([
+        "environment",
+        "run-custom-live-pool",
+        "--workspace",
+        MOCK_WORKSPACE,
+        "--id",
+        MOCK_ENVIRONMENT,
+    ]);
+    command
+}
+
+fn hydration_trigger() -> ResponseTemplate {
+    ResponseTemplate::new(202).insert_header("Location", format!("https://api.fabric.microsoft.com/v1/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/jobs/instances/{MOCK_ACTIVATION}"))
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn custom_live_pool_wait_observes_only_the_accepted_job_and_keeps_receipt() {
+    let server = MockServer::start().await;
+    let home = tempfile::tempdir().unwrap();
+    Mock::given(method("POST"))
+        .and(path(format!("/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/jobs/runCustomLivePool/instances")))
+        .respond_with(hydration_trigger()).expect(1).mount(&server).await;
+    Mock::given(method("GET"))
+        .and(path(format!("/workspaces/{MOCK_WORKSPACE}/items/{MOCK_ENVIRONMENT}/jobs/instances/{MOCK_ACTIVATION}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":MOCK_ACTIVATION,"itemId":MOCK_ENVIRONMENT,"workspaceId":MOCK_WORKSPACE,"status":"Completed"})))
+        .expect(1).mount(&server).await;
+    let output = hydration_command(&server, &home)
+        .args(["--wait", "--timeout", "10"])
+        .assert()
+        .success();
+    let data = parse_json(&output)["data"].clone();
+    assert_eq!(data["status"], "Completed");
+    assert_eq!(data["jobInstanceId"], MOCK_ACTIVATION);
+    assert_eq!(data["jobReceipt"]["id"], MOCK_ACTIVATION);
+    assert_eq!(data["jobReceipt"]["workspace"], MOCK_WORKSPACE);
+    assert_eq!(data["jobReceipt"]["item_id"], MOCK_ENVIRONMENT);
+    assert_eq!(
+        data["jobReceipt"]["kind"],
+        "environment run-custom-live-pool"
+    );
+    assert_eq!(data["receiptPersisted"], true);
+    assert_eq!(data["retryAllowed"], false);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn custom_live_pool_timeout_requests_only_scoped_cancellation_without_replay() {
+    let server = MockServer::start().await;
+    let home = tempfile::tempdir().unwrap();
+    Mock::given(method("POST"))
+        .and(path(format!("/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/jobs/runCustomLivePool/instances")))
+        .respond_with(hydration_trigger().insert_header("Retry-After", "10"))
+        .expect(1).mount(&server).await;
+    Mock::given(method("POST"))
+        .and(path(format!("/workspaces/{MOCK_WORKSPACE}/items/{MOCK_ENVIRONMENT}/jobs/instances/{MOCK_ACTIVATION}/cancel")))
+        .respond_with(ResponseTemplate::new(202)).expect(1).mount(&server).await;
+    let output = hydration_command(&server, &home)
+        .args(["--wait", "--timeout", "1", "--cancel-on-timeout"])
+        .assert()
+        .failure()
+        .code(8);
+    let data = parse_json(&output)["data"].clone();
+    assert_eq!(data["status"], "timeout");
+    assert_eq!(data["cancelRequested"], true);
+    assert_eq!(data["jobReceipt"]["status"], "cancel_requested");
+    assert_eq!(data["jobReceipt"]["id"], MOCK_ACTIVATION);
+    assert_eq!(data["retryAllowed"], false);
+    assert_eq!(common::parse_error(&output)["error"]["retriable"], false);
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn custom_live_pool_observation_failure_retains_acceptance_and_never_resubmits() {
+    let server = MockServer::start().await;
+    let home = tempfile::tempdir().unwrap();
+    Mock::given(method("POST"))
+        .respond_with(hydration_trigger())
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .respond_with(
+            ResponseTemplate::new(403)
+                .set_body_json(serde_json::json!({"errorCode":"Denied","message":"Denied"})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let output = hydration_command(&server, &home)
+        .args(["--wait", "--timeout", "10"])
+        .assert()
+        .failure();
+    let data = parse_json(&output)["data"].clone();
+    assert_eq!(data["jobInstanceId"], MOCK_ACTIVATION);
+    assert_eq!(data["jobReceipt"]["submission_state"], "accepted");
+    assert_eq!(data["retryAllowed"], false);
+    assert_eq!(common::parse_error(&output)["error"]["retriable"], false);
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn custom_live_pool_wait_preview_is_offline_and_cancellation_warns_agents() {
+    let server = MockServer::start().await;
+    let home = tempfile::tempdir().unwrap();
+    let output = hydration_command(&server, &home)
+        .env("CLAUDECODE", "1")
+        .args([
+            "--readonly",
+            "--wait",
+            "--timeout",
+            "10",
+            "--cancel-on-timeout",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let data = parse_json(&output)["data"].clone();
+    assert_eq!(data["dry_run"], true);
+    assert_eq!(data["would_execute"], "environment run-custom-live-pool");
+    assert_eq!(data["details"]["wait"], true);
+    assert_eq!(data["details"]["timeout"], 10);
+    assert_eq!(data["details"]["cancelOnTimeout"], true);
+    assert_eq!(data["destructive"], true);
+    assert!(data["agentNotice"].is_string());
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn custom_live_pool_rejects_bad_scope_and_invalid_wait_flags_before_network() {
+    let server = MockServer::start().await;
+    let home = tempfile::tempdir().unwrap();
+    for extra in [
+        vec!["--cancel-on-timeout"],
+        vec!["--wait", "--timeout", "0"],
+        vec!["--wait", "--timeout", "3601"],
+    ] {
+        hydration_command(&server, &home)
+            .args(extra)
+            .assert()
+            .failure()
+            .code(2);
+    }
+    let output = common::mock_fabio(&server)
+        .args([
+            "environment",
+            "run-custom-live-pool",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            "../items/other",
+            "--dry-run",
+        ])
+        .assert()
+        .failure();
+    assert_eq!(
+        common::parse_error(&output)["error"]["code"],
+        "INVALID_INPUT"
+    );
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
+}
+
+#[test]
+#[ignore = "consumes capacity once; requires approved published FABIO_TEST_LIVE_POOL_ENVIRONMENT and FABIO_TEST_LIVE_POOL_HYDRATION=1"]
+fn custom_live_pool_wait_timeout_and_cancel_live() {
+    assert_eq!(
+        std::env::var("FABIO_TEST_LIVE_POOL_HYDRATION").as_deref(),
+        Ok("1"),
+        "Hydration requires explicit test approval"
+    );
+    let workspace =
+        std::env::var("FABIO_TEST_SOURCE_WORKSPACE").expect("set approved disposable workspace");
+    let environment = std::env::var("FABIO_TEST_LIVE_POOL_ENVIRONMENT")
+        .expect("set owned published custom-live-pool environment");
+    let output = fabio()
+        .args([
+            "--wrap-untrusted",
+            "environment",
+            "run-custom-live-pool",
+            "--workspace",
+            &workspace,
+            "--id",
+            &environment,
+            "--wait",
+            "--timeout",
+            "10",
+            "--cancel-on-timeout",
+        ])
+        .timeout(std::time::Duration::from_mins(4))
+        .assert();
+    if let Ok(path) = std::env::var("FABIO_TEST_LIVE_POOL_RECEIPT_FILE")
+        && let Ok(value) = serde_json::from_slice::<serde_json::Value>(&output.get_output().stdout)
+    {
+        use std::io::Write as _;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .unwrap();
+        file.write_all(&serde_json::to_vec(&value).unwrap())
+            .unwrap();
+    }
+    let output = output.failure().code(8);
+    let result = parse_json(&output)["data"].clone();
+    assert_eq!(result["status"], "timeout");
+    assert_eq!(result["cancelRequested"], true);
+    assert_eq!(result["retryAllowed"], false);
+    assert_eq!(result["jobReceipt"]["workspace"], workspace);
+    assert_eq!(result["jobReceipt"]["item_id"], environment);
+    let job = result["jobInstanceId"].as_str().unwrap();
+    assert_eq!(result["jobReceipt"]["id"], job);
+    let observed = fabio()
+        .args([
+            "--wrap-untrusted",
+            "--readonly",
+            "job-scheduler",
+            "get-instance",
+            "--workspace",
+            &workspace,
+            "--id",
+            &environment,
+            "--job-instance-id",
+            job,
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&observed)["data"]["id"], job);
+}
+
 #[test]
 fn test_run_custom_live_pool_dry_run() {
     let output = fabio()
@@ -28,7 +261,33 @@ fn test_run_custom_live_pool_dry_run() {
         .success();
     let data = extract_data(&parse_json(&output)).clone();
     assert_eq!(data["dry_run"], true);
-    assert_eq!(data["details"]["environmentId"], MOCK_ENVIRONMENT);
+    assert_eq!(data["details"]["id"], MOCK_ENVIRONMENT);
+    assert_eq!(data["would_execute"], "environment run-custom-live-pool");
+    assert_eq!(data["details"]["wait"], false);
+}
+
+#[test]
+fn custom_live_pool_recovery_workflow_and_receipt_example_are_discoverable() {
+    let workflow = fabio()
+        .args(["context", "workflow", "custom-live-pool-job"])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&workflow)["data"]["name"],
+        "custom-live-pool-job"
+    );
+    let example = fabio()
+        .args(["context", "examples", "environment", "run-custom-live-pool"])
+        .assert()
+        .success();
+    let response = parse_json(&example)["data"]["response"]["data"].clone();
+    assert_eq!(response["status"], "started");
+    assert_eq!(
+        response["jobReceipt"]["kind"],
+        "environment run-custom-live-pool"
+    );
+    assert_eq!(response["jobInstanceId"], response["jobReceipt"]["id"]);
+    assert_eq!(response["retryAllowed"], false);
 }
 
 #[test]
@@ -391,6 +650,7 @@ fn test_show_pool_activation_returns_diagnostics() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn custom_live_pool_run_returns_the_accepted_job_without_replaying() {
     let server = MockServer::start().await;
+    let home = tempfile::tempdir().unwrap();
     let route = format!(
         "/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/jobs/runCustomLivePool/instances"
     );
@@ -403,17 +663,7 @@ async fn custom_live_pool_run_returns_the_accepted_job_without_replaying() {
         .expect(1)
         .mount(&server)
         .await;
-    let output = mock_fabio(&server)
-        .args([
-            "environment",
-            "run-custom-live-pool",
-            "--workspace",
-            MOCK_WORKSPACE,
-            "--id",
-            MOCK_ENVIRONMENT,
-        ])
-        .assert()
-        .success();
+    let output = hydration_command(&server, &home).assert().success();
     assert_eq!(
         parse_json(&output)["data"]["jobInstanceId"],
         MOCK_ACTIVATION

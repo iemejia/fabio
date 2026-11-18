@@ -2,7 +2,7 @@ use anyhow::Result;
 use serde_json::{Value, json};
 
 use crate::cli::Cli;
-use crate::client::FabricClient;
+use crate::client::{FabricClient, validate_uuid};
 use crate::errors::{ErrorCode, FabioError, enrich_forbidden};
 use crate::output;
 
@@ -52,24 +52,34 @@ pub(super) async fn run(
     client: &FabricClient,
     workspace: &str,
     environment: &str,
+    wait: bool,
+    timeout_secs: u64,
+    cancel_on_timeout: bool,
 ) -> Result<()> {
-    let preview = json!({"workspaceId": workspace, "environmentId": environment});
-    if output::dry_run_guard(cli, "environment run-custom-live-pool", &preview) {
-        return Ok(());
-    }
-
-    let job_instance_id = client
-        .trigger_item_job_at(&instances_path(workspace, environment), None)
-        .await
-        .map_err(|error| {
-            enrich_forbidden(error, "environment run-custom-live-pool", "Contributor")
-        })?;
-    output::render_object(
+    validate_run_scope(workspace, environment)?;
+    let path = instances_path(workspace, environment);
+    crate::commands::item_job::run_and_wait(
         cli,
-        &json!({"jobInstanceId": job_instance_id}),
-        "jobInstanceId",
-    );
-    Ok(())
+        client,
+        workspace,
+        environment,
+        wait,
+        timeout_secs,
+        cancel_on_timeout,
+        &crate::commands::item_job::RunSpec {
+            op: "environment run-custom-live-pool",
+            label: "Custom live-pool hydration",
+            job_type: "runCustomLivePool",
+            trigger_path: Some(&path),
+            role: "Contributor",
+        },
+    )
+    .await
+}
+
+fn validate_run_scope(workspace: &str, environment: &str) -> Result<()> {
+    validate_uuid(workspace, "--workspace")?;
+    validate_uuid(environment, "--id")
 }
 
 pub(super) async fn list_schedules(
@@ -234,6 +244,16 @@ pub(super) async fn delete_schedule(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hydration_scope_is_validated_before_preview_and_submission() {
+        let valid = "00000000-0000-0000-0000-000000000001";
+        assert!(validate_run_scope(valid, valid).is_ok());
+        for invalid in ["", "../items", "id?jobType=Other"] {
+            assert!(validate_run_scope(invalid, valid).is_err());
+            assert!(validate_run_scope(valid, invalid).is_err());
+        }
+    }
 
     #[test]
     fn schedule_path_uses_background_job_route() {
