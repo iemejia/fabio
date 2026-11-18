@@ -1,4 +1,6 @@
 ## Relevant Files
+- `.agents/PR-206-VALIDATION-AND-QOL.md`: tenant-redacted live acceptance matrix, precise blocked/deferred boundaries, exact opt-in test commands, and prioritized QoL roadmap for the November 18 API additions.
+- `tests/common/mod.rs`: `ScopedTestItem` owns only fixtures it creates, asserts explicit cleanup and provides a panic fallback; `parse_error` separates structured errors from stderr diagnostics.
 - `src/commands/{microsoft_iq,playbook,postgresql_database}.rs`, `tests/e2e_{microsoft_iq,playbook,postgresql_database}.rs`: Microsoft IQ retrieval, Playbook hierarchy/context lifecycle, and PostgreSQL item/pgschema definition support.
 - `src/commands/environment/custom_live_pool.rs`, `src/commands/lakehouse/semantic_views.rs`, `src/commands/ontology/versions.rs`: custom live-pool scheduling, lakehouse semantic views, and ontology version APIs.
 - `src/commands/{share,share_subscription,sql_endpoint}.rs`: bulk Share management, provisioned Share Subscription resources, and SQL endpoint metadata-sync migration.

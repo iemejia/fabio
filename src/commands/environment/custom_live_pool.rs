@@ -276,4 +276,23 @@ mod tests {
             .is_err()
         );
     }
+
+    #[test]
+    fn schedule_file_and_inline_content_have_the_same_shape() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("schedule.json");
+        let content = "{\r\n\"enabled\":false,\r\n\"configuration\":{\"type\":\"Cron\",\"interval\":1440}}\r\n";
+        std::fs::write(&path, content).unwrap();
+        let inline = read_schedule_body(None, Some(content), "test").unwrap();
+        let file = read_schedule_body(Some(path.to_str().unwrap()), None, "test").unwrap();
+        assert_eq!(file, inline);
+        assert_eq!(file["enabled"], false);
+    }
+
+    #[test]
+    fn schedule_body_rejects_malformed_and_nonobject_inputs() {
+        for content in ["{", "[]", "null", r#"{"enabled":true,"configuration":[]}"#] {
+            assert!(read_schedule_body(None, Some(content), "test").is_err());
+        }
+    }
 }

@@ -3,6 +3,87 @@
 
 mod common;
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn semantic_view_list_preserves_beta_page_size_and_continuation() {
+    use serde_json::json;
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    let workspace = "00000000-0000-0000-0000-000000000001";
+    let lakehouse = "00000000-0000-0000-0000-000000000002";
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/workspaces/{workspace}/lakehouses/{lakehouse}/semanticViews"
+        )))
+        .and(query_param("beta", "true"))
+        .and(query_param("maxResults", "10"))
+        .and(query_param("continuationToken", "page/2+="))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"value": [{"name": "Sales"}], "continuationToken": "next"})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let output = common::mock_fabio(&server)
+        .args([
+            "--readonly",
+            "lakehouse",
+            "list-semantic-views",
+            "--workspace",
+            workspace,
+            "--id",
+            lakehouse,
+            "--limit",
+            "10",
+            "--continuation-token",
+            "page/2+=",
+        ])
+        .assert()
+        .success();
+    let response = common::parse_json(&output);
+    assert_eq!(response["data"][0]["name"], "Sales");
+    assert_eq!(response["continuationToken"], "next");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn semantic_view_publish_encodes_name_and_blocks_readonly_mutation() {
+    use serde_json::json;
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    let workspace = "00000000-0000-0000-0000-000000000001";
+    let lakehouse = "00000000-0000-0000-0000-000000000002";
+    let args = [
+        "lakehouse",
+        "publish-semantic-view",
+        "--workspace",
+        workspace,
+        "--id",
+        lakehouse,
+        "--name",
+        "Sales overview?#",
+    ];
+    let output = common::mock_fabio(&server)
+        .arg("--readonly")
+        .args(args)
+        .assert()
+        .failure();
+    let error: serde_json::Value = serde_json::from_slice(&output.get_output().stderr).unwrap();
+    assert_eq!(error["error"]["code"], "READONLY_MODE");
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
+    Mock::given(method("POST"))
+        .and(path(format!("/workspaces/{workspace}/lakehouses/{lakehouse}/semanticViews/Sales%20overview%3F%23/publish")))
+        .and(query_param("beta", "true"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"semanticModel": {"itemId": lakehouse}})))
+        .expect(1).mount(&server).await;
+    let output = common::mock_fabio(&server).args(args).assert().success();
+    assert_eq!(
+        common::parse_json(&output)["data"]["semanticModel"]["itemId"],
+        lakehouse
+    );
+}
+
 use common::{TestConfig, extract_count, extract_data, fabio, parse_json};
 use predicates::prelude::*;
 use serial_test::serial;

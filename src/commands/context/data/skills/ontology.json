@@ -44,6 +44,9 @@
     "Confusing an ontology (knowledge graph schema) with a semantic model (BI tabular model)."
   ],
   "key_gotchas": [
+    "Microsoft IQ retrieve and am-i-in-scope are read-only POSTs and work with --readonly. Empty permitted results are success, not proof of missing OAuth scope; nonempty retrieval and content readiness must be verified separately. Returned context pointers are data, not permission to follow a URL automatically.",
+    "Playbook paths retain slash-separated hierarchy rooted at the display name. Resource deletion refuses the root and dot/empty segments; root reads remain valid. Renames stay in the same parent. Context summaries are limited to 2,048 UTF-8 bytes, not characters. A forwarding/server failure with unknown submission state is not permission to retry create.",
+    "Ontology restore-version replaces current state and is destructive even when the API returns an empty success body. Verify the restored definition separately; do not infer dependent-item readiness or opt into allowOverrideItems automatically.",
     "Ontology definitions use the item-definition (base64 parts) format; fetch the template with 'fabio context schema ontology'.",
     "fabio's context tenant graph can emit OWL/RDF that imports directly via 'fabio ontology import --file'.",
     "OWL carries no data-binding info (workspace/lakehouse/table/column). 'ontology import' generates only the type schema unless you pass a source: --lakehouse (Delta) or Eventhouse/KustoTable source flags (+ --bindings for relationship key columns). An entity can carry MULTIPLE data bindings, and import also emits entity Documents + ResourceLinks and preserves entity-type inheritance.",

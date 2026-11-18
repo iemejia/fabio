@@ -9,6 +9,115 @@ use tempfile::TempDir;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn metadata_sync_mutations_honor_readonly_without_dispatch() {
+    let server = MockServer::start().await;
+    for subcommand in ["preflight-metadata-sync-upgrade", "upgrade-metadata-sync"] {
+        let output = common::mock_fabio(&server)
+            .args([
+                "--readonly",
+                "sql-endpoint",
+                subcommand,
+                "--workspace",
+                "00000000-0000-0000-0000-000000000001",
+                "--id",
+                "00000000-0000-0000-0000-000000000002",
+            ])
+            .assert()
+            .failure();
+        assert_eq!(
+            common::parse_error(&output)["error"]["code"],
+            "READONLY_MODE"
+        );
+    }
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn metadata_sync_status_not_found_is_not_replaced_with_success() {
+    let server = MockServer::start().await;
+    let workspace = "00000000-0000-0000-0000-000000000001";
+    let endpoint = "00000000-0000-0000-0000-000000000002";
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/workspaces/{workspace}/sqlEndpoints/{endpoint}/metadataSyncMigrationStatus"
+        )))
+        .respond_with(ResponseTemplate::new(404).set_body_json(
+            serde_json::json!({"errorCode": "EntityNotFound", "message": "Entity not found"}),
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let output = common::mock_fabio(&server)
+        .args([
+            "--readonly",
+            "sql-endpoint",
+            "metadata-sync-migration-status",
+            "--workspace",
+            workspace,
+            "--id",
+            endpoint,
+        ])
+        .assert()
+        .failure()
+        .code(5);
+    assert_eq!(common::parse_error(&output)["error"]["code"], "NOT_FOUND");
+    assert_eq!(output.get_output().stdout.len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn metadata_preflight_follows_the_lro_without_resubmitting() {
+    let server = MockServer::start().await;
+    let workspace = "00000000-0000-0000-0000-000000000001";
+    let endpoint = "00000000-0000-0000-0000-000000000002";
+    let operation = "00000000-0000-0000-0000-000000000003";
+    Mock::given(method("POST"))
+        .and(path(format!(
+            "/workspaces/{workspace}/sqlEndpoints/{endpoint}/preflightMetadataSyncUpgrade"
+        )))
+        .respond_with(
+            ResponseTemplate::new(202)
+                .insert_header("x-ms-operation-id", operation)
+                .insert_header("Retry-After", "0"),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!("/operations/{operation}")))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header(
+                    "Location",
+                    format!("{}/operations/{operation}/result", server.uri()),
+                )
+                .set_body_json(serde_json::json!({"status": "Succeeded"})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!("/operations/{operation}/result")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            serde_json::json!({"evaluatedTableCount": 1, "eligibleTableCount": 1, "blockers": []}),
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let output = common::mock_fabio(&server)
+        .args([
+            "sql-endpoint",
+            "preflight-metadata-sync-upgrade",
+            "--workspace",
+            workspace,
+            "--id",
+            endpoint,
+        ])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&output)["data"]["eligibleTableCount"], 1);
+}
+
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]

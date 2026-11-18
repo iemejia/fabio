@@ -1,5 +1,248 @@
 mod common;
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn share_bulk_requests_use_beta_and_preserve_typed_payloads() {
+    use serde_json::json;
+    use wiremock::matchers::{body_json, method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    let ws = "00000000-0000-0000-0000-000000000001";
+    let share = "00000000-0000-0000-0000-000000000002";
+    let policy = "00000000-0000-0000-0000-000000000003";
+    let item = json!({"referenceType": "ById", "itemId": share, "workspaceId": ws});
+    let recipient = json!({"type": "User", "email": "synthetic@example.com"});
+    let properties = json!({"expirationDateTime": "2027-12-31T23:59:59Z"});
+    let asset = json!({"item": item, "shareAs": "Self"});
+    let rule = json!({"type": "ShareExpiration", "properties": properties});
+    for (command, suffix, request) in [
+        (
+            "initialize",
+            "initializeShare".to_string(),
+            json!({"assets": [asset], "recipients": [recipient], "sharePolicies": [rule]}),
+        ),
+        (
+            "bulk-add-assets",
+            "assets/bulkAdd".to_string(),
+            json!({"assets": [asset]}),
+        ),
+        (
+            "bulk-remove-assets",
+            "assets/bulkRemove".to_string(),
+            json!({"items": [item]}),
+        ),
+        (
+            "bulk-add-recipients",
+            "recipients/bulkAdd".to_string(),
+            json!({"recipients": [recipient]}),
+        ),
+        (
+            "bulk-remove-recipients",
+            "recipients/bulkRemove".to_string(),
+            json!({"recipients": [recipient]}),
+        ),
+        (
+            "bulk-add-policies",
+            "sharePolicies/bulkAdd".to_string(),
+            json!({"sharePolicies": [rule]}),
+        ),
+        (
+            "update-policy",
+            format!("sharePolicies/{policy}/update"),
+            json!({"id": policy, "type": "ShareExpiration", "properties": properties}),
+        ),
+        (
+            "bulk-remove-policies",
+            "sharePolicies/bulkRemove".to_string(),
+            json!({"sharePolicyIds": [policy]}),
+        ),
+    ] {
+        Mock::given(method("POST"))
+            .and(path(format!("/workspaces/{ws}/shares/{share}/{suffix}")))
+            .and(query_param("beta", "true"))
+            .and(body_json(&request))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"id": share})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let raw = request.to_string();
+        let mut args = vec![
+            "share",
+            command,
+            "--workspace",
+            ws,
+            "--id",
+            share,
+            "--content",
+            &raw,
+        ];
+        if command == "update-policy" {
+            args.extend(["--policy-id", policy]);
+        }
+        let output = common::mock_fabio(&server).args(args).assert().success();
+        assert_eq!(common::parse_json(&output)["data"]["id"], share);
+        server.verify().await;
+        server.reset().await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn share_content_lists_and_preview_preserve_scope_and_pagination() {
+    use serde_json::json;
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    let ws = "00000000-0000-0000-0000-000000000001";
+    let share = "00000000-0000-0000-0000-000000000002";
+    for (command, resource) in [
+        ("list-assets", "assets"),
+        ("list-recipients", "recipients"),
+        ("list-policies", "sharePolicies"),
+    ] {
+        Mock::given(method("GET"))
+            .and(path(format!("/workspaces/{ws}/shares/{share}/{resource}")))
+            .and(query_param("beta", "true"))
+            .and(query_param("continuationToken", "page/2+="))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"value": [{"id": share}], "continuationToken": "next"})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let output = common::mock_fabio(&server)
+            .args([
+                "--readonly",
+                "share",
+                command,
+                "--workspace",
+                ws,
+                "--id",
+                share,
+                "--continuation-token",
+                "page/2+=",
+            ])
+            .assert()
+            .success();
+        assert_eq!(common::parse_json(&output)["continuationToken"], "next");
+    }
+    let tenant = "00000000-0000-0000-0000-000000000003";
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/tenants/{tenant}/workspaces/{ws}/shares/{share}/preview"
+        )))
+        .and(query_param("beta", "true"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"shareId": share})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    common::mock_fabio(&server)
+        .args([
+            "--readonly",
+            "share",
+            "preview",
+            "--producer-tenant",
+            tenant,
+            "--producer-workspace",
+            ws,
+            "--producer-share",
+            share,
+        ])
+        .assert()
+        .success();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn invalid_share_batches_fail_before_network_including_dry_run() {
+    let server = wiremock::MockServer::start().await;
+    let ws = "00000000-0000-0000-0000-000000000001";
+    let share = "00000000-0000-0000-0000-000000000002";
+    for (command, body) in [
+        ("bulk-add-assets", r#"{"assets":[]}"#),
+        ("bulk-remove-assets", r#"{"items":[]}"#),
+        ("bulk-add-recipients", r#"{"recipients":[]}"#),
+        (
+            "bulk-remove-recipients",
+            r#"{"recipients":[{"type":"User"}]}"#,
+        ),
+        ("bulk-add-policies", r#"{"sharePolicies":[]}"#),
+        (
+            "bulk-remove-policies",
+            r#"{"sharePolicyIds":["not-a-uuid"]}"#,
+        ),
+        (
+            "bulk-add-assets",
+            r#"{"assets":[{"item":{"referenceType":"ByName","itemId":"unknown","workspaceId":"unknown"}}]}"#,
+        ),
+        (
+            "bulk-add-recipients",
+            r#"{"recipients":[{"type":"User","email":"a@example.com","userPrincipalName":"b@example.com"}]}"#,
+        ),
+        (
+            "bulk-add-policies",
+            r#"{"sharePolicies":[{"type":"Unknown","properties":{}}]}"#,
+        ),
+    ] {
+        let output = common::mock_fabio(&server)
+            .args([
+                "share",
+                command,
+                "--workspace",
+                ws,
+                "--id",
+                share,
+                "--content",
+                body,
+                "--dry-run",
+            ])
+            .assert()
+            .failure();
+        let error: serde_json::Value = serde_json::from_slice(&output.get_output().stderr).unwrap();
+        assert_eq!(error["error"]["code"], "INVALID_INPUT", "{command}");
+    }
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn share_mutations_honor_readonly_without_dispatch() {
+    let server = wiremock::MockServer::start().await;
+    for (command, content) in [
+        (
+            "bulk-add-recipients",
+            r#"{"recipients":[{"type":"User","email":"synthetic@example.com"}]}"#,
+        ),
+        (
+            "bulk-remove-recipients",
+            r#"{"recipients":[{"type":"User","email":"synthetic@example.com"}]}"#,
+        ),
+        (
+            "bulk-add-policies",
+            r#"{"sharePolicies":[{"type":"ShareExpiration","properties":{"expirationDateTime":"2027-12-31T23:59:59Z"}}]}"#,
+        ),
+        (
+            "bulk-remove-policies",
+            r#"{"sharePolicyIds":["00000000-0000-0000-0000-000000000003"]}"#,
+        ),
+    ] {
+        let output = common::mock_fabio(&server)
+            .args([
+                "--readonly",
+                "share",
+                command,
+                "--workspace",
+                "00000000-0000-0000-0000-000000000001",
+                "--id",
+                "00000000-0000-0000-0000-000000000002",
+                "--content",
+                content,
+            ])
+            .assert()
+            .failure();
+        let error: serde_json::Value = serde_json::from_slice(&output.get_output().stderr).unwrap();
+        assert_eq!(error["error"]["code"], "READONLY_MODE");
+    }
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
+}
+
 use common::{extract_data, fabio, parse_json};
 
 #[test]

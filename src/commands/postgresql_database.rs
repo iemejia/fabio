@@ -9,6 +9,7 @@ use crate::output;
 
 const COLLECTION: &str = "postgreSQLDatabases";
 const PART: &str = "definition.pgschema";
+const REBUILD_WARNING: &str = "--allow-table-rebuild is active: schema changes may rebuild objects and permanently lose affected data.";
 
 #[derive(Debug, Subcommand)]
 pub enum PostgreSqlDatabaseCommand {
@@ -152,6 +153,7 @@ pub async fn execute(
             name,
             description,
         } => {
+            validate_metadata(name.as_deref(), description.as_deref())?;
             crate::commands::crud::update(
                 cli,
                 client,
@@ -232,6 +234,62 @@ async fn create(
     if let Some(folder) = folder_id {
         validate_uuid(folder, "--folder-id")?;
     }
+    let body = create_body(
+        name,
+        description,
+        folder_id,
+        originating_product,
+        null_creation_payload,
+        definition,
+    )?;
+    if output::dry_run_guard(
+        cli,
+        "postgresql-database create",
+        &json!({ "workspace": workspace, "request": body }),
+    ) {
+        return Ok(());
+    }
+    let data = client
+        .post(
+            &format!("/workspaces/{workspace}/{COLLECTION}"),
+            &body,
+            true,
+        )
+        .await
+        .map_err(|error| enrich_forbidden(error, "postgresql-database create", "Contributor"))?;
+    output::render_object(cli, &data, "id");
+    Ok(())
+}
+
+fn validate_metadata(name: Option<&str>, description: Option<&str>) -> Result<()> {
+    if name.is_some_and(|value| value.trim().is_empty() || value.encode_utf16().count() > 63) {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "PostgreSQL database name must be non-empty and at most 63 UTF-16 code units",
+            "Shorten --name; supplementary Unicode characters count as two code units.",
+        )
+        .into());
+    }
+    if description.is_some_and(|value| value.encode_utf16().count() > 256) {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "PostgreSQL database description exceeds 256 UTF-16 code units",
+            "Shorten --description to 256 code units or fewer.",
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn create_body(
+    name: &str,
+    description: Option<&str>,
+    folder_id: Option<&str>,
+    originating_product: Option<&str>,
+    null_creation_payload: bool,
+    definition: Option<&str>,
+) -> Result<Value> {
+    validate_metadata(Some(name), description)?;
     let mut body = json!({ "displayName": name });
     if let Some(value) = description {
         body["description"] = Value::from(value);
@@ -255,23 +313,7 @@ async fn create(
     } else if let Some(value) = originating_product {
         body["creationPayload"] = json!({ "originatingProduct": value });
     }
-    if output::dry_run_guard(
-        cli,
-        "postgresql-database create",
-        &json!({ "workspace": workspace, "request": body }),
-    ) {
-        return Ok(());
-    }
-    let data = client
-        .post(
-            &format!("/workspaces/{workspace}/{COLLECTION}"),
-            &body,
-            true,
-        )
-        .await
-        .map_err(|error| enrich_forbidden(error, "postgresql-database create", "Contributor"))?;
-    output::render_object(cli, &data, "id");
-    Ok(())
+    Ok(body)
 }
 
 async fn update_definition(
@@ -283,6 +325,8 @@ async fn update_definition(
     content: Option<&str>,
     allow_table_rebuild: bool,
 ) -> Result<()> {
+    validate_uuid(workspace, "--workspace")?;
+    validate_uuid(id, "--id")?;
     let raw = match (file, content) {
         (Some(path), _) => std::fs::read_to_string(path)?,
         (_, Some(value)) => value.to_string(),
@@ -300,14 +344,14 @@ async fn update_definition(
     if allow_table_rebuild {
         body["options"] = json!({ "allowTableRebuild": true });
     }
-    if output::dry_run_guard(
-        cli,
-        "postgresql-database update-definition",
-        &json!({ "workspace": workspace, "id": id, "request": body }),
-    ) {
+    let mut preview = json!({ "workspace": workspace, "id": id, "request": body });
+    if allow_table_rebuild {
+        preview["warning"] = Value::from(REBUILD_WARNING);
+    }
+    if output::dry_run_guard(cli, "postgresql-database update-definition", &preview) {
         return Ok(());
     }
-    let data = client
+    let mut data = client
         .post(
             &format!("/workspaces/{workspace}/{COLLECTION}/{id}/updateDefinition"),
             &body,
@@ -321,20 +365,70 @@ async fn update_definition(
                 "Contributor",
             )
         })?;
+    if allow_table_rebuild {
+        if !data.is_object() {
+            data = json!({ "result": data });
+        }
+        data["destructive"] = Value::Bool(true);
+        data["warning"] = Value::from(REBUILD_WARNING);
+    }
     output::render_object(cli, &data, "id");
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use super::*;
 
     #[test]
     fn creation_payload_serializes_originating_product() {
-        let body = json!({ "creationPayload": { "originatingProduct": "MigrationTool" } });
+        let body = create_body("database", None, None, Some("MigrationTool"), false, None).unwrap();
         assert_eq!(
             body["creationPayload"]["originatingProduct"],
             "MigrationTool"
         );
+    }
+
+    #[test]
+    fn creation_distinguishes_omitted_and_explicit_null_payload() {
+        let omitted = create_body("database", None, None, None, false, None).unwrap();
+        assert!(omitted.get("creationPayload").is_none());
+        let explicit = create_body("database", None, None, None, true, None).unwrap();
+        assert_eq!(explicit.get("creationPayload"), Some(&Value::Null));
+    }
+
+    #[test]
+    fn creation_wraps_schema_in_the_published_definition_part() {
+        use base64::Engine;
+        let sql = "CREATE TABLE example (id bigint);";
+        let body = create_body(
+            "database",
+            Some("Synthetic schema"),
+            Some("folder"),
+            None,
+            false,
+            Some(sql),
+        )
+        .unwrap();
+        assert_eq!(body["definition"]["format"], "pgschema");
+        assert_eq!(body["definition"]["parts"][0]["path"], PART);
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(body["definition"]["parts"][0]["payload"].as_str().unwrap())
+                .unwrap(),
+            sql.as_bytes()
+        );
+        assert!(body.get("creationPayload").is_none());
+        assert_eq!(body["folderId"], "folder");
+    }
+
+    #[test]
+    fn metadata_limits_handle_supplementary_unicode() {
+        assert!(validate_metadata(Some(&"a".repeat(63)), Some(&"a".repeat(256))).is_ok());
+        assert!(validate_metadata(Some(&"\u{1f600}".repeat(31)), None).is_ok());
+        assert!(validate_metadata(Some(&"\u{1f600}".repeat(32)), None).is_err());
+        assert!(validate_metadata(Some(&"a".repeat(64)), None).is_err());
+        assert!(validate_metadata(None, Some(&"a".repeat(257))).is_err());
+        assert!(validate_metadata(Some(" \t"), None).is_err());
     }
 }

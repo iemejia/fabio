@@ -389,6 +389,230 @@ fn test_show_pool_activation_returns_diagnostics() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn custom_live_pool_run_returns_the_accepted_job_without_replaying() {
+    let server = MockServer::start().await;
+    let route = format!(
+        "/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/jobs/runCustomLivePool/instances"
+    );
+    let location = format!(
+        "https://api.fabric.microsoft.com/v1/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/jobs/instances/{MOCK_ACTIVATION}"
+    );
+    Mock::given(method("POST"))
+        .and(path(route))
+        .respond_with(ResponseTemplate::new(202).insert_header("Location", location))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let output = mock_fabio(&server)
+        .args([
+            "environment",
+            "run-custom-live-pool",
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&output)["data"]["jobInstanceId"],
+        MOCK_ACTIVATION
+    );
+    assert_eq!(server.received_requests().await.unwrap()[0].body.len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn custom_live_pool_schedule_crud_uses_the_background_job_route() {
+    use wiremock::matchers::body_json;
+    let server = MockServer::start().await;
+    let base = format!(
+        "/workspaces/{MOCK_WORKSPACE}/environments/{MOCK_ENVIRONMENT}/jobs/runCustomLivePool/schedules"
+    );
+    let schedule = "dddddddd-1111-2222-3333-444444444444";
+    let item = format!("{base}/{schedule}");
+    let body =
+        serde_json::json!({"enabled": false, "configuration": {"type": "Cron", "interval": 1440}});
+    let raw = body.to_string();
+    for (command, verb, route, extra, response) in [
+        (
+            "create-custom-live-pool-schedule",
+            "POST",
+            base.as_str(),
+            vec!["--content", raw.as_str()],
+            serde_json::json!({"id": schedule, "enabled": false}),
+        ),
+        (
+            "list-custom-live-pool-schedules",
+            "GET",
+            base.as_str(),
+            vec![],
+            serde_json::json!({"value": [{"id": schedule}], "continuationToken": "next"}),
+        ),
+        (
+            "show-custom-live-pool-schedule",
+            "GET",
+            item.as_str(),
+            vec!["--schedule-id", schedule],
+            serde_json::json!({"id": schedule}),
+        ),
+        (
+            "update-custom-live-pool-schedule",
+            "PATCH",
+            item.as_str(),
+            vec!["--schedule-id", schedule, "--content", raw.as_str()],
+            serde_json::json!({"id": schedule, "enabled": false}),
+        ),
+        (
+            "delete-custom-live-pool-schedule",
+            "DELETE",
+            item.as_str(),
+            vec!["--schedule-id", schedule],
+            serde_json::json!({}),
+        ),
+    ] {
+        let mut mock = Mock::given(method(verb)).and(path(route));
+        if matches!(verb, "POST" | "PATCH") {
+            mock = mock.and(body_json(&body));
+        }
+        mock.respond_with(ResponseTemplate::new(200).set_body_json(response))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let mut args = vec![
+            "environment",
+            command,
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+        ];
+        args.extend(extra);
+        let output = mock_fabio(&server).args(args).assert().success();
+        let response = parse_json(&output);
+        if command == "list-custom-live-pool-schedules" {
+            assert_eq!(response["count"], 1);
+            assert_eq!(response["continuationToken"], "next");
+        } else {
+            assert_eq!(response["data"]["id"], schedule);
+        }
+        server.verify().await;
+        server.reset().await;
+    }
+}
+
+#[test]
+#[ignore = "creates an owned environment in FABIO_TEST_SOURCE_WORKSPACE; schedules stay disabled"]
+fn custom_live_pool_disabled_schedule_lifecycle_live() {
+    let fixture = common::ScopedTestItem::create("environment", "pool_schedule");
+    let start = chrono::Utc::now() + chrono::Duration::days(1);
+    let end = start + chrono::Duration::days(1);
+    let body = serde_json::json!({"enabled": false, "configuration": {
+        "type": "Cron", "interval": 1440, "localTimeZoneId": "UTC",
+        "startDateTime": start.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        "endDateTime": end.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+    }});
+    let output = fixture
+        .command("create-custom-live-pool-schedule")
+        .args(["--content", &body.to_string()])
+        .assert()
+        .success();
+    let response = parse_json(&output);
+    let schedule = response["data"]["id"].as_str().unwrap();
+    assert_eq!(response["data"]["enabled"], false);
+    let output = fixture
+        .command("show-custom-live-pool-schedule")
+        .args(["--schedule-id", schedule, "--readonly"])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&output)["data"]["id"], schedule);
+    let mut revised = body;
+    revised["configuration"]["interval"] = serde_json::json!(720);
+    let output = fixture
+        .command("update-custom-live-pool-schedule")
+        .args(["--schedule-id", schedule, "--content", &revised.to_string()])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&output)["data"]["enabled"], false);
+    assert_eq!(
+        parse_json(&output)["data"]["configuration"]["interval"],
+        720
+    );
+    fixture
+        .command("delete-custom-live-pool-schedule")
+        .args(["--schedule-id", schedule])
+        .assert()
+        .success();
+    let output = fixture
+        .command("list-custom-live-pool-schedules")
+        .arg("--readonly")
+        .assert()
+        .success();
+    assert_eq!(parse_json(&output)["data"], serde_json::json!([]));
+    fixture.cleanup();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn custom_live_pool_schedule_invalid_inputs_and_readonly_never_dispatch() {
+    let server = MockServer::start().await;
+    for body in [
+        "[]",
+        "{}",
+        r#"{"enabled":"yes","configuration":{}}"#,
+        r#"{"enabled":false,"configuration":null}"#,
+    ] {
+        mock_fabio(&server)
+            .args([
+                "environment",
+                "create-custom-live-pool-schedule",
+                "--workspace",
+                MOCK_WORKSPACE,
+                "--id",
+                MOCK_ENVIRONMENT,
+                "--content",
+                body,
+                "--dry-run",
+            ])
+            .assert()
+            .failure();
+    }
+    for (command, extra) in [
+        ("run-custom-live-pool", vec![]),
+        (
+            "create-custom-live-pool-schedule",
+            vec!["--content", r#"{"enabled":false,"configuration":{}}"#],
+        ),
+        (
+            "update-custom-live-pool-schedule",
+            vec![
+                "--schedule-id",
+                MOCK_ACTIVATION,
+                "--content",
+                r#"{"enabled":false,"configuration":{}}"#,
+            ],
+        ),
+        (
+            "delete-custom-live-pool-schedule",
+            vec!["--schedule-id", MOCK_ACTIVATION],
+        ),
+    ] {
+        let mut args = vec![
+            "--readonly",
+            "environment",
+            command,
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ENVIRONMENT,
+        ];
+        args.extend(extra);
+        let output = mock_fabio(&server).args(args).assert().failure();
+        let error: serde_json::Value = serde_json::from_slice(&output.get_output().stderr).unwrap();
+        assert_eq!(error["error"]["code"], "READONLY_MODE", "{command}");
+    }
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn pool_activation_pagination_preserves_state_and_page_size() {
     let server = MockServer::start().await;
     let url =

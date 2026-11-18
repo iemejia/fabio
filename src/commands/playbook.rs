@@ -230,6 +230,48 @@ pub enum PlaybookCommand {
 
 #[allow(clippy::too_many_lines)]
 pub async fn execute(cli: &Cli, client: &FabricClient, command: &PlaybookCommand) -> Result<()> {
+    let resource = match command {
+        PlaybookCommand::PutSection(args) | PlaybookCommand::PutGroup(args) => {
+            if let Some(source) = &args.rename_source {
+                validate_logical_path(source)?;
+                if source.rsplit_once('/').map(|(parent, _)| parent)
+                    != args
+                        .resource
+                        .path
+                        .rsplit_once('/')
+                        .map(|(parent, _)| parent)
+                {
+                    return Err(FabioError::with_hint(
+                        ErrorCode::InvalidInput,
+                        "Playbook renames must remain within the same parent",
+                        "Change only the leaf name in --path; keep --rename-source in the same parent.",
+                    ).into());
+                }
+            }
+            Some(&args.resource)
+        }
+        PlaybookCommand::DeleteSection(args) | PlaybookCommand::DeleteGroup(args) => {
+            Some(&args.resource)
+        }
+        PlaybookCommand::AddSectionRoleAssignment(args) => Some(&args.resource),
+        PlaybookCommand::GetSection(args)
+        | PlaybookCommand::ListGroups(args)
+        | PlaybookCommand::GetGroup(args)
+        | PlaybookCommand::ListSectionRoleAssignments(args)
+        | PlaybookCommand::DeleteContext(args) => Some(args),
+        PlaybookCommand::UpdateSectionRoleAssignment { resource, .. }
+        | PlaybookCommand::DeleteSectionRoleAssignment { resource, .. }
+        | PlaybookCommand::PutContext { resource, .. }
+        | PlaybookCommand::GetContext { resource, .. }
+        | PlaybookCommand::UpdateContext { resource, .. }
+        | PlaybookCommand::GetContextContent { resource, .. } => Some(resource),
+        _ => None,
+    };
+    if let Some(resource) = resource {
+        validate_uuid(&resource.workspace, "--workspace")?;
+        validate_uuid(&resource.id, "--id")?;
+        validate_logical_path(&resource.path)?;
+    }
     match command {
         PlaybookCommand::List { workspace } => {
             crate::commands::crud::list(
@@ -426,6 +468,44 @@ fn encode_logical_path(path: &str) -> String {
         .join("/")
 }
 
+fn validate_logical_path(path: &str) -> Result<()> {
+    if path
+        .split('/')
+        .any(|segment| segment.trim().is_empty() || matches!(segment, "." | ".."))
+    {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "An empty or traversal Playbook path is not a valid logical path",
+            "Provide a complete path such as Playbook/Section or Playbook/Section/_context/Group; omit leading/trailing slashes and dot segments.",
+        ).into());
+    }
+    Ok(())
+}
+
+fn validate_delete_path(path: &str) -> Result<()> {
+    validate_logical_path(path)?;
+    if !path.contains('/') {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "The Playbook root cannot be deleted through a resource path",
+            "Provide the complete path of one section, group, or context beneath the Playbook root.",
+        ).into());
+    }
+    Ok(())
+}
+
+fn validate_summary(summary: &str) -> Result<()> {
+    if summary.trim().is_empty() || summary.len() > 2048 {
+        return Err(FabioError::with_hint(
+            ErrorCode::InvalidInput,
+            "Context summary must be non-empty and at most 2,048 UTF-8 bytes",
+            "Provide --summary with a shorter, non-empty summary.",
+        )
+        .into());
+    }
+    Ok(())
+}
+
 fn resource_path(args: &ResourceArgs, kind: &str) -> String {
     format!(
         "/workspaces/{}/{COLLECTION}/{}/sections/{}?resource={kind}",
@@ -556,14 +636,7 @@ async fn delete_resource(
     kind: &str,
     operation: &str,
 ) -> Result<()> {
-    if args.resource.path.trim_matches('/').is_empty() {
-        return Err(FabioError::with_hint(
-            ErrorCode::InvalidInput,
-            "A root or empty Playbook path cannot be deleted.",
-            "Provide the complete path of one section or group.",
-        )
-        .into());
-    }
+    validate_delete_path(&args.resource.path)?;
     if output::dry_run_guard(
         cli,
         operation,
@@ -732,6 +805,7 @@ async fn mutate_context(
     replace: bool,
     body: Value,
 ) -> Result<()> {
+    validate_summary(body["summary"].as_str().unwrap_or_default())?;
     let operation = if replace {
         "playbook put-context"
     } else {
@@ -770,6 +844,7 @@ async fn get_context(
 }
 
 async fn delete_context(cli: &Cli, client: &FabricClient, args: &ResourceArgs) -> Result<()> {
+    validate_delete_path(&args.path)?;
     if output::dry_run_guard(
         cli,
         "playbook delete-context",
@@ -816,6 +891,64 @@ mod tests {
         assert_eq!(
             resource_path(&args, "section"),
             "/workspaces/ws/playbooks/pb/sections/Playbook/Section%20A?resource=section"
+        );
+    }
+
+    #[test]
+    fn logical_paths_reject_empty_and_normalization_hazards() {
+        for path in [
+            "",
+            "/",
+            "///",
+            "Playbook/",
+            "/Playbook/Section",
+            "Playbook//Section",
+            "Playbook/.",
+            "Playbook/../Section",
+            "Playbook/ ",
+        ] {
+            assert!(validate_logical_path(path).is_err(), "{path:?}");
+        }
+        for path in [
+            "Playbook",
+            "Playbook/Section",
+            "Playbook/Section/_context/Group",
+            "Café/Équipe A",
+        ] {
+            assert!(validate_logical_path(path).is_ok(), "{path}");
+        }
+    }
+
+    #[test]
+    fn deletion_refuses_the_playbook_root_but_keeps_root_reads_valid() {
+        assert!(validate_logical_path("Playbook").is_ok());
+        assert!(validate_delete_path("Playbook").is_err());
+        assert!(validate_delete_path("Playbook/Section").is_ok());
+    }
+
+    #[test]
+    fn summary_limit_counts_utf8_bytes_not_characters() {
+        assert!(validate_summary(&"x".repeat(2048)).is_ok());
+        assert!(validate_summary(&"é".repeat(1024)).is_ok());
+        for summary in [
+            String::new(),
+            " \r\n".to_string(),
+            "x".repeat(2049),
+            "é".repeat(1025),
+        ] {
+            assert!(validate_summary(&summary).is_err());
+        }
+    }
+
+    #[test]
+    fn path_encoding_does_not_turn_delimiters_into_routes_or_queries() {
+        assert_eq!(
+            encode_logical_path("Café/Section?#%"),
+            "Caf%C3%A9/Section%3F%23%25"
+        );
+        assert_eq!(
+            encode_logical_path("Playbook/literal%2Fslash"),
+            "Playbook/literal%252Fslash"
         );
     }
 }

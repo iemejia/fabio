@@ -319,4 +319,32 @@ mod tests {
         assert_eq!(restore_body(None, None).unwrap(), json!({}));
         assert!(restore_body(None, Some("[]")).is_err());
     }
+
+    #[test]
+    fn version_metadata_accepts_exact_limits_and_description_clear() {
+        assert!(create_body(&"x".repeat(100), Some(&"x".repeat(500)), None).is_ok());
+        assert_eq!(
+            update_body(None, Some("")).unwrap(),
+            json!({"description": ""})
+        );
+        assert_eq!(
+            create_body("Snapshot", None, None).unwrap(),
+            json!({"displayName": "Snapshot"})
+        );
+    }
+
+    #[test]
+    fn restore_file_matches_inline_and_rejects_conflicting_inputs() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("restore.json");
+        let content = r#"{"allowOverrideItems":false}"#;
+        std::fs::write(&path, content).unwrap();
+        assert_eq!(
+            restore_body(Some(path.to_str().unwrap()), None).unwrap(),
+            restore_body(None, Some(content)).unwrap()
+        );
+        assert!(restore_body(Some(path.to_str().unwrap()), Some(content)).is_err());
+        assert!(restore_body(None, Some("{")).is_err());
+        assert!(restore_body(None, Some("null")).is_err());
+    }
 }

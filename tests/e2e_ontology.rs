@@ -14,6 +14,187 @@ const MOCK_ONTOLOGY: &str = "bbbbbbbb-1111-2222-3333-444444444444";
 const MOCK_VERSION: &str = "cccccccc-1111-2222-3333-444444444444";
 
 #[test]
+#[ignore = "creates an owned ontology and restores only that fixture in FABIO_TEST_SOURCE_WORKSPACE"]
+fn ontology_version_lifecycle_live() {
+    let fixture = common::ScopedTestItem::create("ontology", "version_test");
+    let output = fixture
+        .command("create-version")
+        .args(["--name", "Snapshot", "--creation-source", "Manual"])
+        .assert()
+        .success();
+    let response = parse_json(&output);
+    let version = response["data"]["id"].as_str().unwrap();
+    assert_eq!(response["data"]["creationSource"], "Manual");
+    let output = fixture
+        .command("show-version")
+        .args(["--version-id", version, "--readonly"])
+        .assert()
+        .success();
+    assert_eq!(parse_json(&output)["data"]["id"], version);
+    let output = fixture
+        .command("update-version")
+        .args(["--version-id", version, "--description", "Revised snapshot"])
+        .assert()
+        .success();
+    assert_eq!(
+        parse_json(&output)["data"]["description"]
+            .as_str()
+            .unwrap()
+            .trim_prefix("<<<UNTRUSTED>>>")
+            .trim_suffix("<<<END_UNTRUSTED>>>"),
+        "Revised snapshot"
+    );
+    let output = fixture
+        .command("list-versions")
+        .arg("--readonly")
+        .assert()
+        .success();
+    assert_eq!(parse_json(&output)["count"], 1);
+    fixture
+        .command("restore-version")
+        .args(["--version-id", version])
+        .assert()
+        .success();
+    fixture
+        .command("delete-version")
+        .args(["--version-id", version])
+        .assert()
+        .success();
+    let output = fixture
+        .command("list-versions")
+        .arg("--readonly")
+        .assert()
+        .success();
+    assert_eq!(parse_json(&output)["data"], serde_json::json!([]));
+    fixture.cleanup();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ontology_version_lifecycle_uses_beta_and_preserves_metadata() {
+    use serde_json::json;
+    use wiremock::matchers::{body_json, method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    let collection = format!("/workspaces/{MOCK_WORKSPACE}/ontologies/{MOCK_ONTOLOGY}/versions");
+    let item = format!("{collection}/{MOCK_VERSION}");
+    let restore = format!("{item}/restore");
+    for (command, verb, route, extra, body, response) in [
+        (
+            "create-version",
+            "POST",
+            collection.as_str(),
+            vec!["--name", "Snapshot", "--creation-source", "Manual"],
+            Some(json!({"displayName": "Snapshot", "creationSource": "Manual"})),
+            json!({"id": MOCK_VERSION}),
+        ),
+        (
+            "list-versions",
+            "GET",
+            collection.as_str(),
+            vec![],
+            None,
+            json!({"value": [{"id": MOCK_VERSION}], "continuationToken": "next"}),
+        ),
+        (
+            "show-version",
+            "GET",
+            item.as_str(),
+            vec!["--version-id", MOCK_VERSION],
+            None,
+            json!({"id": MOCK_VERSION}),
+        ),
+        (
+            "update-version",
+            "PATCH",
+            item.as_str(),
+            vec!["--version-id", MOCK_VERSION, "--description", ""],
+            Some(json!({"description": ""})),
+            json!({"id": MOCK_VERSION}),
+        ),
+        (
+            "restore-version",
+            "POST",
+            restore.as_str(),
+            vec![
+                "--version-id",
+                MOCK_VERSION,
+                "--content",
+                r#"{"allowOverrideItems":false}"#,
+            ],
+            Some(json!({"options": {"allowOverrideItems": false}})),
+            json!({"id": MOCK_VERSION}),
+        ),
+        (
+            "delete-version",
+            "DELETE",
+            item.as_str(),
+            vec!["--version-id", MOCK_VERSION],
+            None,
+            json!({}),
+        ),
+    ] {
+        let mut mock = Mock::given(method(verb))
+            .and(path(route))
+            .and(query_param("beta", "true"));
+        if let Some(body) = body {
+            mock = mock.and(body_json(body));
+        }
+        mock.respond_with(ResponseTemplate::new(200).set_body_json(response))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let mut args = vec![
+            "ontology",
+            command,
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ONTOLOGY,
+        ];
+        args.extend(extra);
+        let output = common::mock_fabio(&server).args(args).assert().success();
+        let response = parse_json(&output);
+        if command == "list-versions" {
+            assert_eq!(response["count"], 1);
+            assert_eq!(response["continuationToken"], "next");
+        } else {
+            assert_eq!(response["data"]["id"], MOCK_VERSION);
+        }
+        server.verify().await;
+        server.reset().await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ontology_version_mutations_are_blocked_by_readonly() {
+    let server = wiremock::MockServer::start().await;
+    for (command, extra) in [
+        ("create-version", vec!["--name", "Snapshot"]),
+        (
+            "update-version",
+            vec!["--version-id", MOCK_VERSION, "--name", "Renamed"],
+        ),
+        ("restore-version", vec!["--version-id", MOCK_VERSION]),
+        ("delete-version", vec!["--version-id", MOCK_VERSION]),
+    ] {
+        let mut args = vec![
+            "--readonly",
+            "ontology",
+            command,
+            "--workspace",
+            MOCK_WORKSPACE,
+            "--id",
+            MOCK_ONTOLOGY,
+        ];
+        args.extend(extra);
+        let output = common::mock_fabio(&server).args(args).assert().failure();
+        let error: Value = serde_json::from_slice(&output.get_output().stderr).unwrap();
+        assert_eq!(error["error"]["code"], "READONLY_MODE", "{command}");
+    }
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
+}
+
+#[test]
 fn test_create_version_dry_run() {
     let output = fabio()
         .args([

@@ -25,7 +25,7 @@ fn publish_path(workspace: &str, lakehouse: &str, name: &str) -> String {
 }
 
 fn validate_name(name: &str) -> Result<()> {
-    if name.is_empty() {
+    if name.trim().is_empty() {
         return Err(FabioError::with_hint(
             ErrorCode::InvalidInput,
             "Semantic view name cannot be empty",
@@ -109,6 +109,7 @@ mod tests {
     #[test]
     fn empty_semantic_view_name_is_rejected() {
         assert!(validate_name("").is_err());
+        assert!(validate_name(" \t\r\n").is_err());
         assert!(validate_name("sales_overview").is_ok());
     }
 }

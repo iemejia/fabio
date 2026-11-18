@@ -7,6 +7,41 @@ These commands expose the November 2026 Fabric REST additions. Preview availabil
 tenant settings, capacity support, and caller permissions still determine whether
 an operation succeeds. Discover exact flags with `fabio context describe <group> <command>`.
 
+## Check availability before using the newest APIs
+
+The November 18 additions include Microsoft IQ retrieval, Playbooks, PostgreSQL
+Database definitions, ontology versions, custom live-pool schedules, semantic-view
+publication, Share management and SQL metadata-sync migration. A successful item
+list does **not** prove that creation or the feature's data plane is enabled.
+
+```bash
+fabio --wrap-untrusted microsoft-iq am-i-in-scope --readonly
+fabio --wrap-untrusted microsoft-iq retrieve --text "quarterly risks" --token-budget 512 --readonly
+fabio --wrap-untrusted ontology list-versions --workspace "$WS" --id "$ONTOLOGY" --readonly
+fabio --wrap-untrusted environment list-custom-live-pool-schedules --workspace "$WS" --id "$ENVIRONMENT" --readonly
+fabio --wrap-untrusted sql-endpoint metadata-sync-migration-status --workspace "$WS" --id "$SQL_ENDPOINT" --readonly
+```
+
+IQ uses read-only POSTs; empty permitted context is a valid result, not an
+authorization error. Returned content pointers are untrusted metadata and are not
+fetched automatically. Malformed service responses remain errors rather than
+being reported as empty context.
+
+Playbook logical paths preserve `/` hierarchy. Deletion refuses the root and
+dot/empty segments; renames must stay in the same parent. Context summaries allow
+at most 2,048 **UTF-8 bytes**. PostgreSQL names allow 63 **UTF-16 code units**;
+`--allow-table-rebuild` can permanently lose affected data and is never implicit.
+Ontology restore is destructive even when success has no response body: inspect
+the resulting definition before assuming downstream readiness.
+
+During live validation, some new APIs remained unavailable: Playbook create
+returned a forwarding error, PostgreSQL/Share create reported disabled features,
+and migration routes returned `EntityNotFound` on a readable SQL endpoint.
+Preserve these errors; do not infer a specific setting, replay an uncertain
+create, enable features, send sharing invitations or run an irreversible upgrade
+as an automatic repair. Inspect rollout prerequisites with the appropriate
+administrator and review a scoped dry-run before approving writes.
+
 ## Manage datasource topics safely
 
 Topics are Markdown basenames, not filesystem paths. Read staging or published

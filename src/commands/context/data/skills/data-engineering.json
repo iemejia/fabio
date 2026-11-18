@@ -36,6 +36,7 @@
     "Ignoring cold-start latency on small capacity (first Spark run takes minutes)."
   ],
   "key_gotchas": [
+    "Custom live-pool schedule CRUD uses environment jobs/runCustomLivePool/schedules. Keep test schedules disabled; schedule creation does not prove a pool was hydrated. run-custom-live-pool submits compute work and returns its job identity; do not replay an accepted or uncertain submission to obtain status.",
     "Project Osmos is a remote autonomous data-engineering service, not Fabric data-agent Q&A or a Fabio command group. Upstream task/MWC interfaces exist and read-only discovery was verified, but built-in lifecycle mutations are deferred. Route explicit Osmos requests to the reviewed upstream skill only with installation/execution approval; never invent fabio osmos commands, assume the default lakehouse limits scope or recreate a task after uncertainty. See project-osmos.",
     "A cloud connection blocked by DMTS_BlockedByAuthenticationKindPolicies or inter-tenant data-loss-prevention needs tenant-admin allowlist review, not a password reset, workspace grant or identity/credential-mode switch. Do not retry or weaken enforcement automatically. See connection-policies.",
     "environment diagnostics --workspace <WS> --id <ENV> inspects publishing/compute and bounded activation history. Select --activation-id for one resource breakdown; do not assume history is newest-first or Succeeded means clusters are currently warm. Staging differences require review, not automatic publishing.",

@@ -81,6 +81,15 @@ pub fn parse_json(output: &assert_cmd::assert::Assert) -> Value {
     serde_json::from_str(&stdout).expect("failed to parse stdout as JSON")
 }
 
+/// Parse the structured error while allowing diagnostic lines on stderr.
+pub fn parse_error(output: &assert_cmd::assert::Assert) -> Value {
+    String::from_utf8_lossy(&output.get_output().stderr)
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .find(|value| value.get("error").is_some())
+        .expect("missing structured error on stderr")
+}
+
 /// Extract the `data` field from a fabio JSON envelope.
 pub fn extract_data(json: &Value) -> &Value {
     json.get("data").expect("missing 'data' field in response")
@@ -100,4 +109,82 @@ pub fn unique_name(prefix: &str) -> String {
         .unwrap()
         .as_millis();
     format!("{prefix}_{ts}")
+}
+
+/// A live-test fixture owned by one test. Never points at a pre-existing item.
+///
+/// Needs only `FABIO_TEST_SOURCE_WORKSPACE`, unlike the broad legacy config.
+/// Explicit cleanup is asserted; Drop is a best-effort fallback after a panic.
+pub struct ScopedTestItem {
+    pub workspace: String,
+    pub id: String,
+    pub name: String,
+    group: String,
+    cleanup_attempted: bool,
+}
+
+impl ScopedTestItem {
+    pub fn create(group: &str, prefix: &str) -> Self {
+        let workspace = required_env("FABIO_TEST_SOURCE_WORKSPACE");
+        let name = unique_name(prefix);
+        let output = fabio()
+            .args([
+                "--wrap-untrusted",
+                group,
+                "create",
+                "--workspace",
+                &workspace,
+                "--name",
+                &name,
+            ])
+            .timeout(std::time::Duration::from_mins(4))
+            .assert()
+            .success();
+        let id = extract_data(&parse_json(&output))["id"]
+            .as_str()
+            .expect("created fixture must return an ID")
+            .to_string();
+        Self {
+            workspace,
+            id,
+            name,
+            group: group.to_string(),
+            cleanup_attempted: false,
+        }
+    }
+
+    pub fn command(&self, subcommand: &str) -> Command {
+        let mut command = fabio();
+        command.args([
+            "--wrap-untrusted",
+            &self.group,
+            subcommand,
+            "--workspace",
+            &self.workspace,
+            "--id",
+            &self.id,
+        ]);
+        command.timeout(std::time::Duration::from_mins(4));
+        command
+    }
+
+    pub fn cleanup(mut self) {
+        // Never replay a failed/uncertain explicit deletion from Drop.
+        self.cleanup_attempted = true;
+        self.command("delete").assert().success();
+    }
+}
+
+impl Drop for ScopedTestItem {
+    fn drop(&mut self) {
+        if !self.cleanup_attempted {
+            match self.command("delete").output() {
+                Ok(output) if output.status.success() => {}
+                _ => eprintln!(
+                    "Warning: failed to delete a test-owned {} fixture",
+                    self.group
+                ),
+            }
+        }
+    }
 }
