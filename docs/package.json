@@ -23,6 +23,7 @@
     "typescript": "6.0.3"
   },
   "overrides": {
+    "picomatch": "npm:@ryotsu/picomatch@4.0.7-a",
     "postcss-selector-parser": "7.1.6"
   }
 }

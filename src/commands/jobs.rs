@@ -1,5 +1,4 @@
 use anyhow::Result;
-use chrono::Utc;
 use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -97,7 +96,7 @@ impl JobEntry {
             status: "running".to_string(),
             workspace: workspace.to_string(),
             item_id: item_id.to_string(),
-            started_at: Utc::now().to_rfc3339(),
+            started_at: crate::datetime::now_rfc3339(),
             completed_at: None,
             duration_secs: None,
             error: None,

@@ -1234,12 +1234,14 @@ async fn custom_live_pool_schedule_crud_uses_the_background_job_route() {
 #[ignore = "creates an owned environment in FABIO_TEST_SOURCE_WORKSPACE; schedules stay disabled"]
 fn custom_live_pool_disabled_schedule_lifecycle_live() {
     let fixture = common::ScopedTestItem::create("environment", "pool_schedule");
-    let start = chrono::Utc::now() + chrono::Duration::days(1);
-    let end = start + chrono::Duration::days(1);
+    let start = (time::OffsetDateTime::now_utc() + time::Duration::days(1))
+        .replace_nanosecond(0)
+        .unwrap();
+    let end = start + time::Duration::days(1);
     let body = serde_json::json!({"enabled": false, "configuration": {
         "type": "Cron", "interval": 1440, "localTimeZoneId": "UTC",
-        "startDateTime": start.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-        "endDateTime": end.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+        "startDateTime": start.format(&time::format_description::well_known::Rfc3339).unwrap(),
+        "endDateTime": end.format(&time::format_description::well_known::Rfc3339).unwrap()
     }});
     let output = fixture
         .command("create-custom-live-pool-schedule")

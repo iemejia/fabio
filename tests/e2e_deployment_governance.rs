@@ -124,9 +124,11 @@ fn live_workspace_diagnostics_observes_policy_without_remediation() {
             0
         );
     }
-    let expiration = (chrono::Utc::now() + chrono::Duration::minutes(5))
-        .format("%Y-%m-%dT%H:%M:%SZ")
-        .to_string();
+    let expiration = (time::OffsetDateTime::now_utc() + time::Duration::minutes(5))
+        .format(time::macros::format_description!(
+            "[year]-[month]-[day]T[hour]:[minute]:[second]Z"
+        ))
+        .unwrap();
     let create = [
         "capacity",
         "create-blocked-actor",
@@ -1057,9 +1059,11 @@ fn live_capacity_blocked_actor_lifecycle() {
         &capacity,
     ]));
     let (workspace, _workspace_resource) = new_workspace();
-    let expiration = (chrono::Utc::now() + chrono::Duration::minutes(10))
-        .format("%Y-%m-%dT%H:%M:%SZ")
-        .to_string();
+    let expiration = (time::OffsetDateTime::now_utc() + time::Duration::minutes(10))
+        .format(time::macros::format_description!(
+            "[year]-[month]-[day]T[hour]:[minute]:[second]Z"
+        ))
+        .unwrap();
     let create = [
         "capacity",
         "create-blocked-actor",
@@ -2213,12 +2217,13 @@ fn live_native_plan_orders_and_executes_actions() {
     native_action_deployment(false);
 }
 
-fn job_timestamp(value: &str) -> chrono::DateTime<chrono::Utc> {
-    chrono::DateTime::parse_from_rfc3339(value)
-        .map(|value| value.with_timezone(&chrono::Utc))
+fn job_timestamp(value: &str) -> time::OffsetDateTime {
+    time::OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339)
         .or_else(|_| {
-            chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S%.f")
-                .map(|value| value.and_utc())
+            time::OffsetDateTime::parse(
+                &format!("{value}Z"),
+                &time::format_description::well_known::Rfc3339,
+            )
         })
         .expect("UTC job timestamp format")
 }

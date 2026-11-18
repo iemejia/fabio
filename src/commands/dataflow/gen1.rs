@@ -6,7 +6,6 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 
 use anyhow::Result;
-use chrono::Utc;
 use serde::Serialize;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -388,7 +387,7 @@ pub(super) async fn plan(
     output::render_object(
         cli,
         &json!({
-            "observedAt":Utc::now().to_rfc3339(),"scope":scope,"assessmentScan":scan,"status":status,
+            "observedAt":crate::datetime::now_rfc3339(),"scope":scope,"assessmentScan":scan,"status":status,
             "partial":!scan.complete || checks.iter().any(|check|check.status==Status::Unknown),"mutates":false,"destructive":true,"checks":checks,
             "reviewPlan":{"applied":false,"readyToApply":false,"requiresApproval":true,"destructive":true,"mode":"gen1_to_gen2_in_place","selectedCount":targets.len(),"allSelectedAssessmentsReady":all_ready,"guardedPreview":all_ready.then(||preview(workspace,&targets)),
             "blockers":["explicit_approval_not_recorded","all_consumers_and_storage_security_not_verified","historical_data_backup_or_reload_not_verified","post_upgrade_refresh_and_consumer_validation_not_planned","execution_receipt_not_created"]},

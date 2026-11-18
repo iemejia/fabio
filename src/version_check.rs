@@ -48,6 +48,13 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+#[cfg(test)]
+use time::Duration;
+use time::OffsetDateTime;
+
+#[cfg(test)]
+use crate::datetime::format_rfc3339;
+use crate::datetime::{now_rfc3339, parse_rfc3339};
 
 use crate::cli::{Cli, Command};
 
@@ -222,7 +229,7 @@ fn maybe_spawn_auto_upgrade() -> bool {
     if detect_install_method() != InstallMethod::Standalone {
         return false;
     }
-    if !auto_upgrade_throttle_allows(chrono::Utc::now()) {
+    if !auto_upgrade_throttle_allows(OffsetDateTime::now_utc()) {
         return false;
     }
     // Record the attempt first; only spawn if it persisted (an un-throttleable
@@ -235,7 +242,7 @@ fn maybe_spawn_auto_upgrade() -> bool {
 
 /// Whether the auto-upgrade throttle permits an attempt now (no marker, or the
 /// last attempt is older than [`AUTO_UPGRADE_RETRY_INTERVAL_HOURS`]).
-fn auto_upgrade_throttle_allows(now: chrono::DateTime<chrono::Utc>) -> bool {
+fn auto_upgrade_throttle_allows(now: OffsetDateTime) -> bool {
     let Some(path) = auto_upgrade_marker_path() else {
         return false; // no home dir → cannot throttle → do not spawn
     };
@@ -247,11 +254,9 @@ fn auto_upgrade_throttle_allows(now: chrono::DateTime<chrono::Utc>) -> bool {
 
 /// Pure throttle decision for testing: a missing/malformed timestamp is "due",
 /// otherwise due once the interval has elapsed.
-fn auto_upgrade_due_at(last_attempt: &str, now: chrono::DateTime<chrono::Utc>) -> bool {
-    chrono::DateTime::parse_from_rfc3339(last_attempt).map_or(true, |then| {
-        now.signed_duration_since(then.with_timezone(&chrono::Utc))
-            .num_hours()
-            >= AUTO_UPGRADE_RETRY_INTERVAL_HOURS
+fn auto_upgrade_due_at(last_attempt: &str, now: OffsetDateTime) -> bool {
+    parse_rfc3339(last_attempt).map_or(true, |then| {
+        (now - then).whole_hours() >= AUTO_UPGRADE_RETRY_INTERVAL_HOURS
     })
 }
 
@@ -264,7 +269,7 @@ fn record_auto_upgrade_attempt() -> bool {
         let _ = std::fs::create_dir_all(parent);
     }
     let tmp = path.with_extension("tmp");
-    if std::fs::write(&tmp, chrono::Utc::now().to_rfc3339()).is_ok() {
+    if std::fs::write(&tmp, now_rfc3339()).is_ok() {
         return std::fs::rename(&tmp, &path).is_ok();
     }
     false
@@ -317,7 +322,7 @@ pub fn write_cache(latest_version: &str) -> bool {
         let _ = std::fs::create_dir_all(parent);
     }
     let cache = VersionCache {
-        last_checked: chrono::Utc::now().to_rfc3339(),
+        last_checked: now_rfc3339(),
         latest_version: latest_version.to_string(),
     };
     let Ok(serialized) = serde_json::to_string(&cache) else {
@@ -333,16 +338,14 @@ pub fn write_cache(latest_version: &str) -> bool {
 
 /// Whether the cache is old enough to warrant a background refresh.
 fn is_stale(cache: &VersionCache) -> bool {
-    is_stale_at(&cache.last_checked, chrono::Utc::now())
+    is_stale_at(&cache.last_checked, OffsetDateTime::now_utc())
 }
 
 /// Pure staleness check against a reference time, for deterministic testing.
 /// A malformed timestamp is treated as stale.
-fn is_stale_at(last_checked: &str, now: chrono::DateTime<chrono::Utc>) -> bool {
-    chrono::DateTime::parse_from_rfc3339(last_checked).map_or(true, |then| {
-        now.signed_duration_since(then.with_timezone(&chrono::Utc))
-            .num_hours()
-            >= REFRESH_INTERVAL_HOURS
+fn is_stale_at(last_checked: &str, now: OffsetDateTime) -> bool {
+    parse_rfc3339(last_checked).map_or(true, |then| {
+        (now - then).whole_hours() >= REFRESH_INTERVAL_HOURS
     })
 }
 
@@ -483,24 +486,38 @@ mod tests {
 
     #[test]
     fn stale_when_older_than_interval() {
-        let now = chrono::Utc::now();
-        let fresh = (now - chrono::Duration::hours(1)).to_rfc3339();
-        let old = (now - chrono::Duration::hours(REFRESH_INTERVAL_HOURS + 1)).to_rfc3339();
+        let now = OffsetDateTime::now_utc();
+        let fresh = format_rfc3339(now - Duration::hours(1));
+        let old = format_rfc3339(now - Duration::hours(REFRESH_INTERVAL_HOURS + 1));
         assert!(!is_stale_at(&fresh, now));
         assert!(is_stale_at(&old, now));
     }
 
     #[test]
     fn stale_at_exact_interval_boundary() {
-        let now = chrono::Utc::now();
-        let exactly = (now - chrono::Duration::hours(REFRESH_INTERVAL_HOURS)).to_rfc3339();
+        let now = OffsetDateTime::now_utc();
+        let exactly = format_rfc3339(now - Duration::hours(REFRESH_INTERVAL_HOURS));
         assert!(is_stale_at(&exactly, now));
     }
 
     #[test]
     fn malformed_timestamp_is_stale() {
-        assert!(is_stale_at("not-a-timestamp", chrono::Utc::now()));
-        assert!(is_stale_at("", chrono::Utc::now()));
+        assert!(is_stale_at("not-a-timestamp", OffsetDateTime::now_utc()));
+        assert!(is_stale_at("", OffsetDateTime::now_utc()));
+    }
+
+    #[test]
+    fn throttles_preserve_offsets_subseconds_and_future_markers() {
+        let now = parse_rfc3339("2026-11-18T12:00:00Z").unwrap();
+        assert!(!is_stale_at("2026-11-17T17:30:00.000000001+05:30", now));
+        assert!(is_stale_at("2026-11-17T17:30:00+05:30", now));
+        assert!(!auto_upgrade_due_at(
+            "2026-11-18T16:30:00.000000001+05:30",
+            now
+        ));
+        assert!(auto_upgrade_due_at("2026-11-18T16:30:00+05:30", now));
+        assert!(!is_stale_at("2027-01-01T00:00:00Z", now));
+        assert!(!auto_upgrade_due_at("2027-01-01T00:00:00Z", now));
     }
 
     #[test]
@@ -585,12 +602,10 @@ mod tests {
 
     #[test]
     fn auto_upgrade_throttle_boundary() {
-        let now = chrono::Utc::now();
-        let recent = (now - chrono::Duration::minutes(30)).to_rfc3339();
-        let old =
-            (now - chrono::Duration::hours(AUTO_UPGRADE_RETRY_INTERVAL_HOURS + 1)).to_rfc3339();
-        let exactly =
-            (now - chrono::Duration::hours(AUTO_UPGRADE_RETRY_INTERVAL_HOURS)).to_rfc3339();
+        let now = OffsetDateTime::now_utc();
+        let recent = format_rfc3339(now - Duration::minutes(30));
+        let old = format_rfc3339(now - Duration::hours(AUTO_UPGRADE_RETRY_INTERVAL_HOURS + 1));
+        let exactly = format_rfc3339(now - Duration::hours(AUTO_UPGRADE_RETRY_INTERVAL_HOURS));
         assert!(!auto_upgrade_due_at(&recent, now)); // throttled
         assert!(auto_upgrade_due_at(&old, now)); // due
         assert!(auto_upgrade_due_at(&exactly, now)); // due at the boundary

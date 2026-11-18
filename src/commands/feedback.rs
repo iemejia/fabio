@@ -3,7 +3,6 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use anyhow::Result;
-use chrono::Utc;
 use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -55,7 +54,7 @@ fn send(cli: &Cli, message: &str) -> Result<()> {
     }
 
     let entry = FeedbackEntry {
-        timestamp: Utc::now().to_rfc3339(),
+        timestamp: crate::datetime::now_rfc3339(),
         message: message.to_string(),
     };
 

@@ -4,7 +4,6 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
-use chrono::Utc;
 use serde::Serialize;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -438,7 +437,7 @@ pub(super) async fn execute(
     };
     let status = summary(all_checks());
     let partial = all_checks().any(|check| check.status == Status::Unknown);
-    let report = json!({"connectionId":encode_id(connection),"workspaceId":encode_id(workspace),"itemId":encode_id(item),"observedAt":Utc::now().to_rfc3339(),
+    let report = json!({"connectionId":encode_id(connection),"workspaceId":encode_id(workspace),"itemId":encode_id(item),"observedAt":crate::datetime::now_rfc3339(),
         "scope":scope,"status":status,"partial":partial,"checks":checks,"connections":connections,"references":scan,
         "notChecked":["stored credential validity", "source authorization", "workspace identity token acquisition", "gateway health", "code-first usage eligibility", "workload execution"],
         "limitations":"Ready applies only to requested configuration observations. No credential tests, role scans, tenant inventories, admin probes, identity provisioning, ownership transfer, or source requests are performed."});

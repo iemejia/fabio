@@ -1,6 +1,6 @@
 [package]
 name = "fabio"
-version = "0.83.0-dev"
+version = "0.83.0"
 edition = "2024"
 rust-version = "1.100.0"
 description = "Agent-first CLI for managing Microsoft Fabric artifacts and data"
@@ -54,8 +54,8 @@ anyhow = "1"
 # Output formatting
 comfy-table = "8"
 
-# Date/time (clock = Utc::now(); no timezone DB needed)
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# UTC date/time (shared with the Azure SDK; no local timezone database needed)
+time = { version = "0.3.55", features = ["formatting", "parsing", "macros"] }
 
 # Home directory resolution
 home = "0.5"

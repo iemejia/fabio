@@ -1742,7 +1742,11 @@ fn build_scan_metadata(
     }
     let etag = format!("sha256:{hex_str}");
 
-    let scanned_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let scanned_at = crate::datetime::format_rfc3339(
+        time::OffsetDateTime::now_utc()
+            .replace_nanosecond(0)
+            .expect("zero nanoseconds is valid"),
+    );
 
     ScanMetadata {
         scanned_at,

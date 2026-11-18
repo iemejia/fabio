@@ -76,7 +76,7 @@ fn validate(
         || (!is_upgrade && !entry.target_ids.is_empty())
         || entry.fabric_endpoint.as_deref() != Some(endpoint)
         || !crate::client::is_secure_or_loopback(endpoint)
-        || chrono::DateTime::parse_from_rfc3339(&entry.started_at).is_err()
+        || crate::datetime::parse_rfc3339(&entry.started_at).is_err()
         || !matches!(
             entry.submission_state.as_deref(),
             Some("accepted" | "acknowledged" | "unknown")
@@ -102,7 +102,7 @@ fn validate(
     entry.extra.insert("remoteVerified".into(), json!(false));
     entry
         .extra
-        .insert("importedAt".into(), json!(chrono::Utc::now().to_rfc3339()));
+        .insert("importedAt".into(), json!(crate::datetime::now_rfc3339()));
     entry.status = "unknown".to_string();
     entry.completed_at = None;
     entry.duration_secs = None;

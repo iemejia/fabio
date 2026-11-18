@@ -29,12 +29,17 @@ cargo outdated --root-deps-only
 cargo update
 
 # Security audit — MUST pass with zero vulnerabilities
-cargo audit
+cargo audit --deny warnings
+
+# Audit the full website toolchain too (including development dependencies)
+npm --prefix docs ci --ignore-scripts
+npm --prefix docs audit --audit-level=low
+npm --prefix docs test
 ```
 
 **Rules:**
 - Update any dependency with a newer compatible version (within semver range).
-- `cargo audit` MUST report zero vulnerabilities. If a CVE exists, upgrade the affected crate. If no patched version is available, evaluate the risk and add to `audit.toml` ignore list ONLY if the vulnerability is unexploitable in fabio's usage.
+- Rust and npm audits MUST report zero vulnerabilities, and RustSec warnings also block a release. Fix or replace affected dependencies; if no safe fix is available, stop before tagging. Do not waive findings or add advisory ignores to force a release. A patched replacement requires source/integrity review and bounded exploit regressions; a scanner-clean rename alone is not a fix.
 - For major bumps, check changelog for breaking changes.
 - Reject copyleft licenses (GPL, LGPL, AGPL, SSPL). Only permissive (MIT, Apache-2.0, BSD, ISC, Zlib, Unicode-3.0).
 - Run full pre-commit validation after updating dependencies.
@@ -121,7 +126,9 @@ section of AGENTS.md for where each kind of knowledge lives.
 cargo fmt -- --check
 cargo clippy --tests -- -D warnings
 cargo test
-cargo audit
+cargo audit --deny warnings
+npm --prefix docs audit --audit-level=low
+npm --prefix docs test
 ./scripts/cross-check.sh
 ```
 

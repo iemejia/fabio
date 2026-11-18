@@ -5,9 +5,9 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 use anyhow::Result;
-use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::{Value, json};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::cli::Cli;
@@ -302,13 +302,15 @@ fn surge_configuration(body: Result<Value>, capacity: &str) -> Check {
     }
 }
 
-fn block_active(record: &Value, now: DateTime<Utc>) -> Option<bool> {
+fn block_active(record: &Value, now: OffsetDateTime) -> Option<bool> {
     let policy = &record["expirationPolicy"];
     match policy["policyType"].as_str()? {
         "NeverExpire" => Some(true),
-        "ExpireAfterDate" => DateTime::parse_from_rfc3339(policy["expireAfterDateTime"].as_str()?)
-            .ok()
-            .map(|expiration| expiration > now),
+        "ExpireAfterDate" => {
+            crate::datetime::parse_rfc3339(policy["expireAfterDateTime"].as_str()?)
+                .ok()
+                .map(|expiration| expiration > now)
+        }
         _ => None,
     }
 }
@@ -318,7 +320,7 @@ fn actor_checks(
     critical: &ActorScan,
     capacity: &str,
     workspace: Uuid,
-    now: DateTime<Utc>,
+    now: OffsetDateTime,
 ) -> [Check; 2] {
     let has_critical = !critical.matches.is_empty();
     let enforcement: HashSet<_> = blocked
@@ -362,7 +364,7 @@ fn actor_checks(
         "workspace_block",
         status,
         message,
-        json!({"source": "capacity blockedActors", "scan": blocked, "evaluatedAt": now.to_rfc3339()}),
+        json!({"source": "capacity blockedActors", "scan": blocked, "evaluatedAt": crate::datetime::format_rfc3339(now)}),
         readonly("capacity", "list-blocked-actors", capacity),
     );
     if status != Status::Ready {
@@ -437,7 +439,7 @@ async fn capacity_checks(
         &critical,
         capacity,
         workspace,
-        Utc::now(),
+        OffsetDateTime::now_utc(),
     ));
     checks
 }
@@ -557,7 +559,7 @@ pub(super) async fn execute(
     let status = summary(&checks);
     let partial = checks.iter().any(|check| check.status == Status::Unknown);
     let report = json!({
-        "workspaceId": workspace_id, "capacityId": capacity_id, "observedAt": Utc::now().to_rfc3339(),
+        "workspaceId": workspace_id, "capacityId": capacity_id, "observedAt": crate::datetime::now_rfc3339(),
         "scope": scope, "status": status, "partial": partial, "checks": checks,
         "notChecked": omissions(include_surge),
         "limitations": "Ready applies only to requested configuration observations. This is not end-to-end workload readiness. Unrequested surge checks and unobserved evidence are not inferred. No mutations or automatic remediation are performed."
@@ -597,8 +599,8 @@ mod tests {
     const CAP: &str = "bbbbbbbb-1111-2222-3333-444444444444";
     const ACTOR: &str = "cccccccc-1111-2222-3333-444444444444";
 
-    fn now() -> DateTime<Utc> {
-        "2026-11-02T12:00:00Z".parse().unwrap()
+    fn now() -> OffsetDateTime {
+        crate::datetime::parse_rfc3339("2026-11-02T12:00:00Z").unwrap()
     }
 
     fn actor(workspace: &str, policy: Value) -> Value {

@@ -557,7 +557,7 @@ pub(super) async fn inspect(
     let partial = all().any(|check| check.status == Status::Unknown);
     Report {
         status,
-        observed_at: chrono::Utc::now().to_rfc3339(),
+        observed_at: crate::datetime::now_rfc3339(),
         partial,
         scope,
         usage: budget.usage,

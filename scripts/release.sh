@@ -49,7 +49,7 @@ echo ""
 sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$VERSION\"/" Cargo.toml
 
 # Regenerate Cargo.lock with the new version
-cargo check --quiet 2>/dev/null || true
+cargo check --quiet
 
 # ── Step 2: Validate dependency freshness ───────────────────────────────────
 
@@ -113,6 +113,14 @@ if ! cargo test; then
   echo "ERROR: Tests failed. Fix them before releasing."
   exit 1
 fi
+
+echo "        cargo audit --deny warnings"
+cargo audit --deny warnings
+
+echo "        Audit website dependencies and test glob security"
+npm --prefix docs ci --ignore-scripts
+npm --prefix docs audit --audit-level=low
+npm --prefix docs test
 
 echo "        ./scripts/cross-check.sh"
 if [[ -x "./scripts/cross-check.sh" ]]; then

@@ -5,9 +5,9 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use anyhow::Result;
-use chrono::{DateTime, TimeDelta, Utc};
 use serde::Serialize;
 use serde_json::{Value, json};
+use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::cli::Cli;
@@ -165,9 +165,9 @@ fn target(body: &Value) -> Option<Target> {
 fn recency(
     body: &Value,
     connection: Uuid,
-    cutoff: DateTime<Utc>,
-    threshold: DateTime<Utc>,
-    now: DateTime<Utc>,
+    cutoff: OffsetDateTime,
+    threshold: OffsetDateTime,
+    now: OffsetDateTime,
 ) -> (Check, bool) {
     let values = &body["connectionRecency"];
     let created = parse_ts(values.get("createdDateTime"));
@@ -228,7 +228,7 @@ fn recency(
         "connection_recency",
         status,
         "Recency is a lagged historical review signal, not current binding coverage, source credential health or permission to retire a connection. Missing/malformed events remain unknown.",
-        json!({"reason":reason,"creationTimeReported":created.is_some(),"bindingTimeReported":bound.is_some(),"credentialUseTimeReported":used.is_some(),"daysSinceCredentialUse":used.filter(|time|*time<=now).map(|time|(now-time).num_days()),"historicalReviewCandidate":candidate}),
+        json!({"reason":reason,"creationTimeReported":created.is_some(),"bindingTimeReported":bound.is_some(),"credentialUseTimeReported":used.is_some(),"daysSinceCredentialUse":used.filter(|time|*time<=now).map(|time|(now-time).whole_days()),"historicalReviewCandidate":candidate}),
         show(connection),
     );
     if status != Status::Ready {
@@ -397,7 +397,7 @@ pub(super) async fn execute(
         )
         .into());
     }
-    let now = Utc::now();
+    let now = OffsetDateTime::now_utc();
     let cutoff = parse_date(created_after)?;
     if cutoff < parse_date("2026-05-01")? || cutoff > now {
         return Err(FabioError::with_hint(ErrorCode::InvalidInput,"Hygiene recency cutoff must be between the reliable 2026-05-01 boundary and today.","Choose a reliable --created-after date; old/null recency is not proof of unused connections.").into());
@@ -490,12 +490,12 @@ pub(super) async fn execute(
                 } else {
                     uncomparable += 1;
                 }
-                let evaluated = Utc::now();
+                let evaluated = OffsetDateTime::now_utc();
                 let (recency_check, candidate) = recency(
                     &body,
                     connection,
                     cutoff,
-                    evaluated - TimeDelta::days(i64::from(unused_days)),
+                    evaluated - Duration::days(i64::from(unused_days)),
                     evaluated,
                 );
                 found.push(recency_check);
@@ -602,7 +602,7 @@ pub(super) async fn execute(
     let destructive = actions.iter().any(|action| action.destructive);
     output::render_object(
         cli,
-        &json!({"observedAt":Utc::now().to_rfc3339(),"scope":scope,"status":status,"partial":partial,"mutates":false,"destructive":destructive,"checks":checks,"connections":observations,
+        &json!({"observedAt":crate::datetime::now_rfc3339(),"scope":scope,"status":status,"partial":partial,"mutates":false,"destructive":destructive,"checks":checks,"connections":observations,
         "reviewPlan":{"readyToApply":false,"requiresApproval":true,"destructive":destructive,"actions":actions,"applied":false},
         "notChecked":["all current item/external dependencies or proof of unused connections","principal existence, employment or membership","stored credential health, source authorization and other identities","human approval, credential handoff or mutation permissions","connections outside selected/bounded inventory"],
         "limitations":"GET-only historical metadata and review previews. No credential test, grants, ownership transfer, rebinding, deletion, directory probe or automatic ordinary-connection fallback was performed."}),
@@ -617,7 +617,7 @@ pub(super) async fn execute(
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn times() -> (DateTime<Utc>, DateTime<Utc>, DateTime<Utc>) {
+    fn times() -> (OffsetDateTime, OffsetDateTime, OffsetDateTime) {
         (
             parse_date("2026-05-01").unwrap(),
             parse_date("2026-08-01").unwrap(),

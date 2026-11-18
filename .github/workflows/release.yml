@@ -13,7 +13,8 @@ permissions:
 
 jobs:
   # Correctness gate for the release path: a tagged release cannot proceed unless
-  # formatting, lints, and the FULL test suite pass on the exact tagged commit.
+  # Rust/npm security audits, formatting, lints, and the FULL test suite pass on
+  # the exact tagged commit. RustSec warnings also block artifact publication.
   # This includes the skills/context consistency gates
   # (every_command_group_has_a_knowledge_home, subskills_match_generated,
   # agent_schema_covers_all_{groups,subcommands}) — so skills + context must be
@@ -22,7 +23,7 @@ jobs:
   # on push/PR).
   validate:
     runs-on: ubuntu-latest
-    name: validate (fmt, clippy, tests)
+    name: validate (security, fmt, clippy, tests)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install Rust toolchain
@@ -41,10 +42,26 @@ jobs:
             release-validate-cargo-
       - name: Format check
         run: cargo fmt -- --check
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --version 0.23.0 --locked
+      - name: Audit Rust dependencies (deny warnings)
+        run: cargo audit --deny warnings
+      - name: Install Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+      - name: Install website dependencies without lifecycle scripts
+        run: npm --prefix docs ci --ignore-scripts
+      - name: Audit all website dependencies
+        run: npm --prefix docs audit --audit-level=low
+      - name: Test website scripts and glob security regressions
+        run: npm --prefix docs test
       - name: Clippy (deny warnings)
-        run: cargo clippy --tests -- -D warnings
+        run: cargo clippy --locked --tests -- -D warnings
       - name: Test suite (incl. skills/context consistency gates)
-        run: cargo test
+        run: cargo test --locked
 
   build:
     needs: validate
@@ -106,7 +123,7 @@ jobs:
             release-${{ matrix.artifact }}-target-
 
       - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --locked --release --target ${{ matrix.target }}
         env:
           CC_aarch64_unknown_linux_musl: musl-gcc
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc

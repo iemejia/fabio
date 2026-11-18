@@ -89,5 +89,16 @@ One-time repo setup: **Settings → Pages → Source = "GitHub Actions"**.
 
 ## Conventions
 
+- `picomatch` is temporarily overridden throughout the dependency graph with the
+  exact MIT-licensed `@ryotsu/picomatch@4.0.7-a` security fork for
+  [CVE-2026-112366](https://github.com/advisories/GHSA-fc5q-39xc-vjpf).
+  Upstream `4.0.7` is still affected; do not remove the override just to satisfy
+  upstream version ranges. The published files were compared to source commit
+  `3ab5a7627d480259e3d9ca67fbc14c125d374f0e`, its runtime diff was reviewed, and
+  the lockfile pins its registry integrity. `npm test` checks resolution,
+  compatibility and the reported attacks in a timeout-bounded subprocess.
+  Replace it with a fixed upstream release only after those checks, `npm audit`,
+  `npm run check` and `npm run build` pass; a package rename alone is not a fix.
+
 - Pin exact dependency versions in `package.json` (no `^`/`~`).
 - Add/adjust unit tests in `scripts/*.test.mjs` when changing `scripts/*.mjs`.

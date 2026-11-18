@@ -120,7 +120,7 @@ where
                 total_emitted += new_rows.len();
                 serde_json::json!({
                     "cycle": cycle,
-                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                    "timestamp": crate::datetime::now_rfc3339(),
                     "count": new_rows.len(),
                     "columns": columns,
                     "rows": new_rows,
@@ -128,7 +128,7 @@ where
             }
             Err(e) => serde_json::json!({
                 "cycle": cycle,
-                "timestamp": chrono::Utc::now().to_rfc3339(),
+                "timestamp": crate::datetime::now_rfc3339(),
                 "error": e.to_string(),
             }),
         };

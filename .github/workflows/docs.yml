@@ -41,6 +41,9 @@ jobs:
       - name: Install dependencies
         working-directory: docs
         run: npm ci
+      - name: Audit all website dependencies
+        working-directory: docs
+        run: npm audit --audit-level=low
       - name: Test reference generator and link checker
         working-directory: docs
         run: npm test

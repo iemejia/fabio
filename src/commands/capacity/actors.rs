@@ -17,7 +17,11 @@ fn expiration_policy(
             Ok(serde_json::json!({"policyType": "NeverExpire"}))
         }
         (BlockedActorExpirationPolicy::ExpireAfterDate, Some(date)) => {
-            chrono::NaiveDateTime::parse_from_str(date, "%Y-%m-%dT%H:%M:%SZ").map_err(|_| {
+            time::PrimitiveDateTime::parse(
+                date,
+                time::macros::format_description!("[year]-[month]-[day]T[hour]:[minute]:[second]Z"),
+            )
+            .map_err(|_| {
                 FabioError::with_hint(
                     ErrorCode::InvalidInput,
                     "--expire-after must be a UTC timestamp in YYYY-MM-DDTHH:mm:ssZ format",

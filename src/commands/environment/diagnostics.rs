@@ -4,7 +4,6 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
-use chrono::Utc;
 use serde::Serialize;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -683,7 +682,7 @@ pub(super) async fn execute(
     let status = summary(&checks);
     let partial = checks.iter().any(|check| check.status == Status::Unknown);
     let report = json!({"workspaceId":workspace.to_string(),"environmentId":encode_id(environment),"activationId":encode_id(activation),"session":selected,
-        "observedAt":Utc::now().to_rfc3339(),"scope":scope,"status":status,"partial":partial,"checks":checks,"activationHistory":history_data,
+        "observedAt":crate::datetime::now_rfc3339(),"scope":scope,"status":status,"partial":partial,"checks":checks,"activationHistory":history_data,
         "notChecked":["session/environment/activation binding","exact application attempt pinning","raw log contents","library compatibility and staged library parity","arbitrary Spark properties","source authorization","live capacity headroom","workload execution"],
         "limitations":"These are explicitly selected configuration/historical/runtime observations, not end-to-end readiness or a causal diagnosis. No jobs, sessions, activations, publishes, cancellations, configuration changes, or source probes are started."});
     output::render_object(cli, &report, "status");

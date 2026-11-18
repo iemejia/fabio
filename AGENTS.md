@@ -35,6 +35,7 @@ https://trevinsays.com/p/10-principles-for-agent-native-clis
 - CI: GitHub Actions (cargo fmt, clippy, test, build release) on ubuntu/macos/windows
 - Installable via `cargo install --git https://github.com/iemejia/fabio.git`
 - **Dependency version freshness** — When introducing a new Cargo dependency or a new GitHub Action, always validate that you are using the most recent available and compatible version. Check crates.io for Rust crates and the action's repository releases/tags for GitHub Actions. Do NOT copy outdated versions from examples or memory — verify against the source of truth before adding. Additionally, reject any dependency with an incompatible license (GPL, LGPL, AGPL, SSPL, or any other copyleft license that would impose restrictions on the project). Only permissive licenses (MIT, Apache-2.0, BSD, ISC, Zlib, Unicode-3.0, etc.) are acceptable.
+- **Security release gate** — Never publish with known unresolved dependency security findings. Require `cargo audit --deny warnings` and full `npm --prefix docs audit --audit-level=low`, plus security regression tests, before tagging. Do not waive findings, add blanket ignores, or rename a vulnerable package to silence the scanner; any patched replacement needs source/integrity review and bounded exploit regressions.
 - **GitHub Actions pinning** — ALL GitHub Actions in `.github/workflows/*.yml` MUST be pinned to their full commit SHA with the version in a trailing comment. Format: `uses: owner/action@<40-char-sha> # v<major>` (or `# v<major>.<minor>.<patch>` for non-major tags). NEVER use floating tag references like `@v7` or `@stable`. This prevents supply-chain attacks where a tag is force-pushed to a compromised commit. When updating an action, always verify the new SHA matches the expected release tag from the action's repository.
 - **Modern Rust idioms (MANDATORY)** — All code MUST leverage features available in the declared `rust-version` (currently 1.100.0). Do NOT write code using older patterns when a modern equivalent exists. When the MSRV is bumped, audit and migrate existing code. Key idioms to prefer:
   - `str::trim_prefix()` / `trim_suffix()` and `Path::trim_prefix()` instead of `strip_prefix()` / `strip_suffix()` followed by a fallback to the original value; keep fallible stripping when absence is an error
@@ -741,8 +742,8 @@ Published to GHCR on every push to `main` and on version tags:
 
 ```
 ghcr.io/iemejia/fabio:latest       # latest stable release
-ghcr.io/iemejia/fabio:0.82.0       # release version
-ghcr.io/iemejia/fabio:0.82         # major.minor
+ghcr.io/iemejia/fabio:0.83.0       # release version
+ghcr.io/iemejia/fabio:0.83         # major.minor
 ```
 
 Multi-arch manifest: `linux/amd64` + `linux/arm64`.

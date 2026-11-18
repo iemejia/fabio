@@ -636,6 +636,56 @@ fn warehouse_query_renders_datetime_as_iso8601() {
     );
 }
 
+/// No table, workload or source data is created/read: this SELECT contains only
+/// constants and validates the maintained time backend's actual TDS decoding.
+#[test]
+#[ignore = "requires source workspace/lakehouse test variables and live SQL auth; readonly constants only"]
+fn warehouse_temporal_backend_live_readonly_constants() {
+    let workspace =
+        std::env::var("FABIO_TEST_SOURCE_WORKSPACE").expect("source workspace required");
+    let item = std::env::var("FABIO_TEST_SOURCE_LAKEHOUSE").expect("source lakehouse required");
+    let result = fabio()
+        .args([
+            "warehouse",
+            "query",
+            "--workspace",
+            &workspace,
+            "--id",
+            &item,
+            "--readonly",
+            "--sql",
+            "SELECT CAST('0001-01-01' AS DATE) AS firstDate, \
+             CAST('9999-12-31' AS DATE) AS lastDate, \
+             CAST('2024-02-29T23:59:59.1234567' AS DATETIME2(7)) AS dt2, \
+             CAST('14:30:45.1234567' AS TIME(7)) AS tm, \
+             CAST('2026-01-15T14:30:45.123' AS DATETIME) AS legacy, \
+             CAST('2026-01-15T14:30:00' AS SMALLDATETIME) AS small, \
+             CAST('2026-01-15T00:15:00.1234567+05:30' AS DATETIMEOFFSET(7)) AS east, \
+             CAST('2026-01-15T23:45:00.1234567-05:30' AS DATETIMEOFFSET(7)) AS west",
+        ])
+        .timeout(std::time::Duration::from_mins(2))
+        .output()
+        .expect("execute readonly constant SELECT");
+    assert!(
+        result.status.success(),
+        "readonly temporal probe failed; inspect output privately"
+    );
+    let json: serde_json::Value = serde_json::from_slice(&result.stdout).expect("JSON response");
+    let row = &json["data"][0];
+    for (column, expected) in [
+        ("firstDate", "0001-01-01"),
+        ("lastDate", "9999-12-31"),
+        ("dt2", "2024-02-29T23:59:59.123456700"),
+        ("tm", "14:30:45.123456700"),
+        ("legacy", "2026-01-15T14:30:45.123"),
+        ("small", "2026-01-15T14:30"),
+        ("east", "2026-01-15T00:15:00.123456700+05:30"),
+        ("west", "2026-01-15T23:45:00.123456700-05:30"),
+    ] {
+        assert_eq!(row[column], expected, "synthetic temporal column: {column}");
+    }
+}
+
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]

@@ -9,9 +9,10 @@
 //! after human review.
 
 use anyhow::Result;
-use chrono::{DateTime, NaiveDate, TimeDelta, Utc};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+use time::macros::format_description;
+use time::{Date, Duration, OffsetDateTime};
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
@@ -20,21 +21,15 @@ use crate::output;
 
 /// Parse an RFC 3339 timestamp (e.g. `2026-06-01T00:00:00Z`) into a UTC instant.
 /// Returns `None` for a missing/null field or an unparseable value.
-pub fn parse_ts(v: Option<&Value>) -> Option<DateTime<Utc>> {
+pub fn parse_ts(v: Option<&Value>) -> Option<OffsetDateTime> {
     let s = v?.as_str()?;
-    DateTime::parse_from_rfc3339(s)
-        .ok()
-        .map(|dt| dt.with_timezone(&Utc))
+    crate::datetime::parse_rfc3339(s).ok()
 }
 
 /// Parse a `YYYY-MM-DD` date (midnight UTC). Teaching error on a bad format.
-pub fn parse_date(s: &str) -> Result<DateTime<Utc>> {
-    NaiveDate::parse_from_str(s, "%Y-%m-%d")
-        .map(|d| {
-            d.and_hms_opt(0, 0, 0)
-                .expect("midnight is always a valid time")
-                .and_utc()
-        })
+pub fn parse_date(s: &str) -> Result<OffsetDateTime> {
+    Date::parse(s, format_description!("[year]-[month]-[day]"))
+        .map(|d| d.midnight().assume_utc())
         .map_err(|e| {
             FabioError::with_hint(
                 ErrorCode::InvalidInput,
@@ -47,7 +42,7 @@ pub fn parse_date(s: &str) -> Result<DateTime<Utc>> {
 
 /// Read a connection's `connectionRecency.lastCredentialUsedDateTime`. A missing
 /// value sorts as the oldest (so it "loses" when picking the connection to keep).
-fn last_credential_used(conn: &Value) -> Option<DateTime<Utc>> {
+fn last_credential_used(conn: &Value) -> Option<OffsetDateTime> {
     parse_ts(
         conn.get("connectionRecency")
             .and_then(|r| r.get("lastCredentialUsedDateTime")),
@@ -67,8 +62,8 @@ fn last_credential_used(conn: &Value) -> Option<DateTime<Utc>> {
 /// treating a NULL as "stale" would produce false positives.
 fn stale_reason(
     conn: &Value,
-    created_after: DateTime<Utc>,
-    unused_threshold: DateTime<Utc>,
+    created_after: OffsetDateTime,
+    unused_threshold: OffsetDateTime,
 ) -> Option<&'static str> {
     let recency = conn.get("connectionRecency")?;
     // Malformed timestamps are not evidence of never having been bound/used.
@@ -210,7 +205,7 @@ pub(super) async fn find_stale(
     let created_after_dt = parse_date(created_after)?;
     let resp = client.get_list("/connections", "value", true, None).await?;
 
-    let threshold = Utc::now() - TimeDelta::days(i64::from(unused_days));
+    let threshold = OffsetDateTime::now_utc() - Duration::days(i64::from(unused_days));
     let flagged: Vec<Value> = resp
         .items
         .iter()
@@ -343,11 +338,11 @@ mod tests {
         })
     }
 
-    fn cutoff() -> DateTime<Utc> {
+    fn cutoff() -> OffsetDateTime {
         parse_date("2026-05-01").unwrap()
     }
 
-    fn threshold() -> DateTime<Utc> {
+    fn threshold() -> OffsetDateTime {
         // 90 days before a fixed "now" of 2026-09-01.
         parse_date("2026-06-03").unwrap()
     }

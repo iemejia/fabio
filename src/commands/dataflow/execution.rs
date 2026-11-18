@@ -5,7 +5,6 @@ use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use anyhow::Result;
-use chrono::Utc;
 use reqwest::header::HeaderMap;
 use reqwest::{StatusCode, Url};
 use serde_json::{Value, json};
@@ -311,7 +310,7 @@ fn complete(entry: &mut JobEntry, value: Value) {
         .unwrap_or("unknown")
         .to_string();
     if entry.status != "unknown" {
-        entry.completed_at = Some(Utc::now().to_rfc3339());
+        entry.completed_at = Some(crate::datetime::now_rfc3339());
     }
     entry.result = Some(value);
 }

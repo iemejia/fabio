@@ -5,7 +5,6 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use chrono::Utc;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -480,7 +479,7 @@ pub(super) async fn execute(
     }
     output::render_object(
         cli,
-        &json!({"workspaceId":workspace.to_string(),"modelId":model.to_string(),"observedAt":Utc::now().to_rfc3339(),"scope":scope,"status":status,"partial":checks.iter().any(|check|check.status==Status::Unknown),"attempts":cycle,"stopReason":reason,"checks":checks,"notChecked":not_checked,"limitations":"Readiness covers only the requested observations under the current identity. No refresh submissions, source scans outside the opt-in table counts, rebinding, takeover, publishing or repairs are performed."}),
+        &json!({"workspaceId":workspace.to_string(),"modelId":model.to_string(),"observedAt":crate::datetime::now_rfc3339(),"scope":scope,"status":status,"partial":checks.iter().any(|check|check.status==Status::Unknown),"attempts":cycle,"stopReason":reason,"checks":checks,"notChecked":not_checked,"limitations":"Readiness covers only the requested observations under the current identity. No refresh submissions, source scans outside the opt-in table counts, rebinding, takeover, publishing or repairs are performed."}),
         "status",
     );
     if strict && status != Status::Ready {

@@ -94,14 +94,10 @@ impl TrackedJob {
     fn status(&mut self, status: &str) {
         self.entry.status = status.to_string();
         if matches!(status, "completed" | "failed" | "cancelled" | "deduped") {
-            self.entry.completed_at = Some(chrono::Utc::now().to_rfc3339());
-            if let Ok(start) = chrono::DateTime::parse_from_rfc3339(&self.entry.started_at) {
-                self.entry.duration_secs = Some(
-                    chrono::Utc::now()
-                        .signed_duration_since(start)
-                        .num_seconds()
-                        .unsigned_abs(),
-                );
+            let now = time::OffsetDateTime::now_utc();
+            self.entry.completed_at = Some(crate::datetime::format_rfc3339(now));
+            if let Ok(start) = crate::datetime::parse_rfc3339(&self.entry.started_at) {
+                self.entry.duration_secs = Some((now - start).whole_seconds().unsigned_abs());
             }
         }
         self.save(false);

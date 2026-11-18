@@ -2,12 +2,13 @@ use std::io;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use chrono::{Duration, NaiveDate, NaiveTime};
 use mssql_tds::connection::client_context::{ClientContext, TdsAuthenticationMethod};
 use mssql_tds::connection::tds_client::{ResultSet, ResultSetClient};
 use mssql_tds::connection_provider::tds_connection_provider::TdsConnectionProvider;
 use mssql_tds::datatypes::column_values::ColumnValues;
 use serde_json::Value;
+use time::macros::date;
+use time::{Date, Duration, Time};
 
 use crate::cli::Cli;
 use crate::client::FabricClient;
@@ -643,25 +644,44 @@ pub async fn execute_sql_rows(
     .await
 }
 
-/// Convert a TDS `ColumnValues` to a `serde_json::Value`.
-/// Convert a TDS day count measured from 0001-01-01 (day 0) to a `NaiveDate`.
-/// chrono's `from_num_days_from_ce` treats day 1 as 0001-01-01, so add 1.
-fn ce_date(days: i64) -> Option<NaiveDate> {
-    i32::try_from(days)
-        .ok()
-        .and_then(|d| NaiveDate::from_num_days_from_ce_opt(d + 1))
+/// Convert a TDS day count measured from 0001-01-01 (day 0).
+fn ce_date(days: i64) -> Option<Date> {
+    let julian = date!(0001 - 01 - 01)
+        .to_julian_day()
+        .checked_add(i32::try_from(days).ok()?)?;
+    Date::from_julian_day(julian).ok()
 }
 
 /// Convert a day count measured from 1900-01-01 (legacy DATETIME/SMALLDATETIME).
-fn date_1900(days: i64) -> Option<NaiveDate> {
-    NaiveDate::from_ymd_opt(1900, 1, 1).and_then(|b| b.checked_add_signed(Duration::days(days)))
+fn date_1900(days: i64) -> Option<Date> {
+    let julian = date!(1900 - 01 - 01)
+        .to_julian_day()
+        .checked_add(i32::try_from(days).ok()?)?;
+    Date::from_julian_day(julian).ok()
 }
 
-/// Build a `NaiveTime` from nanoseconds since midnight.
-fn time_from_nanos(nanos: u64) -> Option<NaiveTime> {
-    let secs = u32::try_from(nanos / 1_000_000_000).ok()?;
+/// Build a time from nanoseconds since midnight, rejecting an out-of-day value.
+fn time_from_nanos(nanos: u64) -> Option<Time> {
+    let secs = nanos / 1_000_000_000;
     let nano = u32::try_from(nanos % 1_000_000_000).ok()?;
-    NaiveTime::from_num_seconds_from_midnight_opt(secs, nano)
+    Time::from_hms_nano(
+        u8::try_from(secs / 3600).ok()?,
+        u8::try_from(secs / 60 % 60).ok()?,
+        u8::try_from(secs % 60).ok()?,
+        nano,
+    )
+    .ok()
+}
+
+/// Keep the stable nine-digit TDS fractional-second representation.
+fn fmt_sql_time(value: Time) -> String {
+    format!(
+        "{:02}:{:02}:{:02}.{:09}",
+        value.hour(),
+        value.minute(),
+        value.second(),
+        value.nanosecond()
+    )
 }
 
 /// Format a DATETIME2 (`days` since 0001-01-01, `ns_ticks` in 100-ns ticks).
@@ -669,7 +689,7 @@ fn fmt_datetime2(days: i64, ns_ticks: u64) -> Value {
     let nanos = ns_ticks.saturating_mul(100);
     ce_date(days).zip(time_from_nanos(nanos)).map_or_else(
         || Value::from(format!("{days} days + {ns_ticks} ticks")),
-        |(d, t)| Value::from(d.and_time(t).format("%Y-%m-%dT%H:%M:%S%.9f").to_string()),
+        |(d, t)| Value::from(format!("{d}T{}", fmt_sql_time(t))),
     )
 }
 
@@ -682,15 +702,16 @@ fn fmt_datetimeoffset(days: i64, ns_ticks: u64, off: i16) -> Value {
     ce_date(days)
         .zip(time_from_nanos(nanos))
         .and_then(|(d, t)| {
-            d.and_time(t)
-                .checked_add_signed(Duration::minutes(i64::from(off)))
+            d.with_time(t)
+                .checked_add(Duration::minutes(i64::from(off)))
         })
         .map_or_else(
             || Value::from(format!("{days} days + offset {sign}{oh:02}:{om:02}")),
             |dt| {
                 Value::from(format!(
-                    "{}{sign}{oh:02}:{om:02}",
-                    dt.format("%Y-%m-%dT%H:%M:%S%.9f")
+                    "{}T{}{sign}{oh:02}:{om:02}",
+                    dt.date(),
+                    fmt_sql_time(dt.time())
                 ))
             },
         )
@@ -721,9 +742,11 @@ pub fn column_value_to_json(val: &ColumnValues) -> Value {
             let nanos = u64::from(dt.time) * 10_000_000 / 3;
             match (date_1900(i64::from(dt.days)), time_from_nanos(nanos)) {
                 (Some(d), Some(t)) => Value::from(format!(
-                    "{}T{}",
-                    d.format("%Y-%m-%d"),
-                    t.format("%H:%M:%S%.3f")
+                    "{d}T{:02}:{:02}:{:02}.{:03}",
+                    t.hour(),
+                    t.minute(),
+                    t.second(),
+                    t.millisecond()
                 )),
                 _ => Value::from(format!("{} days since 1900-01-01", dt.days)),
             }
@@ -733,7 +756,7 @@ pub fn column_value_to_json(val: &ColumnValues) -> Value {
             let days = i64::from(d.get_days());
             ce_date(days).map_or_else(
                 || Value::from(format!("{days} days since 0001-01-01")),
-                |dt| Value::from(dt.format("%Y-%m-%d").to_string()),
+                |dt| Value::from(dt.to_string()),
             )
         }
         ColumnValues::Time(t) => {
@@ -741,7 +764,7 @@ pub fn column_value_to_json(val: &ColumnValues) -> Value {
             let nanos = t.time_nanoseconds.saturating_mul(100);
             time_from_nanos(nanos).map_or_else(
                 || Value::from(format!("{} ticks", t.time_nanoseconds)),
-                |tm| Value::from(tm.format("%H:%M:%S%.9f").to_string()),
+                |tm| Value::from(fmt_sql_time(tm)),
             )
         }
         ColumnValues::DateTime2(dt2) => {
@@ -755,14 +778,15 @@ pub fn column_value_to_json(val: &ColumnValues) -> Value {
         ColumnValues::SmallDateTime(sdt) => {
             // SMALLDATETIME: days since 1900-01-01, time in minutes since midnight.
             let days = i64::from(sdt.days);
-            let mins = u32::from(sdt.time);
+            let mins = sdt.time;
             match (
                 date_1900(days),
-                NaiveTime::from_hms_opt(mins / 60, mins % 60, 0),
+                u8::try_from(mins / 60)
+                    .ok()
+                    .zip(u8::try_from(mins % 60).ok())
+                    .and_then(|(hour, minute)| Time::from_hms(hour, minute, 0).ok()),
             ) {
-                (Some(d), Some(t)) => {
-                    Value::from(format!("{}T{}", d.format("%Y-%m-%d"), t.format("%H:%M")))
-                }
+                (Some(d), Some(t)) => Value::from(format!("{d}T{:02}:{:02}", t.hour(), t.minute())),
                 _ => Value::from(format!("{days} days since 1900 + {mins} minutes")),
             }
         }
@@ -999,8 +1023,49 @@ mod tests {
     fn time_from_nanos_builds_time() {
         // 14:30:45.5 = 52245.5 s = 52_245_500_000_000 ns
         let t = time_from_nanos(52_245_500_000_000).unwrap();
-        assert_eq!(t.to_string(), "14:30:45.500");
-        assert_eq!(time_from_nanos(0).unwrap().to_string(), "00:00:00");
+        assert_eq!(fmt_sql_time(t), "14:30:45.500000000");
+        assert_eq!(
+            fmt_sql_time(time_from_nanos(0).unwrap()),
+            "00:00:00.000000000"
+        );
+    }
+
+    #[test]
+    fn temporal_limits_and_corrupt_wire_values_do_not_panic() {
+        assert_eq!(ce_date(3_652_058).unwrap().to_string(), "9999-12-31");
+        for days in [i64::MIN, i64::MAX, i64::from(i32::MAX)] {
+            assert_eq!(ce_date(days), None);
+            assert_eq!(date_1900(days), None);
+        }
+        assert_eq!(time_from_nanos(86_400_000_000_000), None);
+        assert_eq!(time_from_nanos(u64::MAX), None);
+        assert_eq!(fmt_datetime2(0, 0), "0001-01-01T00:00:00.000000000");
+        assert_eq!(
+            fmt_datetime2(739_630, 522_455_000_001),
+            "2026-01-15T14:30:45.500000100"
+        );
+        assert!(
+            fmt_datetime2(i64::MAX, u64::MAX)
+                .as_str()
+                .unwrap()
+                .ends_with(" ticks")
+        );
+    }
+
+    #[test]
+    fn datetimeoffset_adjusts_local_date_across_both_midnight_boundaries() {
+        assert_eq!(
+            fmt_datetimeoffset(739_630, 0, -330),
+            "2026-01-14T18:30:00.000000000-05:30"
+        );
+        assert_eq!(
+            fmt_datetimeoffset(739_630, 828_000_000_000, 330),
+            "2026-01-16T04:30:00.000000000+05:30"
+        );
+        assert_eq!(
+            fmt_datetimeoffset(739_630, 0, 0),
+            "2026-01-15T00:00:00.000000000+00:00"
+        );
     }
 
     #[test]

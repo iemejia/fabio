@@ -4,6 +4,7 @@ mod agent;
 mod cli;
 mod client;
 mod commands;
+mod datetime;
 mod definition_spec;
 mod deployment_plan;
 mod errors;

@@ -51,7 +51,9 @@ fn seeded_home(tag: &str, latest: &str) -> PathBuf {
     let fabio_dir = home.join(".fabio");
     fs::create_dir_all(&fabio_dir).unwrap();
     // Fresh timestamp (now) => never stale => no background refresh spawned.
-    let now = chrono::Utc::now().to_rfc3339();
+    let now = time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap();
     let cache = format!(r#"{{"last_checked":"{now}","latest_version":"{latest}"}}"#);
     fs::write(fabio_dir.join("version-check.json"), cache).unwrap();
     home
@@ -188,10 +190,10 @@ fn missing_cache_records_attempt_to_throttle_further_checks() {
     let last_checked = cache["last_checked"]
         .as_str()
         .expect("last_checked present");
-    let then = chrono::DateTime::parse_from_rfc3339(last_checked).expect("valid rfc3339");
-    let age_secs = chrono::Utc::now()
-        .signed_duration_since(then.with_timezone(&chrono::Utc))
-        .num_seconds();
+    let then =
+        time::OffsetDateTime::parse(last_checked, &time::format_description::well_known::Rfc3339)
+            .expect("valid rfc3339");
+    let age_secs = (time::OffsetDateTime::now_utc() - then).whole_seconds();
     assert!(
         (0..3600).contains(&age_secs),
         "attempt timestamp should be recent (age={age_secs}s)"

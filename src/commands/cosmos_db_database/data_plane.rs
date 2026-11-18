@@ -369,9 +369,11 @@ fn aad_auth_header(token: &str) -> String {
 /// Current UTC time formatted as an RFC 1123 / HTTP-date string
 /// (e.g. `Tue, 01 Nov 1994 08:12:31 GMT`), as required by `x-ms-date`.
 fn rfc1123_now() -> String {
-    chrono::Utc::now()
-        .format("%a, %d %b %Y %H:%M:%S GMT")
-        .to_string()
+    time::OffsetDateTime::now_utc()
+        .format(time::macros::format_description!(
+            "[weekday repr:short], [day] [month repr:short] [year] [hour]:[minute]:[second] GMT"
+        ))
+        .expect("current UTC time is a valid HTTP date")
 }
 
 /// URL-encode a single Cosmos resource path segment (db/container/document id).
