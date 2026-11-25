@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use anyhow::Result;
 use clap::{Subcommand, ValueEnum};
 use serde_json::Value;
@@ -237,6 +239,10 @@ async fn get_principal_access(
     let mut items = Vec::new();
     let mut token = cli.continuation_token.clone();
     let mut response_etag = None;
+    let mut seen_tokens = HashSet::new();
+    if let Some(token) = &token {
+        seen_tokens.insert(token.clone());
+    }
     loop {
         let path = build_principal_access_path(
             workspace,
@@ -250,12 +256,29 @@ async fn get_principal_access(
         let data = client
             .get_with_conditions_and_etag(&path, if_match, if_none_match)
             .await?;
+        let etag = data.get("etag").and_then(Value::as_str);
+        if cli.all && etag.is_none() {
+            return Err(FabioError::api_error(
+                "Effective-access aggregation requires an ETag on every page; no combined access snapshot was returned.",
+            )
+            .into());
+        }
+        if let Some(previous) = response_etag.as_deref()
+            && etag != Some(previous)
+        {
+            return Err(FabioError::api_error(
+                "Effective access changed between pages; no combined access snapshot was returned.",
+            )
+            .into());
+        }
         if response_etag.is_none() {
-            response_etag = data.get("etag").and_then(Value::as_str).map(str::to_owned);
+            response_etag = etag.map(str::to_owned);
         }
         let Some(page_items) = data.get("value").and_then(Value::as_array) else {
-            output::render_object(cli, &data, "path");
-            return Ok(());
+            return Err(FabioError::api_error(
+                "Malformed effective-access response: expected a value array.",
+            )
+            .into());
         };
         items.extend(page_items.iter().cloned());
         token = data
@@ -265,6 +288,14 @@ async fn get_principal_access(
             .map(str::to_owned);
         if !cli.all || token.is_none() {
             break;
+        }
+        if let Some(token) = &token
+            && !seen_tokens.insert(token.clone())
+        {
+            return Err(FabioError::api_error(
+                "Effective-access pagination repeated a continuation token; refusing an incomplete result.",
+            )
+            .into());
         }
     }
 

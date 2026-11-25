@@ -86,7 +86,7 @@ Manage datamarts (Power BI)
 |---|---|
 | Unsure whether to use a dataflow or a pipeline | Transform data -> dataflow; sequence activities -> data-pipeline. Run 'fabio context disambiguate dataflow'. |
 | Definition rejected | Ensure both the mashup and queryMetadata parts are present and valid. |
-| 'dataflow run' fails with 'Invalid QueriesMetadata ... must not be empty' | A REST-authored Gen2 dataflow needs a queriesMetadata map in queryMetadata.json: add "queriesMetadata": {"<QueryName>": {"queryId", "queryName", "loadEnabled"}}. NOTE the Gen2 lakehouse data destination is portal-generated (a hand-authored dataDestinations binding runs but persists no table). |
+| 'dataflow run' fails with 'Invalid QueriesMetadata ... must not be empty', or execute-query reports 'Query name not found' for an authored mashup | A REST-authored Gen2 dataflow needs a queriesMetadata map in queryMetadata.json: add "queriesMetadata": {"<QueryName>": {"queryId", "queryName", "loadEnabled"}}. Successful update-definition alone does not prove the query is registered. NOTE the Gen2 lakehouse data destination is portal-generated (a hand-authored dataDestinations binding runs but persists no table). |
 
 ## Safety
 - A service-ready Gen1 plan is NOT approval or an execution workflow. Before any irreversible upgrade, require separately approved scope, historical-data backup/reload and consumer/security review plus receipt-safe submission/completion handling. No automatic upgrade, credential/role change, storage-mode conversion or Save As fallback is permitted from a plan.

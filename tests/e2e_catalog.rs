@@ -44,16 +44,29 @@ fn catalog_search_with_type_filter() {
 #[serial]
 fn catalog_search_table_objects_live() {
     let assert = fabio()
-        .args(["catalog", "search", "--type", "Table", "--top", "1"])
+        .args([
+            "--readonly",
+            "--wrap-untrusted",
+            "catalog",
+            "search",
+            "--type",
+            "Table",
+            "--top",
+            "1",
+        ])
         .assert()
         .success();
     let json = parse_json(&assert);
     assert!(json["data"].is_array());
-    if let Some(first) = json["data"].as_array().and_then(|items| items.first()) {
-        assert_eq!(first["catalogEntryType"], "Object");
-        assert_eq!(first["type"], "Table");
-        assert!(first["hierarchy"]["item"].is_object());
-    }
+    let first = json["data"]
+        .as_array()
+        .and_then(|items| items.first())
+        .expect("live acceptance requires a real catalog table hit, not an empty list");
+    assert_eq!(first["catalogEntryType"], "Object");
+    assert_eq!(first["type"], "Table");
+    assert!(first["id"].is_string());
+    assert!(first["hierarchy"]["item"]["id"].is_string());
+    assert!(first["hierarchy"]["workspace"]["id"].is_string());
 }
 
 #[test]

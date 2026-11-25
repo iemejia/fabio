@@ -140,8 +140,14 @@ impl FabricClient {
             response.headers(),
         );
         finish(
-            self.handle_bytes_lro_response(response, token, accept)
-                .await,
+            self.handle_bytes_lro_response(
+                response,
+                token,
+                accept,
+                super::binary_lro_max_wait(path, self.lro_max_wait),
+                super::is_dataflow_query(path).then_some(super::DATAFLOW_QUERY_MAX_WAIT),
+            )
+            .await,
             context,
         )
     }
