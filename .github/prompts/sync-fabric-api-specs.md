@@ -200,6 +200,7 @@ Before finishing, verify completeness:
 - **Under NO circumstance may you run `git add`, `git commit`, or `git push`.** The CI workflow that invokes you handles all staging, committing, branch creation, and PR submission. Your job is to edit files and write /tmp/pr-body.md — nothing more.
 - You may run `cargo fmt`, `cargo check`, `cargo clippy`, `cargo build`, and `cargo test` to validate your changes.
 - Use `read`, `write`, and `edit` tools for file modifications.
+- Do not edit `.github/workflows/` or `scripts/check-api-sync-base.py`. API sync publication refuses workflow edits; CI changes require a separate reviewed change, not broader token permissions.
 
 **Aim for 100% coverage of the spec diff.** Do not skip changes because they seem minor. A missing optional field today becomes a user-reported bug tomorrow.
 

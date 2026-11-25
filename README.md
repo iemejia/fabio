@@ -1018,7 +1018,36 @@ Configuration: [`prek.toml`](prek.toml)
 - Strict `cargo audit --deny warnings` and full npm audits block dependency findings
 - Dependabot groups available security updates per ecosystem; passing Dependabot PRs can auto-merge
 - Daily/manual Cargo security remediation opens one lockfile-only PR for compatible fixes (see below)
+- Twice-weekly/manual Fabric REST API spec sync generates a reviewed PR (see below)
 - CodeQL and Secret Scanning enabled
+
+#### Automated Fabric REST API sync
+
+`.github/workflows/sync-fabric-api-specs.yml` checks upstream specifications on
+Tuesdays and Fridays at 23:00 UTC and on manual dispatch. It defers while another
+API-sync PR is open; the upstream cursor advances only when its PR is merged.
+
+Checkouts use the latest default branch and do not persist Git credentials.
+The workflow's `GITHUB_TOKEN` has read-only Contents and Pull requests permissions.
+`COPILOT_PAT` authenticates Copilot and, in the publishing steps, both `gh` and
+Git through `gh auth setup-git`. Scope it to this repository with Contents and
+Pull requests read/write, plus the Copilot access needed for generation;
+**Workflows permission is not required**. No token is written into a remote URL.
+
+The recorded generation revision is checked before Copilot runs and again just
+before either the code or cursor-only branch is pushed. Publication fails closed
+if the default branch advanced, cannot be verified, or generation changed workflow
+files. Start a **fresh manual run on the default branch** after a stale-base error;
+do not blindly re-run an old attempt or grant broader token permissions. Workflow
+edits belong in a separate reviewed change. This is a snapshot check, not an
+atomic lock on the default branch; normal PR CI and review still apply.
+
+Run the hermetic publication checks locally:
+
+```bash
+python3 -m unittest discover -s scripts -p 'test_api_sync_base.py'
+cargo test --test e2e_api_sync_workflow
+```
 
 #### Automated dependency security remediation
 

@@ -20,6 +20,9 @@ jobs:
       - name: Test Cargo security remediation
         run: python3 -m unittest discover -s scripts -p 'test_cargo_security_updates.py'
 
+      - name: Test API sync publication guards
+        run: python3 -m unittest discover -s scripts -p 'test_api_sync_base.py'
+
   fmt:
     runs-on: ubuntu-latest
     name: formatting

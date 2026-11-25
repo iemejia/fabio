@@ -21,7 +21,8 @@
 - `.agents/FABRIC-UPDATES-2026-11.md`: sequential implementation/acceptance ledger for the three-week Fabric blog review; no tenant-specific details.
 - `tests/e2e_yaml_parser.rs`: maintained YAML backend compatibility for scalar types, Unicode, CRLF inputs, serialization round-trips and malformed-input locations
 - `tests/live-api-sync.md`: scoped live acceptance plan, isolation/cleanup requirements, and per-capability acceptance matrix for the consolidated REST changes
-- `tests/e2e_api_sync_workflow.rs`: hermetic concurrency, cross-date open-PR detection, and pre-generation skip contracts for `.github/workflows/sync-fabric-api-specs.yml`
+- `tests/e2e_api_sync_workflow.rs`: hermetic concurrency, cross-date open-PR detection, read-only checkout credentials, current-base recording and both publication-path contracts for `.github/workflows/sync-fabric-api-specs.yml`.
+- `scripts/check-api-sync-base.py`, `scripts/test_api_sync_base.py`: read-only remote revision, generation ancestry and workflow-edit guards; unit and local-Git integration tests cover stale/unverifiable bases and fail-closed CLI errors without publishing.
 - `src/client/text.rs`: strict UTF-8 file metadata and bodyless readonly text LRO handling, with same-origin result URL checks and bounded polling
 - `tests/e2e_api_sync.rs`: consolidated new-family CRUD/readonly/input guards, Copy Job schedule wire tests, feedback no-clobber downloads and text/plain compatibility
 - `docs/src/content/docs/guides/fabric-rest-capabilities.md`: expanded REST capability workflows and safety caveats

@@ -4,6 +4,11 @@
 > discovered during fabio development. Reference this file when working on
 > specific command groups — do NOT load the entire file into context.
 
+## GitHub API Sync Workflow Behaviors
+
+- **Re-runs preserve the original event revision (November 2026, observed live)**: an API-sync re-run checked out its original commit even after the default branch advanced. The generated commit did not edit workflow files, but its older workflow versions still caused GitHub's push permission check to reject `.github/workflows/ci.yml`.
+- **`GH_TOKEN` does not replace checkout's Git credentials (observed live)**: setting the PAT for `gh pr create` left `git push` authenticated by the checkout action's persisted GitHub App token. The rejection specifically required Workflows permission. Disable persisted checkout credentials and configure the GitHub CLI Git credential helper under the publishing token; do not solve stale generated branches by broadening permissions.
+
 ## Authentication Behaviors Discovered
 - **Fabio has no stable publisher-owned Entra registration, so Azure CLI is the default local-user broker (Oct 2026)**: direct device-code, browser-PKCE, and WAM flows always require an Entra public-client application ID; there is no registration-free native flow. Fabio therefore removed its compiled default client ID and plain `fabio auth login` validates `AzureCliCredential`. Live validation confirmed Azure CLI can mint Fabio's Fabric, Storage, SQL, ARM, Graph, Cosmos, and Kusto audience tokens, and a live Fabric workspace request succeeded. Explicit native flows require a customer-owned app via `--client-id` or `FABIO_CLIENT_ID`. Refresh tokens are client-bound, so cache entries store auth method + issuing client ID and legacy entries without provenance are never refreshed. Logout clears only Fabio's cache. The customer-app helper provisions all seven audiences; the Cosmos data-plane resource is the live-verified Dataverse service principal `00000007-0000-0000-c000-000000000000`, whose delegated scope is `user_impersonation`.
 

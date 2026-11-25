@@ -7,8 +7,8 @@ on:
     - cron: '0 23 * * 2,5'
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+  pull-requests: read
 
 concurrency:
   group: fabric-api-spec-sync
@@ -21,7 +21,13 @@ jobs:
       - name: Checkout fabio
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
+          persist-credentials: false
+
+      - name: Record generation base
+        id: base
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Defer while another API sync is open
         id: open-sync
@@ -45,6 +51,7 @@ jobs:
           repository: microsoft/fabric-rest-api-specs
           path: fabric-rest-api-specs
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Check for spec changes since last cursor
         if: steps.open-sync.outputs.exists != 'true'
@@ -89,6 +96,14 @@ jobs:
           echo ""
           echo "=== Files changed ==="
           git diff --stat "$LAST_SHA..$HEAD_SHA"
+
+      - name: Check generation base before Copilot
+        if: steps.check-changes.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python3 scripts/check-api-sync-base.py --base-sha "$BASE_SHA" --default-branch "$DEFAULT_BRANCH"
 
       - name: Install Rust toolchain
         if: steps.check-changes.outputs.has_changes == 'true'
@@ -205,6 +220,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.COPILOT_PAT }}
           HEAD_SHA: ${{ steps.check-changes.outputs.head_sha }}
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           BRANCH="sync/fabric-api-specs-$(date +%Y%m%d)"
           git config user.name "github-actions[bot]"
@@ -260,6 +277,15 @@ jobs:
             cat "$COMMIT_BODY"
           } > "$COMMIT_MSG"
           git commit -F "$COMMIT_MSG"
+
+          # Fail closed if main advanced or generation changed workflow files.
+          python3 scripts/check-api-sync-base.py --base-sha "$BASE_SHA" --default-branch "$DEFAULT_BRANCH"
+          if [ -z "$GH_TOKEN" ]; then
+            echo '::error::Set COPILOT_PAT with Contents and Pull requests read/write for publishing; Workflows permission is not required.'
+            exit 1
+          fi
+          # gh's token env does not authenticate git unless its helper is configured.
+          gh auth setup-git --hostname github.com
           git push --force origin "$BRANCH"
 
           # --- PR body (authored by Copilot, with fallback) ---
@@ -274,6 +300,7 @@ jobs:
           fi
 
           gh pr create \
+            --base "$DEFAULT_BRANCH" \
             --title "$TITLE" \
             --body-file "$PR_BODY" \
             --label "automated,api-sync"
@@ -283,6 +310,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.COPILOT_PAT }}
           HEAD_SHA: ${{ steps.check-changes.outputs.head_sha }}
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           echo "No code changes needed — advancing cursor via PR"
           BRANCH="sync/fabric-api-specs-cursor-$(date +%Y%m%d)"
@@ -300,8 +329,15 @@ jobs:
           echo "$HEAD_SHA" > .github/fabric-api-specs-cursor
           git add .github/fabric-api-specs-cursor
           git commit -m "chore: advance fabric-api-specs cursor to ${HEAD_SHA:0:8} (no code changes needed)"
+          python3 scripts/check-api-sync-base.py --base-sha "$BASE_SHA" --default-branch "$DEFAULT_BRANCH"
+          if [ -z "$GH_TOKEN" ]; then
+            echo '::error::Set COPILOT_PAT with Contents and Pull requests read/write for publishing; Workflows permission is not required.'
+            exit 1
+          fi
+          gh auth setup-git --hostname github.com
           git push --force origin "$BRANCH"
           gh pr create \
+            --base "$DEFAULT_BRANCH" \
             --title "chore: advance fabric-api-specs cursor $(date +%Y-%m-%d)" \
             --body "No code changes needed for the latest spec updates. Cursor advanced to \`${HEAD_SHA:0:8}\`." \
             --label "automated,api-sync"
