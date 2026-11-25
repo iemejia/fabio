@@ -19,7 +19,7 @@ pub enum CatalogCommand {
         #[arg(short = 's', long = "search")]
         search_query: Option<String>,
 
-        /// Filter by entry type (e.g., Report, Lakehouse, Workspace). Comma-separated for multiple.
+        /// Filter by entry type (e.g., Report, Lakehouse, Workspace, Table). Comma-separated for multiple.
         #[arg(short = 't', long = "type")]
         item_type: Option<String>,
 
@@ -72,7 +72,7 @@ pub async fn execute(cli: &Cli, client: &FabricClient, command: &CatalogCommand)
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 async fn search(
     cli: &Cli,
     client: &FabricClient,
@@ -191,10 +191,22 @@ async fn search(
             "displayName",
             "id",
             "type",
+            "catalogEntryType",
             "hierarchy.workspace.displayName",
+            "hierarchy.item.type",
+            "hierarchy.object.displayName",
             "description",
         ],
-        &["NAME", "ID", "TYPE", "WORKSPACE", "DESCRIPTION"],
+        &[
+            "NAME",
+            "ID",
+            "TYPE",
+            "ENTRY TYPE",
+            "WORKSPACE",
+            "OWNER TYPE",
+            "PARENT",
+            "DESCRIPTION",
+        ],
         "id",
         // When --all exhausted the pages, there's no further token to surface.
         if cli.all { None } else { last_token.as_deref() },

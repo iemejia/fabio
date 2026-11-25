@@ -437,6 +437,14 @@ const OUTPUT_EXAMPLES: &[(&str, &str)] = &[
         include_str!("data/examples/dataflow_execute_query.json"),
     ),
     (
+        "onelake-security/get-principal-access",
+        include_str!("data/examples/onelake_security_principal_access.json"),
+    ),
+    (
+        "catalog/search",
+        include_str!("data/examples/catalog_search_object.json"),
+    ),
+    (
         "workspace/create",
         include_str!("data/examples/workspace_create.json"),
     ),

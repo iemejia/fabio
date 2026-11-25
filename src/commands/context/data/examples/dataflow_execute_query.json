@@ -1,6 +1,6 @@
 {
   "command": "fabio dataflow execute-query --workspace $WS --id $DATAFLOW_ID --query-name \"GetCustomers\" --file output.arrow --arrow-version 2",
-  "description": "Execute a named query from a dataflow and save results as Apache Arrow IPC binary. Supports LRO for long-running queries (up to 90s).",
+  "description": "Execute a named query from a dataflow and save results as Apache Arrow IPC binary. Supports LRO for long-running queries (up to 230s).",
   "response": {
     "data": {
       "status": "written",

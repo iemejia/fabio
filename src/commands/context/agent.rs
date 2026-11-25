@@ -1604,6 +1604,9 @@ fn apply_spec_sync_metadata(
     if (group, command) == ("data-agent", "query-feedback") {
         metadata.insert("returns".to_owned(), serde_json::json!("list"));
     }
+    if (group, command) == ("onelake-security", "get-principal-access") {
+        metadata.insert("returns".to_owned(), serde_json::json!("list"));
+    }
     if matches!(
         (group, command),
         (
@@ -1749,6 +1752,10 @@ fn authored_discovery_examples(group: &str, command: &str) -> Option<serde_json:
         }
         ("warehouse", "update-definition") => "fabio warehouse update-definition \
              --workspace $WS --id $WAREHOUSE --file ./Sales.sqlproj --format sqlproj"
+            .to_owned(),
+        ("onelake-security", "get-principal-access") => "fabio onelake-security \
+             get-principal-access --workspace $WS --id $ITEM_ID \
+             --principal-id $PRINCIPAL_ID --root-path Tables --expand-tables"
             .to_owned(),
         _ => return None,
     };
@@ -2330,6 +2337,7 @@ mod tests {
             ("workspace", "modify-file-soft-delete"),
             ("environment", "get-publish-log"),
             ("warehouse", "create"),
+            ("onelake-security", "get-principal-access"),
         ] {
             assert!(
                 authored_discovery_examples(group, command).is_some(),
