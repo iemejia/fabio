@@ -126,6 +126,10 @@ pub struct ScopedTestItem {
 impl ScopedTestItem {
     pub fn create(group: &str, prefix: &str) -> Self {
         let workspace = required_env("FABIO_TEST_SOURCE_WORKSPACE");
+        Self::create_in(&workspace, group, prefix)
+    }
+
+    pub fn create_in(workspace: &str, group: &str, prefix: &str) -> Self {
         let name = unique_name(prefix);
         let output = fabio()
             .args([
@@ -133,7 +137,7 @@ impl ScopedTestItem {
                 group,
                 "create",
                 "--workspace",
-                &workspace,
+                workspace,
                 "--name",
                 &name,
             ])
@@ -145,7 +149,7 @@ impl ScopedTestItem {
             .expect("created fixture must return an ID")
             .to_string();
         Self {
-            workspace,
+            workspace: workspace.to_string(),
             id,
             name,
             group: group.to_string(),
@@ -172,6 +176,62 @@ impl ScopedTestItem {
         // Never replay a failed/uncertain explicit deletion from Drop.
         self.cleanup_attempted = true;
         self.command("delete").assert().success();
+    }
+}
+
+/// A test-owned workspace. Deletion also cleans up service-generated staging items.
+pub struct ScopedTestWorkspace {
+    pub id: String,
+    cleanup_attempted: bool,
+}
+
+impl ScopedTestWorkspace {
+    pub fn create(prefix: &str) -> Self {
+        let capacity = required_env("FABIO_TEST_CAPACITY_ID");
+        let name = unique_name(prefix);
+        let output = fabio()
+            .args([
+                "--wrap-untrusted",
+                "workspace",
+                "create",
+                "--name",
+                &name,
+                "--capacity-id",
+                &capacity,
+            ])
+            .timeout(std::time::Duration::from_mins(4))
+            .assert()
+            .success();
+        Self {
+            id: extract_data(&parse_json(&output))["id"]
+                .as_str()
+                .expect("created workspace ID")
+                .to_string(),
+            cleanup_attempted: false,
+        }
+    }
+
+    fn delete_command(&self) -> Command {
+        let mut command = fabio();
+        command.args(["--wrap-untrusted", "workspace", "delete", "--id", &self.id]);
+        command.timeout(std::time::Duration::from_mins(4));
+        command
+    }
+
+    pub fn cleanup(mut self) {
+        self.cleanup_attempted = true;
+        self.delete_command().assert().success();
+    }
+}
+
+impl Drop for ScopedTestWorkspace {
+    fn drop(&mut self) {
+        if !self.cleanup_attempted {
+            match self.delete_command().output() {
+                Ok(output) if output.status.success() => {}
+                _ => eprintln!("Warning: failed to delete a test-owned workspace"),
+            }
+        }
     }
 }
 

@@ -626,6 +626,151 @@ fn dataflow_execute_query_dry_run_with_mashup() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dataflow_query_preserves_binary_output_for_immediate_and_polled_results() {
+    use wiremock::matchers::header;
+    let bytes = b"mock-arrow-payload";
+    let query_path = "/workspaces/aaaaaaaa-1111-2222-3333-444444444444/dataflows/bbbbbbbb-1111-2222-3333-444444444444/executeQuery";
+    for accepted in [false, true] {
+        let server = MockServer::start().await;
+        let directory = tempfile::TempDir::new().unwrap();
+        let output_path = directory.path().join("result.arrow");
+        let response = if accepted {
+            ResponseTemplate::new(202)
+                .insert_header("Location", format!("{}/query-result", server.uri()))
+                .insert_header("Retry-After", "0")
+        } else {
+            ResponseTemplate::new(200).set_body_bytes(bytes)
+        };
+        Mock::given(method("POST")).and(path(query_path))
+            .and(header("Accept", "application/vnd.apache.arrow.stream;pq-arrow-version=2"))
+            .and(body_json(serde_json::json!({"queryName":"FixtureQuery","customMashupDocument":"section Section1; shared FixtureQuery = #table({\"Key\"}, {{1}});"})))
+            .respond_with(response).expect(1).mount(&server).await;
+        if accepted {
+            Mock::given(method("GET"))
+                .and(path("/query-result"))
+                .and(header(
+                    "Accept",
+                    "application/vnd.apache.arrow.stream;pq-arrow-version=2",
+                ))
+                .respond_with(ResponseTemplate::new(200).set_body_bytes(bytes))
+                .expect(1)
+                .mount(&server)
+                .await;
+        }
+        let result = common::mock_fabio(&server)
+            .args([
+                "dataflow",
+                "execute-query",
+                "--workspace",
+                "aaaaaaaa-1111-2222-3333-444444444444",
+                "--id",
+                "bbbbbbbb-1111-2222-3333-444444444444",
+                "--query-name",
+                "FixtureQuery",
+                "--mashup",
+                "section Section1; shared FixtureQuery = #table({\"Key\"}, {{1}});",
+                "--arrow-version",
+                "2",
+                "--file",
+            ])
+            .arg(&output_path)
+            .assert()
+            .success();
+        assert_eq!(std::fs::read(&output_path).unwrap(), bytes);
+        let json = parse_json(&result);
+        assert_eq!(json["data"]["format"], "apache-arrow-ipc-v2");
+        assert_eq!(json["data"]["sizeBytes"], bytes.len());
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dataflow_query_readonly_never_submits_work() {
+    let server = MockServer::start().await;
+    let result = common::mock_fabio(&server)
+        .args([
+            "--readonly",
+            "dataflow",
+            "execute-query",
+            "--workspace",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "--id",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+            "--query-name",
+            "FixtureQuery",
+        ])
+        .assert()
+        .failure();
+    assert_eq!(
+        common::parse_error(&result)["error"]["code"],
+        "READONLY_MODE"
+    );
+    assert_eq!(server.received_requests().await.unwrap().len(), 0);
+}
+
+#[test]
+#[ignore = "requires live Fabric capacity; creates/deletes an isolated workspace and executes a 130-second synthetic dataflow query"]
+#[serial]
+fn dataflow_query_live_exceeds_the_previous_runtime_and_client_limits() {
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD;
+
+    let workspace = common::ScopedTestWorkspace::create("query_runtime_workspace");
+    let fixture =
+        common::ScopedTestItem::create_in(&workspace.id, "dataflow", "query_runtime_test");
+    let directory = tempfile::TempDir::new().unwrap();
+    let definition_path = directory.path().join("definition.json");
+    let output_path = directory.path().join("result.arrow");
+    let mashup = "section Section1; shared RuntimeFixture = Function.InvokeAfter(() => #table(type table [Key = Int64.Type], {{1}}), #duration(0, 0, 2, 10));";
+    let metadata = serde_json::json!({
+        "formatVersion":"202502", "computeEngineSettings":{"allowFastCopy":false},
+        "name":"RuntimeFixture", "allowNativeQueries":false,
+        "queriesMetadata":{"RuntimeFixture":{
+            "queryId":uuid::Uuid::new_v4().to_string(),
+            "queryName":"RuntimeFixture", "isHidden":false, "loadEnabled":false
+        }}
+    });
+    let body = serde_json::json!({"definition":{"parts":[
+        {"path":"queryMetadata.json","payload":STANDARD.encode(serde_json::to_vec(&metadata).unwrap()),"payloadType":"InlineBase64"},
+        {"path":"mashup.pq","payload":STANDARD.encode(mashup),"payloadType":"InlineBase64"}
+    ]}});
+    std::fs::write(&definition_path, serde_json::to_vec(&body).unwrap()).unwrap();
+    fixture
+        .command("update-definition")
+        .arg("--file")
+        .arg(&definition_path)
+        .assert()
+        .success();
+    let start = std::time::Instant::now();
+    let result = fixture
+        .command("execute-query")
+        .args([
+            "--query-name",
+            "RuntimeFixture",
+            "--arrow-version",
+            "2",
+            "--file",
+        ])
+        .arg(&output_path)
+        .timeout(std::time::Duration::from_mins(6))
+        .assert()
+        .success();
+    let elapsed = start.elapsed();
+    let bytes = std::fs::read(&output_path).unwrap();
+    assert!(
+        bytes.len() > 8,
+        "synthetic query must return an Arrow stream"
+    );
+    assert_eq!(&bytes[..4], &[255, 255, 255, 255]);
+    assert_eq!(parse_json(&result)["data"]["sizeBytes"], bytes.len());
+    assert!(
+        elapsed >= std::time::Duration::from_mins(2),
+        "query must exercise the previous timeout boundary"
+    );
+    fixture.cleanup();
+    workspace.cleanup();
+}
+
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]

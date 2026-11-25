@@ -7,7 +7,7 @@
 - `src/commands/context/data/workflows/custom_live_pool_job.json`, `src/commands/context/data/examples/environment_run_custom_live_pool.json`, `docs/src/content/docs/guides/custom-live-pool-jobs.md`: submit-once live-pool recipe, retained receipt output and bounded observation/cancellation guidance; `environment/custom_live_pool.rs` delegates to `item_job::run_and_wait`, with mock/live coverage in `tests/e2e_environment.rs` and the shared receipt regression suite.
 - `src/commands/context/data/workflows/ontology_version_recovery.json`, `src/commands/context/data/examples/ontology_restore_version.json`, `docs/src/content/docs/guides/ontology-versions.md`: selected-snapshot recovery recipe, explicit scoped restore output and private-backup/generation-aware verification guidance; implemented in `ontology/versions.rs` with tracked-completion transport and JSON/TMDL editing guards.
 - `.agents/PR-206-VALIDATION-AND-QOL.md`: tenant-redacted live acceptance matrix, precise blocked/deferred boundaries, exact opt-in test commands, and prioritized QoL roadmap for the November 18 API additions.
-- `tests/common/mod.rs`: `ScopedTestItem` owns only fixtures it creates, asserts explicit cleanup and provides a panic fallback; `parse_error` separates structured errors from stderr diagnostics.
+- `tests/common/mod.rs`: `ScopedTestItem`/`create_in` own selected fixtures and assert cleanup with a panic fallback; `ScopedTestWorkspace` contains and cleans up service-generated Gen2 staging without replaying an uncertain explicit deletion. `parse_error` separates structured errors from stderr diagnostics.
 - `src/commands/{microsoft_iq,playbook,postgresql_database}.rs`, `tests/e2e_{microsoft_iq,playbook,postgresql_database}.rs`: Microsoft IQ retrieval, Playbook hierarchy/context lifecycle, and PostgreSQL item/pgschema definition support.
 - `src/commands/environment/custom_live_pool.rs`, `src/commands/lakehouse/semantic_views.rs`, `src/commands/ontology/versions.rs`: custom live-pool scheduling, lakehouse semantic views, and ontology version APIs.
 - `src/commands/{share,share_subscription,sql_endpoint}.rs`: bulk Share management, provisioned Share Subscription resources, and SQL endpoint metadata-sync migration.
@@ -325,6 +325,7 @@
 - `tests/e2e_graph_query_set.rs`: Graph query set tests
 - `tests/e2e_catalog.rs`: Catalog search tests, including object/table hierarchy responses
 - `tests/e2e_onelake_security.rs`: OneLake role guards and effective-principal-access query/header/ETag tests
+- `tests/e2e_dataflow.rs`: binary executeQuery immediate/202 response fidelity and readonly regressions; an opt-in isolated-workspace live query deliberately exceeds the old timeout boundary and cleans up its service-generated staging footprint.
 - `tests/e2e_context.rs`: Context tenant graph/dry-run tests and item-schema command/flag discoverability checks
 - `tests/e2e_dashboard.rs`: Dashboard list tests
 - `tests/e2e_datamart.rs`: Datamart list tests

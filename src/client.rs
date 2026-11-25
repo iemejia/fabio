@@ -55,6 +55,19 @@ const MAX_ERROR_BODY_LEN: usize = 500;
 const MAX_API_RESPONSE_SIZE: u64 = 50 * 1024 * 1024;
 const DATAFLOW_QUERY_MAX_WAIT: Duration = Duration::from_mins(4);
 
+fn is_dataflow_query(path: &str) -> bool {
+    let parts: Vec<_> = path.split('/').collect();
+    matches!(parts.as_slice(), ["", "workspaces", workspace, "dataflows", item, "executeQuery"] if !workspace.is_empty() && !item.is_empty())
+}
+
+fn binary_lro_max_wait(path: &str, configured: Duration) -> Duration {
+    if is_dataflow_query(path) {
+        configured.max(DATAFLOW_QUERY_MAX_WAIT)
+    } else {
+        configured
+    }
+}
+
 fn submission_timeout() -> FabioError {
     FabioError::with_typed_hint(
         ErrorCode::Timeout,
@@ -1992,8 +2005,28 @@ impl FabricClient {
         self.mutation_bytes(resp, "fabric", path).await
     }
 
-    /// POST request that returns binary bytes with a custom Accept header.
-    /// Handles LRO (202 → poll → download result) for endpoints like `executeQuery`.
+    /// Build a binary POST; only dataflow queries extend the normal request timeout.
+    fn binary_post_request(
+        &self,
+        path: &str,
+        token: &str,
+        accept: &str,
+        body: &Value,
+    ) -> reqwest::RequestBuilder {
+        let request = self
+            .http
+            .post(self.fabric_url(path))
+            .header(AUTHORIZATION, token)
+            .header("Accept", accept)
+            .json(body);
+        if is_dataflow_query(path) {
+            request.timeout(DATAFLOW_QUERY_MAX_WAIT)
+        } else {
+            request
+        }
+    }
+
+    /// Binary POST with conditional authentication retry and bounded LRO observation.
     pub async fn post_fabric_bytes_with_accept(
         &self,
         path: &str,
@@ -2002,16 +2035,9 @@ impl FabricClient {
     ) -> Result<Vec<u8>> {
         self.guard_readonly("POST", path)?;
         let token = self.require_auth().await?;
-        let url = self.fabric_url(path);
-
         let resp = self
             .send_mutation(
-                self.http
-                    .post(&url)
-                    .header(AUTHORIZATION, &token)
-                    .header("Accept", accept)
-                    .timeout(DATAFLOW_QUERY_MAX_WAIT)
-                    .json(body),
+                self.binary_post_request(path, &token, accept, body),
                 "fabric",
                 path,
             )
@@ -2024,12 +2050,7 @@ impl FabricClient {
             let token = self.require_auth().await?;
             let resp = self
                 .send_mutation(
-                    self.http
-                        .post(&url)
-                        .header(AUTHORIZATION, &token)
-                        .header("Accept", accept)
-                        .timeout(DATAFLOW_QUERY_MAX_WAIT)
-                        .json(body),
+                    self.binary_post_request(path, &token, accept, body),
                     "fabric",
                     path,
                 )
@@ -2046,6 +2067,8 @@ impl FabricClient {
         resp: reqwest::Response,
         token: &str,
         accept: &str,
+        max_wait: Duration,
+        request_timeout: Option<Duration>,
     ) -> Result<Vec<u8>> {
         // 202: LRO — poll until the operation completes, then download the result
         if resp.status() == StatusCode::ACCEPTED {
@@ -2063,38 +2086,43 @@ impl FabricClient {
 
             if let Some(poll_url) = location {
                 submission::validate_observation_url(&poll_url, &self.fabric_endpoint())?;
-                // Poll the LRO until completion
-                let start = std::time::Instant::now();
-                loop {
-                    let max_wait = self.lro_max_wait.max(DATAFLOW_QUERY_MAX_WAIT);
-                    if start.elapsed() > max_wait {
-                        return Err(FabioError::new(
-                            ErrorCode::Timeout,
-                            format!("LRO polling timed out after {}s", max_wait.as_secs()),
-                        )
-                        .into());
-                    }
-                    tokio::time::sleep(std::time::Duration::from_secs(retry_after.min(60))).await;
+                // One deadline covers waits, requests and the completed result body.
+                return tokio::time::timeout(max_wait, async {
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_secs(retry_after.min(60)))
+                            .await;
 
-                    let poll_resp = self
-                        .http
-                        .get(&poll_url)
-                        .header(AUTHORIZATION, token)
-                        .header("Accept", accept)
-                        .timeout(DATAFLOW_QUERY_MAX_WAIT)
-                        .send()
-                        .await
-                        .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
+                        let request = self
+                            .http
+                            .get(&poll_url)
+                            .header(AUTHORIZATION, token)
+                            .header("Accept", accept);
+                        let request = match request_timeout {
+                            Some(timeout) => request.timeout(timeout),
+                            None => request,
+                        };
+                        let poll_resp = request
+                            .send()
+                            .await
+                            .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
 
-                    if poll_resp.status() == StatusCode::OK {
-                        return Ok(poll_resp.bytes().await?.to_vec());
+                        if poll_resp.status() == StatusCode::OK {
+                            return Ok(poll_resp.bytes().await?.to_vec());
+                        }
+                        if poll_resp.status() == StatusCode::ACCEPTED {
+                            continue; // Still in progress
+                        }
+                        // Error
+                        return Err(error_from_failed_response(poll_resp).await.into());
                     }
-                    if poll_resp.status() == StatusCode::ACCEPTED {
-                        continue; // Still in progress
-                    }
-                    // Error
-                    return Err(error_from_failed_response(poll_resp).await.into());
-                }
+                })
+                .await
+                .map_err(|_| {
+                    FabioError::new(
+                        ErrorCode::Timeout,
+                        format!("LRO polling timed out after {}s", max_wait.as_secs()),
+                    )
+                })?;
             }
             return Err(FabioError::api_error("Binary submission was accepted without a usable observation URL; completion is unknown.").into());
         }
@@ -5133,6 +5161,93 @@ mod tests {
     #[test]
     fn dataflow_query_wait_covers_published_runtime_limit() {
         assert!(DATAFLOW_QUERY_MAX_WAIT > Duration::from_secs(230));
+    }
+
+    #[test]
+    fn binary_lro_timeout_extension_is_dataflow_query_specific() {
+        let configured = Duration::from_secs(1);
+        assert_eq!(
+            binary_lro_max_wait("/workspaces/ws/dataflows/item/executeQuery", configured),
+            DATAFLOW_QUERY_MAX_WAIT
+        );
+        for path in [
+            "/downloads/result",
+            "/workspaces/ws/items/item/executeQuery",
+            "/workspaces/ws/dataflows/item/executeQuery/extra",
+            "/workspaces/ws/dataflows/item/getDefinition",
+        ] {
+            assert_eq!(binary_lro_max_wait(path, configured), configured);
+        }
+        assert_eq!(
+            binary_lro_max_wait(
+                "/workspaces/ws/dataflows/item/executeQuery",
+                Duration::from_mins(10)
+            ),
+            Duration::from_mins(10)
+        );
+    }
+
+    #[test]
+    fn binary_request_timeout_extension_is_dataflow_query_specific() {
+        let client = FabricClient::new();
+        for (path, expected) in [
+            (
+                "/workspaces/ws/dataflows/item/executeQuery",
+                Some(DATAFLOW_QUERY_MAX_WAIT),
+            ),
+            ("/binary/download", None),
+        ] {
+            let request = client
+                .binary_post_request(
+                    path,
+                    "fake-test-token",
+                    "application/octet-stream",
+                    &serde_json::json!({}),
+                )
+                .build()
+                .unwrap();
+            assert_eq!(request.timeout().copied(), expected);
+        }
+    }
+
+    #[tokio::test]
+    async fn binary_lro_deadline_bounds_retry_after_without_another_request() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let client = FabricClient::new();
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/accepted"))
+            .respond_with(
+                ResponseTemplate::new(202)
+                    .insert_header(
+                        "Location",
+                        format!("{}/operations/fixture", client.fabric_endpoint()),
+                    )
+                    .insert_header("Retry-After", "60"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let response = reqwest::get(format!("{}/accepted", server.uri()))
+            .await
+            .unwrap();
+        let error = client
+            .handle_bytes_lro_response(
+                response,
+                "fake-test-token",
+                "",
+                Duration::from_millis(20),
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<FabioError>().unwrap().code,
+            ErrorCode::Timeout
+        );
+        assert_eq!(server.received_requests().await.unwrap().len(), 1);
     }
 
     #[test]

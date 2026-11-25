@@ -42,6 +42,46 @@ create, enable features, send sharing invitations or run an irreversible upgrade
 as an automatic repair. Inspect rollout prerequisites with the appropriate
 administrator and review a scoped dry-run before approving writes.
 
+## Inspect catalog tables and effective OneLake access
+
+```bash
+fabio --wrap-untrusted catalog search --type Table --top 5 --readonly
+fabio --wrap-untrusted onelake-security get-principal-access --workspace "$WS" --id "$ITEM" --root-path Tables --expand-tables --page-size 100 --readonly
+```
+
+Catalog Object/Table hits carry opaque IDs and owning-item/workspace hierarchy;
+an optional intermediate parent can describe a schema. Do not treat a catalog
+object ID as the owning Fabric item ID. Bounded, nonempty table results were
+confirmed live.
+
+The principal-access API is preview. It preserves permit/deny effects, grouped or
+expanded row/column constraints, pagination, and a computed-access ETag. Pass the
+quoted ETag verbatim with `--if-match`/`--if-none-match`. `--all` refuses missing or
+changing ETags, malformed list pages, and repeated continuation tokens instead of
+reporting an inconsistent permission snapshot.
+
+During live testing, this new endpoint returned `EntityNotFound` on both an
+existing readable lakehouse and a fresh owned fixture, while ordinary role reads
+succeeded. Its live acceptance remains blocked; do not infer a missing item or a
+specific tenant setting to enable from that result alone.
+
+## Validate long-running dataflow queries
+
+`dataflow execute-query` supports the published 230-second server runtime with
+extended request/LRO observation timing specific to that action. Unrelated binary
+operations keep their ordinary timeouts. Polling has a deadline covering waits,
+requests and the completed response body, not just time between requests.
+
+A registered, typed synthetic query delayed by 130 seconds returned Arrow IPC v2
+after the previous two-minute boundary in a disposable workspace. Authored M
+queries must also appear in `queriesMetadata`; definition-update success alone
+does not prove the query is executable. This query test does not validate a
+refresh or ingestion into a data destination.
+
+For live contributor tests, use an isolated workspace: Gen2 can create staging
+lakehouse/warehouse items that survive dataflow deletion. Delete only owned
+fixtures, then clean up the owned workspace; never remove shared staging by name.
+
 ## Manage datasource topics safely
 
 Topics are Markdown basenames, not filesystem paths. Read staging or published
