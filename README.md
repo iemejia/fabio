@@ -1015,9 +1015,49 @@ Configuration: [`prek.toml`](prek.toml)
 
 - GitHub Actions CI runs on 6 targets: x64 + arm64 for Linux, macOS, and Windows
 - Release workflow: tag-triggered, builds 5 binaries with SHA256 checksums (Linux x64/arm64, macOS arm64, Windows x64/arm64)
-- `cargo-deny` checks for security advisories and license compliance (permissive-only policy)
-- Dependabot auto-merge for passing dependency updates
+- Strict `cargo audit --deny warnings` and full npm audits block dependency findings
+- Dependabot groups available security updates per ecosystem; passing Dependabot PRs can auto-merge
+- Daily/manual Cargo security remediation opens one lockfile-only PR for compatible fixes (see below)
 - CodeQL and Secret Scanning enabled
+
+#### Automated dependency security remediation
+
+`.github/dependabot.yml` groups Cargo and npm **security** updates separately from
+ordinary version updates. `.github/workflows/cargo-security-updates.yml` also
+checks the default branch against RustSec daily at 07:00 UTC and on manual dispatch,
+covering findings that Dependabot has not yet turned into a PR.
+
+The workflow attempts targeted
+`cargo update --package <crate>@<locked-version> --precise <patched-version>`
+updates using stable patched lower bounds from RustSec, respects manifest constraints
+and the project MSRV, and checks changed packages against a conservative permissive
+license allowlist. It does not modify manifests, update git/path dependencies, or
+accept incompatible major/prerelease target versions. Unfamiliar patch-range
+syntax requires manual review. A failed audit, unknown license, incompatible MSRV,
+or unresolved finding blocks publication and appears
+in the workflow's job summary; partial fixes are rolled back rather than presented
+as a clean remediation.
+
+After audit, formatting, lint, and tests pass, it creates or refreshes the single
+PR on **`automation/cargo-security-updates`**. This is a bot-owned branch: do not
+edit it manually. The workflow does not merge the PR; normal CI and review still
+apply. Merge the combined remediation first, then update older Dependabot PRs to
+inherit the repaired lockfile. Findings without compatible patches require manual
+dependency replacement or other reviewed remediation—not audit waivers.
+
+**Setup:** add a repository Actions secret named `SECURITY_UPDATES_TOKEN`, containing
+a fine-grained PAT scoped to this repository with **Contents: read/write** and
+**Pull requests: read/write**. It is used only on a separate publishing runner,
+never on the runner that resolves or builds dependencies. Publication refuses a
+stale lockfile if the default branch advanced during validation. Unlike PRs opened with `GITHUB_TOKEN`,
+PRs opened with this token trigger the normal CI workflows. Schedule and grouping
+changes take effect after the configuration reaches the default branch.
+
+Run the hermetic automation tests locally with Python 3.11+:
+
+```bash
+python3 -m unittest discover -s scripts -p 'test_cargo_security_updates.py'
+```
 
 ### Project Stats
 

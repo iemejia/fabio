@@ -11,6 +11,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  security-remediation-tests:
+    runs-on: ubuntu-latest
+    name: security / remediation-tests
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Test Cargo security remediation
+        run: python3 -m unittest discover -s scripts -p 'test_cargo_security_updates.py'
+
   fmt:
     runs-on: ubuntu-latest
     name: formatting

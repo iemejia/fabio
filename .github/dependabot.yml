@@ -8,6 +8,11 @@ updates:
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
+    groups:
+      cargo-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -33,6 +38,11 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
     ignore:
       # @astrojs/check only supports typescript ^5 || ^6. Block major 7 (the
       # native-preview line) until @astrojs/check declares support, otherwise
