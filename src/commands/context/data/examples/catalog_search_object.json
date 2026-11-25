@@ -1,0 +1,40 @@
+{
+  "command": "fabio catalog search --search \"customer\" --type Table --top 10",
+  "description": "Searches catalog object entries for tables, including their owning item and optional schema parent.",
+  "response": {
+    "data": [
+      {
+        "id": "<opaque-table-id>",
+        "type": "Table",
+        "catalogEntryType": "Object",
+        "displayName": "dimension_customer",
+        "hierarchy": {
+          "workspace": {
+            "id": "<workspace-id>"
+          },
+          "item": {
+            "id": "<item-id>",
+            "type": "Lakehouse"
+          },
+          "object": {
+            "id": "<opaque-schema-id>",
+            "displayName": "dbo",
+            "type": "Schema"
+          }
+        }
+      }
+    ],
+    "count": 1
+  },
+  "notes": "Object IDs are opaque strings, not GUIDs. Table access is checked on the parent item. Object entries do not carry endorsement or sensitivity-label metadata.",
+  "query_examples": [
+    {
+      "query": "[].hierarchy.item.id",
+      "description": "Extract owning Fabric item IDs."
+    },
+    {
+      "query": "[].{table:displayName, ownerType:hierarchy.item.type, schema:hierarchy.object.displayName}",
+      "description": "Project table, owner type, and schema."
+    }
+  ]
+}

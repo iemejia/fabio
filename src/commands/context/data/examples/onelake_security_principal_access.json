@@ -1,0 +1,36 @@
+{
+  "command": "fabio onelake-security get-principal-access --workspace $WS --id $ITEM_ID --principal-id $PRINCIPAL_ID --root-path Tables --expand-tables",
+  "description": "Returns a principal's effective OneLake access as expanded table entries, including row-level and column-level constraints.",
+  "response": {
+    "data": [
+      {
+        "type": "ExpandedTable",
+        "path": "/Tables/dbo/dimension_customer",
+        "access": ["Read"],
+        "effect": "Permit",
+        "columnConstraints": [
+          {
+            "name": "CustomerKey",
+            "columnEffect": "Permit",
+            "columnAction": ["Read"]
+          }
+        ],
+        "rowsConstraint": "[CustomerKey] > 10"
+      }
+    ],
+    "count": 1,
+    "continuationToken": "<continuation-token>",
+    "etag": "\"<computed-access-etag>\""
+  },
+  "notes": "The response ETag represents the computed effective-access state. Pass it verbatim, including quotes, with --if-match or --if-none-match. Without --expand-tables, Table entries may group row and column constraints by tablePath. Folder entries have no table constraints.",
+  "query_examples": [
+    {
+      "query": "[?effect=='Deny'].path",
+      "description": "List explicitly denied paths."
+    },
+    {
+      "query": "[?type=='ExpandedTable'].{path:path, rows:rowsConstraint}",
+      "description": "Inspect expanded table paths and row constraints."
+    }
+  ]
+}

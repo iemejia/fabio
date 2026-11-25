@@ -220,7 +220,8 @@
 - `src/commands/warehouse_snapshot.rs`: warehouse snapshot CRUD + read-only data plane (query/list-tables/describe-table/plan/connection-string) delegating to the shared warehouse TDS handlers (now pub)
 - `src/commands/graph_model.rs`: CRUD + definition + refresh-graph/execute-query/get-queryable-graph-type
 - `src/commands/graph_query_set.rs`: CRUD + get-definition/update-definition (read-only export)
-- `src/commands/catalog.rs`: search (tenant-level)
+- `src/commands/catalog.rs`: tenant-level search across workspace, Fabric-item, and object/table catalog entries; `context/data/examples/catalog_search_object.json` documents object hierarchy
+- `src/commands/onelake_security.rs`: OneLake data-access-role CRUD plus paginated effective-principal-access reads with ETag preconditions; `context/data/examples/onelake_security_principal_access.json` documents grouped/expanded constraint output
 - `src/commands/context.rs`: extract (workspace graph extraction — nodes/edges/summary, three-layer relationship discovery, parallel execution, incremental building)
 - `src/commands/dashboard.rs`: list (read-only)
 - `src/commands/datamart.rs`: list (read-only)
@@ -322,7 +323,8 @@
 - `tests/e2e_warehouse_snapshot.rs`: Warehouse snapshot tests
 - `tests/e2e_graph_model.rs`: Graph model CRUD + refresh + query tests
 - `tests/e2e_graph_query_set.rs`: Graph query set tests
-- `tests/e2e_catalog.rs`: Catalog search tests
+- `tests/e2e_catalog.rs`: Catalog search tests, including object/table hierarchy responses
+- `tests/e2e_onelake_security.rs`: OneLake role guards and effective-principal-access query/header/ETag tests
 - `tests/e2e_context.rs`: Context tenant graph/dry-run tests and item-schema command/flag discoverability checks
 - `tests/e2e_dashboard.rs`: Dashboard list tests
 - `tests/e2e_datamart.rs`: Datamart list tests

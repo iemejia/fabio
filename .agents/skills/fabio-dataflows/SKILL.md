@@ -34,7 +34,7 @@ Manage dataflows (Power BI data transformation)
 | `fabio dataflow create` | yes | Create a new dataflow |
 | `fabio dataflow delete` | yes | Delete a dataflow |
 | `fabio dataflow discover-parameters` | no | Discover parameters of a dataflow |
-| `fabio dataflow execute-query` | no | Execute a query against a dataflow (returns Apache Arrow IPC) |
+| `fabio dataflow execute-query` | no | Execute a query against a dataflow (returns Apache Arrow IPC; maximum runtime 230 seconds) |
 | `fabio dataflow follow-upgrade` | no | Observe an existing Gen1 upgrade receipt with GET-only exact-scope result checks; never submit or cancel |
 | `fabio dataflow get-definition` | no | Get the definition of a dataflow |
 | `fabio dataflow list` | no | List dataflows in a workspace |

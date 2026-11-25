@@ -248,7 +248,7 @@ pub enum DataflowCommand {
         #[arg(long, default_value = "120", value_parser = clap::value_parser!(u64).range(1..=600))]
         timeout: u64,
     },
-    /// Execute a query against a dataflow (returns Apache Arrow IPC)
+    /// Execute a query against a dataflow (returns Apache Arrow IPC; maximum runtime 230 seconds)
     #[command(visible_alias = "query", display_order = 15)]
     ExecuteQuery {
         /// Workspace ID

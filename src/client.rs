@@ -5,7 +5,7 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use anyhow::Result;
-use reqwest::header::{AUTHORIZATION, HeaderMap};
+use reqwest::header::{AUTHORIZATION, HeaderMap, IF_MATCH, IF_NONE_MATCH};
 use reqwest::{Client, Response, StatusCode};
 use serde_json::Value;
 use tokio::time::sleep;
@@ -53,6 +53,7 @@ const MAX_ERROR_BODY_LEN: usize = 500;
 /// misconfigured servers returning unbounded responses. File downloads use
 /// a separate code path without this limit.
 const MAX_API_RESPONSE_SIZE: u64 = 50 * 1024 * 1024;
+const DATAFLOW_QUERY_MAX_WAIT: Duration = Duration::from_mins(4);
 
 fn submission_timeout() -> FabioError {
     FabioError::with_typed_hint(
@@ -1336,10 +1337,21 @@ impl FabricClient {
         }))
     }
 
-    async fn get_request_with_token(&self, url: &str, token: &str) -> Result<Response> {
-        self.http
-            .get(url)
-            .header(AUTHORIZATION, token)
+    async fn get_request_with_token_and_conditions(
+        &self,
+        url: &str,
+        token: &str,
+        if_match: Option<&str>,
+        if_none_match: Option<&str>,
+    ) -> Result<Response> {
+        let mut request = self.http.get(url).header(AUTHORIZATION, token);
+        if let Some(etag) = if_match {
+            request = request.header(IF_MATCH, etag);
+        }
+        if let Some(etag) = if_none_match {
+            request = request.header(IF_NONE_MATCH, etag);
+        }
+        request
             .send()
             .await
             .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()).into())
@@ -1348,6 +1360,16 @@ impl FabricClient {
     /// GET request to Fabric REST API, returning the raw HTTP response while
     /// preserving standard auth refresh and transient retry behavior.
     async fn get_raw_response(&self, path: &str) -> Result<Response> {
+        self.get_raw_response_with_conditions(path, None, None)
+            .await
+    }
+
+    async fn get_raw_response_with_conditions(
+        &self,
+        path: &str,
+        if_match: Option<&str>,
+        if_none_match: Option<&str>,
+    ) -> Result<Response> {
         const MAX_TRANSIENT_RETRIES: u32 = 3;
         let token = self.require_auth().await?;
         let url = self.fabric_url(path);
@@ -1355,7 +1377,9 @@ impl FabricClient {
         verbose::trace_request("GET", &url, None);
         let start = std::time::Instant::now();
 
-        let resp = self.get_request_with_token(&url, &token).await?;
+        let resp = self
+            .get_request_with_token_and_conditions(&url, &token, if_match, if_none_match)
+            .await?;
 
         verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
 
@@ -1364,7 +1388,9 @@ impl FabricClient {
             // Token may have expired server-side; refresh and retry once
             self.invalidate_fabric_token().await;
             let token = self.require_auth().await?;
-            let resp = self.get_request_with_token(&url, &token).await?;
+            let resp = self
+                .get_request_with_token_and_conditions(&url, &token, if_match, if_none_match)
+                .await?;
             verbose::trace_response(resp.status().as_u16(), &url, start.elapsed().as_millis());
             return Ok(resp);
         }
@@ -1379,7 +1405,9 @@ impl FabricClient {
                 );
                 sleep(Duration::from_secs(backoff_secs)).await;
                 let token = self.require_auth().await?;
-                let resp = self.get_request_with_token(&url, &token).await?;
+                let resp = self
+                    .get_request_with_token_and_conditions(&url, &token, if_match, if_none_match)
+                    .await?;
                 let retry_status = resp.status().as_u16();
                 if !matches!(retry_status, 502..=504) {
                     return Ok(resp);
@@ -1405,6 +1433,19 @@ impl FabricClient {
     /// `ETag` to pass back via `If-Match` on a subsequent PUT.
     pub async fn get_with_etag(&self, path: &str) -> Result<Value> {
         let resp = self.get_raw_response(path).await?;
+        Self::merge_etag(resp).await
+    }
+
+    /// Conditional GET that preserves the response `ETag` in the returned JSON.
+    pub async fn get_with_conditions_and_etag(
+        &self,
+        path: &str,
+        if_match: Option<&str>,
+        if_none_match: Option<&str>,
+    ) -> Result<Value> {
+        let resp = self
+            .get_raw_response_with_conditions(path, if_match, if_none_match)
+            .await?;
         Self::merge_etag(resp).await
     }
 
@@ -1969,6 +2010,7 @@ impl FabricClient {
                     .post(&url)
                     .header(AUTHORIZATION, &token)
                     .header("Accept", accept)
+                    .timeout(DATAFLOW_QUERY_MAX_WAIT)
                     .json(body),
                 "fabric",
                 path,
@@ -1986,6 +2028,7 @@ impl FabricClient {
                         .post(&url)
                         .header(AUTHORIZATION, &token)
                         .header("Accept", accept)
+                        .timeout(DATAFLOW_QUERY_MAX_WAIT)
                         .json(body),
                     "fabric",
                     path,
@@ -2023,13 +2066,11 @@ impl FabricClient {
                 // Poll the LRO until completion
                 let start = std::time::Instant::now();
                 loop {
-                    if start.elapsed() > self.lro_max_wait {
+                    let max_wait = self.lro_max_wait.max(DATAFLOW_QUERY_MAX_WAIT);
+                    if start.elapsed() > max_wait {
                         return Err(FabioError::new(
                             ErrorCode::Timeout,
-                            format!(
-                                "LRO polling timed out after {}s",
-                                self.lro_max_wait.as_secs()
-                            ),
+                            format!("LRO polling timed out after {}s", max_wait.as_secs()),
                         )
                         .into());
                     }
@@ -2040,6 +2081,7 @@ impl FabricClient {
                         .get(&poll_url)
                         .header(AUTHORIZATION, token)
                         .header("Accept", accept)
+                        .timeout(DATAFLOW_QUERY_MAX_WAIT)
                         .send()
                         .await
                         .map_err(|e| FabioError::new(ErrorCode::NetworkError, e.to_string()))?;
@@ -5086,6 +5128,11 @@ mod tests {
     #[test]
     fn token_refresh_margin_is_5_minutes() {
         assert_eq!(TOKEN_REFRESH_MARGIN, Duration::from_mins(5));
+    }
+
+    #[test]
+    fn dataflow_query_wait_covers_published_runtime_limit() {
+        assert!(DATAFLOW_QUERY_MAX_WAIT > Duration::from_secs(230));
     }
 
     #[test]

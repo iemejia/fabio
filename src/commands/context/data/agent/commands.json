@@ -5595,7 +5595,7 @@
           },
           "--type": {
             "type": "string",
-            "description": "Filter by entry type (e.g., Report, Lakehouse, Workspace). Comma-separated for multiple"
+            "description": "Filter by entry type (e.g., Report, Lakehouse, Workspace, Table). Comma-separated for multiple"
           },
           "--exclude-type": {
             "type": "string",
@@ -12431,7 +12431,7 @@
         "returns": "object"
       },
       "execute-query": {
-        "description": "Execute a query against a dataflow (returns Apache Arrow IPC)",
+        "description": "Execute a query against a dataflow (returns Apache Arrow IPC; maximum runtime 230 seconds)",
         "flags": {
           "--workspace": {
             "type": "string",
@@ -31123,6 +31123,54 @@
         "mutates": true,
         "returns": "void",
         "destructive": true
+      },
+      "get-principal-access": {
+        "description": "Get a principal's effective `OneLake` access, including row and column constraints",
+        "flags": {
+          "--workspace": {
+            "type": "string",
+            "required": true,
+            "description": "Workspace ID"
+          },
+          "--id": {
+            "type": "string",
+            "required": true,
+            "description": "Fabric item ID to evaluate"
+          },
+          "--principal-id": {
+            "type": "string",
+            "description": "Principal object ID; defaults to the caller"
+          },
+          "--root-path": {
+            "type": "enum",
+            "values": [
+              "Tables",
+              "Files"
+            ],
+            "description": "Restrict results to the Tables or Files root"
+          },
+          "--expand-tables": {
+            "type": "bool",
+            "description": "Expand table grants into individual table entries; requires --root-path Tables"
+          },
+          "--page-size": {
+            "type": "integer",
+            "description": "Server page size (1-1000; defaults to 500)"
+          },
+          "--if-match": {
+            "type": "string",
+            "description": "Require the computed access state to match this quoted `ETag`"
+          },
+          "--if-none-match": {
+            "type": "string",
+            "description": "Require the computed access state not to match this quoted `ETag`"
+          }
+        },
+        "mutates": false,
+        "returns": "list",
+        "examples": [
+          "fabio onelake-security get-principal-access --workspace $WS --id $ITEM_ID --principal-id $PRINCIPAL_ID --root-path Tables --expand-tables"
+        ]
       }
     }
   },

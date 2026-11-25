@@ -217,6 +217,28 @@ pub fn render_list_with_token(
     plain_key: &str,
     continuation_token: Option<&str>,
 ) {
+    render_list_with_token_and_metadata(
+        cli,
+        items,
+        columns,
+        headers,
+        plain_key,
+        continuation_token,
+        &serde_json::Map::new(),
+    );
+}
+
+/// Render a list with pagination and additional top-level JSON metadata.
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+pub fn render_list_with_token_and_metadata(
+    cli: &Cli,
+    items: &[Value],
+    columns: &[&str],
+    headers: &[&str],
+    plain_key: &str,
+    continuation_token: Option<&str>,
+    metadata: &serde_json::Map<String, Value>,
+) {
     if cli.quiet {
         return;
     }
@@ -254,6 +276,9 @@ pub fn render_list_with_token(
                 // Scalar/object/null query result: emit as a single-value envelope.
                 serde_json::json!({ "data": output_data })
             };
+            if let Some(envelope) = envelope.as_object_mut() {
+                envelope.extend(metadata.clone());
+            }
             if cli.wrap_untrusted {
                 wrap_untrusted_fields(&mut envelope);
             }

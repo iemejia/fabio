@@ -108,6 +108,7 @@ Manage `OneLake` data access roles (row/column-level security)
 |---|---|---|
 | `fabio onelake-security create` | yes | Create or update a single data access role |
 | `fabio onelake-security delete` | yes | Delete a data access role |
+| `fabio onelake-security get-principal-access` | no | Get a principal's effective `OneLake` access, including row and column constraints |
 | `fabio onelake-security list` | no | List data access roles for an item |
 | `fabio onelake-security show` | no | Show details of a data access role |
 | `fabio onelake-security upsert` | yes | Replace all data access roles for an item (atomic PUT) |
@@ -131,6 +132,7 @@ Manage `OneLake` data access roles (row/column-level security)
 - Deleting Lakehouse/Warehouse/other data-bearing items without explicit user approval.
 
 ## Key gotchas
+- onelake-security get-principal-access is a paginated preview read of computed effective access. --principal-id defaults to the caller; Viewer/Contributor callers can query only themselves. --root-path accepts Tables or Files, and --expand-tables is valid only with Tables. The top-level etag represents the computed access state and must retain its quotes with --if-match/--if-none-match.
 - lakehouse list-semantic-views and lakehouse publish-semantic-view use beta endpoints. An empty list is valid but does not validate publishing. Publish an already-authored view selected by its exact name and verify the returned semantic model; these commands do not author the view or prove query readiness. Positive publication remains live-unverified without an approved authored fixture.
 - Native Iceberg catalog writes are not a row/manifest writer: iceberg-create-table creates an empty native table; iceberg-commit-table submits a reviewed engine-generated request with exactly one assert-table-uuid and all optimistic requirements intact. Virtual Delta and shortcut targets are refused. iceberg-delete-table removes directory/data and requires --expected-table-uuid; its snapshot identity check is not atomic. See native-iceberg.
 - Use item get-table-metadata/update-table-metadata for OneLake table/column descriptions and key-value tags, not item organizational tags or semantic-model descriptions. Default updates merge by columnName; --overwrite removes omitted metadata and requires explicit approval. Dry-run reads before/after; shortcut writes affect the target table and concurrency is not atomic. See table-metadata.
@@ -145,6 +147,7 @@ Manage `OneLake` data access roles (row/column-level security)
 ## Troubleshooting
 | Symptom | Fix |
 |---|---|
+| DataAccessRoleChangeRestrictedByPolicy when creating, replacing, or deleting a role | The tenant's Manage OneLake data access roles policy blocks the change. Ask a Fabric administrator to review that policy and caller eligibility; retries do not bypass it. |
 | load-table fails or ignores the file | Check --mode/--format are PascalCase (Overwrite, Csv) and the format is Csv or Parquet, not JSON. |
 | FORBIDDEN when creating/deleting | You need at least Member role on the workspace; Delete requires Member+. |
 | list-tables shows no rows after an ETL run | Confirm the notebook/job actually wrote Delta tables and completed (use notebook run --wait). |

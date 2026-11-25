@@ -42,6 +42,23 @@ fn catalog_search_with_type_filter() {
 #[test]
 #[ignore = "requires live Fabric tenant"]
 #[serial]
+fn catalog_search_table_objects_live() {
+    let assert = fabio()
+        .args(["catalog", "search", "--type", "Table", "--top", "1"])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert!(json["data"].is_array());
+    if let Some(first) = json["data"].as_array().and_then(|items| items.first()) {
+        assert_eq!(first["catalogEntryType"], "Object");
+        assert_eq!(first["type"], "Table");
+        assert!(first["hierarchy"]["item"].is_object());
+    }
+}
+
+#[test]
+#[ignore = "requires live Fabric tenant"]
+#[serial]
 fn catalog_search_with_top() {
     let assert = fabio()
         .args(["catalog", "search", "--search", "test", "--top", "2"])
@@ -143,6 +160,81 @@ fn catalog_search_workspace_filter_dry_run() {
         json["data"]["details"]["filter"],
         "(Type eq 'Report' or Type eq 'SemanticModel') and WorkspaceId eq '7f2c8a91-3b4d-4e5f-a6b7-c8d9e0f1a2b3'"
     );
+}
+
+#[test]
+fn catalog_search_table_filter_dry_run() {
+    let assert = fabio()
+        .args([
+            "--dry-run",
+            "catalog",
+            "search",
+            "--search",
+            "customer",
+            "--type",
+            "Table",
+            "--top",
+            "4",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&assert);
+    assert_eq!(json["data"]["details"]["filter"], "Type eq 'Table'");
+    assert_eq!(json["data"]["details"]["pageSize"], 4);
+}
+
+#[test]
+#[serial]
+fn catalog_search_preserves_object_entry_hierarchy() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (server_uri, _server) = rt.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/catalog/search"))
+            .and(body_json(serde_json::json!({
+                "search": "customer",
+                "pageSize": 4,
+                "filter": "Type eq 'Table'"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": [{
+                    "id": "opaque-table-id",
+                    "type": "Table",
+                    "catalogEntryType": "Object",
+                    "displayName": "dimension_customer",
+                    "hierarchy": {
+                        "workspace": {"id": "workspace-id"},
+                        "item": {"id": "item-id", "type": "Lakehouse"},
+                        "object": {
+                            "id": "opaque-schema-id",
+                            "displayName": "dbo",
+                            "type": "Schema"
+                        }
+                    }
+                }]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        (server.uri(), server)
+    });
+
+    let output = fabio()
+        .env("FABIO_ACCESS_TOKEN", "fake-test-token")
+        .env("FABIO_FABRIC_API_ENDPOINT", &server_uri)
+        .args([
+            "catalog", "search", "--search", "customer", "--type", "Table", "--top", "4",
+        ])
+        .assert()
+        .success();
+    let json = parse_json(&output);
+    assert_eq!(json["data"][0]["id"], "opaque-table-id");
+    assert_eq!(json["data"][0]["catalogEntryType"], "Object");
+    assert_eq!(json["data"][0]["hierarchy"]["item"]["type"], "Lakehouse");
+    assert_eq!(json["data"][0]["hierarchy"]["object"]["displayName"], "dbo");
 }
 
 #[test]
